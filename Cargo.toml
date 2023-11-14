@@ -1,2 +1,5 @@
 [workspace]
-members = []
+resolver = "2"
+members = [
+    "compiler/*"
+]
