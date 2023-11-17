@@ -18,6 +18,14 @@ impl<'a> Error<'a> {
             message: format!("invalid {}", ctx),
         }
     }
+
+    pub fn expected(position: &'a Position, ctx: &str) -> Error<'a> {
+        Error {
+            file_name: "".into(),
+            position,
+            message: format!("expected {}", ctx),
+        }
+    }
 }
 
 impl<'a> Display for Error<'a> {
