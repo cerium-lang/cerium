@@ -48,7 +48,11 @@ impl<'a> Lexer<'a> {
             ),
             '+' => Token::Operator(Operator::Plus),
             '-' => Token::Operator(Operator::Minus),
-            '/' => Token::Operator(Operator::ForwardSlash),
+            '/' => mini_condition!(
+                '/',
+                self.skip_comment()?,
+                Token::Operator(Operator::ForwardSlash)
+            ),
             '*' => Token::Operator(Operator::Star),
             '>' => Token::Operator(Operator::GreaterThan),
             '<' => Token::Operator(Operator::LessThan),
@@ -80,6 +84,14 @@ impl<'a> Lexer<'a> {
         while self.cursor.peek().is_some_and(|c| c.is_whitespace()) {
             self.cursor.next();
         }
+    }
+
+    fn skip_comment(&mut self) -> Result<Token, Error> {
+        while self.cursor.peek().is_some_and(|c| c != '\n') {
+            self.cursor.next();
+        }
+
+        self.next_token()
     }
 
     fn tokenize_string(&mut self) -> Token {
@@ -199,6 +211,26 @@ mod tests {
             Token::Int(5),
             Token::Float(5.5),
             Token::Char('H'),
+            Token::EOF,
+        ];
+
+        for expected_token in expected_tokens {
+            assert_eq!(lexer.next_token(), Ok(expected_token));
+        }
+    }
+    
+    #[test]
+    fn test_comments() {
+        let input = r#"
+        // This is a comment
+        // This is also a comment
+        "Now it's not"
+        "#;
+
+        let mut lexer = Lexer::new(input);
+
+        let expected_tokens = vec![
+            Token::String("Now it's not".to_string()),
             Token::EOF,
         ];
 
