@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 #[derive(Debug, PartialEq)]
 pub struct Error<'a> {
-    pub file_name: PathBuf,
+    pub file_path: PathBuf,
     position: &'a Position,
     message: String,
 }
@@ -13,7 +13,7 @@ pub struct Error<'a> {
 impl<'a> Error<'a> {
     pub fn invalid(position: &'a Position, ctx: &str) -> Error<'a> {
         Error {
-            file_name: "".into(),
+            file_path: "".into(),
             position,
             message: format!("invalid {}", ctx),
         }
@@ -21,7 +21,7 @@ impl<'a> Error<'a> {
 
     pub fn expected(position: &'a Position, ctx: &str) -> Error<'a> {
         Error {
-            file_name: "".into(),
+            file_path: "".into(),
             position,
             message: format!("expected {}", ctx),
         }
@@ -33,7 +33,7 @@ impl<'a> Display for Error<'a> {
         write!(
             f,
             "{} at {}:{}: {}",
-            self.file_name.display(),
+            self.file_path.display(),
             self.position.line,
             self.position.column,
             self.message

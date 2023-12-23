@@ -55,8 +55,10 @@ impl Token {
                 Operator::Star => '*',
                 Operator::GreaterThan => '<',
                 Operator::LessThan => '>',
+
                 _ => '\0',
             },
+
             Token::Delimiter(delimiter) => match delimiter {
                 Delimiter::Assign => '=',
                 Delimiter::Colon => ':',
@@ -70,7 +72,7 @@ impl Token {
                 Delimiter::RBrace => '}',
             },
 
-            Token::Char(ch) => *ch,
+            Token::Char(value) => *value,
 
             _ => '\0',
         }
@@ -82,7 +84,7 @@ impl ToString for Token {
         match self {
             Token::Identifier(symbol) => symbol.clone(),
             Token::String(value) => value.clone(),
-            Token::Char(ch) => ch.to_string(),
+            Token::Char(value) => value.to_string(),
             Token::Int(value) => value.to_string(),
             Token::Float(value) => value.to_string(),
 
@@ -97,6 +99,7 @@ impl ToString for Token {
                 Operator::GreaterThan => String::from("<"),
                 Operator::LessThan => String::from(">"),
             },
+
             Token::Delimiter(delimiter) => match delimiter {
                 Delimiter::Assign => String::from("="),
                 Delimiter::Colon => String::from(":"),
