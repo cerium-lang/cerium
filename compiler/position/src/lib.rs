@@ -6,6 +6,6 @@ pub struct Position {
 
 impl Default for Position {
     fn default() -> Self {
-        Position { line: 1, column: 0 }
+        Position { line: 1, column: 1 }
     }
 }

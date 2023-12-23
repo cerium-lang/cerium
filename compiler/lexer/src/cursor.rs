@@ -30,6 +30,7 @@ impl<'a> Iterator for Cursor<'a> {
 
         if ch.is_some_and(|c| c == '\n') {
             self.position.line += 1;
+            self.position.column = 1;
         } else if ch.is_some() {
             self.position.column += 1;
         }
