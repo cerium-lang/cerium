@@ -97,7 +97,7 @@ impl<'a> Lexer<'a> {
     fn tokenize_string(&mut self) -> Token {
         let mut literal = String::new();
 
-        while let Some(ch) = self.cursor.next() {
+        for ch in self.cursor.by_ref() {
             match ch {
                 '"' => break,
                 _ => literal.push(ch),
@@ -110,7 +110,7 @@ impl<'a> Lexer<'a> {
     fn tokenize_char(&mut self) -> Result<Token, Error> {
         let mut literal = String::new();
 
-        while let Some(ch) = self.cursor.next() {
+        for ch in self.cursor.by_ref() {
             match ch {
                 '\'' => break,
                 _ => literal.push(ch),
