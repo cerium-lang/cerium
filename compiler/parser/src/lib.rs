@@ -162,11 +162,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_identifier(
-        &mut self,
-        symbol: String,
-        position: Position,
-    ) -> Result<ExprKind, Diagnostic> {
+    fn parse_identifier(&self, symbol: String, position: Position) -> Result<ExprKind, Diagnostic> {
         Ok(ExprKind::Identifier { symbol, position })
     }
 
