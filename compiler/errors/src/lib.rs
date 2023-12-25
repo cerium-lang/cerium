@@ -4,23 +4,23 @@ use std::fmt::Display;
 use std::path::PathBuf;
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Error {
+pub struct Diagnostic {
     pub file_path: PathBuf,
     position: Position,
     message: String,
 }
 
-impl Error {
-    pub fn invalid(position: Position, ctx: &str) -> Error {
-        Error {
+impl Diagnostic {
+    pub fn invalid(position: Position, ctx: &str) -> Diagnostic {
+        Diagnostic {
             file_path: "".into(),
             position,
             message: format!("invalid {}", ctx),
         }
     }
 
-    pub fn expected(position: Position, ctx: &str) -> Error {
-        Error {
+    pub fn expected(position: Position, ctx: &str) -> Diagnostic {
+        Diagnostic {
             file_path: "".into(),
             position,
             message: format!("expected {}", ctx),
@@ -28,7 +28,7 @@ impl Error {
     }
 }
 
-impl Display for Error {
+impl Display for Diagnostic {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,

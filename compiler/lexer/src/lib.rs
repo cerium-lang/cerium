@@ -4,7 +4,7 @@ pub mod tokens;
 use cursor::Cursor;
 use tokens::*;
 
-use cerium_errors::Error;
+use cerium_errors::Diagnostic;
 
 #[derive(Clone)]
 pub struct Lexer<'a> {
@@ -18,7 +18,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    pub fn next_token(&mut self) -> Result<Token, Error> {
+    pub fn next_token(&mut self) -> Result<Token, Diagnostic> {
         macro_rules! mini_condition {
             ($next: expr, $if: expr, $else: expr) => {
                 if self.cursor.peek().is_some_and(|c| c == $next) {
@@ -73,7 +73,7 @@ impl<'a> Lexer<'a> {
             '0'..='9' => self.tokenize_number(ch)?,
 
             _ => {
-                return Err(Error::invalid(
+                return Err(Diagnostic::invalid(
                     self.cursor.position,
                     format!("token '{ch}'").as_str(),
                 ))
@@ -87,7 +87,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn skip_comment(&mut self) -> Result<Token, Error> {
+    fn skip_comment(&mut self) -> Result<Token, Diagnostic> {
         while self.cursor.peek().is_some_and(|c| c != '\n') {
             self.cursor.next();
         }
@@ -108,7 +108,7 @@ impl<'a> Lexer<'a> {
         Token::String(literal)
     }
 
-    fn tokenize_char(&mut self) -> Result<Token, Error> {
+    fn tokenize_char(&mut self) -> Result<Token, Diagnostic> {
         let mut literal = String::new();
 
         for ch in self.cursor.by_ref() {
@@ -119,7 +119,7 @@ impl<'a> Lexer<'a> {
         }
 
         if literal.len() > 1 || literal.is_empty() {
-            return Err(Error::expected(self.cursor.position, "a single character"));
+            return Err(Diagnostic::expected(self.cursor.position, "a single character"));
         }
 
         Ok(Token::Char(literal.pop().unwrap()))
@@ -140,7 +140,7 @@ impl<'a> Lexer<'a> {
         Token::Identifier(literal)
     }
 
-    fn tokenize_number(&mut self, first_char: char) -> Result<Token, Error> {
+    fn tokenize_number(&mut self, first_char: char) -> Result<Token, Diagnostic> {
         let mut literal = String::from(first_char);
 
         while let Some(ch) = self.cursor.peek() {
@@ -157,7 +157,7 @@ impl<'a> Lexer<'a> {
         } else if let Ok(float) = literal.parse::<f64>() {
             Ok(Token::Float(float))
         } else {
-            Err(Error::invalid(self.cursor.position, "number"))
+            Err(Diagnostic::invalid(self.cursor.position, "number"))
         }
     }
 }

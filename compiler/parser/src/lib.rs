@@ -1,6 +1,6 @@
 use cerium_ast::*;
 
-use cerium_errors::Error;
+use cerium_errors::Diagnostic;
 
 use cerium_lexer::tokens::*;
 use cerium_lexer::Lexer;
@@ -18,7 +18,7 @@ impl<'a> Parser<'a> {
         Parser { lexer }
     }
 
-    pub fn parse(&mut self) -> Result<Package, Error> {
+    pub fn parse(&mut self) -> Result<Package, Diagnostic> {
         let mut declarations = Vec::new();
 
         while self.peek_token()? != Token::EOF {
@@ -32,28 +32,28 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_declaration(&mut self) -> Result<Declaration, Error> {
+    fn parse_declaration(&mut self) -> Result<Declaration, Diagnostic> {
         match self.next_token()? {
             Token::Identifier(symbol) => match symbol.as_str() {
                 "fn" => self.parse_function_declaration(),
-                _ => Err(Error::expected(
+                _ => Err(Diagnostic::expected(
                     self.lexer.cursor.position,
                     "top-level declaration",
                 )),
             },
-            _ => Err(Error::expected(
+            _ => Err(Diagnostic::expected(
                 self.lexer.cursor.position,
                 "top-level declaration",
             )),
         }
     }
 
-    fn parse_function_declaration(&mut self) -> Result<Declaration, Error> {
+    fn parse_function_declaration(&mut self) -> Result<Declaration, Diagnostic> {
         let position = self.lexer.cursor.position;
 
         let name = match self.next_token()? {
             Token::Identifier(symbol) => self.parse_identifier(symbol, position)?,
-            _ => return Err(Error::expected(position, "an identifier")),
+            _ => return Err(Diagnostic::expected(position, "an identifier")),
         };
 
         let parameters = self.parse_function_parameters()?;
@@ -61,7 +61,7 @@ impl<'a> Parser<'a> {
         let return_type = self.parse_ty()?;
 
         if !self.expect(Token::Delimiter(Delimiter::LBrace))? {
-            return Err(Error::expected(
+            return Err(Diagnostic::expected(
                 self.lexer.cursor.position,
                 "function body starts with '{'",
             ));
@@ -86,9 +86,9 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_function_parameters(&mut self) -> Result<Vec<FunctionParameter>, Error> {
+    fn parse_function_parameters(&mut self) -> Result<Vec<FunctionParameter>, Diagnostic> {
         if !self.expect(Token::Delimiter(Delimiter::LParen))? {
-            return Err(Error::expected(
+            return Err(Diagnostic::expected(
                 self.lexer.cursor.position,
                 "function parameters starts with '('",
             ));
@@ -102,19 +102,19 @@ impl<'a> Parser<'a> {
             if !self.expect(Token::Delimiter(Delimiter::Comma))?
                 && self.peek_token()? != Token::Delimiter(Delimiter::RParen)
             {
-                return Err(Error::expected(self.lexer.cursor.position, "a comma"));
+                return Err(Diagnostic::expected(self.lexer.cursor.position, "a comma"));
             }
         }
 
         Ok(parameters)
     }
 
-    fn parse_function_parameter(&mut self) -> Result<FunctionParameter, Error> {
+    fn parse_function_parameter(&mut self) -> Result<FunctionParameter, Diagnostic> {
         let position = self.lexer.cursor.position;
 
         let name = match self.next_token()? {
             Token::Identifier(symbol) => self.parse_identifier(symbol, position)?,
-            _ => return Err(Error::expected(position, "an identifier")),
+            _ => return Err(Diagnostic::expected(position, "an identifier")),
         };
 
         let expected_type = self.parse_ty()?;
@@ -126,7 +126,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_nodes_while(&mut self, condition: impl Fn(Token) -> bool) -> Result<Vec<Node>, Error> {
+    fn parse_nodes_while(&mut self, condition: impl Fn(Token) -> bool) -> Result<Vec<Node>, Diagnostic> {
         let mut nodes = Vec::new();
 
         while condition(self.peek_token()?) {
@@ -136,30 +136,30 @@ impl<'a> Parser<'a> {
         Ok(nodes)
     }
 
-    fn parse_node(&mut self) -> Result<Node, Error> {
+    fn parse_node(&mut self) -> Result<Node, Diagnostic> {
         match self.peek_token()? {
             _ => self.parse_expr(),
         }
     }
 
-    fn parse_expr(&mut self) -> Result<Node, Error> {
+    fn parse_expr(&mut self) -> Result<Node, Diagnostic> {
         Ok(Node::Expr(self.parse_expr_kind()?.into()))
     }
 
-    fn parse_expr_kind(&mut self) -> Result<ExprKind, Error> {
+    fn parse_expr_kind(&mut self) -> Result<ExprKind, Diagnostic> {
         let position = self.lexer.cursor.position;
 
         match self.next_token()? {
             Token::Identifier(symbol) => self.parse_identifier(symbol, position),
-            _ => Err(Error::invalid(position, "expression")),
+            _ => Err(Diagnostic::invalid(position, "expression")),
         }
     }
 
-    fn parse_identifier(&mut self, symbol: String, position: Position) -> Result<ExprKind, Error> {
+    fn parse_identifier(&mut self, symbol: String, position: Position) -> Result<ExprKind, Diagnostic> {
         Ok(ExprKind::Identifier { symbol, position })
     }
 
-    fn parse_ty(&mut self) -> Result<Ty, Error> {
+    fn parse_ty(&mut self) -> Result<Ty, Diagnostic> {
         let position = self.lexer.cursor.position;
 
         Ok(match self.next_token()? {
@@ -169,21 +169,21 @@ impl<'a> Parser<'a> {
                 "char" => Ty::Char,
                 "int" => Ty::Int,
                 "float" => Ty::Float,
-                _ => return Err(Error::invalid(position, "type")),
+                _ => return Err(Diagnostic::invalid(position, "type")),
             },
-            _ => return Err(Error::invalid(position, "type")),
+            _ => return Err(Diagnostic::invalid(position, "type")),
         })
     }
 
-    fn next_token(&mut self) -> Result<Token, Error> {
+    fn next_token(&mut self) -> Result<Token, Diagnostic> {
         self.lexer.next_token()
     }
 
-    fn peek_token(&self) -> Result<Token, Error> {
+    fn peek_token(&self) -> Result<Token, Diagnostic> {
         self.lexer.clone().next_token()
     }
 
-    fn expect(&mut self, token: Token) -> Result<bool, Error> {
+    fn expect(&mut self, token: Token) -> Result<bool, Diagnostic> {
         if self.peek_token()? == token {
             self.next_token()?;
             Ok(true)
