@@ -18,6 +18,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "cerium_ir"
+version = "0.1.0"
+dependencies = [
+ "cerium_ast",
+ "cerium_errors",
+ "cerium_position",
+ "cerium_ty",
+]
+
+[[package]]
 name = "cerium_lexer"
 version = "0.1.0"
 dependencies = [
