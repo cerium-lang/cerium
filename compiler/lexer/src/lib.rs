@@ -6,8 +6,9 @@ use tokens::*;
 
 use cerium_errors::Error;
 
+#[derive(Clone)]
 pub struct Lexer<'a> {
-    cursor: Cursor<'a>,
+    pub cursor: Cursor<'a>,
 }
 
 impl<'a> Lexer<'a> {
@@ -73,7 +74,7 @@ impl<'a> Lexer<'a> {
 
             _ => {
                 return Err(Error::invalid(
-                    &self.cursor.position,
+                    self.cursor.position,
                     format!("token '{ch}'").as_str(),
                 ))
             }
@@ -118,7 +119,7 @@ impl<'a> Lexer<'a> {
         }
 
         if literal.len() > 1 || literal.is_empty() {
-            return Err(Error::expected(&self.cursor.position, "a single character"));
+            return Err(Error::expected(self.cursor.position, "a single character"));
         }
 
         Ok(Token::Char(literal.pop().unwrap()))
@@ -156,7 +157,7 @@ impl<'a> Lexer<'a> {
         } else if let Ok(float) = literal.parse::<f64>() {
             Ok(Token::Float(float))
         } else {
-            Err(Error::invalid(&self.cursor.position, "number"))
+            Err(Error::invalid(self.cursor.position, "number"))
         }
     }
 }
@@ -218,7 +219,7 @@ mod tests {
             assert_eq!(lexer.next_token(), Ok(expected_token));
         }
     }
-    
+
     #[test]
     fn test_comments() {
         let input = r#"
@@ -229,10 +230,7 @@ mod tests {
 
         let mut lexer = Lexer::new(input);
 
-        let expected_tokens = vec![
-            Token::String("Now it's not".to_string()),
-            Token::EOF,
-        ];
+        let expected_tokens = vec![Token::String("Now it's not".to_string()), Token::EOF];
 
         for expected_token in expected_tokens {
             assert_eq!(lexer.next_token(), Ok(expected_token));

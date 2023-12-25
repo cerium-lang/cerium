@@ -3,15 +3,15 @@ use cerium_position::Position;
 use std::fmt::Display;
 use std::path::PathBuf;
 
-#[derive(Debug, PartialEq)]
-pub struct Error<'a> {
+#[derive(Clone, Debug, PartialEq)]
+pub struct Error {
     pub file_path: PathBuf,
-    position: &'a Position,
+    position: Position,
     message: String,
 }
 
-impl<'a> Error<'a> {
-    pub fn invalid(position: &'a Position, ctx: &str) -> Error<'a> {
+impl Error {
+    pub fn invalid(position: Position, ctx: &str) -> Error {
         Error {
             file_path: "".into(),
             position,
@@ -19,7 +19,7 @@ impl<'a> Error<'a> {
         }
     }
 
-    pub fn expected(position: &'a Position, ctx: &str) -> Error<'a> {
+    pub fn expected(position: Position, ctx: &str) -> Error {
         Error {
             file_path: "".into(),
             position,
@@ -28,7 +28,7 @@ impl<'a> Error<'a> {
     }
 }
 
-impl<'a> Display for Error<'a> {
+impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,

@@ -3,6 +3,14 @@
 version = 3
 
 [[package]]
+name = "cerium_ast"
+version = "0.1.0"
+dependencies = [
+ "cerium_position",
+ "cerium_ty",
+]
+
+[[package]]
 name = "cerium_errors"
 version = "0.1.0"
 dependencies = [
@@ -18,5 +26,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "cerium_parser"
+version = "0.1.0"
+dependencies = [
+ "cerium_ast",
+ "cerium_errors",
+ "cerium_lexer",
+ "cerium_position",
+ "cerium_ty",
+]
+
+[[package]]
 name = "cerium_position"
+version = "0.1.0"
+
+[[package]]
+name = "cerium_ty"
 version = "0.1.0"

@@ -2,6 +2,7 @@ use cerium_position::Position;
 
 use std::str::Chars;
 
+#[derive(Clone)]
 pub struct Cursor<'a> {
     chars: Chars<'a>,
     pub position: Position,
