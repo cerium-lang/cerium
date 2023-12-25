@@ -126,7 +126,10 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_nodes_while(&mut self, condition: impl Fn(Token) -> bool) -> Result<Vec<Node>, Diagnostic> {
+    fn parse_nodes_while(
+        &mut self,
+        condition: impl Fn(Token) -> bool,
+    ) -> Result<Vec<Node>, Diagnostic> {
         let mut nodes = Vec::new();
 
         while condition(self.peek_token()?) {
@@ -151,12 +154,36 @@ impl<'a> Parser<'a> {
 
         match self.next_token()? {
             Token::Identifier(symbol) => self.parse_identifier(symbol, position),
+            Token::String(value) => self.parse_string(value, position),
+            Token::Char(value) => self.parse_char(value, position),
+            Token::Int(value) => self.parse_int(value, position),
+            Token::Float(value) => self.parse_float(value, position),
             _ => Err(Diagnostic::invalid(position, "expression")),
         }
     }
 
-    fn parse_identifier(&mut self, symbol: String, position: Position) -> Result<ExprKind, Diagnostic> {
+    fn parse_identifier(
+        &mut self,
+        symbol: String,
+        position: Position,
+    ) -> Result<ExprKind, Diagnostic> {
         Ok(ExprKind::Identifier { symbol, position })
+    }
+
+    fn parse_string(&self, value: String, position: Position) -> Result<ExprKind, Diagnostic> {
+        Ok(ExprKind::String { value, position })
+    }
+
+    fn parse_char(&self, value: char, position: Position) -> Result<ExprKind, Diagnostic> {
+        Ok(ExprKind::Char { value, position })
+    }
+
+    fn parse_int(&self, value: i64, position: Position) -> Result<ExprKind, Diagnostic> {
+        Ok(ExprKind::Int { value, position })
+    }
+
+    fn parse_float(&self, value: f64, position: Position) -> Result<ExprKind, Diagnostic> {
+        Ok(ExprKind::Float { value, position })
     }
 
     fn parse_ty(&mut self) -> Result<Ty, Diagnostic> {

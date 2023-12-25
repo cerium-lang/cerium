@@ -119,7 +119,10 @@ impl<'a> Lexer<'a> {
         }
 
         if literal.len() > 1 || literal.is_empty() {
-            return Err(Diagnostic::expected(self.cursor.position, "a single character"));
+            return Err(Diagnostic::expected(
+                self.cursor.position,
+                "a single character",
+            ));
         }
 
         Ok(Token::Char(literal.pop().unwrap()))

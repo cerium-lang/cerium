@@ -43,12 +43,20 @@ pub enum StmtKind {}
 #[derive(Debug, PartialEq)]
 pub enum ExprKind {
     Identifier { symbol: String, position: Position },
+    String { value: String, position: Position },
+    Char { value: char, position: Position },
+    Int { value: i64, position: Position },
+    Float { value: f64, position: Position },
 }
 
 impl ExprKind {
     pub fn get_position(&self) -> Position {
         match self {
-            Self::Identifier { position, .. } => *position,
+            ExprKind::Identifier { position, .. } => *position,
+            ExprKind::String { position, .. } => *position,
+            ExprKind::Char { position, .. } => *position,
+            ExprKind::Int { position, .. } => *position,
+            ExprKind::Float { position, .. } => *position,
         }
     }
 }
