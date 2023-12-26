@@ -18,13 +18,13 @@ pub enum Declaration {
     },
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FunctionSignature {
     pub parameters: Vec<FunctionParameter>,
     pub return_type: Ty,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FunctionParameter {
     pub name: ExprKind,
     pub expected_type: Ty,
@@ -40,7 +40,7 @@ pub enum Node {
 #[derive(Debug, PartialEq)]
 pub enum StmtKind {}
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ExprKind {
     Identifier { symbol: String, position: Position },
     String { value: String, position: Position },

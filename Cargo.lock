@@ -3,6 +3,17 @@
 version = 3
 
 [[package]]
+name = "cerium_asm"
+version = "0.1.0"
+dependencies = [
+ "cerium_ast",
+ "cerium_errors",
+ "cerium_ir",
+ "cerium_position",
+ "cerium_ty",
+]
+
+[[package]]
 name = "cerium_ast"
 version = "0.1.0"
 dependencies = [

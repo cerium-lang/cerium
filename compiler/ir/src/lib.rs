@@ -6,7 +6,9 @@ use cerium_position::Position;
 
 use cerium_ty::Ty;
 
-#[derive(Debug, PartialEq)]
+use std::fmt::Display;
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     String { value: String, position: Position },
     Char { value: char, position: Position },
@@ -34,7 +36,7 @@ impl Value {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Instruction {}
 
 impl TryFrom<Value> for Instruction {
@@ -46,10 +48,16 @@ impl TryFrom<Value> for Instruction {
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub struct Label(String);
+#[derive(Debug, Clone, PartialEq)]
+pub struct Label(pub String);
 
-#[derive(Debug, PartialEq)]
+impl Display for Label {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Block {
     pub label: Label,
     pub signature: BlockSignature,
