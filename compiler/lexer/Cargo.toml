@@ -1,8 +1,0 @@
-[package]
-name = "cerium_lexer"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-cerium_errors = { path = "../errors" }
-cerium_position = { path = "../position" }
