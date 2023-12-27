@@ -119,11 +119,23 @@ pub const Lexer = struct {
                 },
 
                 .string_literal => switch (current_char) {
-                    // TODO: literals that have newlines or occur end of file without closing the quotes must be invalid
-                    0, '"' => {
+
+                    0, '\n' => {
+                        
+                        result.loc.end = self.index;
+                        self.state = .start;
+                        result.kind = .invalid;
+                        break;
+                    },
+                    
+                    '"' => {
+                        
                         result.loc.end = self.index;
                         self.index += 1;
                         self.state = .start;
+                        if (current_char == '\n' or current_char == 0) {
+                            result.kind = .invalid;
+                        }
                         break;
                     },
 
@@ -131,11 +143,22 @@ pub const Lexer = struct {
                 },
 
                 .char_literal => switch (current_char) {
-                    // TODO: literals that have newlines or occur end of file without closing the quotes must be invalid
-                    0, '\'' => {
+
+                    0, '\n' => {
+                        
+                        result.loc.end = self.index;
+                        self.state = .start;
+                        result.kind = .invalid;
+                        break;
+                    },
+                    
+                    '\'' => {
                         result.loc.end = self.index;
                         self.index += 1;
                         self.state = .start;
+                        if (current_char == '\n' or current_char == 0) {
+                            result.kind = .invalid;
+                        }
                         break;
                     },
 
@@ -180,6 +203,17 @@ test "valid char literals" {
 
 test "invalid tokens" {
     try testTokenize("@ & % $", &.{ .invalid, .invalid, .invalid, .invalid });
+}
+
+test "invalid string literal" {
+    try testTokenize(
+        "\"hello",
+        &.{.invalid});
+}
+
+test "unicode" {
+    //!: this should work fine, but since many terminals does NOT support UTF-8, it will not show up correctly.
+    try testTokenize("\"🔥\"", &.{.string_literal});
 }
 
 fn testTokenize(buffer: [:0]const u8, expected_token_kinds: []const Token.Kind) !void {
