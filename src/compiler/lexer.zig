@@ -4,12 +4,14 @@ pub const Token = struct {
     kind: Kind,
     loc: Loc,
 
-    pub const Kind = enum { eof, invalid, identifier, string_literal, char_literal, number, open_paren, close_paren, open_brace, close_brace, equal_sign, double_equal_sign, comma };
+    pub const Kind = enum { eof, invalid, identifier, string_literal, char_literal, number, open_paren, close_paren, open_brace, close_brace, equal_sign, double_equal_sign, comma, keyword_fn };
 
     pub const Loc = struct {
         start: usize,
         end: usize,
     };
+
+    pub const Keywords = std.ComptimeStringMap(Kind, .{.{ "fn", .keyword_fn }});
 };
 
 pub const Lexer = struct {
@@ -119,6 +121,9 @@ pub const Lexer = struct {
 
                     else => {
                         result.loc.end = self.index;
+                        if (Token.Keywords.get(self.buffer[result.loc.start..result.loc.end])) |keyword_kind| {
+                            result.kind = keyword_kind;
+                        }
                         self.state = .start;
                         break;
                     },
@@ -207,6 +212,10 @@ pub const Lexer = struct {
         return result;
     }
 };
+
+test "valid keywords" {
+    try testTokenize("fn", &.{.keyword_fn});
+}
 
 test "valid identifiers" {
     try testTokenize("identifier another_1d3ntifier AndAnotherIdentifierAlso THAT_IS_AN_IDENTIFIER_BTW", &.{ .identifier, .identifier, .identifier, .identifier });
