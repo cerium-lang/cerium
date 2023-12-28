@@ -4,7 +4,21 @@ pub const Token = struct {
     kind: Kind,
     loc: Loc,
 
-    pub const Kind = enum { eof, invalid, identifier, string_literal, char_literal, number, open_paren, close_paren, open_brace, close_brace };
+    pub const Kind = enum { 
+        eof, 
+        invalid, 
+        identifier, 
+        string_literal, 
+        char_literal, 
+        number, 
+        open_paren, 
+        close_paren, 
+        open_brace, 
+        close_brace,
+        equal_sign, 
+        double_equal_sign,
+        comma 
+        };
 
     pub const Loc = struct {
         start: usize,
@@ -23,6 +37,7 @@ pub const Lexer = struct {
         string_literal,
         char_literal,
         number,
+        equal_sign
     };
 
     pub fn init(buffer: [:0]const u8) Lexer {
@@ -94,6 +109,20 @@ pub const Lexer = struct {
                         self.index += 1;
                         result.loc.end = self.index;
                         result.kind = .close_brace;
+                        break;
+                    },
+
+                    '=' => {
+                        result.loc.start = self.index;
+                        result.kind = .equal_sign;
+                        self.state = .equal_sign;
+                    },
+
+                    ',' => {
+                        result.loc.start = self.index;
+                        self.index += 1;
+                        result.loc.end = self.index;
+                        result.kind = .comma;
                         break;
                     },
 
@@ -177,6 +206,24 @@ pub const Lexer = struct {
                         break;
                     },
                 },
+
+                .equal_sign => switch (current_char) {
+
+
+                    '=' => {
+                        result.loc.end = self.index;
+                        self.index += 1;
+                        result.kind = .double_equal_sign;
+                        self.state = .start;
+                        break;
+                    },
+
+                    else => {
+                        result.loc.end = self.index;
+                        self.state = .start;
+                        break;
+                    }
+                }
             }
         }
 
@@ -225,6 +272,18 @@ test "invalid tokens" {
 test "unicode" {
     // This should work fine, but since many terminals does not support UTF-8, it may not show up correctly.
     try testTokenize("\"🔥\"", &.{.string_literal});
+}
+
+test "equal sign" {
+    try testTokenize("= ident", &.{.equal_sign, .identifier});
+}
+
+test "double equal sign" {
+    try testTokenize("== LINUX", &.{.double_equal_sign, .identifier});
+}
+
+test "comma" {
+    try testTokenize(",", &.{.comma});
 }
 
 fn testTokenize(buffer: [:0]const u8, expected_token_kinds: []const Token.Kind) !void {
