@@ -48,15 +48,13 @@ pub const Lexer = struct {
                     },
 
                     '"' => {
-                        self.index += 1;
-                        result.loc.start = self.index;
+                        result.loc.start = self.index + 1;
                         result.kind = .string_literal;
                         self.state = .string_literal;
                     },
 
                     '\'' => {
-                        self.index += 1;
-                        result.loc.start = self.index;
+                        result.loc.start = self.index + 1;
                         result.kind = .char_literal;
                         self.state = .char_literal;
                     },
@@ -119,23 +117,25 @@ pub const Lexer = struct {
                 },
 
                 .string_literal => switch (current_char) {
-
-                    0, '\n' => {
-                        
+                    0 => {
                         result.loc.end = self.index;
                         self.state = .start;
                         result.kind = .invalid;
                         break;
                     },
-                    
-                    '"' => {
-                        
+
+                    '\n' => {
                         result.loc.end = self.index;
                         self.index += 1;
                         self.state = .start;
-                        if (current_char == '\n' or current_char == 0) {
-                            result.kind = .invalid;
-                        }
+                        result.kind = .invalid;
+                        break;
+                    },
+
+                    '"' => {
+                        result.loc.end = self.index;
+                        self.index += 1;
+                        self.state = .start;
                         break;
                     },
 
@@ -143,22 +143,25 @@ pub const Lexer = struct {
                 },
 
                 .char_literal => switch (current_char) {
-
-                    0, '\n' => {
-                        
+                    0 => {
                         result.loc.end = self.index;
                         self.state = .start;
                         result.kind = .invalid;
                         break;
                     },
-                    
+
+                    '\n' => {
+                        result.loc.end = self.index;
+                        self.index += 1;
+                        self.state = .start;
+                        result.kind = .invalid;
+                        break;
+                    },
+
                     '\'' => {
                         result.loc.end = self.index;
                         self.index += 1;
                         self.state = .start;
-                        if (current_char == '\n' or current_char == 0) {
-                            result.kind = .invalid;
-                        }
                         break;
                     },
 
@@ -191,7 +194,7 @@ test "valid numbers" {
 
 test "valid string literals" {
     try testTokenize(
-        \\"All characters here are just valid string literals"
+        \\"You can type anything you want"
     , &.{.string_literal});
 }
 
@@ -201,18 +204,26 @@ test "valid char literals" {
     , &.{ .char_literal, .char_literal });
 }
 
+test "invalid string literals" {
+    try testTokenize(
+        \\"invalid string
+        \\"
+    , &.{ .invalid, .invalid });
+}
+
+test "invalid char literals" {
+    try testTokenize(
+        \\'i
+        \\'
+    , &.{ .invalid, .invalid });
+}
+
 test "invalid tokens" {
     try testTokenize("@ & % $", &.{ .invalid, .invalid, .invalid, .invalid });
 }
 
-test "invalid string literal" {
-    try testTokenize(
-        "\"hello",
-        &.{.invalid});
-}
-
 test "unicode" {
-    //!: this should work fine, but since many terminals does NOT support UTF-8, it will not show up correctly.
+    // This should work fine, but since many terminals does not support UTF-8, it may not show up correctly.
     try testTokenize("\"🔥\"", &.{.string_literal});
 }
 
