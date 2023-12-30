@@ -42,6 +42,7 @@ pub const Node = struct {
     data: Data,
 
     pub const Kind = enum {
+        return_stmt,
         string_expr,
         char_expr,
         int_expr,
@@ -52,9 +53,15 @@ pub const Node = struct {
         stmt: Stmt,
         expr: Expr,
 
-        pub const Stmt = union {};
+        pub const Stmt = union(enum) {
+            ret: Return,
 
-        pub const Expr = union {
+            pub const Return = struct {
+                value: Expr,
+            };
+        };
+
+        pub const Expr = union(enum) {
             string: String,
             char: Char,
             int: Int,
@@ -156,7 +163,7 @@ pub const Parser = struct {
                 return Error.UnexpectedToken;
             }
 
-            try body.append(try self.parseNode());
+            try body.append(try self.parseStmt());
         }
 
         return Declaration{ .kind = .function_declaration, .data = .{ .function = .{
@@ -212,10 +219,19 @@ pub const Parser = struct {
         };
     }
 
-    fn parseNode(self: *Parser) Error!Node {
+    fn parseStmt(self: *Parser) Error!Node {
         switch (self.peekToken().kind) {
+            .keyword_return => return self.parseReturnStmt(),
             else => return self.parseExpr(),
         }
+    }
+
+    fn parseReturnStmt(self: *Parser) Error!Node {
+        _ = self.nextToken();
+
+        const value = try self.parseExpr();
+
+        return Node{ .kind = .return_stmt, .data = .{ .stmt = .{ .ret = .{ .value = value.data.expr } } } };
     }
 
     fn parseExpr(self: *Parser) Error!Node {
@@ -246,11 +262,15 @@ pub const Parser = struct {
                         return Error.InvalidNumber;
                     };
 
+                    _ = self.nextToken();
+
                     return Node{ .kind = .float_expr, .data = .{ .expr = .{ .float = .{ .value = value } } } };
                 } else {
                     const value = std.fmt.parseInt(i64, self.tokenValue(self.peekToken()), 10) catch {
                         return Error.InvalidNumber;
                     };
+
+                    _ = self.nextToken();
 
                     return Node{ .kind = .int_expr, .data = .{ .expr = .{ .int = .{ .value = value } } } };
                 }
@@ -278,17 +298,14 @@ pub const Parser = struct {
 
 test "parsing function declaration" {
     try testParser(
-        \\fn main() void {
-        \\
+        \\fn main() int {
+        \\  return 0
         \\}
-    , .{ .declarations = &.{.{ .kind = .function_declaration, .data = .{ .function = .{
-        .prototype = .{
-            .name = "main",
-            .parameters = &.{},
-            .return_type = Type.void_type,
-        },
-        .body = &.{},
-    } } }} });
+    , .{ .declarations = &.{.{ .kind = .function_declaration, .data = .{ .function = .{ .prototype = .{
+        .name = "main",
+        .parameters = &.{},
+        .return_type = .int_type,
+    }, .body = &.{Node{ .kind = .return_stmt, .data = .{ .stmt = .{ .ret = .{ .value = .{ .int = .{ .value = 0 } } } } } }} } } }} });
 }
 
 fn testParser(source: [:0]const u8, expected_root: Root) !void {
@@ -317,6 +334,7 @@ fn testParser(source: [:0]const u8, expected_root: Root) !void {
                     try std.testing.expectEqual(expected_node.kind, actual_node.kind);
 
                     switch (expected_node.kind) {
+                        .return_stmt => try std.testing.expectEqualDeep(expected_node.data.stmt.ret.value, actual_node.data.stmt.ret.value),
                         .string_expr => try std.testing.expectEqualDeep(expected_node.data.expr.string, actual_node.data.expr.string),
                         .char_expr => try std.testing.expectEqualDeep(expected_node.data.expr.char, actual_node.data.expr.char),
                         .int_expr => try std.testing.expectEqualDeep(expected_node.data.expr.int, actual_node.data.expr.int),

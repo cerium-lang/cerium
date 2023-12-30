@@ -4,14 +4,14 @@ pub const Token = struct {
     kind: Kind,
     loc: Loc,
 
-    pub const Kind = enum { eof, invalid, identifier, string_literal, char_literal, number, open_paren, close_paren, open_brace, close_brace, equal_sign, double_equal_sign, comma, keyword_fn };
+    pub const Kind = enum { eof, invalid, identifier, string_literal, char_literal, number, open_paren, close_paren, open_brace, close_brace, equal_sign, double_equal_sign, comma, keyword_fn, keyword_return };
 
     pub const Loc = struct {
         start: usize,
         end: usize,
     };
 
-    pub const Keywords = std.ComptimeStringMap(Kind, .{.{ "fn", .keyword_fn }});
+    pub const Keywords = std.ComptimeStringMap(Kind, .{ .{ "fn", .keyword_fn }, .{ "return", .keyword_return } });
 };
 
 pub const Lexer = struct {
