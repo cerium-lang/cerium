@@ -41,13 +41,7 @@ pub const Node = struct {
     kind: Kind,
     data: Data,
 
-    pub const Kind = enum {
-        return_stmt,
-        string_expr,
-        char_expr,
-        int_expr,
-        float_expr,
-    };
+    pub const Kind = enum { stmt, expr };
 
     pub const Data = union {
         stmt: Stmt,
@@ -231,13 +225,13 @@ pub const Parser = struct {
 
         const value = try self.parseExpr();
 
-        return Node{ .kind = .return_stmt, .data = .{ .stmt = .{ .ret = .{ .value = value.data.expr } } } };
+        return Node{ .kind = .stmt, .data = .{ .stmt = .{ .ret = .{ .value = value.data.expr } } } };
     }
 
     fn parseExpr(self: *Parser) Error!Node {
         switch (self.peekToken().kind) {
             .string_literal => {
-                return Node{ .kind = .string_expr, .data = .{ .expr = .{ .string = .{
+                return Node{ .kind = .expr, .data = .{ .expr = .{ .string = .{
                     .value = self.tokenValue(self.nextToken()),
                 } } } };
             },
@@ -246,7 +240,7 @@ pub const Parser = struct {
                     return Error.InvalidChar;
                 }
 
-                return Node{ .kind = .char_expr, .data = .{ .expr = .{ .char = .{
+                return Node{ .kind = .expr, .data = .{ .expr = .{ .char = .{
                     .value = self.tokenValue(self.nextToken())[0],
                 } } } };
             },
@@ -264,7 +258,7 @@ pub const Parser = struct {
 
                     _ = self.nextToken();
 
-                    return Node{ .kind = .float_expr, .data = .{ .expr = .{ .float = .{ .value = value } } } };
+                    return Node{ .kind = .expr, .data = .{ .expr = .{ .float = .{ .value = value } } } };
                 } else {
                     const value = std.fmt.parseInt(i64, self.tokenValue(self.peekToken()), 10) catch {
                         return Error.InvalidNumber;
@@ -272,7 +266,7 @@ pub const Parser = struct {
 
                     _ = self.nextToken();
 
-                    return Node{ .kind = .int_expr, .data = .{ .expr = .{ .int = .{ .value = value } } } };
+                    return Node{ .kind = .expr, .data = .{ .expr = .{ .int = .{ .value = value } } } };
                 }
             },
             else => return Error.UnexpectedToken,
@@ -305,7 +299,7 @@ test "parsing function declaration" {
         .name = "main",
         .parameters = &.{},
         .return_type = .int_type,
-    }, .body = &.{Node{ .kind = .return_stmt, .data = .{ .stmt = .{ .ret = .{ .value = .{ .int = .{ .value = 0 } } } } } }} } } }} });
+    }, .body = &.{Node{ .kind = .stmt, .data = .{ .stmt = .{ .ret = .{ .value = .{ .int = .{ .value = 0 } } } } } }} } } }} });
 }
 
 fn testParser(source: [:0]const u8, expected_root: Root) !void {
@@ -334,11 +328,12 @@ fn testParser(source: [:0]const u8, expected_root: Root) !void {
                     try std.testing.expectEqual(expected_node.kind, actual_node.kind);
 
                     switch (expected_node.kind) {
-                        .return_stmt => try std.testing.expectEqualDeep(expected_node.data.stmt.ret.value, actual_node.data.stmt.ret.value),
-                        .string_expr => try std.testing.expectEqualDeep(expected_node.data.expr.string, actual_node.data.expr.string),
-                        .char_expr => try std.testing.expectEqualDeep(expected_node.data.expr.char, actual_node.data.expr.char),
-                        .int_expr => try std.testing.expectEqualDeep(expected_node.data.expr.int, actual_node.data.expr.int),
-                        .float_expr => try std.testing.expectEqualDeep(expected_node.data.expr.float, actual_node.data.expr.float),
+                        .stmt => {
+                            try std.testing.expectEqualDeep(expected_node.data.stmt, actual_node.data.stmt);
+                        },
+                        .expr => {
+                            try std.testing.expectEqualDeep(expected_node.data.expr, actual_node.data.expr);
+                        },
                     }
                 }
             },
