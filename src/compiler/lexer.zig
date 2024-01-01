@@ -1,17 +1,17 @@
 const std = @import("std");
 
 pub const Token = struct {
-    kind: Kind,
+    tag: Tag,
     loc: Loc,
 
-    pub const Kind = enum { eof, invalid, identifier, string_literal, char_literal, number, open_paren, close_paren, open_brace, close_brace, equal_sign, double_equal_sign, comma, keyword_fn, keyword_return };
+    pub const Tag = enum { eof, invalid, identifier, string_literal, char_literal, number, open_paren, close_paren, open_brace, close_brace, equal_sign, double_equal_sign, comma, keyword_fn, keyword_return };
 
     pub const Loc = struct {
         start: usize,
         end: usize,
     };
 
-    pub const Keywords = std.ComptimeStringMap(Kind, .{ .{ "fn", .keyword_fn }, .{ "return", .keyword_return } });
+    pub const Keywords = std.ComptimeStringMap(Tag, .{ .{ "fn", .keyword_fn }, .{ "return", .keyword_return } });
 };
 
 pub const Lexer = struct {
@@ -26,7 +26,7 @@ pub const Lexer = struct {
     }
 
     pub fn next(self: *Lexer) Token {
-        var result = Token{ .kind = .eof, .loc = .{ .start = self.index, .end = self.index } };
+        var result = Token{ .tag = .eof, .loc = .{ .start = self.index, .end = self.index } };
 
         while (self.buffer.len >= self.index) : (self.index += 1) {
             const current_char = self.buffer[self.index];
@@ -39,25 +39,25 @@ pub const Lexer = struct {
 
                     'a'...'z', 'A'...'Z', '_' => {
                         result.loc.start = self.index;
-                        result.kind = .identifier;
+                        result.tag = .identifier;
                         self.state = .identifier;
                     },
 
                     '"' => {
                         result.loc.start = self.index + 1;
-                        result.kind = .string_literal;
+                        result.tag = .string_literal;
                         self.state = .string_literal;
                     },
 
                     '\'' => {
                         result.loc.start = self.index + 1;
-                        result.kind = .char_literal;
+                        result.tag = .char_literal;
                         self.state = .char_literal;
                     },
 
                     '0'...'9' => {
                         result.loc.start = self.index;
-                        result.kind = .number;
+                        result.tag = .number;
                         self.state = .number;
                     },
 
@@ -65,7 +65,7 @@ pub const Lexer = struct {
                         result.loc.start = self.index;
                         self.index += 1;
                         result.loc.end = self.index;
-                        result.kind = .open_paren;
+                        result.tag = .open_paren;
                         break;
                     },
 
@@ -73,7 +73,7 @@ pub const Lexer = struct {
                         result.loc.start = self.index;
                         self.index += 1;
                         result.loc.end = self.index;
-                        result.kind = .close_paren;
+                        result.tag = .close_paren;
                         break;
                     },
 
@@ -81,7 +81,7 @@ pub const Lexer = struct {
                         result.loc.start = self.index;
                         self.index += 1;
                         result.loc.end = self.index;
-                        result.kind = .open_brace;
+                        result.tag = .open_brace;
                         break;
                     },
 
@@ -89,13 +89,13 @@ pub const Lexer = struct {
                         result.loc.start = self.index;
                         self.index += 1;
                         result.loc.end = self.index;
-                        result.kind = .close_brace;
+                        result.tag = .close_brace;
                         break;
                     },
 
                     '=' => {
                         result.loc.start = self.index;
-                        result.kind = .equal_sign;
+                        result.tag = .equal_sign;
                         self.state = .equal_sign;
                     },
 
@@ -103,7 +103,7 @@ pub const Lexer = struct {
                         result.loc.start = self.index;
                         self.index += 1;
                         result.loc.end = self.index;
-                        result.kind = .comma;
+                        result.tag = .comma;
                         break;
                     },
 
@@ -111,7 +111,7 @@ pub const Lexer = struct {
                         result.loc.start = self.index;
                         self.index += 1;
                         result.loc.end = self.index;
-                        result.kind = .invalid;
+                        result.tag = .invalid;
                         break;
                     },
                 },
@@ -121,8 +121,8 @@ pub const Lexer = struct {
 
                     else => {
                         result.loc.end = self.index;
-                        if (Token.Keywords.get(self.buffer[result.loc.start..result.loc.end])) |keyword_kind| {
-                            result.kind = keyword_kind;
+                        if (Token.Keywords.get(self.buffer[result.loc.start..result.loc.end])) |keyword_tag| {
+                            result.tag = keyword_tag;
                         }
                         self.state = .start;
                         break;
@@ -133,7 +133,7 @@ pub const Lexer = struct {
                     0 => {
                         result.loc.end = self.index;
                         self.state = .start;
-                        result.kind = .invalid;
+                        result.tag = .invalid;
                         break;
                     },
 
@@ -141,7 +141,7 @@ pub const Lexer = struct {
                         result.loc.end = self.index;
                         self.index += 1;
                         self.state = .start;
-                        result.kind = .invalid;
+                        result.tag = .invalid;
                         break;
                     },
 
@@ -159,7 +159,7 @@ pub const Lexer = struct {
                     0 => {
                         result.loc.end = self.index;
                         self.state = .start;
-                        result.kind = .invalid;
+                        result.tag = .invalid;
                         break;
                     },
 
@@ -167,7 +167,7 @@ pub const Lexer = struct {
                         result.loc.end = self.index;
                         self.index += 1;
                         self.state = .start;
-                        result.kind = .invalid;
+                        result.tag = .invalid;
                         break;
                     },
 
@@ -195,7 +195,7 @@ pub const Lexer = struct {
                     '=' => {
                         self.index += 1;
                         result.loc.end = self.index;
-                        result.kind = .double_equal_sign;
+                        result.tag = .double_equal_sign;
                         self.state = .start;
                         break;
                     },
@@ -264,21 +264,21 @@ test "invalid tokens" {
     try testTokenize("@ & % $", &.{ .invalid, .invalid, .invalid, .invalid });
 }
 
-fn testTokenize(buffer: [:0]const u8, expected_token_kinds: []const Token.Kind) !void {
+fn testTokenize(buffer: [:0]const u8, expected_token_tags: []const Token.Tag) !void {
     var lexer = Lexer.init(buffer);
 
-    for (expected_token_kinds) |expected_token_kind| {
+    for (expected_token_tags) |expected_token_tag| {
         const token = lexer.next();
 
         std.debug.print("\n{s}\n", .{buffer[token.loc.start..token.loc.end]});
         std.debug.print("\n{}\n", .{token});
 
-        try std.testing.expectEqual(expected_token_kind, token.kind);
+        try std.testing.expectEqual(expected_token_tag, token.tag);
     }
 
     const eof_token = lexer.next();
 
-    try std.testing.expectEqual(Token.Kind.eof, eof_token.kind);
+    try std.testing.expectEqual(Token.Tag.eof, eof_token.tag);
     try std.testing.expectEqual(buffer.len, eof_token.loc.start);
     try std.testing.expectEqual(buffer.len, eof_token.loc.end);
 }
