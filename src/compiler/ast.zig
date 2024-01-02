@@ -8,74 +8,58 @@ pub const Root = struct {
     declarations: []const Declaration,
 };
 
-pub const Declaration = struct {
-    kind: Kind,
-    data: Data,
+pub const Declaration = union(enum) {
+    function: Function,
 
-    pub const Kind = enum {
-        function_declaration,
-    };
+    pub const Function = struct {
+        prototype: Prototype,
+        body: []const Node,
 
-    pub const Data = union {
-        function: Function,
+        pub const Prototype = struct {
+            name: []const u8,
+            parameters: []const Parameter,
+            return_type: Type,
 
-        pub const Function = struct {
-            prototype: Prototype,
-            body: []const Node,
-
-            pub const Prototype = struct {
+            pub const Parameter = struct {
                 name: []const u8,
-                parameters: []const Parameter,
-                return_type: Type,
-
-                pub const Parameter = struct {
-                    name: []const u8,
-                    expected_type: Type,
-                };
+                expected_type: Type,
             };
         };
     };
 };
 
-pub const Node = struct {
-    kind: Kind,
-    data: Data,
+pub const Node = union(enum) {
+    stmt: Stmt,
+    expr: Expr,
 
-    pub const Kind = enum { stmt, expr };
+    pub const Stmt = union(enum) {
+        ret: Return,
 
-    pub const Data = union {
-        stmt: Stmt,
-        expr: Expr,
+        pub const Return = struct {
+            value: Expr,
+        };
+    };
 
-        pub const Stmt = union(enum) {
-            ret: Return,
+    pub const Expr = union(enum) {
+        string: String,
+        char: Char,
+        int: Int,
+        float: Float,
 
-            pub const Return = struct {
-                value: Expr,
-            };
+        pub const String = struct {
+            value: []const u8,
         };
 
-        pub const Expr = union(enum) {
-            string: String,
-            char: Char,
-            int: Int,
-            float: Float,
+        pub const Char = struct {
+            value: u8,
+        };
 
-            pub const String = struct {
-                value: []const u8,
-            };
+        pub const Int = struct {
+            value: i64,
+        };
 
-            pub const Char = struct {
-                value: u8,
-            };
-
-            pub const Int = struct {
-                value: i64,
-            };
-
-            pub const Float = struct {
-                value: f64,
-            };
+        pub const Float = struct {
+            value: f64,
         };
     };
 };
@@ -96,7 +80,7 @@ pub const Parser = struct {
             const token = lexer.next();
             try tokens.append(token);
 
-            if (token.kind == .eof) break;
+            if (token.tag == .eof) break;
         }
 
         return Parser{ .source = source, .tokens = try tokens.toOwnedSlice(), .current_token_index = 0, .gpa = gpa };
@@ -111,8 +95,8 @@ pub const Parser = struct {
         return self.tokens[self.current_token_index];
     }
 
-    fn expectToken(self: *Parser, kind: Token.Kind) bool {
-        if (self.peekToken().kind == kind) {
+    fn expectToken(self: *Parser, tag: Token.Tag) bool {
+        if (self.peekToken().tag == tag) {
             _ = self.nextToken();
             return true;
         } else {
@@ -127,7 +111,7 @@ pub const Parser = struct {
     pub fn parseRoot(self: *Parser) Error!Root {
         var declarations = std.ArrayList(Declaration).init(self.gpa);
 
-        while (self.peekToken().kind != .eof) {
+        while (self.peekToken().tag != .eof) {
             try declarations.append(try self.parseDeclaration());
         }
 
@@ -135,7 +119,7 @@ pub const Parser = struct {
     }
 
     fn parseDeclaration(self: *Parser) Error!Declaration {
-        switch (self.peekToken().kind) {
+        switch (self.peekToken().tag) {
             .keyword_fn => return self.parseFunctionDeclaration(),
             else => return Error.ExpectedTopLevelDeclaration,
         }
@@ -153,21 +137,21 @@ pub const Parser = struct {
         }
 
         while (!self.expectToken(.close_brace)) {
-            if (self.peekToken().kind == .eof) {
+            if (self.peekToken().tag == .eof) {
                 return Error.UnexpectedToken;
             }
 
             try body.append(try self.parseStmt());
         }
 
-        return Declaration{ .kind = .function_declaration, .data = .{ .function = .{
+        return Declaration{ .function = .{
             .prototype = prototype,
             .body = try body.toOwnedSlice(),
-        } } };
+        } };
     }
 
-    fn parseFunctionPrototype(self: *Parser) Error!Declaration.Data.Function.Prototype {
-        if (self.peekToken().kind != .identifier) {
+    fn parseFunctionPrototype(self: *Parser) Error!Declaration.Function.Prototype {
+        if (self.peekToken().tag != .identifier) {
             return Error.UnexpectedToken;
         }
 
@@ -177,18 +161,18 @@ pub const Parser = struct {
 
         const returnType = try self.parseType();
 
-        return Declaration.Data.Function.Prototype{ .name = name, .parameters = parameters, .return_type = returnType };
+        return Declaration.Function.Prototype{ .name = name, .parameters = parameters, .return_type = returnType };
     }
 
-    fn parseFunctionParameters(self: *Parser) Error![]const Declaration.Data.Function.Prototype.Parameter {
+    fn parseFunctionParameters(self: *Parser) Error![]const Declaration.Function.Prototype.Parameter {
         if (!self.expectToken(.open_paren)) {
             return Error.UnexpectedToken;
         }
 
-        var paramters = std.ArrayList(Declaration.Data.Function.Prototype.Parameter).init(self.gpa);
+        var paramters = std.ArrayList(Declaration.Function.Prototype.Parameter).init(self.gpa);
 
         while (!self.expectToken(.close_paren)) {
-            if (self.peekToken().kind == .eof) {
+            if (self.peekToken().tag == .eof) {
                 return Error.UnexpectedToken;
             }
 
@@ -198,8 +182,8 @@ pub const Parser = struct {
         return try paramters.toOwnedSlice();
     }
 
-    fn parseFunctionParameter(self: *Parser) Error!Declaration.Data.Function.Prototype.Parameter {
-        if (self.peekToken().kind != .identifier) {
+    fn parseFunctionParameter(self: *Parser) Error!Declaration.Function.Prototype.Parameter {
+        if (self.peekToken().tag != .identifier) {
             return Error.UnexpectedToken;
         }
 
@@ -207,14 +191,14 @@ pub const Parser = struct {
 
         const expectedType = try self.parseType();
 
-        return Declaration.Data.Function.Prototype.Parameter{
+        return Declaration.Function.Prototype.Parameter{
             .name = name,
             .expected_type = expectedType,
         };
     }
 
     fn parseStmt(self: *Parser) Error!Node {
-        switch (self.peekToken().kind) {
+        switch (self.peekToken().tag) {
             .keyword_return => return self.parseReturnStmt(),
             else => return self.parseExpr(),
         }
@@ -225,24 +209,24 @@ pub const Parser = struct {
 
         const value = try self.parseExpr();
 
-        return Node{ .kind = .stmt, .data = .{ .stmt = .{ .ret = .{ .value = value.data.expr } } } };
+        return Node{ .stmt = .{ .ret = .{ .value = value.expr } } };
     }
 
     fn parseExpr(self: *Parser) Error!Node {
-        switch (self.peekToken().kind) {
+        switch (self.peekToken().tag) {
             .string_literal => {
-                return Node{ .kind = .expr, .data = .{ .expr = .{ .string = .{
+                return Node{ .expr = .{ .string = .{
                     .value = self.tokenValue(self.nextToken()),
-                } } } };
+                } } };
             },
             .char_literal => {
                 if (self.tokenValue(self.peekToken()).len != 1) {
                     return Error.InvalidChar;
                 }
 
-                return Node{ .kind = .expr, .data = .{ .expr = .{ .char = .{
+                return Node{ .expr = .{ .char = .{
                     .value = self.tokenValue(self.nextToken())[0],
-                } } } };
+                } } };
             },
             .number => {
                 var is_float = false;
@@ -258,7 +242,7 @@ pub const Parser = struct {
 
                     _ = self.nextToken();
 
-                    return Node{ .kind = .expr, .data = .{ .expr = .{ .float = .{ .value = value } } } };
+                    return Node{ .expr = .{ .float = .{ .value = value } } };
                 } else {
                     const value = std.fmt.parseInt(i64, self.tokenValue(self.peekToken()), 10) catch {
                         return Error.InvalidNumber;
@@ -266,7 +250,7 @@ pub const Parser = struct {
 
                     _ = self.nextToken();
 
-                    return Node{ .kind = .expr, .data = .{ .expr = .{ .int = .{ .value = value } } } };
+                    return Node{ .expr = .{ .int = .{ .value = value } } };
                 }
             },
             else => return Error.UnexpectedToken,
@@ -276,7 +260,7 @@ pub const Parser = struct {
     fn parseType(self: *Parser) Error!Type {
         const BuiltinTypes = std.ComptimeStringMap(Type, .{ .{ "void", .void_type }, .{ "string", .string_type }, .{ "char", .char_type }, .{ "int", .int_type }, .{ "float", .float_type } });
 
-        switch (self.peekToken().kind) {
+        switch (self.peekToken().tag) {
             .identifier => {
                 if (BuiltinTypes.get(self.tokenValue(self.peekToken()))) |builtinType| {
                     _ = self.nextToken();
@@ -295,11 +279,11 @@ test "parsing function declaration" {
         \\fn main() int {
         \\  return 0
         \\}
-    , .{ .declarations = &.{.{ .kind = .function_declaration, .data = .{ .function = .{ .prototype = .{
+    , .{ .declarations = &.{.{ .function = .{ .prototype = .{
         .name = "main",
         .parameters = &.{},
         .return_type = .int_type,
-    }, .body = &.{Node{ .kind = .stmt, .data = .{ .stmt = .{ .ret = .{ .value = .{ .int = .{ .value = 0 } } } } } }} } } }} });
+    }, .body = &.{Node{ .stmt = .{ .ret = .{ .value = .{ .int = .{ .value = 0 } } } } }} } }} });
 }
 
 fn testParser(source: [:0]const u8, expected_root: Root) !void {
@@ -315,28 +299,6 @@ fn testParser(source: [:0]const u8, expected_root: Root) !void {
     for (expected_root.declarations, 0..) |expected_declaration, i| {
         const actual_declaration = actual_root.declarations[i];
 
-        try std.testing.expectEqual(expected_declaration.kind, actual_declaration.kind);
-
-        switch (expected_declaration.kind) {
-            .function_declaration => {
-                try std.testing.expectEqualDeep(expected_declaration.data.function.prototype, actual_declaration.data.function.prototype);
-                try std.testing.expectEqualDeep(expected_declaration.data.function.body.len, actual_declaration.data.function.body.len);
-
-                for (expected_declaration.data.function.body, 0..) |expected_node, j| {
-                    const actual_node = actual_declaration.data.function.body[j];
-
-                    try std.testing.expectEqual(expected_node.kind, actual_node.kind);
-
-                    switch (expected_node.kind) {
-                        .stmt => {
-                            try std.testing.expectEqualDeep(expected_node.data.stmt, actual_node.data.stmt);
-                        },
-                        .expr => {
-                            try std.testing.expectEqualDeep(expected_node.data.expr, actual_node.data.expr);
-                        },
-                    }
-                }
-            },
-        }
+        try std.testing.expectEqualDeep(expected_declaration, actual_declaration);
     }
 }
