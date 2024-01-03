@@ -2,11 +2,11 @@ const std = @import("std");
 
 pub const Token = struct {
     tag: Tag,
-    loc: Loc,
+    buffer_loc: BufferLoc,
 
     pub const Tag = enum { eof, invalid, identifier, string_literal, char_literal, number, open_paren, close_paren, open_brace, close_brace, equal_sign, double_equal_sign, comma, keyword_fn, keyword_return };
 
-    pub const Loc = struct {
+    pub const BufferLoc = struct {
         start: usize,
         end: usize,
     };
@@ -26,7 +26,7 @@ pub const Lexer = struct {
     }
 
     pub fn next(self: *Lexer) Token {
-        var result = Token{ .tag = .eof, .loc = .{ .start = self.index, .end = self.index } };
+        var result = Token{ .tag = .eof, .buffer_loc = .{ .start = self.index, .end = self.index } };
 
         while (self.buffer.len >= self.index) : (self.index += 1) {
             const current_char = self.buffer[self.index];
@@ -38,79 +38,79 @@ pub const Lexer = struct {
                     ' ', '\r', '\n', '\t' => {},
 
                     'a'...'z', 'A'...'Z', '_' => {
-                        result.loc.start = self.index;
+                        result.buffer_loc.start = self.index;
                         result.tag = .identifier;
                         self.state = .identifier;
                     },
 
                     '"' => {
-                        result.loc.start = self.index + 1;
+                        result.buffer_loc.start = self.index + 1;
                         result.tag = .string_literal;
                         self.state = .string_literal;
                     },
 
                     '\'' => {
-                        result.loc.start = self.index + 1;
+                        result.buffer_loc.start = self.index + 1;
                         result.tag = .char_literal;
                         self.state = .char_literal;
                     },
 
                     '0'...'9' => {
-                        result.loc.start = self.index;
+                        result.buffer_loc.start = self.index;
                         result.tag = .number;
                         self.state = .number;
                     },
 
                     '(' => {
-                        result.loc.start = self.index;
+                        result.buffer_loc.start = self.index;
                         self.index += 1;
-                        result.loc.end = self.index;
+                        result.buffer_loc.end = self.index;
                         result.tag = .open_paren;
                         break;
                     },
 
                     ')' => {
-                        result.loc.start = self.index;
+                        result.buffer_loc.start = self.index;
                         self.index += 1;
-                        result.loc.end = self.index;
+                        result.buffer_loc.end = self.index;
                         result.tag = .close_paren;
                         break;
                     },
 
                     '{' => {
-                        result.loc.start = self.index;
+                        result.buffer_loc.start = self.index;
                         self.index += 1;
-                        result.loc.end = self.index;
+                        result.buffer_loc.end = self.index;
                         result.tag = .open_brace;
                         break;
                     },
 
                     '}' => {
-                        result.loc.start = self.index;
+                        result.buffer_loc.start = self.index;
                         self.index += 1;
-                        result.loc.end = self.index;
+                        result.buffer_loc.end = self.index;
                         result.tag = .close_brace;
                         break;
                     },
 
                     '=' => {
-                        result.loc.start = self.index;
+                        result.buffer_loc.start = self.index;
                         result.tag = .equal_sign;
                         self.state = .equal_sign;
                     },
 
                     ',' => {
-                        result.loc.start = self.index;
+                        result.buffer_loc.start = self.index;
                         self.index += 1;
-                        result.loc.end = self.index;
+                        result.buffer_loc.end = self.index;
                         result.tag = .comma;
                         break;
                     },
 
                     else => {
-                        result.loc.start = self.index;
+                        result.buffer_loc.start = self.index;
                         self.index += 1;
-                        result.loc.end = self.index;
+                        result.buffer_loc.end = self.index;
                         result.tag = .invalid;
                         break;
                     },
@@ -120,8 +120,8 @@ pub const Lexer = struct {
                     'a'...'z', 'A'...'Z', '0'...'9', '_' => {},
 
                     else => {
-                        result.loc.end = self.index;
-                        if (Token.Keywords.get(self.buffer[result.loc.start..result.loc.end])) |keyword_tag| {
+                        result.buffer_loc.end = self.index;
+                        if (Token.Keywords.get(self.buffer[result.buffer_loc.start..result.buffer_loc.end])) |keyword_tag| {
                             result.tag = keyword_tag;
                         }
                         self.state = .start;
@@ -131,14 +131,14 @@ pub const Lexer = struct {
 
                 .string_literal => switch (current_char) {
                     0 => {
-                        result.loc.end = self.index;
+                        result.buffer_loc.end = self.index;
                         self.state = .start;
                         result.tag = .invalid;
                         break;
                     },
 
                     '\n' => {
-                        result.loc.end = self.index;
+                        result.buffer_loc.end = self.index;
                         self.index += 1;
                         self.state = .start;
                         result.tag = .invalid;
@@ -146,7 +146,7 @@ pub const Lexer = struct {
                     },
 
                     '"' => {
-                        result.loc.end = self.index;
+                        result.buffer_loc.end = self.index;
                         self.index += 1;
                         self.state = .start;
                         break;
@@ -157,14 +157,14 @@ pub const Lexer = struct {
 
                 .char_literal => switch (current_char) {
                     0 => {
-                        result.loc.end = self.index;
+                        result.buffer_loc.end = self.index;
                         self.state = .start;
                         result.tag = .invalid;
                         break;
                     },
 
                     '\n' => {
-                        result.loc.end = self.index;
+                        result.buffer_loc.end = self.index;
                         self.index += 1;
                         self.state = .start;
                         result.tag = .invalid;
@@ -172,7 +172,7 @@ pub const Lexer = struct {
                     },
 
                     '\'' => {
-                        result.loc.end = self.index;
+                        result.buffer_loc.end = self.index;
                         self.index += 1;
                         self.state = .start;
                         break;
@@ -185,7 +185,7 @@ pub const Lexer = struct {
                     '0'...'9', '.' => {},
 
                     else => {
-                        result.loc.end = self.index;
+                        result.buffer_loc.end = self.index;
                         self.state = .start;
                         break;
                     },
@@ -194,14 +194,14 @@ pub const Lexer = struct {
                 .equal_sign => switch (current_char) {
                     '=' => {
                         self.index += 1;
-                        result.loc.end = self.index;
+                        result.buffer_loc.end = self.index;
                         result.tag = .double_equal_sign;
                         self.state = .start;
                         break;
                     },
 
                     else => {
-                        result.loc.end = self.index;
+                        result.buffer_loc.end = self.index;
                         self.state = .start;
                         break;
                     },
@@ -270,7 +270,7 @@ fn testTokenize(buffer: [:0]const u8, expected_token_tags: []const Token.Tag) !v
     for (expected_token_tags) |expected_token_tag| {
         const token = lexer.next();
 
-        std.debug.print("\n{s}\n", .{buffer[token.loc.start..token.loc.end]});
+        std.debug.print("\n{s}\n", .{buffer[token.buffer_loc.start..token.buffer_loc.end]});
         std.debug.print("\n{}\n", .{token});
 
         try std.testing.expectEqual(expected_token_tag, token.tag);
@@ -279,6 +279,6 @@ fn testTokenize(buffer: [:0]const u8, expected_token_tags: []const Token.Tag) !v
     const eof_token = lexer.next();
 
     try std.testing.expectEqual(Token.Tag.eof, eof_token.tag);
-    try std.testing.expectEqual(buffer.len, eof_token.loc.start);
-    try std.testing.expectEqual(buffer.len, eof_token.loc.end);
+    try std.testing.expectEqual(buffer.len, eof_token.buffer_loc.start);
+    try std.testing.expectEqual(buffer.len, eof_token.buffer_loc.end);
 }
