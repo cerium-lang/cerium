@@ -163,6 +163,7 @@ pub const Parser = struct {
     fn parseDeclaration(self: *Parser) Error!Declaration {
         switch (self.peekToken().tag) {
             .keyword_fn => return self.parseFunctionDeclaration(),
+
             else => return Error.ExpectedTopLevelDeclaration,
         }
     }
@@ -264,6 +265,7 @@ pub const Parser = struct {
                     .loc = self.tokenLoc(literal_token),
                 } } };
             },
+
             .char_literal => {
                 if (self.tokenValue(self.peekToken()).len != 1) {
                     return Error.InvalidChar;
@@ -276,27 +278,23 @@ pub const Parser = struct {
                     .loc = self.tokenLoc(literal_token),
                 } } };
             },
-            .number => {
-                var is_float = false;
 
-                for (self.tokenValue(self.peekToken())) |char| {
-                    if (char == '.') is_float = true;
-                }
+            .int => {
+                const value = std.fmt.parseInt(i64, self.tokenValue(self.peekToken()), 10) catch {
+                    return Error.InvalidNumber;
+                };
 
-                if (is_float) {
-                    const value = std.fmt.parseFloat(f64, self.tokenValue(self.peekToken())) catch {
-                        return Error.InvalidNumber;
-                    };
-
-                    return Node{ .expr = .{ .float = .{ .value = value, .loc = self.tokenLoc(self.nextToken()) } } };
-                } else {
-                    const value = std.fmt.parseInt(i64, self.tokenValue(self.peekToken()), 10) catch {
-                        return Error.InvalidNumber;
-                    };
-
-                    return Node{ .expr = .{ .int = .{ .value = value, .loc = self.tokenLoc(self.nextToken()) } } };
-                }
+                return Node{ .expr = .{ .int = .{ .value = value, .loc = self.tokenLoc(self.nextToken()) } } };
             },
+
+            .float => {
+                const value = std.fmt.parseFloat(f64, self.tokenValue(self.peekToken())) catch {
+                    return Error.InvalidNumber;
+                };
+
+                return Node{ .expr = .{ .float = .{ .value = value, .loc = self.tokenLoc(self.nextToken()) } } };
+            },
+
             else => return Error.UnexpectedToken,
         }
     }
@@ -313,6 +311,7 @@ pub const Parser = struct {
                     return Error.InvalidType;
                 }
             },
+
             else => return Error.InvalidType,
         }
     }

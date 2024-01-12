@@ -4,7 +4,7 @@ pub const Token = struct {
     tag: Tag,
     buffer_loc: BufferLoc,
 
-    pub const Tag = enum { eof, invalid, identifier, string_literal, char_literal, number, open_paren, close_paren, open_brace, close_brace, equal_sign, double_equal_sign, comma, keyword_fn, keyword_return };
+    pub const Tag = enum { eof, invalid, identifier, string_literal, char_literal, int, float, open_paren, close_paren, open_brace, close_brace, equal_sign, double_equal_sign, comma, keyword_fn, keyword_return };
 
     pub const BufferLoc = struct {
         start: usize,
@@ -57,7 +57,7 @@ pub const Lexer = struct {
 
                     '0'...'9' => {
                         result.buffer_loc.start = self.index;
-                        result.tag = .number;
+                        result.tag = .int;
                         self.state = .number;
                     },
 
@@ -182,7 +182,11 @@ pub const Lexer = struct {
                 },
 
                 .number => switch (current_char) {
-                    '0'...'9', '.' => {},
+                    '0'...'9' => {},
+
+                    '.' => {
+                        result.tag = .float;
+                    },
 
                     else => {
                         result.buffer_loc.end = self.index;
@@ -221,8 +225,12 @@ test "valid identifiers" {
     try testTokenize("identifier another_1d3ntifier AndAnotherIdentifierAlso THAT_IS_AN_IDENTIFIER_BTW", &.{ .identifier, .identifier, .identifier, .identifier });
 }
 
-test "valid numbers" {
-    try testTokenize("10 1.0 2.0 0.5 55.0 6.0 7", &.{ .number, .number, .number, .number, .number, .number, .number });
+test "valid ints" {
+    try testTokenize("11 41 52 3 7", &.{ .int, .int, .int, .int, .int });
+}
+
+test "valid floats" {
+    try testTokenize("1.0 2.0 0.5 55.0 6.0", &.{ .float, .float, .float, .float, .float });
 }
 
 test "valid string literals" {
