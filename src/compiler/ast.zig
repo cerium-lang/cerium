@@ -2,7 +2,7 @@ const std = @import("std");
 
 const Token = @import("lexer.zig").Token;
 const Lexer = @import("lexer.zig").Lexer;
-const Type = @import("typing.zig").Type;
+const Type = @import("type.zig").Type;
 
 pub const Loc = struct {
     line: usize,
