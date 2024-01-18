@@ -1,9 +1,7 @@
-const std = @import("std");
-
 instructions: []const Instruction,
 string_literals: [][]const u8,
 
-const Value = union(enum) {
+pub const Value = union(enum) {
     string_reference: StringReference,
     char: Char,
     int: Int,
@@ -24,13 +22,13 @@ const Value = union(enum) {
     };
 };
 
-const Instruction = union(enum) {
+pub const Instruction = union(enum) {
     label: Label,
     ret: Ret,
 
-    const Label = struct { name: []const u8 };
+    pub const Label = struct { name: []const u8 };
 
-    const Ret = struct {
+    pub const Ret = struct {
         value: Value,
     };
 };

@@ -48,6 +48,7 @@ pub const Node = union(enum) {
 
         pub const Return = struct {
             value: Expr,
+            loc: Loc,
         };
     };
 
@@ -248,11 +249,11 @@ pub const Parser = struct {
     }
 
     fn parseReturnStmt(self: *Parser) Error!Node {
-        _ = self.nextToken();
+        const keyword = self.nextToken();
 
         const value = try self.parseExpr();
 
-        return Node{ .stmt = .{ .ret = .{ .value = value.expr } } };
+        return Node{ .stmt = .{ .ret = .{ .value = value.expr, .loc = self.tokenLoc(keyword) } } };
     }
 
     fn parseExpr(self: *Parser) Error!Node {
@@ -318,7 +319,7 @@ pub const Parser = struct {
 };
 
 test "parsing function declaration" {
-    try testParser(
+    try testParse(
         \\fn main() int {
         \\  return 0
         \\}
@@ -326,10 +327,10 @@ test "parsing function declaration" {
         .name = .{ .buffer = "main", .loc = .{ .line = 1, .column = 4 } },
         .parameters = &.{},
         .return_type = .int_type,
-    }, .body = &.{Node{ .stmt = .{ .ret = .{ .value = .{ .int = .{ .value = 0, .loc = .{ .line = 2, .column = 11 } } } } } }} } }}, .loc = .{ .line = 3, .column = 1 } });
+    }, .body = &.{Node{ .stmt = .{ .ret = .{ .value = .{ .int = .{ .value = 0, .loc = .{ .line = 2, .column = 11 } } }, .loc = .{ .line = 2, .column = 4 } } } }} } }}, .loc = .{ .line = 3, .column = 1 } });
 }
 
-fn testParser(source: [:0]const u8, expected_root: Root) !void {
+fn testParse(source: [:0]const u8, expected_root: Root) !void {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
