@@ -1,3 +1,7 @@
+const std = @import("std");
+const Aarch64Renderer = @import("renderers/Aarch64Renderer.zig");
+const IR = @This();
+
 instructions: []const Instruction,
 string_literals: [][]const u8,
 
@@ -32,3 +36,19 @@ pub const Instruction = union(enum) {
         value: Value,
     };
 };
+
+pub const Error = error{UnsupportedTarget} || std.mem.Allocator.Error;
+
+pub fn render(self: IR, gpa: std.mem.Allocator, target: std.Target) Error![]const u8 {
+    switch (target.cpu.arch) {
+        .aarch64 => {
+            var renderer = Aarch64Renderer.init(gpa, self);
+
+            try renderer.render();
+
+            return try renderer.dump();
+        },
+
+        else => Error.UnsupportedTarget,
+    }
+}
