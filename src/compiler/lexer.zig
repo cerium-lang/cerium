@@ -1,0 +1,292 @@
+const std = @import("std");
+
+pub const Token = struct {
+    tag: Tag,
+    buffer_loc: BufferLoc,
+
+    pub const Tag = enum { eof, invalid, identifier, string_literal, char_literal, int, float, open_paren, close_paren, open_brace, close_brace, equal_sign, double_equal_sign, comma, keyword_fn, keyword_return };
+
+    pub const BufferLoc = struct {
+        start: usize,
+        end: usize,
+    };
+
+    pub const Keywords = std.ComptimeStringMap(Tag, .{ .{ "fn", .keyword_fn }, .{ "return", .keyword_return } });
+};
+
+pub const Lexer = struct {
+    buffer: [:0]const u8,
+    index: usize,
+    state: State,
+
+    pub const State = enum { start, identifier, string_literal, char_literal, number, equal_sign };
+
+    pub fn init(buffer: [:0]const u8) Lexer {
+        return Lexer{ .buffer = buffer, .index = 0, .state = .start };
+    }
+
+    pub fn next(self: *Lexer) Token {
+        var result = Token{ .tag = .eof, .buffer_loc = .{ .start = self.index, .end = self.index } };
+
+        while (self.buffer.len >= self.index) : (self.index += 1) {
+            const current_char = self.buffer[self.index];
+
+            switch (self.state) {
+                .start => switch (current_char) {
+                    0 => break,
+
+                    ' ', '\r', '\n', '\t' => {},
+
+                    'a'...'z', 'A'...'Z', '_' => {
+                        result.buffer_loc.start = self.index;
+                        result.tag = .identifier;
+                        self.state = .identifier;
+                    },
+
+                    '"' => {
+                        result.buffer_loc.start = self.index + 1;
+                        result.tag = .string_literal;
+                        self.state = .string_literal;
+                    },
+
+                    '\'' => {
+                        result.buffer_loc.start = self.index + 1;
+                        result.tag = .char_literal;
+                        self.state = .char_literal;
+                    },
+
+                    '0'...'9' => {
+                        result.buffer_loc.start = self.index;
+                        result.tag = .int;
+                        self.state = .number;
+                    },
+
+                    '(' => {
+                        result.buffer_loc.start = self.index;
+                        self.index += 1;
+                        result.buffer_loc.end = self.index;
+                        result.tag = .open_paren;
+                        break;
+                    },
+
+                    ')' => {
+                        result.buffer_loc.start = self.index;
+                        self.index += 1;
+                        result.buffer_loc.end = self.index;
+                        result.tag = .close_paren;
+                        break;
+                    },
+
+                    '{' => {
+                        result.buffer_loc.start = self.index;
+                        self.index += 1;
+                        result.buffer_loc.end = self.index;
+                        result.tag = .open_brace;
+                        break;
+                    },
+
+                    '}' => {
+                        result.buffer_loc.start = self.index;
+                        self.index += 1;
+                        result.buffer_loc.end = self.index;
+                        result.tag = .close_brace;
+                        break;
+                    },
+
+                    '=' => {
+                        result.buffer_loc.start = self.index;
+                        result.tag = .equal_sign;
+                        self.state = .equal_sign;
+                    },
+
+                    ',' => {
+                        result.buffer_loc.start = self.index;
+                        self.index += 1;
+                        result.buffer_loc.end = self.index;
+                        result.tag = .comma;
+                        break;
+                    },
+
+                    else => {
+                        result.buffer_loc.start = self.index;
+                        self.index += 1;
+                        result.buffer_loc.end = self.index;
+                        result.tag = .invalid;
+                        break;
+                    },
+                },
+
+                .identifier => switch (current_char) {
+                    'a'...'z', 'A'...'Z', '0'...'9', '_' => {},
+
+                    else => {
+                        result.buffer_loc.end = self.index;
+                        if (Token.Keywords.get(self.buffer[result.buffer_loc.start..result.buffer_loc.end])) |keyword_tag| {
+                            result.tag = keyword_tag;
+                        }
+                        self.state = .start;
+                        break;
+                    },
+                },
+
+                .string_literal => switch (current_char) {
+                    0 => {
+                        result.buffer_loc.end = self.index;
+                        self.state = .start;
+                        result.tag = .invalid;
+                        break;
+                    },
+
+                    '\n' => {
+                        result.buffer_loc.end = self.index;
+                        self.index += 1;
+                        self.state = .start;
+                        result.tag = .invalid;
+                        break;
+                    },
+
+                    '"' => {
+                        result.buffer_loc.end = self.index;
+                        self.index += 1;
+                        self.state = .start;
+                        break;
+                    },
+
+                    else => {},
+                },
+
+                .char_literal => switch (current_char) {
+                    0 => {
+                        result.buffer_loc.end = self.index;
+                        self.state = .start;
+                        result.tag = .invalid;
+                        break;
+                    },
+
+                    '\n' => {
+                        result.buffer_loc.end = self.index;
+                        self.index += 1;
+                        self.state = .start;
+                        result.tag = .invalid;
+                        break;
+                    },
+
+                    '\'' => {
+                        result.buffer_loc.end = self.index;
+                        self.index += 1;
+                        self.state = .start;
+                        break;
+                    },
+
+                    else => {},
+                },
+
+                .number => switch (current_char) {
+                    '0'...'9' => {},
+
+                    '.' => {
+                        result.tag = .float;
+                    },
+
+                    else => {
+                        result.buffer_loc.end = self.index;
+                        self.state = .start;
+                        break;
+                    },
+                },
+
+                .equal_sign => switch (current_char) {
+                    '=' => {
+                        self.index += 1;
+                        result.buffer_loc.end = self.index;
+                        result.tag = .double_equal_sign;
+                        self.state = .start;
+                        break;
+                    },
+
+                    else => {
+                        result.buffer_loc.end = self.index;
+                        self.state = .start;
+                        break;
+                    },
+                },
+            }
+        }
+
+        return result;
+    }
+};
+
+test "valid keywords" {
+    try testTokenize("fn", &.{.keyword_fn});
+}
+
+test "valid identifiers" {
+    try testTokenize("identifier another_1d3ntifier AndAnotherIdentifierAlso THAT_IS_AN_IDENTIFIER_BTW", &.{ .identifier, .identifier, .identifier, .identifier });
+}
+
+test "valid ints" {
+    try testTokenize("11 41 52 3 7", &.{ .int, .int, .int, .int, .int });
+}
+
+test "valid floats" {
+    try testTokenize("1.0 2.0 0.5 55.0 6.0", &.{ .float, .float, .float, .float, .float });
+}
+
+test "valid string literals" {
+    try testTokenize(
+        \\"You can type anything you want"
+    , &.{.string_literal});
+}
+
+test "valid char literals" {
+    try testTokenize(
+        \\'y' 's'
+    , &.{ .char_literal, .char_literal });
+
+    // This should work fine, but since many terminals does not support UTF-8, it may not show up correctly.
+    try testTokenize(
+        \\'🔥' '🤓'
+    , &.{ .char_literal, .char_literal });
+}
+
+test "invalid string literals" {
+    try testTokenize(
+        \\"invalid string
+        \\"
+    , &.{ .invalid, .invalid });
+}
+
+test "invalid char literals" {
+    try testTokenize(
+        \\'i
+        \\'
+    , &.{ .invalid, .invalid });
+}
+
+test "valid delimiters" {
+    try testTokenize("= == , () {}", &.{ .equal_sign, .double_equal_sign, .comma, .open_paren, .close_paren, .open_brace, .close_brace });
+}
+
+test "invalid tokens" {
+    try testTokenize("@ & % $", &.{ .invalid, .invalid, .invalid, .invalid });
+}
+
+fn testTokenize(buffer: [:0]const u8, expected_token_tags: []const Token.Tag) !void {
+    var lexer = Lexer.init(buffer);
+
+    for (expected_token_tags) |expected_token_tag| {
+        const token = lexer.next();
+
+        std.debug.print("\n{s}\n", .{buffer[token.buffer_loc.start..token.buffer_loc.end]});
+        std.debug.print("\n{}\n", .{token});
+
+        try std.testing.expectEqual(expected_token_tag, token.tag);
+    }
+
+    const eof_token = lexer.next();
+
+    try std.testing.expectEqual(Token.Tag.eof, eof_token.tag);
+    try std.testing.expectEqual(buffer.len, eof_token.buffer_loc.start);
+    try std.testing.expectEqual(buffer.len, eof_token.buffer_loc.end);
+}
