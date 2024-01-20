@@ -1,7 +1,7 @@
 const std = @import("std");
 
-const Token = @import("lexer.zig").Token;
-const Lexer = @import("lexer.zig").Lexer;
+const Token = @import("Token.zig");
+const Lexer = @import("Lexer.zig");
 const Type = @import("type.zig").Type;
 
 pub const Loc = struct {
