@@ -34,7 +34,7 @@ pub fn renderValue(self: *Aarch64Renderer, value: IR.Value, target_register_numb
 
     switch (value) {
         .string_reference => {
-            try data_section_writer.print("\tstr{}: {s}\n", .{ value.string_reference.index, self.ir.string_literals[value.string_reference.index] });
+            try data_section_writer.print("\tstr{}: .asciz \"{s}\"\n", .{ value.string_reference.index, self.ir.string_literals[value.string_reference.index] });
 
             try text_section_writer.print("\tadr x{}, str{}\n", .{ target_register_number, value.string_reference.index });
         },
