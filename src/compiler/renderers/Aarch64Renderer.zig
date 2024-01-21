@@ -17,6 +17,7 @@ pub fn render(self: *Aarch64Renderer) std.mem.Allocator.Error!void {
     for (self.ir.instructions) |instruction| {
         switch (instruction) {
             .label => {
+                try text_section_writer.print(".global {s}\n", .{instruction.label.name});
                 try text_section_writer.print("{s}:\n", .{instruction.label.name});
             },
 
