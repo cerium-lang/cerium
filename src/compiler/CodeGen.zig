@@ -7,11 +7,13 @@ const CodeGen = @This();
 instructions: std.ArrayList(IR.Instruction),
 string_literals: std.ArrayList([]const u8),
 function: ?ast.Declaration.Function = null,
+function_returned: ?bool = null,
 error_info: ?ErrorInfo = null,
 gpa: std.mem.Allocator,
 
 pub const Error = error{
     MismatchedTypes,
+    ExpectedReturn,
     UnexpectedReturn,
 } || std.mem.Allocator.Error;
 
@@ -49,9 +51,20 @@ fn handleFunctionDeclaration(self: *CodeGen, function: ast.Declaration.Function)
     try self.instructions.append(.{ .label = .{ .name = function.prototype.name.buffer } });
 
     self.function = function;
+    self.function_returned = false;
 
     for (self.function.?.body) |node| {
         try self.handleNode(node);
+    }
+
+    if (!self.function_returned.?) {
+        if (self.function.?.prototype.return_type == .void_type) {
+            try self.instructions.append(.{ .ret = .{ .value = .{ .int = .{ .value = 0 } } } });
+        } else {
+            self.error_info = .{ .message = "expected function with non-void return type to explicitly return", .loc = self.function.?.prototype.name.loc };
+
+            return error.ExpectedReturn;
+        }
     }
 }
 
@@ -70,9 +83,9 @@ fn handleStmt(self: *CodeGen, stmt: ast.Node.Stmt) Error!void {
 
 fn handleReturnStmt(self: *CodeGen, ret: ast.Node.Stmt.Return) Error!void {
     if (self.function.?.prototype.return_type == .void_type) {
-        self.error_info = .{ .message = "return statements are not allowed when function's expected return type is void", .loc = ret.loc };
+        self.error_info = .{ .message = "didn't expect function with void return type to explicitly return", .loc = ret.loc };
 
-        return Error.UnexpectedReturn;
+        return error.UnexpectedReturn;
     }
 
     if (self.function.?.prototype.return_type != self.inferType(ret.value)) {
@@ -82,7 +95,7 @@ fn handleReturnStmt(self: *CodeGen, ret: ast.Node.Stmt.Return) Error!void {
 
         self.error_info = .{ .message = try buf.toOwnedSlice(), .loc = ret.loc };
 
-        return Error.MismatchedTypes;
+        return error.MismatchedTypes;
     }
 
     try self.instructions.append(.{ .ret = .{ .value = try self.genValue(ret.value) } });

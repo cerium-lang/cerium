@@ -176,7 +176,7 @@ fn runCompileCommand(self: *Driver) u8 {
     var codegen = CodeGen.init(self.gpa);
 
     const ir = codegen.gen(root) catch |err| switch (err) {
-        error.MismatchedTypes, error.UnexpectedReturn => {
+        error.MismatchedTypes, error.UnexpectedReturn, error.ExpectedReturn => {
             std.debug.print("{s}:{}:{}: {s}\n", .{ options.file_path, codegen.error_info.?.loc.line, codegen.error_info.?.loc.column, codegen.error_info.?.message });
 
             return 1;
