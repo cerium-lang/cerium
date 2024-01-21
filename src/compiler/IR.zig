@@ -49,6 +49,6 @@ pub fn render(self: IR, gpa: std.mem.Allocator, target: std.Target) Error![]cons
             return try renderer.dump();
         },
 
-        else => Error.UnsupportedTarget,
+        else => return error.UnsupportedTarget,
     }
 }

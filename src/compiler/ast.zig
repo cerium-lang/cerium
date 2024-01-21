@@ -90,7 +90,7 @@ pub const Parser = struct {
 
     pub const Error = error{ UnexpectedToken, InvalidChar, InvalidNumber, InvalidType, ExpectedTopLevelDeclaration } || std.mem.Allocator.Error;
 
-    pub fn init(buffer: [:0]const u8, gpa: std.mem.Allocator) std.mem.Allocator.Error!Parser {
+    pub fn init(gpa: std.mem.Allocator, buffer: [:0]const u8) std.mem.Allocator.Error!Parser {
         var tokens = std.ArrayList(Token).init(gpa);
 
         var lexer = Lexer.init(buffer);
@@ -109,7 +109,7 @@ pub const Parser = struct {
         return self.tokens[self.current_token_index - 1];
     }
 
-    fn peekToken(self: Parser) Token {
+    pub fn peekToken(self: Parser) Token {
         return self.tokens[self.current_token_index];
     }
 
@@ -122,11 +122,11 @@ pub const Parser = struct {
         }
     }
 
-    fn tokenValue(self: Parser, token: Token) []const u8 {
+    pub fn tokenValue(self: Parser, token: Token) []const u8 {
         return self.buffer[token.buffer_loc.start..token.buffer_loc.end];
     }
 
-    fn tokenLoc(self: Parser, token: Token) Loc {
+    pub fn tokenLoc(self: Parser, token: Token) Loc {
         var loc = Loc{ .line = 1, .column = 0 };
 
         for (0..self.buffer.len) |i| {
