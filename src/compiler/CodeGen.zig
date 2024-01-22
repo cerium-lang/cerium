@@ -98,6 +98,8 @@ fn handleReturnStmt(self: *CodeGen, ret: ast.Node.Stmt.Return) Error!void {
         return error.MismatchedTypes;
     }
 
+    self.function_returned = true;
+
     try self.instructions.append(.{ .ret = .{ .value = try self.genValue(ret.value) } });
 }
 
