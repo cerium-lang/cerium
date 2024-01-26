@@ -86,9 +86,16 @@ pub const Parser = struct {
     tokens: []const Token,
     current_token_index: usize,
 
+    error_info: ?ErrorInfo = null,
+
     gpa: std.mem.Allocator,
 
     pub const Error = error{ UnexpectedToken, InvalidChar, InvalidNumber, InvalidType, ExpectedTopLevelDeclaration } || std.mem.Allocator.Error;
+
+    pub const ErrorInfo = struct {
+        message: []const u8,
+        loc: Loc,
+    };
 
     pub fn init(gpa: std.mem.Allocator, buffer: [:0]const u8) std.mem.Allocator.Error!Parser {
         var tokens = std.ArrayList(Token).init(gpa);
@@ -109,7 +116,7 @@ pub const Parser = struct {
         return self.tokens[self.current_token_index - 1];
     }
 
-    pub fn peekToken(self: Parser) Token {
+    fn peekToken(self: Parser) Token {
         return self.tokens[self.current_token_index];
     }
 
@@ -122,11 +129,11 @@ pub const Parser = struct {
         }
     }
 
-    pub fn tokenValue(self: Parser, token: Token) []const u8 {
+    fn tokenValue(self: Parser, token: Token) []const u8 {
         return self.buffer[token.buffer_loc.start..token.buffer_loc.end];
     }
 
-    pub fn tokenLoc(self: Parser, token: Token) Loc {
+    fn tokenLoc(self: Parser, token: Token) Loc {
         var loc = Loc{ .line = 1, .column = 0 };
 
         for (0..self.buffer.len) |i| {
@@ -165,7 +172,11 @@ pub const Parser = struct {
         switch (self.peekToken().tag) {
             .keyword_fn => return self.parseFunctionDeclaration(),
 
-            else => return error.ExpectedTopLevelDeclaration,
+            else => {
+                self.error_info = .{ .message = "expected top level declaration", .loc = self.tokenLoc(self.peekToken()) };
+
+                return error.ExpectedTopLevelDeclaration;
+            },
         }
     }
 
@@ -177,11 +188,15 @@ pub const Parser = struct {
         var body = std.ArrayList(Node).init(self.gpa);
 
         if (!self.expectToken(.open_brace)) {
+            self.error_info = .{ .message = "expected '{'", .loc = self.tokenLoc(self.peekToken()) };
+
             return error.UnexpectedToken;
         }
 
         while (!self.expectToken(.close_brace)) {
             if (self.peekToken().tag == .eof) {
+                self.error_info = .{ .message = "expected '}'", .loc = self.tokenLoc(self.peekToken()) };
+
                 return error.UnexpectedToken;
             }
 
@@ -196,6 +211,8 @@ pub const Parser = struct {
 
     fn parseFunctionPrototype(self: *Parser) Error!Declaration.Function.Prototype {
         if (self.peekToken().tag != .identifier) {
+            self.error_info = .{ .message = "expected function name", .loc = self.tokenLoc(self.peekToken()) };
+
             return error.UnexpectedToken;
         }
 
@@ -210,6 +227,8 @@ pub const Parser = struct {
 
     fn parseFunctionParameters(self: *Parser) Error![]const Declaration.Function.Prototype.Parameter {
         if (!self.expectToken(.open_paren)) {
+            self.error_info = .{ .message = "expected '('", .loc = self.tokenLoc(self.peekToken()) };
+
             return error.UnexpectedToken;
         }
 
@@ -217,6 +236,8 @@ pub const Parser = struct {
 
         while (!self.expectToken(.close_paren)) {
             if (self.peekToken().tag == .eof) {
+                self.error_info = .{ .message = "expected ')'", .loc = self.tokenLoc(self.peekToken()) };
+
                 return error.UnexpectedToken;
             }
 
@@ -228,6 +249,8 @@ pub const Parser = struct {
 
     fn parseFunctionParameter(self: *Parser) Error!Declaration.Function.Prototype.Parameter {
         if (self.peekToken().tag != .identifier) {
+            self.error_info = .{ .message = "expected parameter name", .loc = self.tokenLoc(self.peekToken()) };
+
             return error.UnexpectedToken;
         }
 
@@ -244,6 +267,7 @@ pub const Parser = struct {
     fn parseStmt(self: *Parser) Error!Node {
         switch (self.peekToken().tag) {
             .keyword_return => return self.parseReturnStmt(),
+
             else => return self.parseExpr(),
         }
     }
@@ -269,6 +293,8 @@ pub const Parser = struct {
 
             .char_literal => {
                 if (self.tokenValue(self.peekToken()).len != 1) {
+                    self.error_info = .{ .message = "invalid character literal: expected only one character", .loc = self.tokenLoc(self.peekToken()) };
+
                     return error.InvalidChar;
                 }
 
@@ -282,6 +308,8 @@ pub const Parser = struct {
 
             .int => {
                 const value = std.fmt.parseInt(i64, self.tokenValue(self.peekToken()), 10) catch {
+                    self.error_info = .{ .message = "invalid number", .loc = self.tokenLoc(self.peekToken()) };
+
                     return error.InvalidNumber;
                 };
 
@@ -290,6 +318,8 @@ pub const Parser = struct {
 
             .float => {
                 const value = std.fmt.parseFloat(f64, self.tokenValue(self.peekToken())) catch {
+                    self.error_info = .{ .message = "invalid number", .loc = self.tokenLoc(self.peekToken()) };
+
                     return error.InvalidNumber;
                 };
 
@@ -309,11 +339,17 @@ pub const Parser = struct {
                     _ = self.nextToken();
                     return builtinType;
                 } else {
+                    self.error_info = .{ .message = "invalid type", .loc = self.tokenLoc(self.peekToken()) };
+
                     return error.InvalidType;
                 }
             },
 
-            else => return error.InvalidType,
+            else => {
+                self.error_info = .{ .message = "invalid type", .loc = self.tokenLoc(self.peekToken()) };
+
+                return error.InvalidType;
+            },
         }
     }
 };

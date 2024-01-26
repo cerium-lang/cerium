@@ -136,38 +136,14 @@ fn runCompileCommand(self: *Driver) u8 {
     };
 
     const root = parser.parseRoot() catch |err| switch (err) {
-        error.UnexpectedToken => {
-            std.debug.print("{s}:{}:{}: unexpected token\n", .{ options.file_path, parser.tokenLoc(parser.peekToken()).line, parser.tokenLoc(parser.peekToken()).column });
-
-            return 1;
-        },
-
-        error.InvalidChar => {
-            std.debug.print("{s}:{}:{}: invalid char\n", .{ options.file_path, parser.tokenLoc(parser.peekToken()).line, parser.tokenLoc(parser.peekToken()).column });
-
-            return 1;
-        },
-
-        error.InvalidNumber => {
-            std.debug.print("{s}:{}:{}: invalid number\n", .{ options.file_path, parser.tokenLoc(parser.peekToken()).line, parser.tokenLoc(parser.peekToken()).column });
-
-            return 1;
-        },
-
-        error.InvalidType => {
-            std.debug.print("{s}:{}:{}: invalid type\n", .{ options.file_path, parser.tokenLoc(parser.peekToken()).line, parser.tokenLoc(parser.peekToken()).column });
-
-            return 1;
-        },
-
-        error.ExpectedTopLevelDeclaration => {
-            std.debug.print("{s}:{}:{}: expected top level declaration\n", .{ options.file_path, parser.tokenLoc(parser.peekToken()).line, parser.tokenLoc(parser.peekToken()).column });
+        error.OutOfMemory => {
+            std.debug.print("{s}\n", .{errorDescription(err)});
 
             return 1;
         },
 
         else => {
-            std.debug.print("{s}\n", .{errorDescription(err)});
+            std.debug.print("{s}:{}:{}: {s}\n", .{ options.file_path, parser.error_info.?.loc.line, parser.error_info.?.loc.column, parser.error_info.?.message });
 
             return 1;
         },
@@ -176,14 +152,14 @@ fn runCompileCommand(self: *Driver) u8 {
     var codegen = CodeGen.init(self.gpa);
 
     const ir = codegen.gen(root) catch |err| switch (err) {
-        error.MismatchedTypes, error.UnexpectedReturn, error.ExpectedReturn => {
-            std.debug.print("{s}:{}:{}: {s}\n", .{ options.file_path, codegen.error_info.?.loc.line, codegen.error_info.?.loc.column, codegen.error_info.?.message });
+        error.OutOfMemory => {
+            std.debug.print("{s}\n", .{errorDescription(err)});
 
             return 1;
         },
 
         else => {
-            std.debug.print("{s}\n", .{errorDescription(err)});
+            std.debug.print("{s}:{}:{}: {s}\n", .{ options.file_path, codegen.error_info.?.loc.line, codegen.error_info.?.loc.column, codegen.error_info.?.message });
 
             return 1;
         },
