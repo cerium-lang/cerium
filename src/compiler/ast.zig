@@ -242,6 +242,12 @@ pub const Parser = struct {
             }
 
             try paramters.append(try self.parseFunctionParameter());
+
+            if (!self.expectToken(.comma) and self.peekToken().tag != .close_paren) {
+                self.error_info = .{ .message = "expected ',' after parameter", .loc = self.tokenLoc(self.peekToken()) };
+
+                return error.UnexpectedToken;
+            }
         }
 
         return try paramters.toOwnedSlice();
