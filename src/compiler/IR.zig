@@ -6,10 +6,13 @@ instructions: []const Instruction,
 string_literals: [][]const u8,
 
 pub const Value = union(enum) {
+    variable_reference: VariableReference,
     string_reference: StringReference,
     char: Char,
     int: Int,
     float: Float,
+
+    pub const VariableReference = struct { name: []const u8 };
 
     pub const StringReference = struct { index: usize };
 
@@ -27,14 +30,21 @@ pub const Value = union(enum) {
 };
 
 pub const Instruction = union(enum) {
+    store: Store,
+    load: Load,
     label: Label,
     ret: Ret,
 
-    pub const Label = struct { name: []const u8 };
-
-    pub const Ret = struct {
+    pub const Store = struct {
+        name: []const u8,
         value: Value,
     };
+
+    pub const Load = struct { value: Value };
+
+    pub const Label = struct { name: []const u8 };
+
+    pub const Ret = struct {};
 };
 
 pub const Error = error{UnsupportedTarget} || std.mem.Allocator.Error;

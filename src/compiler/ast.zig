@@ -44,7 +44,15 @@ pub const Node = union(enum) {
     expr: Expr,
 
     pub const Stmt = union(enum) {
+        variable_declaration: VariableDeclaration,
+
         ret: Return,
+
+        pub const VariableDeclaration = struct {
+            name: Symbol,
+            type: Type,
+            value: Node.Expr,
+        };
 
         pub const Return = struct {
             value: Expr,
@@ -53,10 +61,15 @@ pub const Node = union(enum) {
     };
 
     pub const Expr = union(enum) {
+        identifier: Identifier,
         string: String,
         char: Char,
         int: Int,
         float: Float,
+
+        pub const Identifier = struct {
+            symbol: Symbol,
+        };
 
         pub const String = struct {
             value: []const u8,
@@ -90,7 +103,7 @@ pub const Parser = struct {
 
     gpa: std.mem.Allocator,
 
-    pub const Error = error{ UnexpectedToken, InvalidChar, InvalidNumber, InvalidType, ExpectedTopLevelDeclaration } || std.mem.Allocator.Error;
+    pub const Error = error{ UnexpectedToken, InvalidChar, InvalidNumber, InvalidType, ExpectedTopLevelDeclaration, Unsupported } || std.mem.Allocator.Error;
 
     pub const ErrorInfo = struct {
         message: []const u8,
@@ -101,8 +114,10 @@ pub const Parser = struct {
         var tokens = std.ArrayList(Token).init(gpa);
 
         var lexer = Lexer.init(buffer);
+
         while (true) {
             const token = lexer.next();
+
             try tokens.append(token);
 
             if (token.tag == .eof) break;
@@ -113,6 +128,7 @@ pub const Parser = struct {
 
     fn nextToken(self: *Parser) Token {
         self.current_token_index += 1;
+
         return self.tokens[self.current_token_index - 1];
     }
 
@@ -123,6 +139,7 @@ pub const Parser = struct {
     fn expectToken(self: *Parser, tag: Token.Tag) bool {
         if (self.peekToken().tag == tag) {
             _ = self.nextToken();
+
             return true;
         } else {
             return false;
@@ -170,6 +187,12 @@ pub const Parser = struct {
 
     fn parseDeclaration(self: *Parser) Error!Declaration {
         switch (self.peekToken().tag) {
+            .keyword_let => {
+                self.error_info = .{ .message = "global variables is unspported feature", .loc = self.tokenLoc(self.peekToken()) };
+
+                return error.Unsupported;
+            },
+
             .keyword_fn => return self.parseFunctionDeclaration(),
 
             else => {
@@ -272,10 +295,38 @@ pub const Parser = struct {
 
     fn parseStmt(self: *Parser) Error!Node {
         switch (self.peekToken().tag) {
+            .keyword_let => {
+                return self.parseVariableDeclarationStmt();
+            },
+
             .keyword_return => return self.parseReturnStmt(),
 
             else => return self.parseExpr(),
         }
+    }
+
+    fn parseVariableDeclarationStmt(self: *Parser) Error!Node {
+        _ = self.nextToken();
+
+        if (self.peekToken().tag != .identifier) {
+            self.error_info = .{ .message = "expected variable name", .loc = self.tokenLoc(self.peekToken()) };
+
+            return error.UnexpectedToken;
+        }
+
+        const name = self.symbolFromToken(self.nextToken());
+
+        const var_type = try self.parseType();
+
+        if (!self.expectToken(.equal_sign)) {
+            self.error_info = .{ .message = "expected '='", .loc = self.tokenLoc(self.peekToken()) };
+
+            return error.UnexpectedToken;
+        }
+
+        const value = try self.parseExpr();
+
+        return Node{ .stmt = .{ .variable_declaration = .{ .name = name, .type = var_type, .value = value.expr } } };
     }
 
     fn parseReturnStmt(self: *Parser) Error!Node {
@@ -288,6 +339,10 @@ pub const Parser = struct {
 
     fn parseExpr(self: *Parser) Error!Node {
         switch (self.peekToken().tag) {
+            .identifier => {
+                return Node{ .expr = .{ .identifier = .{ .symbol = self.symbolFromToken(self.nextToken()) } } };
+            },
+
             .string_literal => {
                 const literal_token = self.nextToken();
 
@@ -332,7 +387,11 @@ pub const Parser = struct {
                 return Node{ .expr = .{ .float = .{ .value = value, .loc = self.tokenLoc(self.nextToken()) } } };
             },
 
-            else => return error.UnexpectedToken,
+            else => {
+                self.error_info = .{ .message = "expected expression", .loc = self.tokenLoc(self.peekToken()) };
+
+                return error.UnexpectedToken;
+            },
         }
     }
 
