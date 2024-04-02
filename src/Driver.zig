@@ -21,10 +21,10 @@ const Config = struct {
 
 const usage =
     \\Usage: 
-    \\      {s} <command> [arguments]
+    \\  {s} <command> [arguments]
     \\
     \\Commands:
-    \\      compile <file_path>     -- compile certain file
+    \\  compile <file_path>     -- compile certain file
     \\
     \\
 ;
