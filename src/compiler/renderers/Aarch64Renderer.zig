@@ -50,7 +50,9 @@ pub fn render(self: *Aarch64Renderer) std.mem.Allocator.Error!void {
             },
 
             .ret => {
-                try self.popRegister(0);
+                if (self.stack.items.len != 0) {
+                    try self.popRegister(0);
+                }
 
                 try self.functionEpilogue();
 

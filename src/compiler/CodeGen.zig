@@ -8,7 +8,7 @@ instructions: std.ArrayList(IR.Instruction),
 string_literals: std.ArrayList([]const u8),
 
 function: ?ast.Declaration.Function = null,
-function_returned: ?bool = null,
+function_returned: bool = false,
 
 variables: std.StringHashMap(VariableInfo),
 
@@ -60,7 +60,7 @@ fn handleFunctionDeclaration(self: *CodeGen, function: ast.Declaration.Function)
         try self.handleNode(node);
     }
 
-    if (!self.function_returned.?) {
+    if (!self.function_returned) {
         if (self.function.?.prototype.return_type == .void_type) {
             try self.instructions.append(.{ .ret = .{} });
         } else {
