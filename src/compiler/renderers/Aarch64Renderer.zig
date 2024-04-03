@@ -1,6 +1,8 @@
 const std = @import("std");
+
 const IR = @import("../IR.zig");
 const Assembly = @import("../Assembly.zig");
+
 const Aarch64Renderer = @This();
 
 assembly: Assembly,

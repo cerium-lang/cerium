@@ -1,7 +1,9 @@
 const std = @import("std");
+
 const ast = @import("ast.zig");
 const Type = @import("type.zig").Type;
 const IR = @import("IR.zig");
+
 const CodeGen = @This();
 
 instructions: std.ArrayList(IR.Instruction),

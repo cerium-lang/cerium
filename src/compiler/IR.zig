@@ -1,5 +1,7 @@
 const std = @import("std");
+
 const Aarch64Renderer = @import("renderers/Aarch64Renderer.zig");
+
 const IR = @This();
 
 instructions: []const Instruction,

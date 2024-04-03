@@ -1,5 +1,7 @@
 const std = @import("std");
+
 const Token = @import("Token.zig");
+
 const Lexer = @This();
 
 buffer: [:0]const u8,

@@ -1,4 +1,5 @@
 const std = @import("std");
+
 const Assembly = @This();
 
 text_section: std.ArrayList(u8),

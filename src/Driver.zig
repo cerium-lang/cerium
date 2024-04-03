@@ -1,10 +1,12 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const ast = @import("compiler/ast.zig");
-const CodeGen = @import("compiler/CodeGen.zig");
+
+const Compilation = @import("compiler/Compilation.zig");
+
 const Driver = @This();
 
 config: Config,
+
 gpa: std.mem.Allocator,
 
 const Config = struct {
@@ -36,7 +38,7 @@ const compile_command_usage =
     \\
 ;
 
-pub fn errorDescription(e: anyerror) []const u8 {
+fn errorDescription(e: anyerror) []const u8 {
     return switch (e) {
         error.OutOfMemory => "ran out of memory",
         error.FileNotFound => "no such file or directory",
@@ -112,82 +114,38 @@ pub fn run(self: *Driver, argiterator: *std.process.ArgIterator) u8 {
 fn runCompileCommand(self: *Driver) u8 {
     const options = self.config.command.?.compile;
 
-    const in_file = std.fs.cwd().openFile(options.file_path, .{}) catch |err| {
+    const input_file = std.fs.cwd().openFile(options.file_path, .{}) catch |err| {
         std.debug.print("{s}: {s}\n", .{ options.file_path, errorDescription(err) });
 
         return 1;
     };
-    defer in_file.close();
+    defer input_file.close();
 
-    const in_file_content = in_file.reader().readAllAlloc(self.gpa, std.math.maxInt(u32)) catch |err| {
+    const input_file_content = input_file.reader().readAllAlloc(self.gpa, std.math.maxInt(u32)) catch |err| {
         std.debug.print("{s}: {s}\n", .{ options.file_path, errorDescription(err) });
 
         return 1;
     };
-    defer self.gpa.free(in_file_content);
+    defer self.gpa.free(input_file_content);
 
-    var in_file_content_z = @as([:0]u8, @ptrCast(in_file_content));
-    in_file_content_z[in_file_content_z.len] = 0;
+    var input_file_content_z = @as([:0]u8, @ptrCast(input_file_content));
+    input_file_content_z[input_file_content_z.len] = 0;
 
-    var parser = ast.Parser.init(self.gpa, in_file_content_z) catch |err| {
-        std.debug.print("{s}\n", .{errorDescription(err)});
+    var compilation = Compilation.init(self.gpa, builtin.target, options.file_path);
 
+    const output_assembly = compilation.compile(input_file_content_z) orelse {
         return 1;
     };
 
-    const root = parser.parseRoot() catch |err| switch (err) {
-        error.OutOfMemory => {
-            std.debug.print("{s}\n", .{errorDescription(err)});
-
-            return 1;
-        },
-
-        else => {
-            std.debug.print("{s}:{}:{}: {s}\n", .{ options.file_path, parser.error_info.?.loc.line, parser.error_info.?.loc.column, parser.error_info.?.message });
-
-            return 1;
-        },
-    };
-
-    var codegen = CodeGen.init(self.gpa);
-
-    const ir = codegen.gen(root) catch |err| switch (err) {
-        error.OutOfMemory => {
-            std.debug.print("{s}\n", .{errorDescription(err)});
-
-            return 1;
-        },
-
-        else => {
-            std.debug.print("{s}:{}:{}: {s}\n", .{ options.file_path, codegen.error_info.?.loc.line, codegen.error_info.?.loc.column, codegen.error_info.?.message });
-
-            return 1;
-        },
-    };
-
-    const out_assembly_code = ir.render(self.gpa, builtin.target) catch |err| switch (err) {
-        error.UnsupportedTarget => {
-            std.debug.print("{s} is unspported yet\n", .{builtin.target.cpu.arch.genericName()});
-
-            return 1;
-        },
-
-        else => {
-            std.debug.print("{s}\n", .{errorDescription(err)});
-
-            return 1;
-        },
-    };
-
-    const out_assembly_file = std.fs.cwd().createFile("a.out.s", .{}) catch |err| {
-        std.debug.print("couldn't create output assembly file: {s}\n", .{errorDescription(err)});
+    const output_file = std.fs.cwd().createFile("a.out.s", .{}) catch |err| {
+        std.debug.print("couldn't create output file: {s}\n", .{errorDescription(err)});
 
         return 1;
     };
-    defer out_assembly_file.close();
+    defer output_file.close();
 
-    out_assembly_file.writer().writeAll(out_assembly_code) catch |err| {
-        std.debug.print("couldn't write the output assembly code: {s}", .{errorDescription(err)});
+    output_file.writer().writeAll(output_assembly) catch |err| {
+        std.debug.print("couldn't write the output assembly: {s}", .{errorDescription(err)});
 
         return 1;
     };

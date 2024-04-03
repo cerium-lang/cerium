@@ -4,6 +4,11 @@ const Token = @import("Token.zig");
 const Lexer = @import("Lexer.zig");
 const Type = @import("type.zig").Type;
 
+pub const Root = struct {
+    declarations: []const Declaration,
+    loc: Loc, // EOF location
+};
+
 pub const Loc = struct {
     line: usize,
     column: usize,
@@ -12,11 +17,6 @@ pub const Loc = struct {
 pub const Symbol = struct {
     buffer: []const u8,
     loc: Loc,
-};
-
-pub const Root = struct {
-    declarations: []const Declaration,
-    loc: Loc, // EOF location
 };
 
 pub const Declaration = union(enum) {

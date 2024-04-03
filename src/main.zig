@@ -4,19 +4,20 @@ const Driver = @import("Driver.zig");
 pub fn main() u8 {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 
-    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
-    defer arena.deinit();
+    var arena_instance = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer arena_instance.deinit();
 
-    const allocator = arena.allocator();
+    const arena = arena_instance.allocator();
 
-    var argiterator = std.process.ArgIterator.initWithAllocator(allocator) catch {
+    var argiterator = std.process.ArgIterator.initWithAllocator(arena) catch {
         std.debug.print("ran out of memory\n", .{});
 
         return 1;
     };
+
     defer argiterator.deinit();
 
-    var driver = Driver.init(allocator);
+    var driver = Driver.init(arena);
 
     return driver.run(&argiterator);
 }
