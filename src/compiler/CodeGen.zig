@@ -2,6 +2,7 @@ const std = @import("std");
 
 const ast = @import("ast.zig");
 const Type = @import("type.zig").Type;
+const SymbolTable = @import("SymbolTable.zig");
 const IR = @import("IR.zig");
 
 const CodeGen = @This();
@@ -12,15 +13,13 @@ string_literals: std.ArrayList([]const u8),
 function: ?ast.Declaration.Function = null,
 function_returned: bool = false,
 
-variables: std.StringHashMap(VariableInfo),
+symbol_table: SymbolTable,
 
 error_info: ?ErrorInfo = null,
 
 gpa: std.mem.Allocator,
 
-const VariableInfo = struct { type: Type };
-
-pub const Error = error{ MismatchedTypes, ExpectedReturn, UnexpectedReturn, UndeclaredVariable, Redeclaration } || std.mem.Allocator.Error;
+pub const Error = error{ MismatchedTypes, ExpectedReturn, UnexpectedReturn, UndeclaredVariable, RedeclaredVariable } || std.mem.Allocator.Error;
 
 pub const ErrorInfo = struct {
     message: []const u8,
@@ -31,7 +30,7 @@ pub fn init(gpa: std.mem.Allocator) CodeGen {
     return CodeGen{
         .instructions = std.ArrayList(IR.Instruction).init(gpa),
         .string_literals = std.ArrayList([]const u8).init(gpa),
-        .variables = std.StringHashMap(VariableInfo).init(gpa),
+        .symbol_table = SymbolTable.init(gpa),
         .gpa = gpa,
     };
 }
@@ -72,7 +71,7 @@ fn handleFunctionDeclaration(self: *CodeGen, function: ast.Declaration.Function)
         }
     }
 
-    self.variables.clearAndFree();
+    self.symbol_table.reset();
 
     self.function = null;
     self.function_returned = false;
@@ -106,17 +105,21 @@ fn handleVariableDeclarationStmt(self: *CodeGen, variable: ast.Node.Stmt.Variabl
         return error.MismatchedTypes;
     }
 
-    if (self.variables.contains(variable.name.buffer)) {
+    const symbol = SymbolTable.Symbol{
+        .name = variable.name,
+        .type = variable.type,
+        .linkage = .internal,
+    };
+
+    if (self.symbol_table.set(symbol) == error.Redeclaration) {
         var buf = std.ArrayList(u8).init(self.gpa);
 
         try buf.writer().print("redeclaration of {s}", .{variable.name.buffer});
 
         self.error_info = .{ .message = try buf.toOwnedSlice(), .loc = variable.name.loc };
 
-        return error.Redeclaration;
+        return error.RedeclaredVariable;
     }
-
-    try self.variables.put(variable.name.buffer, .{ .type = variable.type });
 
     try self.instructions.append(.{ .store = .{ .name = variable.name.buffer, .value = value } });
 }
@@ -150,17 +153,17 @@ fn handleReturnStmt(self: *CodeGen, ret: ast.Node.Stmt.Return) Error!void {
 fn genValue(self: *CodeGen, expr: ast.Node.Expr) Error!IR.Value {
     return switch (expr) {
         .identifier => {
-            if (!self.variables.contains(expr.identifier.symbol.buffer)) {
+            if (self.symbol_table.lookup(expr.identifier.name.buffer) == error.UndeclaredVariable) {
                 var buf = std.ArrayList(u8).init(self.gpa);
 
-                try buf.writer().print("{s} is not declared", .{expr.identifier.symbol.buffer});
+                try buf.writer().print("{s} is not declared", .{expr.identifier.name.buffer});
 
-                self.error_info = .{ .message = try buf.toOwnedSlice(), .loc = expr.identifier.symbol.loc };
+                self.error_info = .{ .message = try buf.toOwnedSlice(), .loc = expr.identifier.name.loc };
 
                 return error.UndeclaredVariable;
             }
 
-            return .{ .variable_reference = .{ .name = expr.identifier.symbol.buffer } };
+            return .{ .variable_reference = .{ .name = expr.identifier.name.buffer } };
         },
 
         .string => {
@@ -180,9 +183,11 @@ fn genValue(self: *CodeGen, expr: ast.Node.Expr) Error!IR.Value {
 fn inferType(self: CodeGen, expr: ast.Node.Expr) Type {
     return switch (expr) {
         .identifier => {
-            const variable_info = self.variables.get(expr.identifier.symbol.buffer).?;
+            const symbol = self.symbol_table.lookup(expr.identifier.name.buffer) catch {
+                unreachable;
+            };
 
-            return variable_info.type;
+            return symbol.type;
         },
 
         .string => .string_type,
@@ -192,25 +197,25 @@ fn inferType(self: CodeGen, expr: ast.Node.Expr) Type {
     };
 }
 
-test "generating function declaration intermediate representation" {
+test "generate function declaration intermediate representation" {
     try testGen(
         \\fn main() int {
         \\  return 0
         \\}
-    , .{ .instructions = &.{ .{ .label = .{ .name = "main" } }, .{ .ret = .{ .value = .{ .int = .{ .value = 0 } } } } }, .string_literals = &.{} });
+    , .{ .instructions = &.{ .{ .label = .{ .name = "main" } }, .{ .load = .{ .value = .{ .int = .{ .value = 0 } } } }, .{ .ret = {} } }, .string_literals = &.{} });
 }
 
 fn testGen(source: [:0]const u8, expected_ir: IR) !void {
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
+    var arena_instance = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_instance.deinit();
 
-    const allocator = arena.allocator();
+    const arena = arena_instance.allocator();
 
-    var parser = try ast.Parser.init(source, allocator);
+    var parser = try ast.Parser.init(arena, source);
 
     const root = try parser.parseRoot();
 
-    var codegen = CodeGen.init(allocator);
+    var codegen = CodeGen.init(arena);
 
     const ir = try codegen.gen(root);
 

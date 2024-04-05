@@ -14,7 +14,7 @@ pub const Loc = struct {
     column: usize,
 };
 
-pub const Symbol = struct {
+pub const Name = struct {
     buffer: []const u8,
     loc: Loc,
 };
@@ -27,12 +27,12 @@ pub const Declaration = union(enum) {
         body: []const Node,
 
         pub const Prototype = struct {
-            name: Symbol,
+            name: Name,
             parameters: []const Parameter,
             return_type: Type,
 
             pub const Parameter = struct {
-                name: Symbol,
+                name: Name,
                 expected_type: Type,
             };
         };
@@ -49,7 +49,7 @@ pub const Node = union(enum) {
         ret: Return,
 
         pub const VariableDeclaration = struct {
-            name: Symbol,
+            name: Name,
             type: Type,
             value: Node.Expr,
         };
@@ -68,7 +68,7 @@ pub const Node = union(enum) {
         float: Float,
 
         pub const Identifier = struct {
-            symbol: Symbol,
+            name: Name,
         };
 
         pub const String = struct {
@@ -171,8 +171,8 @@ pub const Parser = struct {
         return loc;
     }
 
-    fn symbolFromToken(self: Parser, token: Token) Symbol {
-        return Symbol{ .buffer = self.tokenValue(token), .loc = self.tokenLoc(token) };
+    fn nameFromToken(self: Parser, token: Token) Name {
+        return Name{ .buffer = self.tokenValue(token), .loc = self.tokenLoc(token) };
     }
 
     pub fn parseRoot(self: *Parser) Error!Root {
@@ -239,7 +239,7 @@ pub const Parser = struct {
             return error.UnexpectedToken;
         }
 
-        const name = self.symbolFromToken(self.nextToken());
+        const name = self.nameFromToken(self.nextToken());
 
         const parameters = try self.parseFunctionParameters();
 
@@ -283,7 +283,7 @@ pub const Parser = struct {
             return error.UnexpectedToken;
         }
 
-        const name = self.symbolFromToken(self.nextToken());
+        const name = self.nameFromToken(self.nextToken());
 
         const expected_type = try self.parseType();
 
@@ -314,7 +314,7 @@ pub const Parser = struct {
             return error.UnexpectedToken;
         }
 
-        const name = self.symbolFromToken(self.nextToken());
+        const name = self.nameFromToken(self.nextToken());
 
         const var_type = try self.parseType();
 
@@ -340,7 +340,7 @@ pub const Parser = struct {
     fn parseExpr(self: *Parser) Error!Node {
         switch (self.peekToken().tag) {
             .identifier => {
-                return Node{ .expr = .{ .identifier = .{ .symbol = self.symbolFromToken(self.nextToken()) } } };
+                return Node{ .expr = .{ .identifier = .{ .name = self.nameFromToken(self.nextToken()) } } };
             },
 
             .string_literal => {
@@ -419,7 +419,7 @@ pub const Parser = struct {
     }
 };
 
-test "parsing function declaration" {
+test "parse function declaration" {
     try testParse(
         \\fn main() int {
         \\  return 0
@@ -432,10 +432,12 @@ test "parsing function declaration" {
 }
 
 fn testParse(source: [:0]const u8, expected_root: Root) !void {
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
+    var arena_instance = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_instance.deinit();
 
-    var parser = try Parser.init(source, arena.allocator());
+    const arena = arena_instance.allocator();
+
+    var parser = try Parser.init(arena, source);
 
     const actual_root = try parser.parseRoot();
 
