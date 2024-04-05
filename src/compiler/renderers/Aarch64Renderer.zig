@@ -11,11 +11,10 @@ ir: IR,
 
 stack: std.ArrayList(RegisterInfo),
 stack_offsets: std.ArrayList(usize),
+stack_map: std.StringHashMap(usize),
 stack_alignment: usize = 16,
 // Stack size has to be calculated before rendering using "how many variables we need", not just a random constant number like this
 stack_size: usize = 256,
-
-variables: std.StringHashMap(VariableInfo),
 
 gpa: std.mem.Allocator,
 
@@ -23,10 +22,8 @@ const RegisterInfo = struct {
     prefix: u8,
 };
 
-const VariableInfo = struct { stack_loc: usize };
-
 pub fn init(gpa: std.mem.Allocator, ir: IR) Aarch64Renderer {
-    return Aarch64Renderer{ .assembly = Assembly.init(gpa), .ir = ir, .stack = std.ArrayList(RegisterInfo).init(gpa), .stack_offsets = std.ArrayList(usize).init(gpa), .variables = std.StringHashMap(VariableInfo).init(gpa), .gpa = gpa };
+    return Aarch64Renderer{ .assembly = Assembly.init(gpa), .ir = ir, .stack = std.ArrayList(RegisterInfo).init(gpa), .stack_offsets = std.ArrayList(usize).init(gpa), .stack_map = std.StringHashMap(usize).init(gpa), .gpa = gpa };
 }
 
 pub fn render(self: *Aarch64Renderer) std.mem.Allocator.Error!void {
@@ -37,7 +34,7 @@ pub fn render(self: *Aarch64Renderer) std.mem.Allocator.Error!void {
             .store => {
                 try self.pushValue(instruction.store.value);
 
-                try self.variables.put(instruction.store.name, .{ .stack_loc = self.stack.items.len - 1 });
+                try self.stack_map.put(instruction.store.name, self.stack.items.len - 1);
             },
 
             .load => {
@@ -82,7 +79,7 @@ fn functionEpilogue(self: *Aarch64Renderer) std.mem.Allocator.Error!void {
 
     self.stack.clearAndFree();
     self.stack_offsets.clearAndFree();
-    self.variables.clearAndFree();
+    self.stack_map.clearAndFree();
 }
 
 fn pushRegister(self: *Aarch64Renderer, register_number: u8, register_info: RegisterInfo) std.mem.Allocator.Error!void {
@@ -113,11 +110,11 @@ fn pushValue(self: *Aarch64Renderer, value: IR.Value) std.mem.Allocator.Error!vo
 
     switch (value) {
         .variable_reference => {
-            const variable_info = self.variables.get(value.variable_reference.name).?;
+            const stack_loc = self.stack_map.get(value.variable_reference.name).?;
 
-            const register_info = self.stack.items[variable_info.stack_loc];
+            const register_info = self.stack.items[stack_loc];
 
-            try text_section_writer.print("\tldr {c}8, [x29, #{}]\n", .{ register_info.prefix, self.stack_offsets.items[variable_info.stack_loc + 1] });
+            try text_section_writer.print("\tldr {c}8, [x29, #{}]\n", .{ register_info.prefix, self.stack_offsets.items[stack_loc + 1] });
 
             try self.pushRegister(8, register_info);
         },

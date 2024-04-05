@@ -105,21 +105,10 @@ fn handleVariableDeclarationStmt(self: *CodeGen, variable: ast.Node.Stmt.Variabl
         return error.MismatchedTypes;
     }
 
-    const symbol = SymbolTable.Symbol{
+    try self.symbol_table.set(.{
         .name = variable.name,
         .type = variable.type,
-        .linkage = .internal,
-    };
-
-    if (self.symbol_table.set(symbol) == error.Redeclaration) {
-        var buf = std.ArrayList(u8).init(self.gpa);
-
-        try buf.writer().print("redeclaration of {s}", .{variable.name.buffer});
-
-        self.error_info = .{ .message = try buf.toOwnedSlice(), .loc = variable.name.loc };
-
-        return error.RedeclaredVariable;
-    }
+    });
 
     try self.instructions.append(.{ .store = .{ .name = variable.name.buffer, .value = value } });
 }
@@ -153,7 +142,7 @@ fn handleReturnStmt(self: *CodeGen, ret: ast.Node.Stmt.Return) Error!void {
 fn genValue(self: *CodeGen, expr: ast.Node.Expr) Error!IR.Value {
     return switch (expr) {
         .identifier => {
-            if (self.symbol_table.lookup(expr.identifier.name.buffer) == error.UndeclaredVariable) {
+            if (self.symbol_table.lookup(expr.identifier.name.buffer) == error.Undeclared) {
                 var buf = std.ArrayList(u8).init(self.gpa);
 
                 try buf.writer().print("{s} is not declared", .{expr.identifier.name.buffer});
