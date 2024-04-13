@@ -3,7 +3,7 @@ const std = @import("std");
 const IR = @import("../IR.zig");
 const Assembly = @import("../Assembly.zig");
 
-const Aarch64Renderer = @This();
+const Amd64Renderer = @This();
 
 assembly: Assembly,
 
@@ -13,22 +13,20 @@ stack: std.ArrayList(RegisterInfo),
 stack_offsets: std.ArrayList(usize),
 stack_map: std.StringHashMap(usize),
 stack_alignment: usize = 16,
-// Stack size has to be calculated before rendering using "how many variables we need", not just a random constant number like this
-stack_size: usize = 256,
 
 gpa: std.mem.Allocator,
 
 const RegisterInfo = struct {
-    prefix: u8,
+    floating_point: bool,
 };
 
-pub fn init(gpa: std.mem.Allocator, ir: IR) Aarch64Renderer {
-    return Aarch64Renderer{ .assembly = Assembly.init(gpa), .ir = ir, .stack = std.ArrayList(RegisterInfo).init(gpa), .stack_offsets = std.ArrayList(usize).init(gpa), .stack_map = std.StringHashMap(usize).init(gpa), .gpa = gpa };
+pub fn init(gpa: std.mem.Allocator, ir: IR) Amd64Renderer {
+    return Amd64Renderer{ .assembly = Assembly.init(gpa), .ir = ir, .stack = std.ArrayList(RegisterInfo).init(gpa), .stack_offsets = std.ArrayList(usize).init(gpa), .stack_map = std.StringHashMap(usize).init(gpa), .gpa = gpa };
 }
 
 pub const Error = std.mem.Allocator.Error;
 
-pub fn render(self: *Aarch64Renderer) Error!void {
+pub fn render(self: *Amd64Renderer) Error!void {
     const text_section_writer = self.assembly.text_section.writer();
 
     for (self.ir.instructions) |instruction| {
@@ -52,39 +50,46 @@ pub fn render(self: *Aarch64Renderer) Error!void {
 
             .ret => {
                 if (self.stack.items.len != 0) {
-                    try self.popRegister(0);
+                    try self.popRegister("ax");
                 }
 
                 try self.functionEpilogue();
 
-                try text_section_writer.print("\tret\n", .{});
+                try text_section_writer.print("\tretq\n", .{});
             },
         }
     }
 }
 
-fn functionProluge(self: *Aarch64Renderer) Error!void {
+fn functionProluge(self: *Amd64Renderer) Error!void {
     const text_section_writer = self.assembly.text_section.writer();
 
-    try text_section_writer.print("\tsub sp, sp, #{}\n", .{self.stack_size});
-    try text_section_writer.print("\tstp x29, x30, [sp, #{}]\n", .{self.stack_alignment});
-    try text_section_writer.print("\tadd x29, sp, #{}\n", .{self.stack_alignment});
+    try text_section_writer.print("\tpushq %rbp\n", .{});
+    try text_section_writer.print("\tmovq %rsp, %rbp\n", .{});
 
     try self.stack_offsets.append(0);
 }
 
-fn functionEpilogue(self: *Aarch64Renderer) Error!void {
+fn functionEpilogue(self: *Amd64Renderer) Error!void {
     const text_section_writer = self.assembly.text_section.writer();
 
-    try text_section_writer.print("\tldp x29, x30, [sp, #{}]\n", .{self.stack_alignment});
-    try text_section_writer.print("\tadd sp, sp, #{}\n", .{self.stack_size});
+    try text_section_writer.print("\tpopq %rbp\n", .{});
 
     self.stack.clearAndFree();
     self.stack_offsets.clearAndFree();
     self.stack_map.clearAndFree();
 }
 
-fn pushRegister(self: *Aarch64Renderer, register_number: u8, register_info: RegisterInfo) Error!void {
+fn suffixToNumber(register_suffix: []const u8) u8 {
+    // We only use the ax suffix for now, update this later
+    if (std.mem.eql(u8, register_suffix, "ax")) {
+        return 0;
+    } else {
+        return register_suffix[0] - '0';
+    }
+}
+
+fn pushRegister(self: *Amd64Renderer, register_suffix: []const u8, register_info: RegisterInfo) Error!void {
     try self.stack.append(register_info);
 
     const stack_offset = self.stack_offsets.items[self.stack_offsets.items.len - 1] + self.stack_alignment;
@@ -93,20 +98,32 @@ fn pushRegister(self: *Aarch64Renderer, register_number: u8, register_info: Regi
 
     const text_section_writer = self.assembly.text_section.writer();
 
-    try text_section_writer.print("\tstr {c}{}, [x29, #{}]\n", .{ register_info.prefix, register_number, stack_offset });
+    if (register_info.floating_point) {
+        try text_section_writer.print("\tmovsd %xmm{}, -{}(%rbp)\n", .{ suffixToNumber(register_suffix), stack_offset });
+    } else {
+        try text_section_writer.print("\tmovq %r{s}, -{}(%rbp)\n", .{ register_suffix, stack_offset });
+    }
 }
 
-fn popRegister(self: *Aarch64Renderer, register_number: u8) Error!void {
+fn copyFromStack(self: *Amd64Renderer, register_suffix: []const u8, register_info: RegisterInfo, stack_offset: usize) Error!void {
+    const text_section_writer = self.assembly.text_section.writer();
+
+    if (register_info.floating_point) {
+        try text_section_writer.print("\tmovsd -{}(%rbp), %xmm{}\n", .{ stack_offset, suffixToNumber(register_suffix) });
+    } else {
+        try text_section_writer.print("\tmovq -{}(%rbp), %r{s}\n", .{ stack_offset, register_suffix });
+    }
+}
+
+fn popRegister(self: *Amd64Renderer, register_suffix: []const u8) Error!void {
     const register_info = self.stack.pop();
 
     const stack_offset = self.stack_offsets.pop();
 
-    const text_section_writer = self.assembly.text_section.writer();
-
-    try text_section_writer.print("\tldr {c}{}, [x29, #{}] \n", .{ register_info.prefix, register_number, stack_offset });
+    try self.copyFromStack(register_suffix, register_info, stack_offset);
 }
 
-fn pushValue(self: *Aarch64Renderer, value: IR.Value) Error!void {
+fn pushValue(self: *Amd64Renderer, value: IR.Value) Error!void {
     const text_section_writer = self.assembly.text_section.writer();
     const data_section_writer = self.assembly.data_section.writer();
 
@@ -116,39 +133,41 @@ fn pushValue(self: *Aarch64Renderer, value: IR.Value) Error!void {
 
             const register_info = self.stack.items[stack_loc];
 
-            try text_section_writer.print("\tldr {c}8, [x29, #{}]\n", .{ register_info.prefix, self.stack_offsets.items[stack_loc + 1] });
+            try self.copyFromStack("8", register_info, self.stack_offsets.items[stack_loc + 1]);
 
-            try self.pushRegister(8, register_info);
+            try self.pushRegister("8", register_info);
         },
 
         .string_reference => {
             try data_section_writer.print("\tstr{}: .asciz \"{s}\"\n", .{ value.string_reference.index, self.ir.string_literals[value.string_reference.index] });
-            try text_section_writer.print("\tadr x8, str{}\n", .{value.string_reference.index});
 
-            try self.pushRegister(8, .{ .prefix = 'x' });
+            try text_section_writer.print("\tleaq str{}(%rip), %r8\n", .{value.string_reference.index});
+
+            try self.pushRegister("8", .{ .floating_point = false });
         },
 
         .char => {
-            try text_section_writer.print("\tmov w8, #{}\n", .{value.char.value});
+            try text_section_writer.print("\tmovq ${}, %r8\n", .{value.char.value});
 
-            try self.pushRegister(8, .{ .prefix = 'w' });
+            try self.pushRegister("8", .{ .floating_point = false });
         },
 
         .int => {
-            try text_section_writer.print("\tmov x8, #{}\n", .{value.int.value});
+            try text_section_writer.print("\tmovq ${}, %r8\n", .{value.int.value});
 
-            try self.pushRegister(8, .{ .prefix = 'x' });
+            try self.pushRegister("8", .{ .floating_point = false });
         },
 
         .float => {
-            try text_section_writer.print("\tfmov d8, #{}\n", .{value.float.value});
+            // That's not actually how it works
+            try text_section_writer.print("\tmovsd ${}, %xmm8\n", .{value.float.value});
 
-            try self.pushRegister(8, .{ .prefix = 'd' });
+            try self.pushRegister("8", .{ .floating_point = true });
         },
     }
 }
 
-pub fn dump(self: *Aarch64Renderer) Error![]const u8 {
+pub fn dump(self: *Amd64Renderer) Error![]const u8 {
     var result = std.ArrayList(u8).init(self.gpa);
 
     const result_writer = result.writer();

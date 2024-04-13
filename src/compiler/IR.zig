@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const Aarch64Renderer = @import("renderers/Aarch64Renderer.zig");
+const Amd64Renderer = @import("renderers/Amd64Renderer.zig");
 
 const IR = @This();
 
@@ -49,18 +50,26 @@ pub const Instruction = union(enum) {
     pub const Ret = struct {};
 };
 
-pub const Error = error{UnsupportedTarget} || std.mem.Allocator.Error;
+pub const Error = error{UnsupportedTarget} || Aarch64Renderer.Error || Amd64Renderer.Error;
 
 pub fn render(self: IR, gpa: std.mem.Allocator, target: std.Target) Error![]const u8 {
-    switch (target.cpu.arch) {
-        .aarch64 => {
+    return switch (target.cpu.arch) {
+        .aarch64 => blk: {
             var renderer = Aarch64Renderer.init(gpa, self);
 
             try renderer.render();
 
-            return try renderer.dump();
+            break :blk renderer.dump();
         },
 
-        else => return error.UnsupportedTarget,
-    }
+        .x86_64 => blk: {
+            var renderer = Amd64Renderer.init(gpa, self);
+
+            try renderer.render();
+
+            break :blk renderer.dump();
+        },
+
+        else => error.UnsupportedTarget,
+    };
 }
