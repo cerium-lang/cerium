@@ -14,6 +14,8 @@ stack_offsets: std.ArrayList(usize),
 stack_map: std.StringHashMap(usize),
 stack_alignment: usize = 16,
 
+floating_points: std.ArrayList(f64),
+
 gpa: std.mem.Allocator,
 
 const RegisterInfo = struct {
@@ -21,7 +23,7 @@ const RegisterInfo = struct {
 };
 
 pub fn init(gpa: std.mem.Allocator, ir: IR) Amd64Renderer {
-    return Amd64Renderer{ .assembly = Assembly.init(gpa), .ir = ir, .stack = std.ArrayList(RegisterInfo).init(gpa), .stack_offsets = std.ArrayList(usize).init(gpa), .stack_map = std.StringHashMap(usize).init(gpa), .gpa = gpa };
+    return Amd64Renderer{ .assembly = Assembly.init(gpa), .ir = ir, .stack = std.ArrayList(RegisterInfo).init(gpa), .stack_offsets = std.ArrayList(usize).init(gpa), .stack_map = std.StringHashMap(usize).init(gpa), .floating_points = std.ArrayList(f64).init(gpa), .gpa = gpa };
 }
 
 pub const Error = std.mem.Allocator.Error;
@@ -159,8 +161,9 @@ fn pushValue(self: *Amd64Renderer, value: IR.Value) Error!void {
         },
 
         .float => {
-            // That's not actually how it works
-            try text_section_writer.print("\tmovsd ${}, %xmm8\n", .{value.float.value});
+            try self.floating_points.append(value.float.value);
+
+            try text_section_writer.print("\tmovsd flt{}, %xmm8\n", .{self.floating_points.items.len - 1});
 
             try self.pushRegister("8", .{ .floating_point = true });
         },
@@ -174,6 +177,11 @@ pub fn dump(self: *Amd64Renderer) Error![]const u8 {
 
     if (self.assembly.text_section.items.len > 0) {
         try result_writer.print(".section \".text\"\n", .{});
+
+        for (self.floating_points.items, 0..) |floating_point, i| {
+            try result_writer.print("flt{}: .quad {}\n", .{ i, @as(u64, @bitCast(floating_point)) });
+        }
+
         try result_writer.writeAll(self.assembly.text_section.items);
     }
 
