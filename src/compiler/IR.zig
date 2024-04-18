@@ -36,6 +36,7 @@ pub const Instruction = union(enum) {
     store: Store,
     load: Load,
     label: Label,
+    inline_assembly: InlineAssembly,
     ret: Ret,
 
     pub const Store = struct {
@@ -46,6 +47,10 @@ pub const Instruction = union(enum) {
     pub const Load = struct { value: Value };
 
     pub const Label = struct { name: []const u8 };
+
+    pub const InlineAssembly = struct {
+        content: []const u8,
+    };
 
     pub const Ret = struct {};
 };

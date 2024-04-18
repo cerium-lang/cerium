@@ -50,6 +50,10 @@ pub fn render(self: *Amd64Renderer) Error!void {
                 try self.functionProluge();
             },
 
+            .inline_assembly => {
+                try text_section_writer.print("\t{s}\n", .{instruction.inline_assembly.content});
+            },
+
             .ret => {
                 if (self.stack.items.len != 0) {
                     try self.popRegister("ax");

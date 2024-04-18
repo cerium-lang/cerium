@@ -45,13 +45,17 @@ pub const Node = union(enum) {
 
     pub const Stmt = union(enum) {
         variable_declaration: VariableDeclaration,
-
+        inline_assembly: InlineAssembly,
         ret: Return,
 
         pub const VariableDeclaration = struct {
             name: Name,
             type: Type,
             value: Node.Expr,
+        };
+
+        pub const InlineAssembly = struct {
+            content: []const u8,
         };
 
         pub const Return = struct {
@@ -294,15 +298,15 @@ pub const Parser = struct {
     }
 
     fn parseStmt(self: *Parser) Error!Node {
-        switch (self.peekToken().tag) {
-            .keyword_let => {
-                return self.parseVariableDeclarationStmt();
-            },
+        return switch (self.peekToken().tag) {
+            .keyword_let => self.parseVariableDeclarationStmt(),
 
-            .keyword_return => return self.parseReturnStmt(),
+            .keyword_asm => self.parseInlineAssembly(),
 
-            else => return self.parseExpr(),
-        }
+            .keyword_return => self.parseReturnStmt(),
+
+            else => self.parseExpr(),
+        };
     }
 
     fn parseVariableDeclarationStmt(self: *Parser) Error!Node {
@@ -327,6 +331,20 @@ pub const Parser = struct {
         const value = try self.parseExpr();
 
         return Node{ .stmt = .{ .variable_declaration = .{ .name = name, .type = var_type, .value = value.expr } } };
+    }
+
+    fn parseInlineAssembly(self: *Parser) Error!Node {
+        _ = self.nextToken();
+
+        if (self.peekToken().tag != .string_literal) {
+            self.error_info = .{ .message = "expected the content of inline assembly to be a string literal", .loc = self.tokenLoc(self.peekToken()) };
+
+            return error.UnexpectedToken;
+        }
+
+        const content = self.tokenValue(self.nextToken());
+
+        return Node{ .stmt = .{ .inline_assembly = .{ .content = content } } };
     }
 
     fn parseReturnStmt(self: *Parser) Error!Node {

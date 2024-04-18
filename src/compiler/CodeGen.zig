@@ -88,6 +88,8 @@ fn handleStmt(self: *CodeGen, stmt: ast.Node.Stmt) Error!void {
     switch (stmt) {
         .variable_declaration => try self.handleVariableDeclarationStmt(stmt.variable_declaration),
 
+        .inline_assembly => try self.handleInlineAssemblyStmt(stmt.inline_assembly),
+
         .ret => try self.handleReturnStmt(stmt.ret),
     }
 }
@@ -111,6 +113,10 @@ fn handleVariableDeclarationStmt(self: *CodeGen, variable: ast.Node.Stmt.Variabl
     });
 
     try self.instructions.append(.{ .store = .{ .name = variable.name.buffer, .value = value } });
+}
+
+fn handleInlineAssemblyStmt(self: *CodeGen, inline_assembly: ast.Node.Stmt.InlineAssembly) Error!void {
+    try self.instructions.append(.{ .inline_assembly = .{ .content = inline_assembly.content } });
 }
 
 fn handleReturnStmt(self: *CodeGen, ret: ast.Node.Stmt.Return) Error!void {

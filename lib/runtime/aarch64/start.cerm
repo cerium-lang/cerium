@@ -1,0 +1,7 @@
+fn _start() void {
+    asm "bl main"
+
+    asm "mov x0, #0"
+    asm "mov w8, #93"
+    asm "svc #0"
+}
