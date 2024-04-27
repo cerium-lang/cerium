@@ -26,10 +26,10 @@ pub const ErrorInfo = struct {
     loc: ast.Loc,
 };
 
-pub fn init(gpa: std.mem.Allocator) CodeGen {
+pub fn init(gpa: std.mem.Allocator, predefined_string_literals: ?std.ArrayList([]const u8)) CodeGen {
     return CodeGen{
         .instructions = std.ArrayList(IR.Instruction).init(gpa),
-        .string_literals = std.ArrayList([]const u8).init(gpa),
+        .string_literals = predefined_string_literals orelse std.ArrayList([]const u8).init(gpa),
         .symbol_table = SymbolTable.init(gpa),
         .gpa = gpa,
     };

@@ -16,7 +16,7 @@ const Config = struct {
         compile: Compile,
 
         const Compile = struct {
-            file_path: []const u8,
+            file_paths: []const []const u8,
         };
     };
 };
@@ -26,14 +26,14 @@ const usage =
     \\  {s} <command> [arguments]
     \\
     \\Commands:
-    \\  compile <file_path>     -- compile certain file
+    \\  compile <file_path..>     -- compile certain file or files
     \\
     \\
 ;
 
 const compile_command_usage =
     \\Usage:
-    \\      {s} compile <file_path>
+    \\  {s} compile <file_path..>
     \\
     \\
 ;
@@ -70,15 +70,33 @@ fn parseArgs(self: *Driver, argiterator: *std.process.ArgIterator) bool {
 
     while (arg != null) : (arg = argiterator.next()) {
         if (std.mem.eql(u8, arg.?, "compile")) {
-            const file_path = argiterator.next();
+            var file_paths = std.ArrayList([]const u8).init(self.gpa);
 
-            if (file_path == null) {
+            var file_path_arg = argiterator.next();
+
+            while (file_path_arg != null) : (file_path_arg = argiterator.next()) {
+                file_paths.append(file_path_arg.?) catch |err| {
+                    std.debug.print("{s}\n", .{errorDescription(err)});
+
+                    return true;
+                };
+            }
+
+            if (file_paths.items.len == 0) {
                 std.debug.print(compile_command_usage, .{program});
+
+                std.debug.print("Error: expected at least 1 file path\n", .{});
 
                 return true;
             }
 
-            self.config.command = .{ .compile = .{ .file_path = file_path.? } };
+            const owned_file_paths = file_paths.toOwnedSlice() catch |err| {
+                std.debug.print("{s}\n", .{errorDescription(err)});
+
+                return true;
+            };
+
+            self.config.command = .{ .compile = .{ .file_paths = owned_file_paths } };
 
             return false;
         } else {
@@ -111,31 +129,28 @@ pub fn run(self: *Driver, argiterator: *std.process.ArgIterator) u8 {
     return 0;
 }
 
+fn readAllFileSentinel(gpa: std.mem.Allocator, file_path: []const u8) ?[:0]const u8 {
+    const file = std.fs.cwd().openFile(file_path, .{}) catch |err| {
+        std.debug.print("{s}: {s}\n", .{ file_path, errorDescription(err) });
+
+        return null;
+    };
+    defer file.close();
+
+    const file_content = file.reader().readAllAlloc(gpa, std.math.maxInt(u32)) catch |err| {
+        std.debug.print("{s}: {s}\n", .{ file_path, errorDescription(err) });
+
+        return null;
+    };
+
+    var file_content_z = @as([:0]u8, @ptrCast(file_content));
+    file_content_z[file_content_z.len] = 0;
+
+    return file_content_z;
+}
+
 fn runCompileCommand(self: *Driver) u8 {
     const options = self.config.command.?.compile;
-
-    const input_file = std.fs.cwd().openFile(options.file_path, .{}) catch |err| {
-        std.debug.print("{s}: {s}\n", .{ options.file_path, errorDescription(err) });
-
-        return 1;
-    };
-    defer input_file.close();
-
-    const input_file_content = input_file.reader().readAllAlloc(self.gpa, std.math.maxInt(u32)) catch |err| {
-        std.debug.print("{s}: {s}\n", .{ options.file_path, errorDescription(err) });
-
-        return 1;
-    };
-    defer self.gpa.free(input_file_content);
-
-    var input_file_content_z = @as([:0]u8, @ptrCast(input_file_content));
-    input_file_content_z[input_file_content_z.len] = 0;
-
-    var compilation = Compilation.init(self.gpa, builtin.target, options.file_path);
-
-    const output_assembly = compilation.compile(input_file_content_z) orelse {
-        return 1;
-    };
 
     const output_file = std.fs.cwd().createFile("a.out.s", .{}) catch |err| {
         std.debug.print("couldn't create output file: {s}\n", .{errorDescription(err)});
@@ -144,11 +159,28 @@ fn runCompileCommand(self: *Driver) u8 {
     };
     defer output_file.close();
 
-    output_file.writer().writeAll(output_assembly) catch |err| {
-        std.debug.print("couldn't write the output assembly: {s}", .{errorDescription(err)});
+    var compilation_options = Compilation.Options{};
 
-        return 1;
-    };
+    for (options.file_paths) |input_file_path| {
+        const input_file_content = readAllFileSentinel(self.gpa, input_file_path) orelse return 1;
+        defer self.gpa.free(input_file_content);
+
+        var compilation = Compilation.init(self.gpa, .{ .source_file_path = input_file_path, .target = builtin.target }, compilation_options);
+
+        const root = compilation.parse(input_file_content) orelse return 1;
+
+        const ir = compilation.gen_ir(root) orelse return 1;
+
+        compilation_options.predefined_string_literals = std.ArrayList([]const u8).fromOwnedSlice(self.gpa, ir.string_literals);
+
+        const output_assembly = compilation.render_ir(ir) orelse return 1;
+
+        output_file.writer().writeAll(output_assembly) catch |err| {
+            std.debug.print("couldn't write the output assembly of {s}: {s}\n", .{ input_file_path, errorDescription(err) });
+
+            return 1;
+        };
+    }
 
     return 0;
 }

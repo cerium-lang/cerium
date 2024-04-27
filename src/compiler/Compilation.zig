@@ -1,18 +1,27 @@
 const std = @import("std");
 
-const Parser = @import("ast.zig").Parser;
+const ast = @import("ast.zig");
+const Parser = ast.Parser;
+
+const IR = @import("IR.zig");
 const CodeGen = @import("CodeGen.zig");
 
 const Compilation = @This();
 
 env: Environment,
 
+options: Options,
+
 gpa: std.mem.Allocator,
 
-const Environment = struct { source_file_path: []const u8, target: std.Target };
+pub const Environment = struct { source_file_path: []const u8, target: std.Target };
 
-pub fn init(gpa: std.mem.Allocator, target: std.Target, source_file_path: []const u8) Compilation {
-    return Compilation{ .gpa = gpa, .env = .{ .target = target, .source_file_path = source_file_path } };
+pub const Options = struct {
+    predefined_string_literals: ?std.ArrayList([]const u8) = null,
+};
+
+pub fn init(gpa: std.mem.Allocator, env: Environment, options: Options) Compilation {
+    return Compilation{ .gpa = gpa, .env = env, .options = options };
 }
 
 fn errorDescription(e: anyerror) []const u8 {
@@ -36,7 +45,7 @@ fn errorDescription(e: anyerror) []const u8 {
     };
 }
 
-pub fn compile(self: *Compilation, input: [:0]const u8) ?[]const u8 {
+pub fn parse(self: *Compilation, input: [:0]const u8) ?ast.Root {
     var parser = Parser.init(self.gpa, input) catch |err| {
         std.debug.print("{s}\n", .{errorDescription(err)});
 
@@ -57,7 +66,11 @@ pub fn compile(self: *Compilation, input: [:0]const u8) ?[]const u8 {
         },
     };
 
-    var codegen = CodeGen.init(self.gpa);
+    return root;
+}
+
+pub fn gen_ir(self: *Compilation, root: ast.Root) ?IR {
+    var codegen = CodeGen.init(self.gpa, self.options.predefined_string_literals);
 
     const ir = codegen.gen(root) catch |err| switch (err) {
         error.OutOfMemory => {
@@ -73,6 +86,10 @@ pub fn compile(self: *Compilation, input: [:0]const u8) ?[]const u8 {
         },
     };
 
+    return ir;
+}
+
+pub fn render_ir(self: *Compilation, ir: IR) ?[]const u8 {
     const output_assembly = ir.render(self.gpa, self.env.target) catch |err| switch (err) {
         error.UnsupportedTarget => {
             std.debug.print("{s} is not spported yet\n", .{self.env.target.cpu.arch.genericName()});
