@@ -414,7 +414,7 @@ pub const Parser = struct {
     }
 
     fn parseType(self: *Parser) Error!Type {
-        const BuiltinTypes = std.ComptimeStringMap(Type, .{ .{ "void", .void_type }, .{ "string", .string_type }, .{ "char", .char_type }, .{ "int", .int_type }, .{ "float", .float_type } });
+        const BuiltinTypes = std.StaticStringMap(Type).initComptime(.{ .{ "void", .void_type }, .{ "string", .string_type }, .{ "char", .char_type }, .{ "int", .int_type }, .{ "float", .float_type } });
 
         switch (self.peekToken().tag) {
             .identifier => {

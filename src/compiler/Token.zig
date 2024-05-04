@@ -10,4 +10,4 @@ pub const BufferLoc = struct {
     end: usize,
 };
 
-pub const Keywords = std.ComptimeStringMap(Tag, .{ .{ "fn", .keyword_fn }, .{ "let", .keyword_let }, .{ "asm", .keyword_asm }, .{ "return", .keyword_return } });
+pub const Keywords = std.StaticStringMap(Tag).initComptime(.{ .{ "fn", .keyword_fn }, .{ "let", .keyword_let }, .{ "asm", .keyword_asm }, .{ "return", .keyword_return } });
