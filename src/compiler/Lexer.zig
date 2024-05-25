@@ -8,7 +8,14 @@ buffer: [:0]const u8,
 index: usize,
 state: State,
 
-pub const State = enum { start, identifier, string_literal, char_literal, number, equal_sign };
+pub const State = enum {
+    start,
+    identifier,
+    string_literal,
+    char_literal,
+    number,
+    equal_sign,
+};
 
 pub fn init(buffer: [:0]const u8) Lexer {
     return Lexer{ .buffer = buffer, .index = 0, .state = .start };
