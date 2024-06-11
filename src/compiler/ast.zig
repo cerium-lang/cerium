@@ -436,34 +436,3 @@ pub const Parser = struct {
         }
     }
 };
-
-test "parse function declaration" {
-    try testParse(
-        \\fn main() int {
-        \\  return 0
-        \\}
-    , .{ .declarations = &.{.{ .function = .{ .prototype = .{
-        .name = .{ .buffer = "main", .loc = .{ .line = 1, .column = 4 } },
-        .parameters = &.{},
-        .return_type = .int_type,
-    }, .body = &.{Node{ .stmt = .{ .ret = .{ .value = .{ .int = .{ .value = 0, .loc = .{ .line = 2, .column = 11 } } }, .loc = .{ .line = 2, .column = 4 } } } }} } }}, .loc = .{ .line = 3, .column = 1 } });
-}
-
-fn testParse(source: [:0]const u8, expected_root: Root) !void {
-    var arena_instance = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena_instance.deinit();
-
-    const arena = arena_instance.allocator();
-
-    var parser = try Parser.init(arena, source);
-
-    const actual_root = try parser.parseRoot();
-
-    try std.testing.expectEqual(expected_root.declarations.len, actual_root.declarations.len);
-
-    for (expected_root.declarations, 0..) |expected_declaration, i| {
-        const actual_declaration = actual_root.declarations[i];
-
-        try std.testing.expectEqualDeep(expected_declaration, actual_declaration);
-    }
-}

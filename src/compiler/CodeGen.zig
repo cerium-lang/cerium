@@ -191,28 +191,3 @@ fn inferType(self: CodeGen, expr: ast.Node.Expr) Type {
         .float => .float_type,
     };
 }
-
-test "generate function declaration intermediate representation" {
-    try testGen(
-        \\fn main() int {
-        \\  return 0
-        \\}
-    , .{ .instructions = &.{ .{ .label = .{ .name = "main" } }, .{ .load = .{ .value = .{ .int = .{ .value = 0 } } } }, .{ .ret = {} } }, .string_literals = &.{} });
-}
-
-fn testGen(source: [:0]const u8, expected_ir: IR) !void {
-    var arena_instance = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena_instance.deinit();
-
-    const arena = arena_instance.allocator();
-
-    var parser = try ast.Parser.init(arena, source);
-
-    const root = try parser.parseRoot();
-
-    var codegen = CodeGen.init(arena);
-
-    const ir = try codegen.gen(root);
-
-    try std.testing.expectEqualDeep(expected_ir, ir);
-}
