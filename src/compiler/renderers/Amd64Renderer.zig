@@ -30,17 +30,52 @@ pub const Error = std.mem.Allocator.Error;
 
 pub fn render(self: *Amd64Renderer) Error!void {
     const text_section_writer = self.assembly.text_section.writer();
+    const data_section_writer = self.assembly.data_section.writer();
 
     for (self.ir.instructions) |instruction| {
         switch (instruction) {
             .store => {
-                try self.pushValue(instruction.store.value);
-
                 try self.stack_map.put(instruction.store.name, self.stack.items.len - 1);
             },
 
-            .load => {
-                try self.pushValue(instruction.load.value);
+            .load => switch (instruction.load) {
+                .name => {
+                    const stack_loc = self.stack_map.get(instruction.load.name).?;
+
+                    const register_info = self.stack.items[stack_loc];
+
+                    try self.copyFromStack("8", register_info, self.stack_offsets.items[stack_loc + 1]);
+
+                    try self.pushRegister("8", register_info);
+                },
+
+                .string => {
+                    try data_section_writer.print("\tstr{}: .asciz \"{s}\"\n", .{ instruction.load.string, self.ir.string_literals[instruction.load.string] });
+
+                    try text_section_writer.print("\tleaq str{}(%rip), %r8\n", .{instruction.load.string});
+
+                    try self.pushRegister("8", .{ .floating_point = false });
+                },
+
+                .char => {
+                    try text_section_writer.print("\tmovq ${}, %r8\n", .{instruction.load.char});
+
+                    try self.pushRegister("8", .{ .floating_point = false });
+                },
+
+                .int => {
+                    try text_section_writer.print("\tmovq ${}, %r8\n", .{instruction.load.int});
+
+                    try self.pushRegister("8", .{ .floating_point = false });
+                },
+
+                .float => {
+                    try self.floating_points.append(instruction.load.float);
+
+                    try text_section_writer.print("\tmovsd flt{}, %xmm8\n", .{self.floating_points.items.len - 1});
+
+                    try self.pushRegister("8", .{ .floating_point = true });
+                },
             },
 
             .label => {
@@ -54,7 +89,7 @@ pub fn render(self: *Amd64Renderer) Error!void {
                 try text_section_writer.print("\t{s}\n", .{instruction.inline_assembly.content});
             },
 
-            .ret => {
+            .@"return" => {
                 if (self.stack.items.len != 0) {
                     try self.popRegister("ax");
                 }
@@ -127,51 +162,6 @@ fn popRegister(self: *Amd64Renderer, register_suffix: []const u8) Error!void {
     const stack_offset = self.stack_offsets.pop();
 
     try self.copyFromStack(register_suffix, register_info, stack_offset);
-}
-
-fn pushValue(self: *Amd64Renderer, value: IR.Value) Error!void {
-    const text_section_writer = self.assembly.text_section.writer();
-    const data_section_writer = self.assembly.data_section.writer();
-
-    switch (value) {
-        .variable_reference => {
-            const stack_loc = self.stack_map.get(value.variable_reference.name).?;
-
-            const register_info = self.stack.items[stack_loc];
-
-            try self.copyFromStack("8", register_info, self.stack_offsets.items[stack_loc + 1]);
-
-            try self.pushRegister("8", register_info);
-        },
-
-        .string_reference => {
-            try data_section_writer.print("\tstr{}: .asciz \"{s}\"\n", .{ value.string_reference.index, self.ir.string_literals[value.string_reference.index] });
-
-            try text_section_writer.print("\tleaq str{}(%rip), %r8\n", .{value.string_reference.index});
-
-            try self.pushRegister("8", .{ .floating_point = false });
-        },
-
-        .char => {
-            try text_section_writer.print("\tmovq ${}, %r8\n", .{value.char.value});
-
-            try self.pushRegister("8", .{ .floating_point = false });
-        },
-
-        .int => {
-            try text_section_writer.print("\tmovq ${}, %r8\n", .{value.int.value});
-
-            try self.pushRegister("8", .{ .floating_point = false });
-        },
-
-        .float => {
-            try self.floating_points.append(value.float.value);
-
-            try text_section_writer.print("\tmovsd flt{}, %xmm8\n", .{self.floating_points.items.len - 1});
-
-            try self.pushRegister("8", .{ .floating_point = true });
-        },
-    }
 }
 
 pub fn dump(self: *Amd64Renderer) Error![]const u8 {

@@ -7,6 +7,8 @@ const IR = @import("IR.zig");
 
 const CodeGen = @This();
 
+gpa: std.mem.Allocator,
+
 instructions: std.ArrayList(IR.Instruction),
 string_literals: std.ArrayList([]const u8),
 
@@ -17,27 +19,31 @@ symbol_table: SymbolTable,
 
 error_info: ?ErrorInfo = null,
 
-gpa: std.mem.Allocator,
-
-pub const Error = error{ MismatchedTypes, ExpectedReturn, UnexpectedReturn, UndeclaredVariable, RedeclaredVariable } || std.mem.Allocator.Error;
+pub const Error = error{
+    MismatchedTypes,
+    ExpectedReturn,
+    UnexpectedReturn,
+    UndeclaredVariable,
+    RedeclaredVariable,
+} || std.mem.Allocator.Error;
 
 pub const ErrorInfo = struct {
     message: []const u8,
-    loc: ast.Loc,
+    source_loc: ast.SourceLoc,
 };
 
-pub fn init(gpa: std.mem.Allocator, predefined_string_literals: ?std.ArrayList([]const u8)) CodeGen {
+pub fn init(gpa: std.mem.Allocator) CodeGen {
     return CodeGen{
-        .instructions = std.ArrayList(IR.Instruction).init(gpa),
-        .string_literals = predefined_string_literals orelse std.ArrayList([]const u8).init(gpa),
-        .symbol_table = SymbolTable.init(gpa),
         .gpa = gpa,
+        .instructions = std.ArrayList(IR.Instruction).init(gpa),
+        .string_literals = std.ArrayList([]const u8).init(gpa),
+        .symbol_table = SymbolTable.init(gpa),
     };
 }
 
-pub fn gen(self: *CodeGen, root: ast.Root) Error!IR {
+pub fn compile(self: *CodeGen, root: ast.Root) Error!IR {
     for (root.declarations) |declaration| {
-        try self.handleDeclaration(declaration);
+        try self.compileDeclaration(declaration);
     }
 
     return IR{
@@ -46,26 +52,26 @@ pub fn gen(self: *CodeGen, root: ast.Root) Error!IR {
     };
 }
 
-fn handleDeclaration(self: *CodeGen, declaration: ast.Declaration) Error!void {
+fn compileDeclaration(self: *CodeGen, declaration: ast.Declaration) Error!void {
     switch (declaration) {
-        .function => try self.handleFunctionDeclaration(declaration.function),
+        .function => try self.compileFunctionDeclaration(declaration.function),
     }
 }
 
-fn handleFunctionDeclaration(self: *CodeGen, function: ast.Declaration.Function) Error!void {
+fn compileFunctionDeclaration(self: *CodeGen, function: ast.Declaration.Function) Error!void {
     try self.instructions.append(.{ .label = .{ .name = function.prototype.name.buffer } });
 
     self.function = function;
 
     for (self.function.?.body) |node| {
-        try self.handleNode(node);
+        try self.compileNode(node);
     }
 
     if (!self.function_returned) {
         if (self.function.?.prototype.return_type == .void_type) {
-            try self.instructions.append(.{ .ret = .{} });
+            try self.instructions.append(.{ .@"return" = {} });
         } else {
-            self.error_info = .{ .message = "expected function with non-void return type to explicitly return", .loc = self.function.?.prototype.name.loc };
+            self.error_info = .{ .message = "expected function with non-void return type to explicitly return", .source_loc = self.function.?.prototype.name.source_loc };
 
             return error.ExpectedReturn;
         }
@@ -77,32 +83,30 @@ fn handleFunctionDeclaration(self: *CodeGen, function: ast.Declaration.Function)
     self.function_returned = false;
 }
 
-fn handleNode(self: *CodeGen, node: ast.Node) Error!void {
+fn compileNode(self: *CodeGen, node: ast.Node) Error!void {
     switch (node) {
-        .stmt => try self.handleStmt(node.stmt),
+        .stmt => try self.compileStmt(node.stmt),
         .expr => {},
     }
 }
 
-fn handleStmt(self: *CodeGen, stmt: ast.Node.Stmt) Error!void {
+fn compileStmt(self: *CodeGen, stmt: ast.Node.Stmt) Error!void {
     switch (stmt) {
-        .variable_declaration => try self.handleVariableDeclarationStmt(stmt.variable_declaration),
+        .variable_declaration => try self.compileVariableDeclarationStmt(stmt.variable_declaration),
 
-        .inline_assembly => try self.handleInlineAssemblyStmt(stmt.inline_assembly),
+        .inline_assembly => try self.compileInlineAssemblyStmt(stmt.inline_assembly),
 
-        .ret => try self.handleReturnStmt(stmt.ret),
+        .@"return" => try self.compileReturnStmt(stmt.@"return"),
     }
 }
 
-fn handleVariableDeclarationStmt(self: *CodeGen, variable: ast.Node.Stmt.VariableDeclaration) Error!void {
-    const value = try self.genValue(variable.value);
-
+fn compileVariableDeclarationStmt(self: *CodeGen, variable: ast.Node.Stmt.VariableDeclaration) Error!void {
     if (variable.type != self.inferType(variable.value)) {
         var buf = std.ArrayList(u8).init(self.gpa);
 
         try buf.writer().print("expected type '{s}' got '{s}'", .{ variable.type.to_string(), self.inferType(variable.value).to_string() });
 
-        self.error_info = .{ .message = try buf.toOwnedSlice(), .loc = variable.name.loc };
+        self.error_info = .{ .message = try buf.toOwnedSlice(), .source_loc = variable.name.source_loc };
 
         return error.MismatchedTypes;
     }
@@ -112,40 +116,40 @@ fn handleVariableDeclarationStmt(self: *CodeGen, variable: ast.Node.Stmt.Variabl
         .type = variable.type,
     });
 
-    try self.instructions.append(.{ .store = .{ .name = variable.name.buffer, .value = value } });
+    try self.compileValue(variable.value);
+
+    try self.instructions.append(.{ .store = .{ .name = variable.name.buffer } });
 }
 
-fn handleInlineAssemblyStmt(self: *CodeGen, inline_assembly: ast.Node.Stmt.InlineAssembly) Error!void {
+fn compileInlineAssemblyStmt(self: *CodeGen, inline_assembly: ast.Node.Stmt.InlineAssembly) Error!void {
     try self.instructions.append(.{ .inline_assembly = .{ .content = inline_assembly.content } });
 }
 
-fn handleReturnStmt(self: *CodeGen, ret: ast.Node.Stmt.Return) Error!void {
-    const value = try self.genValue(ret.value);
-
+fn compileReturnStmt(self: *CodeGen, @"return": ast.Node.Stmt.Return) Error!void {
     if (self.function.?.prototype.return_type == .void_type) {
-        self.error_info = .{ .message = "didn't expect function with void return type to explicitly return", .loc = ret.loc };
+        self.error_info = .{ .message = "didn't expect function with void return type to explicitly return", .source_loc = @"return".source_loc };
 
         return error.UnexpectedReturn;
     }
 
-    if (self.function.?.prototype.return_type != self.inferType(ret.value)) {
+    if (self.function.?.prototype.return_type != self.inferType(@"return".value)) {
         var buf = std.ArrayList(u8).init(self.gpa);
 
-        try buf.writer().print("expected return type '{s}' got '{s}'", .{ self.function.?.prototype.return_type.to_string(), self.inferType(ret.value).to_string() });
+        try buf.writer().print("expected return type '{s}' got '{s}'", .{ self.function.?.prototype.return_type.to_string(), self.inferType(@"return".value).to_string() });
 
-        self.error_info = .{ .message = try buf.toOwnedSlice(), .loc = ret.loc };
+        self.error_info = .{ .message = try buf.toOwnedSlice(), .source_loc = @"return".source_loc };
 
         return error.MismatchedTypes;
     }
 
+    try self.compileValue(@"return".value);
+
+    try self.instructions.append(.{ .@"return" = {} });
+
     self.function_returned = true;
-
-    try self.instructions.append(.{ .load = .{ .value = value } });
-
-    try self.instructions.append(.{ .ret = .{} });
 }
 
-fn genValue(self: *CodeGen, expr: ast.Node.Expr) Error!IR.Value {
+fn compileValue(self: *CodeGen, expr: ast.Node.Expr) Error!void {
     return switch (expr) {
         .identifier => {
             if (self.symbol_table.lookup(expr.identifier.name.buffer) == error.Undeclared) {
@@ -153,12 +157,12 @@ fn genValue(self: *CodeGen, expr: ast.Node.Expr) Error!IR.Value {
 
                 try buf.writer().print("{s} is not declared", .{expr.identifier.name.buffer});
 
-                self.error_info = .{ .message = try buf.toOwnedSlice(), .loc = expr.identifier.name.loc };
+                self.error_info = .{ .message = try buf.toOwnedSlice(), .source_loc = expr.identifier.name.source_loc };
 
                 return error.UndeclaredVariable;
             }
 
-            return .{ .variable_reference = .{ .name = expr.identifier.name.buffer } };
+            try self.instructions.append(.{ .load = .{ .name = expr.identifier.name.buffer } });
         },
 
         .string => {
@@ -166,12 +170,20 @@ fn genValue(self: *CodeGen, expr: ast.Node.Expr) Error!IR.Value {
 
             const index = self.string_literals.items.len - 1;
 
-            return .{ .string_reference = .{ .index = index } };
+            try self.instructions.append(.{ .load = .{ .string = index } });
         },
 
-        .char => .{ .char = .{ .value = expr.char.value } },
-        .int => .{ .int = .{ .value = expr.int.value } },
-        .float => .{ .float = .{ .value = expr.float.value } },
+        .char => {
+            try self.instructions.append(.{ .load = .{ .char = expr.char.value } });
+        },
+
+        .int => {
+            try self.instructions.append(.{ .load = .{ .int = expr.int.value } });
+        },
+
+        .float => {
+            try self.instructions.append(.{ .load = .{ .float = expr.float.value } });
+        },
     };
 }
 

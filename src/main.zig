@@ -9,15 +9,15 @@ pub fn main() u8 {
 
     const arena = arena_instance.allocator();
 
-    var argiterator = std.process.ArgIterator.initWithAllocator(arena) catch {
+    var arg_iterator = std.process.ArgIterator.initWithAllocator(arena) catch {
         std.debug.print("ran out of memory\n", .{});
 
         return 1;
     };
 
-    defer argiterator.deinit();
+    defer arg_iterator.deinit();
 
     var driver = Driver.init(arena);
 
-    return driver.run(&argiterator);
+    return driver.run(&arg_iterator);
 }

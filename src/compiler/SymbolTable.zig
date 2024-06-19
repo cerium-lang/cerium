@@ -13,7 +13,9 @@ pub const Symbol = struct {
 };
 
 pub fn init(gpa: std.mem.Allocator) SymbolTable {
-    return SymbolTable{ .symbols = std.ArrayList(Symbol).init(gpa) };
+    return SymbolTable{
+        .symbols = std.ArrayList(Symbol).init(gpa),
+    };
 }
 
 pub fn set(self: *SymbolTable, symbol: Symbol) std.mem.Allocator.Error!void {

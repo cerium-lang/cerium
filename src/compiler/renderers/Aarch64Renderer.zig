@@ -30,17 +30,49 @@ pub const Error = std.mem.Allocator.Error;
 
 pub fn render(self: *Aarch64Renderer) Error!void {
     const text_section_writer = self.assembly.text_section.writer();
+    const data_section_writer = self.assembly.data_section.writer();
 
     for (self.ir.instructions) |instruction| {
         switch (instruction) {
             .store => {
-                try self.pushValue(instruction.store.value);
-
                 try self.stack_map.put(instruction.store.name, self.stack.items.len - 1);
             },
 
-            .load => {
-                try self.pushValue(instruction.load.value);
+            .load => switch (instruction.load) {
+                .name => {
+                    const stack_loc = self.stack_map.get(instruction.load.name).?;
+
+                    const register_info = self.stack.items[stack_loc];
+
+                    try text_section_writer.print("\tldr {c}8, [x29, #{}]\n", .{ register_info.prefix, self.stack_offsets.items[stack_loc + 1] });
+
+                    try self.pushRegister(8, register_info);
+                },
+
+                .string => {
+                    try data_section_writer.print("\tstr{}: .asciz \"{s}\"\n", .{ instruction.load.string, self.ir.string_literals[instruction.load.string] });
+                    try text_section_writer.print("\tadr x8, str{}\n", .{instruction.load.string});
+
+                    try self.pushRegister(8, .{ .prefix = 'x' });
+                },
+
+                .char => {
+                    try text_section_writer.print("\tmov w8, #{}\n", .{instruction.load.char});
+
+                    try self.pushRegister(8, .{ .prefix = 'w' });
+                },
+
+                .int => {
+                    try text_section_writer.print("\tmov x8, #{}\n", .{instruction.load.int});
+
+                    try self.pushRegister(8, .{ .prefix = 'x' });
+                },
+
+                .float => {
+                    try text_section_writer.print("\tfmov d8, #{}\n", .{instruction.load.float});
+
+                    try self.pushRegister(8, .{ .prefix = 'd' });
+                },
             },
 
             .label => {
@@ -54,7 +86,7 @@ pub fn render(self: *Aarch64Renderer) Error!void {
                 try text_section_writer.print("\t{s}\n", .{instruction.inline_assembly.content});
             },
 
-            .ret => {
+            .@"return" => {
                 if (self.stack.items.len != 0) {
                     try self.popRegister(0);
                 }
@@ -108,48 +140,6 @@ fn popRegister(self: *Aarch64Renderer, register_number: u8) Error!void {
     const text_section_writer = self.assembly.text_section.writer();
 
     try text_section_writer.print("\tldr {c}{}, [x29, #{}] \n", .{ register_info.prefix, register_number, stack_offset });
-}
-
-fn pushValue(self: *Aarch64Renderer, value: IR.Value) Error!void {
-    const text_section_writer = self.assembly.text_section.writer();
-    const data_section_writer = self.assembly.data_section.writer();
-
-    switch (value) {
-        .variable_reference => {
-            const stack_loc = self.stack_map.get(value.variable_reference.name).?;
-
-            const register_info = self.stack.items[stack_loc];
-
-            try text_section_writer.print("\tldr {c}8, [x29, #{}]\n", .{ register_info.prefix, self.stack_offsets.items[stack_loc + 1] });
-
-            try self.pushRegister(8, register_info);
-        },
-
-        .string_reference => {
-            try data_section_writer.print("\tstr{}: .asciz \"{s}\"\n", .{ value.string_reference.index, self.ir.string_literals[value.string_reference.index] });
-            try text_section_writer.print("\tadr x8, str{}\n", .{value.string_reference.index});
-
-            try self.pushRegister(8, .{ .prefix = 'x' });
-        },
-
-        .char => {
-            try text_section_writer.print("\tmov w8, #{}\n", .{value.char.value});
-
-            try self.pushRegister(8, .{ .prefix = 'w' });
-        },
-
-        .int => {
-            try text_section_writer.print("\tmov x8, #{}\n", .{value.int.value});
-
-            try self.pushRegister(8, .{ .prefix = 'x' });
-        },
-
-        .float => {
-            try text_section_writer.print("\tfmov d8, #{}\n", .{value.float.value});
-
-            try self.pushRegister(8, .{ .prefix = 'd' });
-        },
-    }
 }
 
 pub fn dump(self: *Aarch64Renderer) Error![]const u8 {

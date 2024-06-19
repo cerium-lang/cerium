@@ -8,20 +8,20 @@ const CodeGen = @import("CodeGen.zig");
 
 const Compilation = @This();
 
-env: Environment,
-
-options: Options,
-
 gpa: std.mem.Allocator,
 
-pub const Environment = struct { source_file_path: []const u8, target: std.Target };
+env: Environment,
 
-pub const Options = struct {
-    predefined_string_literals: ?std.ArrayList([]const u8) = null,
+pub const Environment = struct {
+    source_file_path: []const u8,
+    target: std.Target,
 };
 
-pub fn init(gpa: std.mem.Allocator, env: Environment, options: Options) Compilation {
-    return Compilation{ .gpa = gpa, .env = env, .options = options };
+pub fn init(gpa: std.mem.Allocator, env: Environment) Compilation {
+    return Compilation{
+        .gpa = gpa,
+        .env = env,
+    };
 }
 
 fn errorDescription(e: anyerror) []const u8 {
@@ -60,7 +60,7 @@ pub fn parse(self: *Compilation, input: [:0]const u8) ?ast.Root {
         },
 
         else => {
-            std.debug.print("{s}:{}:{}: {s}\n", .{ self.env.source_file_path, parser.error_info.?.loc.line, parser.error_info.?.loc.column, parser.error_info.?.message });
+            std.debug.print("{s}:{}:{}: {s}\n", .{ self.env.source_file_path, parser.error_info.?.source_loc.line, parser.error_info.?.source_loc.column, parser.error_info.?.message });
 
             return null;
         },
@@ -69,10 +69,10 @@ pub fn parse(self: *Compilation, input: [:0]const u8) ?ast.Root {
     return root;
 }
 
-pub fn gen_ir(self: *Compilation, root: ast.Root) ?IR {
-    var codegen = CodeGen.init(self.gpa, self.options.predefined_string_literals);
+pub fn compile_ir(self: *Compilation, root: ast.Root) ?IR {
+    var codegen = CodeGen.init(self.gpa);
 
-    const ir = codegen.gen(root) catch |err| switch (err) {
+    const ir = codegen.compile(root) catch |err| switch (err) {
         error.OutOfMemory => {
             std.debug.print("{s}\n", .{errorDescription(err)});
 
@@ -80,7 +80,7 @@ pub fn gen_ir(self: *Compilation, root: ast.Root) ?IR {
         },
 
         else => {
-            std.debug.print("{s}:{}:{}: {s}\n", .{ self.env.source_file_path, codegen.error_info.?.loc.line, codegen.error_info.?.loc.column, codegen.error_info.?.message });
+            std.debug.print("{s}:{}:{}: {s}\n", .{ self.env.source_file_path, codegen.error_info.?.source_loc.line, codegen.error_info.?.source_loc.column, codegen.error_info.?.message });
 
             return null;
         },
