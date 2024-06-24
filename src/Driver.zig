@@ -172,7 +172,7 @@ fn runCompileCommand(self: *Driver) u8 {
 
     defer output_file.close();
 
-    const output_assembly = compilation.render_ir(ir) orelse return 1;
+    const output_assembly = compilation.ir_assembly(ir) orelse return 1;
 
     output_file.writer().writeAll(output_assembly) catch |err| {
         std.debug.print("couldn't write the output assembly: {s}\n", .{errorDescription(err)});

@@ -89,20 +89,39 @@ pub fn compile_ir(self: *Compilation, root: ast.Root) ?IR {
     return ir;
 }
 
-pub fn render_ir(self: *Compilation, ir: IR) ?[]const u8 {
-    const output_assembly = ir.render(self.gpa, self.env.target) catch |err| switch (err) {
-        error.UnsupportedTarget => {
-            std.debug.print("{s} is not spported yet\n", .{self.env.target.cpu.arch.genericName()});
+pub fn ir_assembly(self: *Compilation, ir: IR) ?[]const u8 {
+    const Aarch64Backend = @import("backends/assembly/Aarch64Backend.zig");
+    const x86_64Backend = @import("backends/assembly/x86_64Backend.zig");
 
-            return null;
+    return switch (self.env.target.cpu.arch) {
+        .aarch64 => blk: {
+            var backend = Aarch64Backend.init(self.gpa, ir);
+
+            backend.render() catch |err| {
+                std.debug.print("{s}\n", .{errorDescription(err)});
+
+                return null;
+            };
+
+            break :blk backend.dump() catch null;
+        },
+
+        .x86_64 => blk: {
+            var backend = x86_64Backend.init(self.gpa, ir);
+
+            backend.render() catch |err| {
+                std.debug.print("{s}\n", .{errorDescription(err)});
+
+                return null;
+            };
+
+            break :blk backend.dump() catch null;
         },
 
         else => {
-            std.debug.print("{s}\n", .{errorDescription(err)});
+            std.debug.print("{s} is not supported yet", .{self.env.target.cpu.arch.genericName()});
 
             return null;
         },
     };
-
-    return output_assembly;
 }

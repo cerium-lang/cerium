@@ -1,9 +1,11 @@
 const std = @import("std");
 
-const IR = @import("../IR.zig");
-const Assembly = @import("../Assembly.zig");
+const IR = @import("../../IR.zig");
+const Assembly = @import("Assembly.zig");
 
-const Aarch64Renderer = @This();
+const Aarch64Backend = @This();
+
+gpa: std.mem.Allocator,
 
 assembly: Assembly,
 
@@ -16,19 +18,24 @@ stack_alignment: usize = 16,
 // Stack size has to be calculated before rendering using "how many variables we need", not just a random constant number like this
 stack_size: usize = 256,
 
-gpa: std.mem.Allocator,
-
 const RegisterInfo = struct {
     prefix: u8,
 };
 
-pub fn init(gpa: std.mem.Allocator, ir: IR) Aarch64Renderer {
-    return Aarch64Renderer{ .assembly = Assembly.init(gpa), .ir = ir, .stack = std.ArrayList(RegisterInfo).init(gpa), .stack_offsets = std.ArrayList(usize).init(gpa), .stack_map = std.StringHashMap(usize).init(gpa), .gpa = gpa };
+pub fn init(gpa: std.mem.Allocator, ir: IR) Aarch64Backend {
+    return Aarch64Backend{
+        .gpa = gpa,
+        .assembly = Assembly.init(gpa),
+        .ir = ir,
+        .stack = std.ArrayList(RegisterInfo).init(gpa),
+        .stack_offsets = std.ArrayList(usize).init(gpa),
+        .stack_map = std.StringHashMap(usize).init(gpa),
+    };
 }
 
 pub const Error = std.mem.Allocator.Error;
 
-pub fn render(self: *Aarch64Renderer) Error!void {
+pub fn render(self: *Aarch64Backend) Error!void {
     const text_section_writer = self.assembly.text_section.writer();
     const data_section_writer = self.assembly.data_section.writer();
 
@@ -99,7 +106,7 @@ pub fn render(self: *Aarch64Renderer) Error!void {
     }
 }
 
-fn functionProluge(self: *Aarch64Renderer) Error!void {
+fn functionProluge(self: *Aarch64Backend) Error!void {
     const text_section_writer = self.assembly.text_section.writer();
 
     try text_section_writer.print("\tsub sp, sp, #{}\n", .{self.stack_size});
@@ -109,7 +116,7 @@ fn functionProluge(self: *Aarch64Renderer) Error!void {
     try self.stack_offsets.append(0);
 }
 
-fn functionEpilogue(self: *Aarch64Renderer) Error!void {
+fn functionEpilogue(self: *Aarch64Backend) Error!void {
     const text_section_writer = self.assembly.text_section.writer();
 
     try text_section_writer.print("\tldp x29, x30, [sp, #{}]\n", .{self.stack_alignment});
@@ -120,7 +127,7 @@ fn functionEpilogue(self: *Aarch64Renderer) Error!void {
     self.stack_map.clearAndFree();
 }
 
-fn pushRegister(self: *Aarch64Renderer, register_number: u8, register_info: RegisterInfo) Error!void {
+fn pushRegister(self: *Aarch64Backend, register_number: u8, register_info: RegisterInfo) Error!void {
     try self.stack.append(register_info);
 
     const stack_offset = self.stack_offsets.items[self.stack_offsets.items.len - 1] + self.stack_alignment;
@@ -132,7 +139,7 @@ fn pushRegister(self: *Aarch64Renderer, register_number: u8, register_info: Regi
     try text_section_writer.print("\tstr {c}{}, [x29, #{}]\n", .{ register_info.prefix, register_number, stack_offset });
 }
 
-fn popRegister(self: *Aarch64Renderer, register_number: u8) Error!void {
+fn popRegister(self: *Aarch64Backend, register_number: u8) Error!void {
     const register_info = self.stack.pop();
 
     const stack_offset = self.stack_offsets.pop();
@@ -142,7 +149,7 @@ fn popRegister(self: *Aarch64Renderer, register_number: u8) Error!void {
     try text_section_writer.print("\tldr {c}{}, [x29, #{}] \n", .{ register_info.prefix, register_number, stack_offset });
 }
 
-pub fn dump(self: *Aarch64Renderer) Error![]const u8 {
+pub fn dump(self: *Aarch64Backend) Error![]const u8 {
     var result = std.ArrayList(u8).init(self.gpa);
 
     const result_writer = result.writer();

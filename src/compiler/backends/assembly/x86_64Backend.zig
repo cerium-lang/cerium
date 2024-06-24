@@ -1,9 +1,9 @@
 const std = @import("std");
 
-const IR = @import("../IR.zig");
-const Assembly = @import("../Assembly.zig");
+const IR = @import("../../IR.zig");
+const Assembly = @import("Assembly.zig");
 
-const Amd64Renderer = @This();
+const x86_64Backend = @This();
 
 assembly: Assembly,
 
@@ -22,13 +22,21 @@ const RegisterInfo = struct {
     floating_point: bool,
 };
 
-pub fn init(gpa: std.mem.Allocator, ir: IR) Amd64Renderer {
-    return Amd64Renderer{ .assembly = Assembly.init(gpa), .ir = ir, .stack = std.ArrayList(RegisterInfo).init(gpa), .stack_offsets = std.ArrayList(usize).init(gpa), .stack_map = std.StringHashMap(usize).init(gpa), .floating_points = std.ArrayList(f64).init(gpa), .gpa = gpa };
+pub fn init(gpa: std.mem.Allocator, ir: IR) x86_64Backend {
+    return x86_64Backend{
+        .gpa = gpa,
+        .assembly = Assembly.init(gpa),
+        .ir = ir,
+        .stack = std.ArrayList(RegisterInfo).init(gpa),
+        .stack_offsets = std.ArrayList(usize).init(gpa),
+        .stack_map = std.StringHashMap(usize).init(gpa),
+        .floating_points = std.ArrayList(f64).init(gpa),
+    };
 }
 
 pub const Error = std.mem.Allocator.Error;
 
-pub fn render(self: *Amd64Renderer) Error!void {
+pub fn render(self: *x86_64Backend) Error!void {
     const text_section_writer = self.assembly.text_section.writer();
     const data_section_writer = self.assembly.data_section.writer();
 
@@ -102,7 +110,7 @@ pub fn render(self: *Amd64Renderer) Error!void {
     }
 }
 
-fn functionProluge(self: *Amd64Renderer) Error!void {
+fn functionProluge(self: *x86_64Backend) Error!void {
     const text_section_writer = self.assembly.text_section.writer();
 
     try text_section_writer.print("\tpushq %rbp\n", .{});
@@ -111,7 +119,7 @@ fn functionProluge(self: *Amd64Renderer) Error!void {
     try self.stack_offsets.append(0);
 }
 
-fn functionEpilogue(self: *Amd64Renderer) Error!void {
+fn functionEpilogue(self: *x86_64Backend) Error!void {
     const text_section_writer = self.assembly.text_section.writer();
 
     try text_section_writer.print("\tpopq %rbp\n", .{});
@@ -130,7 +138,7 @@ fn suffixToNumber(register_suffix: []const u8) u8 {
     }
 }
 
-fn pushRegister(self: *Amd64Renderer, register_suffix: []const u8, register_info: RegisterInfo) Error!void {
+fn pushRegister(self: *x86_64Backend, register_suffix: []const u8, register_info: RegisterInfo) Error!void {
     try self.stack.append(register_info);
 
     const stack_offset = self.stack_offsets.items[self.stack_offsets.items.len - 1] + self.stack_alignment;
@@ -146,7 +154,7 @@ fn pushRegister(self: *Amd64Renderer, register_suffix: []const u8, register_info
     }
 }
 
-fn copyFromStack(self: *Amd64Renderer, register_suffix: []const u8, register_info: RegisterInfo, stack_offset: usize) Error!void {
+fn copyFromStack(self: *x86_64Backend, register_suffix: []const u8, register_info: RegisterInfo, stack_offset: usize) Error!void {
     const text_section_writer = self.assembly.text_section.writer();
 
     if (register_info.floating_point) {
@@ -156,7 +164,7 @@ fn copyFromStack(self: *Amd64Renderer, register_suffix: []const u8, register_inf
     }
 }
 
-fn popRegister(self: *Amd64Renderer, register_suffix: []const u8) Error!void {
+fn popRegister(self: *x86_64Backend, register_suffix: []const u8) Error!void {
     const register_info = self.stack.pop();
 
     const stack_offset = self.stack_offsets.pop();
@@ -164,7 +172,7 @@ fn popRegister(self: *Amd64Renderer, register_suffix: []const u8) Error!void {
     try self.copyFromStack(register_suffix, register_info, stack_offset);
 }
 
-pub fn dump(self: *Amd64Renderer) Error![]const u8 {
+pub fn dump(self: *x86_64Backend) Error![]const u8 {
     var result = std.ArrayList(u8).init(self.gpa);
 
     const result_writer = result.writer();
