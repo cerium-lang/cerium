@@ -12,9 +12,9 @@ pub const Symbol = struct {
     type: Type,
 };
 
-pub fn init(gpa: std.mem.Allocator) SymbolTable {
+pub fn init(allocator: std.mem.Allocator) SymbolTable {
     return SymbolTable{
-        .symbols = std.ArrayList(Symbol).init(gpa),
+        .symbols = std.ArrayList(Symbol).init(allocator),
     };
 }
 

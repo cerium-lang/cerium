@@ -8,7 +8,7 @@ const CodeGen = @import("CodeGen.zig");
 
 const Compilation = @This();
 
-gpa: std.mem.Allocator,
+allocator: std.mem.Allocator,
 
 env: Environment,
 
@@ -17,9 +17,9 @@ pub const Environment = struct {
     target: std.Target,
 };
 
-pub fn init(gpa: std.mem.Allocator, env: Environment) Compilation {
+pub fn init(allocator: std.mem.Allocator, env: Environment) Compilation {
     return Compilation{
-        .gpa = gpa,
+        .allocator = allocator,
         .env = env,
     };
 }
@@ -46,7 +46,7 @@ fn errorDescription(e: anyerror) []const u8 {
 }
 
 pub fn parse(self: *Compilation, input: [:0]const u8) ?ast.Root {
-    var parser = Parser.init(self.gpa, input) catch |err| {
+    var parser = Parser.init(self.allocator, input) catch |err| {
         std.debug.print("{s}\n", .{errorDescription(err)});
 
         return null;
@@ -70,7 +70,7 @@ pub fn parse(self: *Compilation, input: [:0]const u8) ?ast.Root {
 }
 
 pub fn compile_ir(self: *Compilation, root: ast.Root) ?IR {
-    var codegen = CodeGen.init(self.gpa);
+    var codegen = CodeGen.init(self.allocator);
 
     const ir = codegen.compile(root) catch |err| switch (err) {
         error.OutOfMemory => {
@@ -95,7 +95,7 @@ pub fn ir_assembly(self: *Compilation, ir: IR) ?[]const u8 {
 
     return switch (self.env.target.cpu.arch) {
         .aarch64 => blk: {
-            var backend = Aarch64Backend.init(self.gpa, ir);
+            var backend = Aarch64Backend.init(self.allocator, ir);
 
             backend.render() catch |err| {
                 std.debug.print("{s}\n", .{errorDescription(err)});
@@ -107,7 +107,7 @@ pub fn ir_assembly(self: *Compilation, ir: IR) ?[]const u8 {
         },
 
         .x86_64 => blk: {
-            var backend = x86_64Backend.init(self.gpa, ir);
+            var backend = x86_64Backend.init(self.allocator, ir);
 
             backend.render() catch |err| {
                 std.debug.print("{s}\n", .{errorDescription(err)});

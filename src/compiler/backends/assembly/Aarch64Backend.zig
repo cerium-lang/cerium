@@ -5,7 +5,7 @@ const Assembly = @import("Assembly.zig");
 
 const Aarch64Backend = @This();
 
-gpa: std.mem.Allocator,
+allocator: std.mem.Allocator,
 
 assembly: Assembly,
 
@@ -22,14 +22,14 @@ const RegisterInfo = struct {
     prefix: u8,
 };
 
-pub fn init(gpa: std.mem.Allocator, ir: IR) Aarch64Backend {
+pub fn init(allocator: std.mem.Allocator, ir: IR) Aarch64Backend {
     return Aarch64Backend{
-        .gpa = gpa,
-        .assembly = Assembly.init(gpa),
+        .allocator = allocator,
+        .assembly = Assembly.init(allocator),
         .ir = ir,
-        .stack = std.ArrayList(RegisterInfo).init(gpa),
-        .stack_offsets = std.ArrayList(usize).init(gpa),
-        .stack_map = std.StringHashMap(usize).init(gpa),
+        .stack = std.ArrayList(RegisterInfo).init(allocator),
+        .stack_offsets = std.ArrayList(usize).init(allocator),
+        .stack_map = std.StringHashMap(usize).init(allocator),
     };
 }
 
@@ -150,7 +150,7 @@ fn popRegister(self: *Aarch64Backend, register_number: u8) Error!void {
 }
 
 pub fn dump(self: *Aarch64Backend) Error![]const u8 {
-    var result = std.ArrayList(u8).init(self.gpa);
+    var result = std.ArrayList(u8).init(self.allocator);
 
     const result_writer = result.writer();
 

@@ -7,7 +7,7 @@ const IR = @import("IR.zig");
 
 const CodeGen = @This();
 
-gpa: std.mem.Allocator,
+allocator: std.mem.Allocator,
 
 instructions: std.ArrayList(IR.Instruction),
 string_literals: std.ArrayList([]const u8),
@@ -32,12 +32,12 @@ pub const ErrorInfo = struct {
     source_loc: ast.SourceLoc,
 };
 
-pub fn init(gpa: std.mem.Allocator) CodeGen {
+pub fn init(allocator: std.mem.Allocator) CodeGen {
     return CodeGen{
-        .gpa = gpa,
-        .instructions = std.ArrayList(IR.Instruction).init(gpa),
-        .string_literals = std.ArrayList([]const u8).init(gpa),
-        .symbol_table = SymbolTable.init(gpa),
+        .allocator = allocator,
+        .instructions = std.ArrayList(IR.Instruction).init(allocator),
+        .string_literals = std.ArrayList([]const u8).init(allocator),
+        .symbol_table = SymbolTable.init(allocator),
     };
 }
 
@@ -102,7 +102,7 @@ fn compileStmt(self: *CodeGen, stmt: ast.Node.Stmt) Error!void {
 
 fn compileVariableDeclarationStmt(self: *CodeGen, variable: ast.Node.Stmt.VariableDeclaration) Error!void {
     if (variable.type != self.inferType(variable.value)) {
-        var buf = std.ArrayList(u8).init(self.gpa);
+        var buf = std.ArrayList(u8).init(self.allocator);
 
         try buf.writer().print("expected type '{s}' got '{s}'", .{ variable.type.to_string(), self.inferType(variable.value).to_string() });
 
@@ -133,7 +133,7 @@ fn compileReturnStmt(self: *CodeGen, @"return": ast.Node.Stmt.Return) Error!void
     }
 
     if (self.function.?.prototype.return_type != self.inferType(@"return".value)) {
-        var buf = std.ArrayList(u8).init(self.gpa);
+        var buf = std.ArrayList(u8).init(self.allocator);
 
         try buf.writer().print("expected return type '{s}' got '{s}'", .{ self.function.?.prototype.return_type.to_string(), self.inferType(@"return".value).to_string() });
 
@@ -153,7 +153,7 @@ fn compileValue(self: *CodeGen, expr: ast.Node.Expr) Error!void {
     return switch (expr) {
         .identifier => {
             if (self.symbol_table.lookup(expr.identifier.name.buffer) == error.Undeclared) {
-                var buf = std.ArrayList(u8).init(self.gpa);
+                var buf = std.ArrayList(u8).init(self.allocator);
 
                 try buf.writer().print("{s} is not declared", .{expr.identifier.name.buffer});
 

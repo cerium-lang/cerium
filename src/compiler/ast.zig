@@ -97,7 +97,7 @@ pub const Node = union(enum) {
 };
 
 pub const Parser = struct {
-    gpa: std.mem.Allocator,
+    allocator: std.mem.Allocator,
 
     buffer: [:0]const u8,
 
@@ -120,8 +120,8 @@ pub const Parser = struct {
         source_loc: SourceLoc,
     };
 
-    pub fn init(gpa: std.mem.Allocator, buffer: [:0]const u8) std.mem.Allocator.Error!Parser {
-        var tokens = std.ArrayList(Token).init(gpa);
+    pub fn init(allocator: std.mem.Allocator, buffer: [:0]const u8) std.mem.Allocator.Error!Parser {
+        var tokens = std.ArrayList(Token).init(allocator);
 
         var lexer = Lexer.init(buffer);
 
@@ -134,7 +134,7 @@ pub const Parser = struct {
         }
 
         return Parser{
-            .gpa = gpa,
+            .allocator = allocator,
             .buffer = buffer,
             .tokens = try tokens.toOwnedSlice(),
             .current_token_index = 0,
@@ -199,7 +199,7 @@ pub const Parser = struct {
     }
 
     pub fn parseRoot(self: *Parser) Error!Root {
-        var declarations = std.ArrayList(Declaration).init(self.gpa);
+        var declarations = std.ArrayList(Declaration).init(self.allocator);
 
         while (self.peekToken().tag != .eof) {
             try declarations.append(try self.parseDeclaration());
@@ -258,7 +258,7 @@ pub const Parser = struct {
             return error.UnexpectedToken;
         }
 
-        var paramters = std.ArrayList(Declaration.Function.Prototype.Parameter).init(self.gpa);
+        var paramters = std.ArrayList(Declaration.Function.Prototype.Parameter).init(self.allocator);
 
         while (!self.eatToken(.close_paren)) {
             if (self.peekToken().tag == .eof) {
@@ -291,7 +291,7 @@ pub const Parser = struct {
     }
 
     fn parseBody(self: *Parser) Error![]Node {
-        var body = std.ArrayList(Node).init(self.gpa);
+        var body = std.ArrayList(Node).init(self.allocator);
 
         if (!self.eatToken(.open_brace)) {
             self.error_info = .{ .message = "expected '{'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
