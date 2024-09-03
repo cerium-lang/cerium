@@ -38,7 +38,7 @@ pub const Error = std.mem.Allocator.Error;
 
 pub fn render(self: *x86_64Backend) Error!void {
     const text_section_writer = self.assembly.text_section.writer();
-    const data_section_writer = self.assembly.data_section.writer();
+    const rodata_section_writer = self.assembly.rodata_section.writer();
 
     for (self.ir.instructions) |instruction| {
         switch (instruction) {
@@ -58,8 +58,7 @@ pub fn render(self: *x86_64Backend) Error!void {
                 },
 
                 .string => {
-                    try data_section_writer.print("\tstr{}: .asciz \"{s}\"\n", .{ instruction.load.string, self.ir.string_literals[instruction.load.string] });
-
+                    try rodata_section_writer.print("\tstr{}: .asciz \"{s}\"\n", .{ instruction.load.string, self.ir.string_literals[instruction.load.string] });
                     try text_section_writer.print("\tleaq str{}(%rip), %r8\n", .{instruction.load.string});
 
                     try self.pushRegister("8", .{ .floating_point = false });
@@ -182,6 +181,11 @@ pub fn dump(self: *x86_64Backend) Error![]const u8 {
     if (self.assembly.data_section.items.len > 0) {
         try result_writer.print(".section \".data\"\n", .{});
         try result_writer.writeAll(self.assembly.data_section.items);
+    }
+
+    if (self.assembly.rodata_section.items.len > 0) {
+        try result_writer.print(".section \".rodata\"\n", .{});
+        try result_writer.writeAll(self.assembly.rodata_section.items);
     }
 
     self.assembly.deinit();

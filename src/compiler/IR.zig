@@ -3,7 +3,7 @@ const std = @import("std");
 const IR = @This();
 
 instructions: []const Instruction,
-string_literals: [][]const u8,
+string_literals: []const []const u8,
 
 pub const Instruction = union(enum) {
     store: Store,
