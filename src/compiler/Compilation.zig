@@ -1,7 +1,6 @@
 const std = @import("std");
 
-const ast = @import("ast.zig");
-const Parser = ast.Parser;
+const Ast = @import("Ast.zig");
 
 const IR = @import("IR.zig");
 const CodeGen = @import("CodeGen.zig");
@@ -45,14 +44,14 @@ fn errorDescription(e: anyerror) []const u8 {
     };
 }
 
-pub fn parse(self: *Compilation, input: [:0]const u8) ?ast.Root {
-    var parser = Parser.init(self.allocator, input) catch |err| {
+pub fn parse(self: *Compilation, input: [:0]const u8) ?Ast {
+    var ast_parser = Ast.Parser.init(self.allocator, input) catch |err| {
         std.debug.print("{s}\n", .{errorDescription(err)});
 
         return null;
     };
 
-    const root = parser.parseRoot() catch |err| switch (err) {
+    const ast = ast_parser.parse() catch |err| switch (err) {
         error.OutOfMemory => {
             std.debug.print("{s}\n", .{errorDescription(err)});
 
@@ -60,19 +59,19 @@ pub fn parse(self: *Compilation, input: [:0]const u8) ?ast.Root {
         },
 
         else => {
-            std.debug.print("{s}:{}:{}: {s}\n", .{ self.env.source_file_path, parser.error_info.?.source_loc.line, parser.error_info.?.source_loc.column, parser.error_info.?.message });
+            std.debug.print("{s}:{}:{}: {s}\n", .{ self.env.source_file_path, ast_parser.error_info.?.source_loc.line, ast_parser.error_info.?.source_loc.column, ast_parser.error_info.?.message });
 
             return null;
         },
     };
 
-    return root;
+    return ast;
 }
 
-pub fn compile_ir(self: *Compilation, root: ast.Root) ?IR {
+pub fn compile_ir(self: *Compilation, ast: Ast) ?IR {
     var codegen = CodeGen.init(self.allocator);
 
-    const ir = codegen.compile(root) catch |err| switch (err) {
+    const ir = codegen.compile(ast) catch |err| switch (err) {
         error.OutOfMemory => {
             std.debug.print("{s}\n", .{errorDescription(err)});
 

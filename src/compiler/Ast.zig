@@ -4,9 +4,9 @@ const Token = @import("Token.zig");
 const Lexer = @import("Lexer.zig");
 const Type = @import("type.zig").Type;
 
-pub const Root = struct {
-    declarations: []Declaration,
-};
+const Ast = @This();
+
+declarations: []const Declaration,
 
 pub const SourceLoc = struct {
     line: usize,
@@ -23,11 +23,11 @@ pub const Declaration = union(enum) {
 
     pub const Function = struct {
         prototype: Prototype,
-        body: []Node,
+        body: []const Node,
 
         pub const Prototype = struct {
             name: Name,
-            parameters: []Parameter,
+            parameters: []const Parameter,
             return_type: Type,
 
             pub const Parameter = struct {
@@ -141,6 +141,16 @@ pub const Parser = struct {
         };
     }
 
+    pub fn parse(self: *Parser) Error!Ast {
+        var declarations = std.ArrayList(Declaration).init(self.allocator);
+
+        while (self.peekToken().tag != .eof) {
+            try declarations.append(try self.parseDeclaration());
+        }
+
+        return Ast{ .declarations = declarations.items };
+    }
+
     fn nextToken(self: *Parser) Token {
         self.current_token_index += 1;
 
@@ -196,16 +206,6 @@ pub const Parser = struct {
         const token = self.nextToken();
 
         return Name{ .buffer = self.tokenValue(token), .source_loc = self.tokenSourceLoc(token) };
-    }
-
-    pub fn parseRoot(self: *Parser) Error!Root {
-        var declarations = std.ArrayList(Declaration).init(self.allocator);
-
-        while (self.peekToken().tag != .eof) {
-            try declarations.append(try self.parseDeclaration());
-        }
-
-        return Root{ .declarations = try declarations.toOwnedSlice() };
     }
 
     fn parseDeclaration(self: *Parser) Error!Declaration {
@@ -460,11 +460,11 @@ pub const Parser = struct {
     }
 
     fn parseType(self: *Parser) Error!Type {
-        const BuiltinTypes = std.StaticStringMap(Type).initComptime(.{ .{ "void", .void_type }, .{ "string", .string_type }, .{ "char", .char_type }, .{ "int", .int_type }, .{ "float", .float_type } });
+        const builtin_types = std.StaticStringMap(Type).initComptime(.{ .{ "void", .void_type }, .{ "string", .string_type }, .{ "char", .char_type }, .{ "int", .int_type }, .{ "float", .float_type } });
 
         switch (self.peekToken().tag) {
             .identifier => {
-                if (BuiltinTypes.get(self.tokenValue(self.peekToken()))) |builtinType| {
+                if (builtin_types.get(self.tokenValue(self.peekToken()))) |builtinType| {
                     _ = self.nextToken();
                     return builtinType;
                 } else {

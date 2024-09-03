@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const ast = @import("ast.zig");
+const Ast = @import("Ast.zig");
 const Type = @import("type.zig").Type;
 const SymbolTable = @import("SymbolTable.zig");
 const IR = @import("IR.zig");
@@ -12,7 +12,7 @@ allocator: std.mem.Allocator,
 instructions: std.ArrayList(IR.Instruction),
 string_literals: std.ArrayList([]const u8),
 
-function: ?ast.Declaration.Function = null,
+function: ?Ast.Declaration.Function = null,
 function_returned: bool = false,
 
 symbol_table: SymbolTable,
@@ -29,7 +29,7 @@ pub const Error = error{
 
 pub const ErrorInfo = struct {
     message: []const u8,
-    source_loc: ast.SourceLoc,
+    source_loc: Ast.SourceLoc,
 };
 
 pub fn init(allocator: std.mem.Allocator) CodeGen {
@@ -41,8 +41,8 @@ pub fn init(allocator: std.mem.Allocator) CodeGen {
     };
 }
 
-pub fn compile(self: *CodeGen, root: ast.Root) Error!IR {
-    for (root.declarations) |declaration| {
+pub fn compile(self: *CodeGen, ast: Ast) Error!IR {
+    for (ast.declarations) |declaration| {
         try self.compileDeclaration(declaration);
     }
 
@@ -52,13 +52,13 @@ pub fn compile(self: *CodeGen, root: ast.Root) Error!IR {
     };
 }
 
-fn compileDeclaration(self: *CodeGen, declaration: ast.Declaration) Error!void {
+fn compileDeclaration(self: *CodeGen, declaration: Ast.Declaration) Error!void {
     switch (declaration) {
         .function => try self.compileFunctionDeclaration(declaration.function),
     }
 }
 
-fn compileFunctionDeclaration(self: *CodeGen, function: ast.Declaration.Function) Error!void {
+fn compileFunctionDeclaration(self: *CodeGen, function: Ast.Declaration.Function) Error!void {
     try self.instructions.append(.{ .label = .{ .name = function.prototype.name.buffer } });
 
     self.function = function;
@@ -83,14 +83,14 @@ fn compileFunctionDeclaration(self: *CodeGen, function: ast.Declaration.Function
     self.function_returned = false;
 }
 
-fn compileNode(self: *CodeGen, node: ast.Node) Error!void {
+fn compileNode(self: *CodeGen, node: Ast.Node) Error!void {
     switch (node) {
         .stmt => try self.compileStmt(node.stmt),
         .expr => {},
     }
 }
 
-fn compileStmt(self: *CodeGen, stmt: ast.Node.Stmt) Error!void {
+fn compileStmt(self: *CodeGen, stmt: Ast.Node.Stmt) Error!void {
     switch (stmt) {
         .variable_declaration => try self.compileVariableDeclarationStmt(stmt.variable_declaration),
 
@@ -100,7 +100,7 @@ fn compileStmt(self: *CodeGen, stmt: ast.Node.Stmt) Error!void {
     }
 }
 
-fn compileVariableDeclarationStmt(self: *CodeGen, variable: ast.Node.Stmt.VariableDeclaration) Error!void {
+fn compileVariableDeclarationStmt(self: *CodeGen, variable: Ast.Node.Stmt.VariableDeclaration) Error!void {
     if (variable.type != self.inferType(variable.value)) {
         var buf = std.ArrayList(u8).init(self.allocator);
 
@@ -121,11 +121,11 @@ fn compileVariableDeclarationStmt(self: *CodeGen, variable: ast.Node.Stmt.Variab
     try self.instructions.append(.{ .store = .{ .name = variable.name.buffer } });
 }
 
-fn compileInlineAssemblyStmt(self: *CodeGen, inline_assembly: ast.Node.Stmt.InlineAssembly) Error!void {
+fn compileInlineAssemblyStmt(self: *CodeGen, inline_assembly: Ast.Node.Stmt.InlineAssembly) Error!void {
     try self.instructions.append(.{ .inline_assembly = .{ .content = inline_assembly.content } });
 }
 
-fn compileReturnStmt(self: *CodeGen, @"return": ast.Node.Stmt.Return) Error!void {
+fn compileReturnStmt(self: *CodeGen, @"return": Ast.Node.Stmt.Return) Error!void {
     if (self.function.?.prototype.return_type == .void_type) {
         self.error_info = .{ .message = "didn't expect function with void return type to explicitly return", .source_loc = @"return".source_loc };
 
@@ -149,7 +149,7 @@ fn compileReturnStmt(self: *CodeGen, @"return": ast.Node.Stmt.Return) Error!void
     self.function_returned = true;
 }
 
-fn compileValue(self: *CodeGen, expr: ast.Node.Expr) Error!void {
+fn compileValue(self: *CodeGen, expr: Ast.Node.Expr) Error!void {
     return switch (expr) {
         .identifier => {
             if (self.symbol_table.lookup(expr.identifier.name.buffer) == error.Undeclared) {
@@ -187,7 +187,7 @@ fn compileValue(self: *CodeGen, expr: ast.Node.Expr) Error!void {
     };
 }
 
-fn inferType(self: CodeGen, expr: ast.Node.Expr) Type {
+fn inferType(self: CodeGen, expr: Ast.Node.Expr) Type {
     return switch (expr) {
         .identifier => {
             const symbol = self.symbol_table.lookup(expr.identifier.name.buffer) catch {

@@ -127,7 +127,7 @@ pub fn next(self: *Lexer) Token {
 
                 else => {
                     result.buffer_loc.end = self.index;
-                    if (Token.Keywords.get(self.buffer[result.buffer_loc.start..result.buffer_loc.end])) |keyword_tag| {
+                    if (Token.keywords.get(self.buffer[result.buffer_loc.start..result.buffer_loc.end])) |keyword_tag| {
                         result.tag = keyword_tag;
                     }
                     self.state = .start;
