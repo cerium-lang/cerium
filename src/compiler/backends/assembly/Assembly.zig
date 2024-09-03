@@ -17,4 +17,5 @@ pub fn init(allocator: std.mem.Allocator) Assembly {
 pub fn deinit(self: Assembly) void {
     self.text_section.deinit();
     self.data_section.deinit();
+    self.rodata_section.deinit();
 }
