@@ -61,6 +61,8 @@ fn compileDeclaration(self: *CodeGen, declaration: Ast.Declaration) Error!void {
 fn compileFunctionDeclaration(self: *CodeGen, function: Ast.Declaration.Function) Error!void {
     try self.instructions.append(.{ .label = .{ .name = function.prototype.name.buffer } });
 
+    try self.instructions.append(.function_proluge);
+
     self.function = function;
 
     for (self.function.?.body) |node| {
@@ -69,7 +71,9 @@ fn compileFunctionDeclaration(self: *CodeGen, function: Ast.Declaration.Function
 
     if (!self.function_returned) {
         if (self.function.?.prototype.return_type == .void_type) {
-            try self.instructions.append(.{ .@"return" = {} });
+            try self.instructions.append(.function_epilogue);
+
+            try self.instructions.append(.@"return");
         } else {
             self.error_info = .{ .message = "expected function with non-void return type to explicitly return", .source_loc = self.function.?.prototype.name.source_loc };
 
@@ -144,7 +148,9 @@ fn compileReturnStmt(self: *CodeGen, @"return": Ast.Node.Stmt.Return) Error!void
 
     try self.compileValue(@"return".value);
 
-    try self.instructions.append(.{ .@"return" = {} });
+    try self.instructions.append(.function_epilogue);
+
+    try self.instructions.append(.@"return");
 
     self.function_returned = true;
 }

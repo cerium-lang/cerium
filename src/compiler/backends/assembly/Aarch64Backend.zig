@@ -85,8 +85,27 @@ pub fn render(self: *Aarch64Backend) Error!void {
             .label => {
                 try text_section_writer.print(".global {s}\n", .{instruction.label.name});
                 try text_section_writer.print("{s}:\n", .{instruction.label.name});
+            },
 
-                try self.functionProluge();
+            .function_proluge => {
+                try text_section_writer.print("\tsub sp, sp, #{}\n", .{self.stack_size});
+                try text_section_writer.print("\tstp x29, x30, [sp, #{}]\n", .{self.stack_alignment});
+                try text_section_writer.print("\tadd x29, sp, #{}\n", .{self.stack_alignment});
+
+                try self.stack_offsets.append(0);
+            },
+
+            .function_epilogue => {
+                if (self.stack.items.len != 0) {
+                    try self.popRegister(0);
+                }
+
+                try text_section_writer.print("\tldp x29, x30, [sp, #{}]\n", .{self.stack_alignment});
+                try text_section_writer.print("\tadd sp, sp, #{}\n", .{self.stack_size});
+
+                self.stack.clearAndFree();
+                self.stack_offsets.clearAndFree();
+                self.stack_map.clearAndFree();
             },
 
             .inline_assembly => {
@@ -94,37 +113,10 @@ pub fn render(self: *Aarch64Backend) Error!void {
             },
 
             .@"return" => {
-                if (self.stack.items.len != 0) {
-                    try self.popRegister(0);
-                }
-
-                try self.functionEpilogue();
-
                 try text_section_writer.print("\tret\n", .{});
             },
         }
     }
-}
-
-fn functionProluge(self: *Aarch64Backend) Error!void {
-    const text_section_writer = self.assembly.text_section.writer();
-
-    try text_section_writer.print("\tsub sp, sp, #{}\n", .{self.stack_size});
-    try text_section_writer.print("\tstp x29, x30, [sp, #{}]\n", .{self.stack_alignment});
-    try text_section_writer.print("\tadd x29, sp, #{}\n", .{self.stack_alignment});
-
-    try self.stack_offsets.append(0);
-}
-
-fn functionEpilogue(self: *Aarch64Backend) Error!void {
-    const text_section_writer = self.assembly.text_section.writer();
-
-    try text_section_writer.print("\tldp x29, x30, [sp, #{}]\n", .{self.stack_alignment});
-    try text_section_writer.print("\tadd sp, sp, #{}\n", .{self.stack_size});
-
-    self.stack.clearAndFree();
-    self.stack_offsets.clearAndFree();
-    self.stack_map.clearAndFree();
 }
 
 fn pushRegister(self: *Aarch64Backend, register_number: u8, register_info: RegisterInfo) Error!void {

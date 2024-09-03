@@ -9,8 +9,10 @@ pub const Instruction = union(enum) {
     store: Store,
     load: Load,
     label: Label,
+    function_proluge,
+    function_epilogue,
     inline_assembly: InlineAssembly,
-    @"return": void,
+    @"return",
 
     pub const Store = struct {
         name: []const u8,

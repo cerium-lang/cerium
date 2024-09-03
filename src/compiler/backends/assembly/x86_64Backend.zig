@@ -89,8 +89,25 @@ pub fn render(self: *x86_64Backend) Error!void {
             .label => {
                 try text_section_writer.print(".global {s}\n", .{instruction.label.name});
                 try text_section_writer.print("{s}:\n", .{instruction.label.name});
+            },
 
-                try self.functionProluge();
+            .function_proluge => {
+                try text_section_writer.print("\tpushq %rbp\n", .{});
+                try text_section_writer.print("\tmovq %rsp, %rbp\n", .{});
+
+                try self.stack_offsets.append(0);
+            },
+
+            .function_epilogue => {
+                if (self.stack.items.len != 0) {
+                    try self.popRegister("ax");
+                }
+
+                try text_section_writer.print("\tpopq %rbp\n", .{});
+
+                self.stack.clearAndFree();
+                self.stack_offsets.clearAndFree();
+                self.stack_map.clearAndFree();
             },
 
             .inline_assembly => {
@@ -98,35 +115,10 @@ pub fn render(self: *x86_64Backend) Error!void {
             },
 
             .@"return" => {
-                if (self.stack.items.len != 0) {
-                    try self.popRegister("ax");
-                }
-
-                try self.functionEpilogue();
-
                 try text_section_writer.print("\tretq\n", .{});
             },
         }
     }
-}
-
-fn functionProluge(self: *x86_64Backend) Error!void {
-    const text_section_writer = self.assembly.text_section.writer();
-
-    try text_section_writer.print("\tpushq %rbp\n", .{});
-    try text_section_writer.print("\tmovq %rsp, %rbp\n", .{});
-
-    try self.stack_offsets.append(0);
-}
-
-fn functionEpilogue(self: *x86_64Backend) Error!void {
-    const text_section_writer = self.assembly.text_section.writer();
-
-    try text_section_writer.print("\tpopq %rbp\n", .{});
-
-    self.stack.clearAndFree();
-    self.stack_offsets.clearAndFree();
-    self.stack_map.clearAndFree();
 }
 
 fn suffixToNumber(register_suffix: []const u8) u8 {
