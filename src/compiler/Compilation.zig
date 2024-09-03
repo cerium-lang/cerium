@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const Ast = @import("Ast.zig");
-
+const Assembly = @import("Assembly.zig");
 const Ir = @import("Ir.zig");
 
 const Compilation = @This();
@@ -88,12 +88,9 @@ pub fn generateIr(self: *Compilation, ast: Ast) ?Ir {
 }
 
 pub fn renderAssembly(self: *Compilation, ir: Ir) ?[]const u8 {
-    const Aarch64Backend = @import("backends/assembly/Aarch64Backend.zig");
-    const x86_64Backend = @import("backends/assembly/x86_64Backend.zig");
-
     return switch (self.env.target.cpu.arch) {
         .aarch64 => blk: {
-            var backend = Aarch64Backend.init(self.allocator, ir);
+            var backend = Assembly.Aarch64.init(self.allocator, ir);
 
             backend.render() catch |err| {
                 std.debug.print("{s}\n", .{errorDescription(err)});
@@ -105,7 +102,7 @@ pub fn renderAssembly(self: *Compilation, ir: Ir) ?[]const u8 {
         },
 
         .x86_64 => blk: {
-            var backend = x86_64Backend.init(self.allocator, ir);
+            var backend = Assembly.X86_64.init(self.allocator, ir);
 
             backend.render() catch |err| {
                 std.debug.print("{s}\n", .{errorDescription(err)});
