@@ -1,5 +1,186 @@
 const std = @import("std");
-const Driver = @import("Driver.zig");
+const builtin = @import("builtin");
+
+const Compilation = @import("compiler/Compilation.zig");
+
+const Cli = struct {
+    allocator: std.mem.Allocator,
+
+    program: []const u8,
+    command: ?Command = null,
+
+    const Command = union(enum) {
+        compile: Compile,
+        help,
+
+        const Compile = struct {
+            file_path: []const u8,
+
+            const usage =
+                \\Usage:
+                \\  {s} compile <file_path>
+                \\
+                \\
+            ;
+        };
+    };
+
+    const usage =
+        \\Usage:
+        \\  {s} <command> [arguments]
+        \\
+        \\Commands:
+        \\  compile <file_path>     -- compile certain file
+        \\  help                    -- print this help message
+        \\
+        \\
+    ;
+
+    fn errorDescription(e: anyerror) []const u8 {
+        return switch (e) {
+            error.OutOfMemory => "ran out of memory",
+            error.FileNotFound => "no such file or directory",
+            error.IsDir => "is a directory",
+            error.NotDir => "is not a directory",
+            error.NotOpenForReading => "is not open for reading",
+            error.NotOpenForWriting => "is not open for writing",
+            error.InvalidUtf8 => "invalid UTF-8",
+            error.FileBusy => "file is busy",
+            error.NameTooLong => "name is too long",
+            error.AccessDenied => "access denied",
+            error.FileTooBig, error.StreamTooLong => "file is too big",
+            error.ProcessFdQuotaExceeded, error.SystemFdQuotaExceeded => "ran out of file descriptors",
+            error.SystemResources => "ran out of system resources",
+            error.FatalError => "a fatal error occurred",
+            error.Unexpected => "an unexpected error occurred",
+            else => @errorName(e),
+        };
+    }
+
+    fn parse(allocator: std.mem.Allocator, argument_iterator: *std.process.ArgIterator) ?Cli {
+        var self: Cli = .{
+            .allocator = allocator,
+            .program = argument_iterator.next().?,
+        };
+
+        while (argument_iterator.next()) |argument| {
+            if (std.mem.eql(u8, argument, "compile")) {
+                const maybe_file_path = argument_iterator.next();
+
+                if (maybe_file_path == null) {
+                    std.debug.print(Command.Compile.usage, .{self.program});
+
+                    std.debug.print("Error: expected a file_path\n", .{});
+
+                    return null;
+                }
+
+                const file_path = maybe_file_path.?;
+
+                self.command = .{ .compile = .{ .file_path = file_path } };
+            } else if (std.mem.eql(u8, argument, "help")) {
+                self.command = .help;
+            } else {
+                std.debug.print(usage, .{self.program});
+
+                std.debug.print("Error: {s} is an unknown command\n", .{argument});
+
+                return null;
+            }
+        }
+
+        if (self.command == null) {
+            std.debug.print(usage, .{self.program});
+
+            std.debug.print("Error: no command provided\n", .{});
+
+            return null;
+        }
+
+        return self;
+    }
+
+    fn executeCompileCommand(self: Cli) u8 {
+        const options = self.command.?.compile;
+
+        const input_file_content = blk: {
+            const input_file = std.fs.cwd().openFile(options.file_path, .{}) catch |err| {
+                std.debug.print("{s}: {s}\n", .{ options.file_path, errorDescription(err) });
+
+                return 1;
+            };
+
+            defer input_file.close();
+
+            break :blk input_file.readToEndAllocOptions(self.allocator, std.math.maxInt(u32), null, @alignOf(u8), 0) catch |err| switch (err) {
+                error.OutOfMemory => {
+                    std.debug.print("{s}\n", .{errorDescription(err)});
+
+                    return 1;
+                },
+
+                else => {
+                    std.debug.print("{s}: {s}\n", .{ options.file_path, errorDescription(err) });
+
+                    return 1;
+                },
+            };
+        };
+
+        if (input_file_content.len == 0) {
+            return 0;
+        }
+
+        var compilation = Compilation.init(self.allocator, .{ .source_file_path = options.file_path, .target = builtin.target });
+
+        const root = compilation.parse(input_file_content) orelse return 1;
+
+        const ir = compilation.compile_ir(root) orelse return 1;
+
+        const input_file_path_stem = std.fs.path.stem(options.file_path);
+
+        var output_file_path = std.ArrayList(u8).initCapacity(self.allocator, input_file_path_stem.len + 2) catch |err| {
+            std.debug.print("{s}\n", .{errorDescription(err)});
+
+            return 1;
+        };
+
+        output_file_path.appendSliceAssumeCapacity(input_file_path_stem);
+        output_file_path.appendSliceAssumeCapacity(".s");
+
+        const owned_output_file_path = output_file_path.toOwnedSlice() catch |err| {
+            std.debug.print("{s}\n", .{errorDescription(err)});
+
+            return 1;
+        };
+
+        defer self.allocator.free(owned_output_file_path);
+
+        const output_file = std.fs.cwd().createFile(owned_output_file_path, .{}) catch |err| {
+            std.debug.print("couldn't create output file: {s}\n", .{errorDescription(err)});
+
+            return 1;
+        };
+
+        defer output_file.close();
+
+        const output_assembly = compilation.ir_assembly(ir) orelse return 1;
+
+        output_file.writer().writeAll(output_assembly) catch |err| {
+            std.debug.print("couldn't write the output assembly: {s}\n", .{errorDescription(err)});
+
+            return 1;
+        };
+
+        return 0;
+    }
+
+    fn executeHelpCommand(self: Cli) u8 {
+        std.debug.print(usage, .{self.program});
+
+        return 0;
+    }
+};
 
 pub fn main() u8 {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -7,17 +188,20 @@ pub fn main() u8 {
     var arena_instance = std.heap.ArenaAllocator.init(gpa.allocator());
     defer arena_instance.deinit();
 
-    const arena = arena_instance.allocator();
+    const allocator = arena_instance.allocator();
 
-    var arg_iterator = std.process.ArgIterator.initWithAllocator(arena) catch {
+    var argument_iterator = std.process.ArgIterator.initWithAllocator(allocator) catch {
         std.debug.print("ran out of memory\n", .{});
 
         return 1;
     };
 
-    defer arg_iterator.deinit();
+    defer argument_iterator.deinit();
 
-    var driver = Driver.init(arena);
+    const cli = Cli.parse(allocator, &argument_iterator) orelse return 1;
 
-    return driver.run(&arg_iterator);
+    switch (cli.command.?) {
+        .compile => return cli.executeCompileCommand(),
+        .help => return cli.executeHelpCommand(),
+    }
 }
