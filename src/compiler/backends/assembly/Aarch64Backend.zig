@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const IR = @import("../../IR.zig");
+const Ir = @import("../../Ir.zig");
 const Assembly = @import("Assembly.zig");
 
 const Aarch64Backend = @This();
@@ -9,7 +9,7 @@ allocator: std.mem.Allocator,
 
 assembly: Assembly,
 
-ir: IR,
+ir: Ir,
 
 stack: std.ArrayList(RegisterInfo),
 stack_offsets: std.ArrayList(usize),
@@ -22,7 +22,7 @@ const RegisterInfo = struct {
     prefix: u8,
 };
 
-pub fn init(allocator: std.mem.Allocator, ir: IR) Aarch64Backend {
+pub fn init(allocator: std.mem.Allocator, ir: Ir) Aarch64Backend {
     return Aarch64Backend{
         .allocator = allocator,
         .assembly = Assembly.init(allocator),

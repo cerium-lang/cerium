@@ -2,8 +2,7 @@ const std = @import("std");
 
 const Ast = @import("Ast.zig");
 
-const IR = @import("IR.zig");
-const CodeGen = @import("CodeGen.zig");
+const Ir = @import("Ir.zig");
 
 const Compilation = @This();
 
@@ -68,10 +67,10 @@ pub fn parse(self: *Compilation, input: [:0]const u8) ?Ast {
     return ast;
 }
 
-pub fn compile_ir(self: *Compilation, ast: Ast) ?IR {
-    var codegen = CodeGen.init(self.allocator);
+pub fn generateIr(self: *Compilation, ast: Ast) ?Ir {
+    var ir_generator = Ir.Generator.init(self.allocator);
 
-    const ir = codegen.compile(ast) catch |err| switch (err) {
+    const ir = ir_generator.generate(ast) catch |err| switch (err) {
         error.OutOfMemory => {
             std.debug.print("{s}\n", .{errorDescription(err)});
 
@@ -79,7 +78,7 @@ pub fn compile_ir(self: *Compilation, ast: Ast) ?IR {
         },
 
         else => {
-            std.debug.print("{s}:{}:{}: {s}\n", .{ self.env.source_file_path, codegen.error_info.?.source_loc.line, codegen.error_info.?.source_loc.column, codegen.error_info.?.message });
+            std.debug.print("{s}:{}:{}: {s}\n", .{ self.env.source_file_path, ir_generator.error_info.?.source_loc.line, ir_generator.error_info.?.source_loc.column, ir_generator.error_info.?.message });
 
             return null;
         },
@@ -88,7 +87,7 @@ pub fn compile_ir(self: *Compilation, ast: Ast) ?IR {
     return ir;
 }
 
-pub fn ir_assembly(self: *Compilation, ir: IR) ?[]const u8 {
+pub fn renderAssembly(self: *Compilation, ir: Ir) ?[]const u8 {
     const Aarch64Backend = @import("backends/assembly/Aarch64Backend.zig");
     const x86_64Backend = @import("backends/assembly/x86_64Backend.zig");
 

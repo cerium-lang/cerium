@@ -133,9 +133,9 @@ const Cli = struct {
 
         var compilation = Compilation.init(self.allocator, .{ .source_file_path = options.file_path, .target = builtin.target });
 
-        const root = compilation.parse(input_file_content) orelse return 1;
+        const ast = compilation.parse(input_file_content) orelse return 1;
 
-        const ir = compilation.compile_ir(root) orelse return 1;
+        const ir = compilation.generateIr(ast) orelse return 1;
 
         const input_file_path_stem = std.fs.path.stem(options.file_path);
 
@@ -164,7 +164,7 @@ const Cli = struct {
 
         defer output_file.close();
 
-        const output_assembly = compilation.ir_assembly(ir) orelse return 1;
+        const output_assembly = compilation.renderAssembly(ir) orelse return 1;
 
         output_file.writer().writeAll(output_assembly) catch |err| {
             std.debug.print("couldn't write the output assembly: {s}\n", .{errorDescription(err)});
