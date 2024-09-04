@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const Ir = @import("Ir.zig");
+const Lir = @import("Lir.zig");
 
 const Assembly = @This();
 
@@ -27,7 +27,9 @@ pub const Aarch64 = struct {
 
     assembly: Assembly,
 
-    ir: Ir,
+    lir: Lir,
+
+    string_literals_index: usize = 0,
 
     stack: std.ArrayList(RegisterInfo),
     stack_offsets: std.ArrayList(usize),
@@ -39,11 +41,11 @@ pub const Aarch64 = struct {
         prefix: u8,
     };
 
-    pub fn init(allocator: std.mem.Allocator, ir: Ir) Aarch64 {
+    pub fn init(allocator: std.mem.Allocator, lir: Lir) Aarch64 {
         return Aarch64{
             .allocator = allocator,
             .assembly = Assembly.init(allocator),
-            .ir = ir,
+            .lir = lir,
             .stack = std.ArrayList(RegisterInfo).init(allocator),
             .stack_offsets = std.ArrayList(usize).init(allocator),
             .stack_map = std.StringHashMap(usize).init(allocator),
@@ -56,59 +58,18 @@ pub const Aarch64 = struct {
         const text_section_writer = self.assembly.text_section.writer();
         const rodata_section_writer = self.assembly.rodata_section.writer();
 
-        for (self.ir.instructions, 0..) |instruction, i| {
+        for (self.lir.instructions.items, 0..) |instruction, i| {
             switch (instruction) {
-                .store => {
-                    try self.stack_map.put(instruction.store.name, self.stack.items.len - 1);
-                },
-
-                .load => switch (instruction.load) {
-                    .name => {
-                        const stack_loc = self.stack_map.get(instruction.load.name).?;
-
-                        const register_info = self.stack.items[stack_loc];
-
-                        try text_section_writer.print("\tldr {c}8, [x29, #{}]\n", .{ register_info.prefix, self.stack_offsets.items[stack_loc + 1] });
-
-                        try self.pushRegister(8, register_info);
-                    },
-
-                    .string => {
-                        try rodata_section_writer.print("\tstr{}: .asciz \"{s}\"\n", .{ instruction.load.string, self.ir.string_literals[instruction.load.string] });
-                        try text_section_writer.print("\tadr x8, str{}\n", .{instruction.load.string});
-
-                        try self.pushRegister(8, .{ .prefix = 'x' });
-                    },
-
-                    .char => {
-                        try text_section_writer.print("\tmov w8, #{}\n", .{instruction.load.char});
-
-                        try self.pushRegister(8, .{ .prefix = 'w' });
-                    },
-
-                    .int => {
-                        try text_section_writer.print("\tmov x8, #{}\n", .{instruction.load.int});
-
-                        try self.pushRegister(8, .{ .prefix = 'x' });
-                    },
-
-                    .float => {
-                        try text_section_writer.print("\tfmov d8, #{}\n", .{instruction.load.float});
-
-                        try self.pushRegister(8, .{ .prefix = 'd' });
-                    },
-                },
-
-                .label => {
-                    try text_section_writer.print(".global {s}\n", .{instruction.label.name});
-                    try text_section_writer.print("{s}:\n", .{instruction.label.name});
+                .label => |label| {
+                    try text_section_writer.print(".global {s}\n", .{label});
+                    try text_section_writer.print("{s}:\n", .{label});
                 },
 
                 .function_proluge => {
                     self.stack_size = self.stack_alignment;
 
-                    for (self.ir.instructions[i..]) |other_instruction| {
-                        if (other_instruction == .store) {
+                    for (self.lir.instructions.items[i..]) |other_instruction| {
+                        if (other_instruction == .set) {
                             self.stack_size += self.stack_alignment;
                         } else if (other_instruction == .function_epilogue) {
                             break;
@@ -135,8 +96,47 @@ pub const Aarch64 = struct {
                     self.stack_map.clearAndFree();
                 },
 
-                .inline_assembly => {
-                    try text_section_writer.print("\t{s}\n", .{instruction.inline_assembly.content});
+                .set => |name| {
+                    try self.stack_map.put(name, self.stack.items.len - 1);
+                },
+
+                .get => |name| {
+                    const stack_loc = self.stack_map.get(name).?;
+
+                    const register_info = self.stack.items[stack_loc];
+
+                    try text_section_writer.print("\tldr {c}8, [x29, #{}]\n", .{ register_info.prefix, self.stack_offsets.items[stack_loc + 1] });
+
+                    try self.pushRegister(8, register_info);
+                },
+
+                .string => |string| {
+                    try rodata_section_writer.print("\tstr{}: .asciz \"{s}\"\n", .{ self.string_literals_index, string });
+                    try text_section_writer.print("\tadr x8, str{}\n", .{self.string_literals_index});
+
+                    self.string_literals_index += 1;
+
+                    try self.pushRegister(8, .{ .prefix = 'x' });
+                },
+
+                .int => |int| {
+                    try text_section_writer.print("\tmov x8, #{}\n", .{int});
+
+                    try self.pushRegister(8, .{ .prefix = 'x' });
+                },
+
+                .float => |float| {
+                    try text_section_writer.print("\tfmov d8, #{}\n", .{float});
+
+                    try self.pushRegister(8, .{ .prefix = 'd' });
+                },
+
+                .@"asm" => |content| {
+                    try text_section_writer.print("\t{s}\n", .{content});
+                },
+
+                .pop => {
+                    try self.popRegister(8);
                 },
 
                 .@"return" => {
@@ -195,32 +195,32 @@ pub const Aarch64 = struct {
 };
 
 pub const X86_64 = struct {
+    allocator: std.mem.Allocator,
+
     assembly: Assembly,
 
-    ir: Ir,
+    lir: Lir,
 
     stack: std.ArrayList(RegisterInfo),
     stack_offsets: std.ArrayList(usize),
     stack_map: std.StringHashMap(usize),
     stack_alignment: usize = 16,
 
-    floating_points: std.ArrayList(f64),
-
-    allocator: std.mem.Allocator,
+    string_literals_index: usize = 0,
+    floating_points_index: usize = 0,
 
     const RegisterInfo = struct {
         floating_point: bool,
     };
 
-    pub fn init(allocator: std.mem.Allocator, ir: Ir) X86_64 {
+    pub fn init(allocator: std.mem.Allocator, lir: Lir) X86_64 {
         return X86_64{
             .allocator = allocator,
             .assembly = Assembly.init(allocator),
-            .ir = ir,
+            .lir = lir,
             .stack = std.ArrayList(RegisterInfo).init(allocator),
             .stack_offsets = std.ArrayList(usize).init(allocator),
             .stack_map = std.StringHashMap(usize).init(allocator),
-            .floating_points = std.ArrayList(f64).init(allocator),
         };
     }
 
@@ -230,54 +230,11 @@ pub const X86_64 = struct {
         const text_section_writer = self.assembly.text_section.writer();
         const rodata_section_writer = self.assembly.rodata_section.writer();
 
-        for (self.ir.instructions) |instruction| {
+        for (self.lir.instructions.items) |instruction| {
             switch (instruction) {
-                .store => {
-                    try self.stack_map.put(instruction.store.name, self.stack.items.len - 1);
-                },
-
-                .load => switch (instruction.load) {
-                    .name => {
-                        const stack_loc = self.stack_map.get(instruction.load.name).?;
-
-                        const register_info = self.stack.items[stack_loc];
-
-                        try self.copyFromStack("8", register_info, self.stack_offsets.items[stack_loc + 1]);
-
-                        try self.pushRegister("8", register_info);
-                    },
-
-                    .string => {
-                        try rodata_section_writer.print("\tstr{}: .asciz \"{s}\"\n", .{ instruction.load.string, self.ir.string_literals[instruction.load.string] });
-                        try text_section_writer.print("\tleaq str{}(%rip), %r8\n", .{instruction.load.string});
-
-                        try self.pushRegister("8", .{ .floating_point = false });
-                    },
-
-                    .char => {
-                        try text_section_writer.print("\tmovq ${}, %r8\n", .{instruction.load.char});
-
-                        try self.pushRegister("8", .{ .floating_point = false });
-                    },
-
-                    .int => {
-                        try text_section_writer.print("\tmovq ${}, %r8\n", .{instruction.load.int});
-
-                        try self.pushRegister("8", .{ .floating_point = false });
-                    },
-
-                    .float => {
-                        try self.floating_points.append(instruction.load.float);
-
-                        try text_section_writer.print("\tmovsd flt{}, %xmm8\n", .{self.floating_points.items.len - 1});
-
-                        try self.pushRegister("8", .{ .floating_point = true });
-                    },
-                },
-
-                .label => {
-                    try text_section_writer.print(".global {s}\n", .{instruction.label.name});
-                    try text_section_writer.print("{s}:\n", .{instruction.label.name});
+                .label => |label| {
+                    try text_section_writer.print(".global {s}\n", .{label});
+                    try text_section_writer.print("{s}:\n", .{label});
                 },
 
                 .function_proluge => {
@@ -299,8 +256,50 @@ pub const X86_64 = struct {
                     self.stack_map.clearAndFree();
                 },
 
-                .inline_assembly => {
-                    try text_section_writer.print("\t{s}\n", .{instruction.inline_assembly.content});
+                .set => |name| {
+                    try self.stack_map.put(name, self.stack.items.len - 1);
+                },
+
+                .get => |name| {
+                    const stack_loc = self.stack_map.get(name).?;
+
+                    const register_info = self.stack.items[stack_loc];
+
+                    try self.copyFromStack("8", register_info, self.stack_offsets.items[stack_loc + 1]);
+
+                    try self.pushRegister("8", register_info);
+                },
+
+                .string => |string| {
+                    try rodata_section_writer.print("\tstr{}: .asciz \"{s}\"\n", .{ self.string_literals_index, string });
+                    try text_section_writer.print("\tleaq str{}(%rip), %r8\n", .{self.string_literals_index});
+
+                    self.string_literals_index += 1;
+
+                    try self.pushRegister("8", .{ .floating_point = false });
+                },
+
+                .int => |int| {
+                    try text_section_writer.print("\tmovq ${}, %r8\n", .{int});
+
+                    try self.pushRegister("8", .{ .floating_point = false });
+                },
+
+                .float => |float| {
+                    try rodata_section_writer.print("flt{}: .quad {}\n", .{ self.floating_points_index, @as(u64, @bitCast(float)) });
+                    try text_section_writer.print("\tmovsd flt{}(%rip), %xmm8\n", .{self.floating_points_index});
+
+                    self.floating_points_index += 1;
+
+                    try self.pushRegister("8", .{ .floating_point = true });
+                },
+
+                .@"asm" => |content| {
+                    try text_section_writer.print("\t{s}\n", .{content});
+                },
+
+                .pop => {
+                    try self.popRegister("8");
                 },
 
                 .@"return" => {
@@ -360,11 +359,6 @@ pub const X86_64 = struct {
 
         if (self.assembly.text_section.items.len > 0) {
             try result_writer.print(".section \".text\"\n", .{});
-
-            for (self.floating_points.items, 0..) |floating_point, i| {
-                try result_writer.print("flt{}: .quad {}\n", .{ i, @as(u64, @bitCast(floating_point)) });
-            }
-
             try result_writer.writeAll(self.assembly.text_section.items);
         }
 

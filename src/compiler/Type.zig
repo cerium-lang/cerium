@@ -33,3 +33,19 @@ pub fn toString(self: Type) []const u8 {
         .f64_type => "f64",
     };
 }
+
+pub fn isInt(self: Type) bool {
+    return switch (self.tag) {
+        .u8_type, .u16_type, .u32_type, .u64_type, .i8_type, .i16_type, .i32_type, .i64_type => true,
+
+        else => false,
+    };
+}
+
+pub fn isFloat(self: Type) bool {
+    return switch (self.tag) {
+        .f32_type, .f64_type => true,
+
+        else => false,
+    };
+}

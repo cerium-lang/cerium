@@ -1,3 +1,7 @@
+//! Abstract Syntax Tree.
+//!
+//! A tree that represents how the syntax is expressed, mainly just a step before lowering to HIR.
+
 const std = @import("std");
 
 const Token = @import("Token.zig");
@@ -25,7 +29,7 @@ pub const Node = union(enum) {
     pub const Stmt = union(enum) {
         function_declaration: FunctionDeclaration,
         variable_declaration: VariableDeclaration,
-        inline_assembly: InlineAssembly,
+        @"asm": Assembly,
         @"return": Return,
 
         pub const FunctionDeclaration = struct {
@@ -50,8 +54,9 @@ pub const Node = union(enum) {
             value: Node.Expr,
         };
 
-        pub const InlineAssembly = struct {
+        pub const Assembly = struct {
             content: []const u8,
+            source_loc: SourceLoc,
         };
 
         pub const Return = struct {
@@ -76,7 +81,7 @@ pub const Node = union(enum) {
         };
 
         pub const Int = struct {
-            value: i64,
+            value: u64,
             source_loc: SourceLoc,
         };
 
@@ -84,6 +89,15 @@ pub const Node = union(enum) {
             value: f64,
             source_loc: SourceLoc,
         };
+
+        pub fn getSourceLoc(self: Expr) SourceLoc {
+            return switch (self) {
+                .identifier => |identifier| identifier.name.source_loc,
+                .string => |string| string.source_loc,
+                .int => |int| int.source_loc,
+                .float => |float| float.source_loc,
+            };
+        }
     };
 };
 
@@ -288,7 +302,7 @@ pub const Parser = struct {
 
             .keyword_fn => return self.parseFunctionDeclarationStmt(),
 
-            .keyword_asm => self.parseInlineAssemblyStmt(),
+            .keyword_asm => self.parseAssemblyStmt(),
 
             .keyword_return => self.parseReturnStmt(),
 
@@ -322,21 +336,22 @@ pub const Parser = struct {
         };
     }
 
-    fn parseInlineAssemblyStmt(self: *Parser) Error!Node {
+    fn parseAssemblyStmt(self: *Parser) Error!Node {
         _ = self.nextToken();
 
-        if (self.peekToken().tag != .string_literal) {
-            self.error_info = .{ .message = "expected the content of inline assembly to be a string literal", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+        const token = self.nextToken();
+
+        if (token.tag != .string_literal) {
+            self.error_info = .{ .message = "expected the content of assembly to be a string literal", .source_loc = self.tokenSourceLoc(token) };
 
             return error.UnexpectedToken;
         }
 
-        const content = self.tokenValue(self.nextToken());
-
         return Node{
             .stmt = .{
-                .inline_assembly = .{
-                    .content = content,
+                .@"asm" = .{
+                    .content = self.tokenValue(token),
+                    .source_loc = self.tokenSourceLoc(token),
                 },
             },
         };
@@ -420,7 +435,7 @@ pub const Parser = struct {
     }
 
     fn parseIntExpr(self: *Parser) Error!Node {
-        const value = std.fmt.parseInt(i64, self.tokenValue(self.peekToken()), 10) catch {
+        const value = std.fmt.parseInt(u64, self.tokenValue(self.peekToken()), 10) catch {
             self.error_info = .{ .message = "invalid number", .source_loc = self.tokenSourceLoc(self.peekToken()) };
 
             return error.InvalidNumber;

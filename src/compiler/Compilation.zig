@@ -2,7 +2,9 @@ const std = @import("std");
 
 const Ast = @import("Ast.zig");
 const Assembly = @import("Assembly.zig");
-const Ir = @import("Ir.zig");
+const Hir = @import("Hir.zig");
+const Lir = @import("Lir.zig");
+const Sema = @import("Sema.zig");
 
 const Compilation = @This();
 
@@ -67,10 +69,10 @@ pub fn parse(self: *Compilation, input: [:0]const u8) ?Ast {
     return ast;
 }
 
-pub fn generateIr(self: *Compilation, ast: Ast) ?Ir {
-    var ir_generator = Ir.Generator.init(self.allocator);
+pub fn generateHir(self: *Compilation, ast: Ast) ?Hir {
+    var hir_generator = Hir.Generator.init(self.allocator);
 
-    const ir = ir_generator.generate(ast) catch |err| switch (err) {
+    hir_generator.generate(ast) catch |err| switch (err) {
         error.OutOfMemory => {
             std.debug.print("{s}\n", .{errorDescription(err)});
 
@@ -78,19 +80,39 @@ pub fn generateIr(self: *Compilation, ast: Ast) ?Ir {
         },
 
         else => {
-            std.debug.print("{s}:{}:{}: {s}\n", .{ self.env.source_file_path, ir_generator.error_info.?.source_loc.line, ir_generator.error_info.?.source_loc.column, ir_generator.error_info.?.message });
+            std.debug.print("{s}:{}:{}: {s}\n", .{ self.env.source_file_path, hir_generator.error_info.?.source_loc.line, hir_generator.error_info.?.source_loc.column, hir_generator.error_info.?.message });
 
             return null;
         },
     };
 
-    return ir;
+    return hir_generator.hir;
 }
 
-pub fn renderAssembly(self: *Compilation, ir: Ir) ?[]const u8 {
+pub fn analyzeSemantics(self: *Compilation, hir: Hir) ?Lir {
+    var sema = Sema.init(self.allocator);
+
+    sema.analyze(hir) catch |err| switch (err) {
+        error.OutOfMemory => {
+            std.debug.print("{s}\n", .{errorDescription(err)});
+
+            return null;
+        },
+
+        else => {
+            std.debug.print("{s}:{}:{}: {s}\n", .{ self.env.source_file_path, sema.error_info.?.source_loc.line, sema.error_info.?.source_loc.column, sema.error_info.?.message });
+
+            return null;
+        },
+    };
+
+    return sema.lir;
+}
+
+pub fn renderAssembly(self: *Compilation, lir: Lir) ?[]const u8 {
     return switch (self.env.target.cpu.arch) {
         .aarch64 => blk: {
-            var backend = Assembly.Aarch64.init(self.allocator, ir);
+            var backend = Assembly.Aarch64.init(self.allocator, lir);
 
             backend.render() catch |err| {
                 std.debug.print("{s}\n", .{errorDescription(err)});
@@ -102,7 +124,7 @@ pub fn renderAssembly(self: *Compilation, ir: Ir) ?[]const u8 {
         },
 
         .x86_64 => blk: {
-            var backend = Assembly.X86_64.init(self.allocator, ir);
+            var backend = Assembly.X86_64.init(self.allocator, lir);
 
             backend.render() catch |err| {
                 std.debug.print("{s}\n", .{errorDescription(err)});
