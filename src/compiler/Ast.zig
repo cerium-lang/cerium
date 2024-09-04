@@ -2,7 +2,7 @@ const std = @import("std");
 
 const Token = @import("Token.zig");
 const Lexer = @import("Lexer.zig");
-const Type = @import("type.zig").Type;
+const Type = @import("Type.zig");
 
 const Ast = @This();
 
@@ -63,7 +63,6 @@ pub const Node = union(enum) {
     pub const Expr = union(enum) {
         identifier: Identifier,
         string: String,
-        char: Char,
         int: Int,
         float: Float,
 
@@ -73,11 +72,6 @@ pub const Node = union(enum) {
 
         pub const String = struct {
             value: []const u8,
-            source_loc: SourceLoc,
-        };
-
-        pub const Char = struct {
-            value: u8,
             source_loc: SourceLoc,
         };
 
@@ -399,19 +393,27 @@ pub const Parser = struct {
     }
 
     fn parseCharExpr(self: *Parser) Error!Node {
-        if (self.tokenValue(self.peekToken()).len != 1) {
-            self.error_info = .{ .message = "invalid character literal: expected only one character", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+        const token = self.nextToken();
+        const encoded = self.tokenValue(token);
+        const location = self.tokenSourceLoc(token);
+
+        const decoded = switch (encoded.len) {
+            1 => encoded[0],
+            2 => std.unicode.utf8Decode2(encoded[0..2].*),
+            3 => std.unicode.utf8Decode3(encoded[0..3].*),
+            4 => std.unicode.utf8Decode4(encoded[0..4].*),
+            else => error.TooMuchCodes,
+        } catch {
+            self.error_info = .{ .message = "invalid character literal", .source_loc = location };
 
             return error.InvalidChar;
-        }
-
-        const literal_token = self.nextToken();
+        };
 
         return Node{
             .expr = .{
-                .char = .{
-                    .value = self.tokenValue(literal_token)[0],
-                    .source_loc = self.tokenSourceLoc(literal_token),
+                .int = .{
+                    .value = decoded,
+                    .source_loc = self.tokenSourceLoc(token),
                 },
             },
         };
@@ -438,13 +440,29 @@ pub const Parser = struct {
     }
 
     fn parseType(self: *Parser) Error!Type {
-        const builtin_types = std.StaticStringMap(Type).initComptime(.{ .{ "void", .void_type }, .{ "string", .string_type }, .{ "char", .char_type }, .{ "int", .int_type }, .{ "float", .float_type } });
+        const builtin_types = std.StaticStringMap(Type).initComptime(
+            .{
+                .{ "void", .{ .tag = .void_type } },
+                .{ "string", .{ .tag = .string_type } },
+                .{ "u8", .{ .tag = .u8_type } },
+                .{ "u16", .{ .tag = .u16_type } },
+                .{ "u32", .{ .tag = .u32_type } },
+                .{ "u64", .{ .tag = .u64_type } },
+                .{ "i8", .{ .tag = .i8_type } },
+                .{ "i16", .{ .tag = .i16_type } },
+                .{ "i32", .{ .tag = .i32_type } },
+                .{ "i64", .{ .tag = .i64_type } },
+                .{ "f32", .{ .tag = .f32_type } },
+                .{ "f64", .{ .tag = .f64_type } },
+            },
+        );
 
         switch (self.peekToken().tag) {
             .identifier => {
-                if (builtin_types.get(self.tokenValue(self.peekToken()))) |builtinType| {
+                if (builtin_types.get(self.tokenValue(self.peekToken()))) |builtin_type| {
                     _ = self.nextToken();
-                    return builtinType;
+
+                    return builtin_type;
                 } else {
                     self.error_info = .{ .message = "invalid type", .source_loc = self.tokenSourceLoc(self.peekToken()) };
 

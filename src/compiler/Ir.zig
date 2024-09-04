@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const Ast = @import("Ast.zig");
-const Type = @import("type.zig").Type;
+const Type = @import("Type.zig");
 const SymbolTable = @import("SymbolTable.zig");
 
 const Ir = @This();
@@ -123,7 +123,7 @@ pub const Generator = struct {
         }
 
         if (!self.function_returned) {
-            if (self.function.?.prototype.return_type == .void_type) {
+            if (self.function.?.prototype.return_type.tag == .void_type) {
                 try self.instructions.append(.function_epilogue);
 
                 try self.instructions.append(.@"return");
@@ -147,12 +147,12 @@ pub const Generator = struct {
             return error.UnsupportedFeature;
         }
 
-        if (variable.type != self.inferType(variable.value)) {
-            var buf = std.ArrayList(u8).init(self.allocator);
+        if (variable.type.tag != self.inferType(variable.value).tag) {
+            var error_message_buf = std.ArrayList(u8).init(self.allocator);
 
-            try buf.writer().print("expected type '{s}' got '{s}'", .{ variable.type.to_string(), self.inferType(variable.value).to_string() });
+            try error_message_buf.writer().print("expected type '{s}' got '{s}'", .{ variable.type.toString(), self.inferType(variable.value).toString() });
 
-            self.error_info = .{ .message = try buf.toOwnedSlice(), .source_loc = variable.name.source_loc };
+            self.error_info = .{ .message = try error_message_buf.toOwnedSlice(), .source_loc = variable.name.source_loc };
 
             return error.MismatchedTypes;
         }
@@ -172,18 +172,18 @@ pub const Generator = struct {
     }
 
     fn generateReturnStmt(self: *Generator, @"return": Ast.Node.Stmt.Return) Error!void {
-        if (self.function.?.prototype.return_type == .void_type) {
+        if (self.function.?.prototype.return_type.tag == .void_type) {
             self.error_info = .{ .message = "didn't expect function with void return type to explicitly return", .source_loc = @"return".source_loc };
 
             return error.UnexpectedReturn;
         }
 
-        if (self.function.?.prototype.return_type != self.inferType(@"return".value)) {
-            var buf = std.ArrayList(u8).init(self.allocator);
+        if (self.function.?.prototype.return_type.tag != self.inferType(@"return".value).tag) {
+            var error_message_buf = std.ArrayList(u8).init(self.allocator);
 
-            try buf.writer().print("expected return type '{s}' got '{s}'", .{ self.function.?.prototype.return_type.to_string(), self.inferType(@"return".value).to_string() });
+            try error_message_buf.writer().print("expected return type '{s}' got '{s}'", .{ self.function.?.prototype.return_type.toString(), self.inferType(@"return".value).toString() });
 
-            self.error_info = .{ .message = try buf.toOwnedSlice(), .source_loc = @"return".source_loc };
+            self.error_info = .{ .message = try error_message_buf.toOwnedSlice(), .source_loc = @"return".source_loc };
 
             return error.MismatchedTypes;
         }
@@ -201,11 +201,11 @@ pub const Generator = struct {
         return switch (expr) {
             .identifier => {
                 if (self.symbol_table.lookup(expr.identifier.name.buffer) == error.Undeclared) {
-                    var buf = std.ArrayList(u8).init(self.allocator);
+                    var error_message_buf = std.ArrayList(u8).init(self.allocator);
 
-                    try buf.writer().print("{s} is not declared", .{expr.identifier.name.buffer});
+                    try error_message_buf.writer().print("{s} is not declared", .{expr.identifier.name.buffer});
 
-                    self.error_info = .{ .message = try buf.toOwnedSlice(), .source_loc = expr.identifier.name.source_loc };
+                    self.error_info = .{ .message = try error_message_buf.toOwnedSlice(), .source_loc = expr.identifier.name.source_loc };
 
                     return error.UndeclaredVariable;
                 }
@@ -219,10 +219,6 @@ pub const Generator = struct {
                 const index = self.string_literals.items.len - 1;
 
                 try self.instructions.append(.{ .load = .{ .string = index } });
-            },
-
-            .char => {
-                try self.instructions.append(.{ .load = .{ .char = expr.char.value } });
             },
 
             .int => {
@@ -245,10 +241,9 @@ pub const Generator = struct {
                 return symbol.type;
             },
 
-            .string => .string_type,
-            .char => .char_type,
-            .int => .int_type,
-            .float => .float_type,
+            .string => Type{ .tag = .string_type },
+            .int => Type{ .tag = .i64_type },
+            .float => Type{ .tag = .f64_type },
         };
     }
 };

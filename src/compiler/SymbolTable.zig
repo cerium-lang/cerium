@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const Name = @import("Ast.zig").Name;
-const Type = @import("type.zig").Type;
+const Type = @import("Type.zig");
 
 const SymbolTable = @This();
 
