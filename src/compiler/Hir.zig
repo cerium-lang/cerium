@@ -1,8 +1,8 @@
 //! High Intermediate Representation.
 //!
 //! An unchecked stack-based intermediate representation lowered from `Ast`.
-//! Passed to `Sema` which checks all the instructions and types to be valid and lowers it down to LIR,
-//! And then LIR gets lowered down to machine code.
+//! Passed to `Sema` which checks all the instructions and types to be valid and lowers it down to `Lir`,
+//! And then `Lir` gets lowered down to machine code.
 
 const std = @import("std");
 
@@ -22,7 +22,7 @@ pub const Instruction = union(enum) {
     function_epilogue,
     /// Declare a variable or a parameter
     declare: Declare,
-    /// Get a stack value using the specified name
+    /// Save a stack value using the specified name
     set: Ast.Name,
     /// Get a stack value using the specified name
     get: Ast.Name,

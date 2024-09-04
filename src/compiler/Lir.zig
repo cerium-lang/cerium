@@ -19,7 +19,7 @@ pub const Instruction = union(enum) {
     function_proluge,
     /// End a function block,
     function_epilogue,
-    /// Get a stack value using the specified name
+    /// Set a stack value using the specified name
     set: []const u8,
     /// Get a stack value using the specified name
     get: []const u8,
