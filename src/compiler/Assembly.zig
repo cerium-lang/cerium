@@ -33,8 +33,7 @@ pub const Aarch64 = struct {
     stack_offsets: std.ArrayList(usize),
     stack_map: std.StringHashMap(usize),
     stack_alignment: usize = 16,
-    // Stack size has to be calculated before rendering using "how many variables we need", not just a random constant number like this
-    stack_size: usize = 256,
+    stack_size: usize = 0,
 
     const RegisterInfo = struct {
         prefix: u8,
@@ -57,7 +56,7 @@ pub const Aarch64 = struct {
         const text_section_writer = self.assembly.text_section.writer();
         const rodata_section_writer = self.assembly.rodata_section.writer();
 
-        for (self.ir.instructions) |instruction| {
+        for (self.ir.instructions, 0..) |instruction, i| {
             switch (instruction) {
                 .store => {
                     try self.stack_map.put(instruction.store.name, self.stack.items.len - 1);
@@ -106,6 +105,16 @@ pub const Aarch64 = struct {
                 },
 
                 .function_proluge => {
+                    self.stack_size = self.stack_alignment;
+
+                    for (self.ir.instructions[i..]) |other_instruction| {
+                        if (other_instruction == .store) {
+                            self.stack_size += self.stack_alignment;
+                        } else if (other_instruction == .function_epilogue) {
+                            break;
+                        }
+                    }
+
                     try text_section_writer.print("\tsub sp, sp, #{}\n", .{self.stack_size});
                     try text_section_writer.print("\tstp x29, x30, [sp, #{}]\n", .{self.stack_alignment});
                     try text_section_writer.print("\tadd x29, sp, #{}\n", .{self.stack_alignment});
