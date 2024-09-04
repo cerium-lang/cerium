@@ -10,15 +10,15 @@ instructions: []const Instruction,
 string_literals: []const []const u8,
 
 pub const Instruction = union(enum) {
-    store: Store,
-    load: Load,
     label: Label,
     function_proluge,
     function_epilogue,
+    load: Load,
+    store: Store,
     inline_assembly: InlineAssembly,
     @"return",
 
-    pub const Store = struct {
+    pub const Label = struct {
         name: []const u8,
     };
 
@@ -30,7 +30,7 @@ pub const Instruction = union(enum) {
         float: f64,
     };
 
-    pub const Label = struct {
+    pub const Store = struct {
         name: []const u8,
     };
 
@@ -45,7 +45,7 @@ pub const Generator = struct {
     instructions: std.ArrayList(Ir.Instruction),
     string_literals: std.ArrayList([]const u8),
 
-    function: ?Ast.Declaration.Function = null,
+    function: ?Ast.Node.Stmt.FunctionDeclaration = null,
     function_returned: bool = false,
 
     symbol_table: SymbolTable,
@@ -58,6 +58,7 @@ pub const Generator = struct {
         UnexpectedReturn,
         UndeclaredVariable,
         RedeclaredVariable,
+        UnsupportedFeature,
     } || std.mem.Allocator.Error;
 
     pub const ErrorInfo = struct {
@@ -75,8 +76,8 @@ pub const Generator = struct {
     }
 
     pub fn generate(self: *Generator, ast: Ast) Error!Ir {
-        for (ast.declarations) |declaration| {
-            try self.generateDeclaration(declaration);
+        for (ast.body) |node| {
+            try self.generateNode(node);
         }
 
         return Ir{
@@ -85,13 +86,32 @@ pub const Generator = struct {
         };
     }
 
-    fn generateDeclaration(self: *Generator, declaration: Ast.Declaration) Error!void {
-        switch (declaration) {
-            .function => try self.generateFunctionDeclaration(declaration.function),
+    fn generateNode(self: *Generator, node: Ast.Node) Error!void {
+        switch (node) {
+            .stmt => try self.generateStmt(node.stmt),
+            .expr => {},
         }
     }
 
-    fn generateFunctionDeclaration(self: *Generator, function: Ast.Declaration.Function) Error!void {
+    fn generateStmt(self: *Generator, stmt: Ast.Node.Stmt) Error!void {
+        switch (stmt) {
+            .function_declaration => try self.generateFunctionDeclarationStmt(stmt.function_declaration),
+
+            .variable_declaration => try self.generateVariableDeclarationStmt(stmt.variable_declaration),
+
+            .inline_assembly => try self.generateInlineAssemblyStmt(stmt.inline_assembly),
+
+            .@"return" => try self.generateReturnStmt(stmt.@"return"),
+        }
+    }
+
+    fn generateFunctionDeclarationStmt(self: *Generator, function: Ast.Node.Stmt.FunctionDeclaration) Error!void {
+        if (self.function != null) {
+            self.error_info = .{ .message = "local functions are not supported yet", .source_loc = function.prototype.name.source_loc };
+
+            return error.UnsupportedFeature;
+        }
+
         try self.instructions.append(.{ .label = .{ .name = function.prototype.name.buffer } });
 
         try self.instructions.append(.function_proluge);
@@ -120,24 +140,13 @@ pub const Generator = struct {
         self.function_returned = false;
     }
 
-    fn generateNode(self: *Generator, node: Ast.Node) Error!void {
-        switch (node) {
-            .stmt => try self.generateStmt(node.stmt),
-            .expr => {},
-        }
-    }
-
-    fn generateStmt(self: *Generator, stmt: Ast.Node.Stmt) Error!void {
-        switch (stmt) {
-            .variable_declaration => try self.generateVariableDeclarationStmt(stmt.variable_declaration),
-
-            .inline_assembly => try self.generateInlineAssemblyStmt(stmt.inline_assembly),
-
-            .@"return" => try self.generateReturnStmt(stmt.@"return"),
-        }
-    }
-
     fn generateVariableDeclarationStmt(self: *Generator, variable: Ast.Node.Stmt.VariableDeclaration) Error!void {
+        if (self.function == null) {
+            self.error_info = .{ .message = "global variables are not supported yet", .source_loc = variable.name.source_loc };
+
+            return error.UnsupportedFeature;
+        }
+
         if (variable.type != self.inferType(variable.value)) {
             var buf = std.ArrayList(u8).init(self.allocator);
 

@@ -6,7 +6,7 @@ const Type = @import("type.zig").Type;
 
 const Ast = @This();
 
-declarations: []const Declaration,
+body: []const Node,
 
 pub const SourceLoc = struct {
     line: usize,
@@ -18,34 +18,31 @@ pub const Name = struct {
     source_loc: SourceLoc,
 };
 
-pub const Declaration = union(enum) {
-    function: Function,
-
-    pub const Function = struct {
-        prototype: Prototype,
-        body: []const Node,
-
-        pub const Prototype = struct {
-            name: Name,
-            parameters: []const Parameter,
-            return_type: Type,
-
-            pub const Parameter = struct {
-                name: Name,
-                expected_type: Type,
-            };
-        };
-    };
-};
-
 pub const Node = union(enum) {
     stmt: Stmt,
     expr: Expr,
 
     pub const Stmt = union(enum) {
+        function_declaration: FunctionDeclaration,
         variable_declaration: VariableDeclaration,
         inline_assembly: InlineAssembly,
         @"return": Return,
+
+        pub const FunctionDeclaration = struct {
+            prototype: Prototype,
+            body: []const Node,
+
+            pub const Prototype = struct {
+                name: Name,
+                parameters: []const Parameter,
+                return_type: Type,
+
+                pub const Parameter = struct {
+                    name: Name,
+                    expected_type: Type,
+                };
+            };
+        };
 
         pub const VariableDeclaration = struct {
             name: Name,
@@ -112,7 +109,6 @@ pub const Parser = struct {
         InvalidNumber,
         InvalidType,
         ExpectedTopLevelDeclaration,
-        Unsupported,
     } || std.mem.Allocator.Error;
 
     pub const ErrorInfo = struct {
@@ -142,13 +138,13 @@ pub const Parser = struct {
     }
 
     pub fn parse(self: *Parser) Error!Ast {
-        var declarations = std.ArrayList(Declaration).init(self.allocator);
+        var body = std.ArrayList(Node).init(self.allocator);
 
         while (self.peekToken().tag != .eof) {
-            try declarations.append(try self.parseDeclaration());
+            try body.append(try self.parseStmt());
         }
 
-        return Ast{ .declarations = declarations.items };
+        return Ast{ .body = try body.toOwnedSlice() };
     }
 
     fn nextToken(self: *Parser) Token {
@@ -208,57 +204,41 @@ pub const Parser = struct {
         return Name{ .buffer = self.tokenValue(token), .source_loc = self.tokenSourceLoc(token) };
     }
 
-    fn parseDeclaration(self: *Parser) Error!Declaration {
-        switch (self.peekToken().tag) {
-            .keyword_let => {
-                self.error_info = .{ .message = "global variables is unspported feature", .source_loc = self.tokenSourceLoc(self.peekToken()) };
-
-                return error.Unsupported;
-            },
-
-            .keyword_fn => return self.parseFunctionDeclaration(),
-
-            else => {
-                self.error_info = .{ .message = "expected top level declaration", .source_loc = self.tokenSourceLoc(self.peekToken()) };
-
-                return error.ExpectedTopLevelDeclaration;
-            },
-        }
-    }
-
-    fn parseFunctionDeclaration(self: *Parser) Error!Declaration {
+    fn parseFunctionDeclarationStmt(self: *Parser) Error!Node {
         _ = self.nextToken();
 
         const prototype = try self.parseFunctionPrototype();
 
         const body = try self.parseBody();
 
-        return Declaration{
-            .function = .{
-                .prototype = prototype,
-                .body = body,
+        return Node{
+            .stmt = .{
+                .function_declaration = .{
+                    .prototype = prototype,
+                    .body = body,
+                },
             },
         };
     }
 
-    fn parseFunctionPrototype(self: *Parser) Error!Declaration.Function.Prototype {
+    fn parseFunctionPrototype(self: *Parser) Error!Node.Stmt.FunctionDeclaration.Prototype {
         const name = try self.parseName();
 
         const parameters = try self.parseFunctionParameters();
 
         const returnType = try self.parseType();
 
-        return Declaration.Function.Prototype{ .name = name, .parameters = parameters, .return_type = returnType };
+        return Node.Stmt.FunctionDeclaration.Prototype{ .name = name, .parameters = parameters, .return_type = returnType };
     }
 
-    fn parseFunctionParameters(self: *Parser) Error![]Declaration.Function.Prototype.Parameter {
+    fn parseFunctionParameters(self: *Parser) Error![]Node.Stmt.FunctionDeclaration.Prototype.Parameter {
         if (!self.eatToken(.open_paren)) {
             self.error_info = .{ .message = "expected '('", .source_loc = self.tokenSourceLoc(self.peekToken()) };
 
             return error.UnexpectedToken;
         }
 
-        var paramters = std.ArrayList(Declaration.Function.Prototype.Parameter).init(self.allocator);
+        var paramters = std.ArrayList(Node.Stmt.FunctionDeclaration.Prototype.Parameter).init(self.allocator);
 
         while (!self.eatToken(.close_paren)) {
             if (self.peekToken().tag == .eof) {
@@ -279,14 +259,10 @@ pub const Parser = struct {
         return try paramters.toOwnedSlice();
     }
 
-    fn parseFunctionParameter(self: *Parser) Error!Declaration.Function.Prototype.Parameter {
-        const name = try self.parseName();
-
-        const expected_type = try self.parseType();
-
-        return Declaration.Function.Prototype.Parameter{
-            .name = name,
-            .expected_type = expected_type,
+    fn parseFunctionParameter(self: *Parser) Error!Node.Stmt.FunctionDeclaration.Prototype.Parameter {
+        return Node.Stmt.FunctionDeclaration.Prototype.Parameter{
+            .name = try self.parseName(),
+            .expected_type = try self.parseType(),
         };
     }
 
@@ -315,6 +291,8 @@ pub const Parser = struct {
     fn parseStmt(self: *Parser) Error!Node {
         return switch (self.peekToken().tag) {
             .keyword_let => self.parseVariableDeclarationStmt(),
+
+            .keyword_fn => return self.parseFunctionDeclarationStmt(),
 
             .keyword_asm => self.parseInlineAssemblyStmt(),
 
