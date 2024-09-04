@@ -18,11 +18,11 @@ pub const Instruction = union(enum) {
     label: []const u8,
     /// Start a function block, pass the function declaration node to enable more checks
     function_proluge: Ast.Node.Stmt.FunctionDeclaration,
-    /// End a function block,
+    /// End a function block
     function_epilogue,
-    /// Declare a variable or a parameter
+    /// Declare a variable
     declare: Declare,
-    /// Save a stack value using the specified name
+    /// Set a stack value using the specified name
     set: Ast.Name,
     /// Get a stack value using the specified name
     get: Ast.Name,
