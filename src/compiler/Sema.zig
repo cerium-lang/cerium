@@ -150,7 +150,7 @@ fn checkValueCompatibility(self: *Sema, value: Value, intended_type: Type, sourc
     if (!value.canBeRepresented(intended_type)) {
         var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
-        try error_message_buf.writer(self.allocator).print("'{s}' cannot represent integer value '{}'", .{ intended_type.toString(), value.int });
+        try error_message_buf.writer(self.allocator).print("'{s}' cannot represent value '{}'", .{ intended_type.toString(), value.int });
 
         self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
 
