@@ -43,7 +43,19 @@ const Value = union(enum) {
     symbol: Symbol,
 
     fn canImplicitCast(self: Value, to: Type) bool {
-        return ((self == .int and to.isInt()) or (self == .float and to.isFloat()) or (self == .string and to.tag == .string) or (self == .symbol and self.symbol.type.tag == to.tag));
+        return ((self == .int and to.isInt()) or
+            (self == .float and to.isFloat()) or
+            (self == .string and to.tag == .string) or
+            (self == .symbol and self.symbol.type.tag == to.tag));
+    }
+
+    fn canBeRepresented(self: Value, as: Type) bool {
+        return ((self == .int and self.int >= as.minInt() and
+            self == .int and self.int <= as.maxInt()) or
+            (self == .float and self.float >= as.minFloat() and
+            self == .float and self.float <= as.maxFloat()) or
+            (self == .string) or
+            (self == .symbol));
     }
 
     fn getType(self: Value) Type {
@@ -124,6 +136,28 @@ fn hirDeclare(self: *Sema, declare: Hir.Instruction.Declare) Error!void {
     });
 }
 
+fn checkValueCompatibility(self: *Sema, value: Value, intended_type: Type, source_loc: Ast.SourceLoc) Error!void {
+    if (!value.canImplicitCast(intended_type)) {
+        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+        try error_message_buf.writer(self.allocator).print("'{s}' cannot be implicitly casted to '{s}'", .{ value.getType().toString(), self.function.?.prototype.return_type.toString() });
+
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+
+        return error.MismatchedTypes;
+    }
+
+    if (!value.canBeRepresented(intended_type)) {
+        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+        try error_message_buf.writer(self.allocator).print("'{s}' cannot represent integer value '{}'", .{ intended_type.toString(), value.int });
+
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+
+        return error.TypeCannotRepresentValue;
+    }
+}
+
 fn hirSet(self: *Sema, name: Ast.Name) Error!void {
     const symbol = self.symbol_table.lookup(name.buffer) catch |err| switch (err) {
         error.Undeclared => {
@@ -139,25 +173,7 @@ fn hirSet(self: *Sema, name: Ast.Name) Error!void {
 
     const value = self.stack.pop();
 
-    if (!value.canImplicitCast(symbol.type)) {
-        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-        try error_message_buf.writer(self.allocator).print("'{s}' cannot be implicitly casted to '{s}'", .{ value.getType().toString(), self.function.?.prototype.return_type.toString() });
-
-        self.error_info = .{ .message = error_message_buf.items, .source_loc = name.source_loc };
-
-        return error.MismatchedTypes;
-    }
-
-    if (value == .int and value.int < 0 and !symbol.type.canBeNegative()) {
-        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-        try error_message_buf.writer(self.allocator).print("'{s}' cannot represent integer value '{}'", .{ symbol.type.toString(), value.int });
-
-        self.error_info = .{ .message = error_message_buf.items, .source_loc = name.source_loc };
-
-        return error.TypeCannotRepresentValue;
-    }
+    try self.checkValueCompatibility(value, symbol.type, name.source_loc);
 
     try self.lir.instructions.append(self.allocator, .{ .set = name.buffer });
 }
@@ -246,15 +262,7 @@ fn hirAssembly(self: *Sema, assembly: []const u8) Error!void {
 
 fn hirReturn(self: *Sema) Error!void {
     if (self.stack.popOrNull()) |return_value| {
-        if (!return_value.canImplicitCast(self.function.?.prototype.return_type)) {
-            var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-            try error_message_buf.writer(self.allocator).print("'{s}' cannot be implicitly casted to '{s}'", .{ return_value.getType().toString(), self.function.?.prototype.return_type.toString() });
-
-            self.error_info = .{ .message = error_message_buf.items, .source_loc = self.function.?.prototype.name.source_loc };
-
-            return error.MismatchedTypes;
-        }
+        try self.checkValueCompatibility(return_value, self.function.?.prototype.return_type, self.function.?.prototype.name.source_loc);
     } else {
         if (self.function.?.prototype.return_type.tag != .void) {
             self.error_info = .{ .message = "function with non void return type implicitly returns", .source_loc = self.function.?.prototype.name.source_loc };

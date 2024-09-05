@@ -1,3 +1,5 @@
+const std = @import("std");
+
 const Type = @This();
 
 tag: Tag,
@@ -51,6 +53,54 @@ pub fn isFloat(self: Type) bool {
         .f32, .f64 => true,
 
         else => false,
+    };
+}
+
+pub fn minInt(self: Type) i128 {
+    return switch (self.tag) {
+        .u8 => std.math.minInt(u8),
+        .u16 => std.math.minInt(u16),
+        .u32 => std.math.minInt(u32),
+        .u64 => std.math.minInt(u64),
+        .i8 => std.math.minInt(i8),
+        .i16 => std.math.minInt(i16),
+        .i32 => std.math.minInt(i32),
+        .i64 => std.math.minInt(i64),
+
+        else => unreachable,
+    };
+}
+
+pub fn maxInt(self: Type) u64 {
+    return switch (self.tag) {
+        .u8 => std.math.maxInt(u8),
+        .u16 => std.math.maxInt(u16),
+        .u32 => std.math.maxInt(u32),
+        .u64 => std.math.maxInt(u64),
+        .i8 => std.math.maxInt(i8),
+        .i16 => std.math.maxInt(i16),
+        .i32 => std.math.maxInt(i32),
+        .i64 => std.math.maxInt(i64),
+
+        else => unreachable,
+    };
+}
+
+pub fn minFloat(self: Type) f64 {
+    return switch (self.tag) {
+        .f32 => std.math.floatMin(f32),
+        .f64 => std.math.floatMin(f64),
+
+        else => unreachable,
+    };
+}
+
+pub fn maxFloat(self: Type) f64 {
+    return switch (self.tag) {
+        .f32 => std.math.floatMax(f32),
+        .f64 => std.math.floatMax(f64),
+
+        else => unreachable,
     };
 }
 
