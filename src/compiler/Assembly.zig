@@ -161,7 +161,7 @@ pub const Aarch64 = struct {
                     try self.popRegister(8);
                 },
 
-                .@"asm" => |content| {
+                .assembly => |content| {
                     try text_section_writer.print("\t{s}\n", .{content});
                 },
 
@@ -350,7 +350,7 @@ pub const X86_64 = struct {
                     try self.popRegister("8");
                 },
 
-                .@"asm" => |content| {
+                .assembly => |content| {
                     try text_section_writer.print("\t{s}\n", .{content});
                 },
 

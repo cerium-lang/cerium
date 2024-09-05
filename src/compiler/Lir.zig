@@ -34,7 +34,7 @@ pub const Instruction = union(enum) {
     /// Pop a value from the stack
     pop,
     /// Place a machine-specific assembly in the output
-    @"asm": []const u8,
+    assembly: []const u8,
     /// Return to the parent block
     @"return",
 };

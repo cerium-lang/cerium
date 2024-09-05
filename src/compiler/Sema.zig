@@ -97,7 +97,7 @@ fn hirInstruction(self: *Sema, instruction: Hir.Instruction) Error!void {
 
         .pop => try self.hirPop(),
 
-        .@"asm" => |@"asm"| try self.hirAssembly(@"asm"),
+        .assembly => |assembly| try self.hirAssembly(assembly),
 
         .@"return" => try self.hirReturn(),
     }
@@ -240,8 +240,8 @@ fn hirPop(self: *Sema) Error!void {
     try self.lir.instructions.append(self.allocator, .pop);
 }
 
-fn hirAssembly(self: *Sema, @"asm": []const u8) Error!void {
-    try self.lir.instructions.append(self.allocator, .{ .@"asm" = @"asm" });
+fn hirAssembly(self: *Sema, assembly: []const u8) Error!void {
+    try self.lir.instructions.append(self.allocator, .{ .assembly = assembly });
 }
 
 fn hirReturn(self: *Sema) Error!void {

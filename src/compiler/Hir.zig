@@ -37,7 +37,7 @@ pub const Instruction = union(enum) {
     /// Pop a value from the stack
     pop,
     /// Place a machine-specific assembly in the output
-    @"asm": []const u8,
+    assembly: []const u8,
     /// Return to the parent block
     @"return",
 
@@ -96,7 +96,7 @@ pub const Generator = struct {
 
             .variable_declaration => try self.generateVariableDeclarationStmt(stmt.variable_declaration),
 
-            .@"asm" => try self.generateAssemblyStmt(stmt.@"asm"),
+            .assembly => try self.generateAssemblyStmt(stmt.assembly),
 
             .@"return" => try self.generateReturnStmt(stmt.@"return"),
         }
@@ -147,14 +147,14 @@ pub const Generator = struct {
         try self.hir.instructions.append(self.allocator, .{ .set = variable.name });
     }
 
-    fn generateAssemblyStmt(self: *Generator, @"asm": Ast.Node.Stmt.Assembly) Error!void {
+    fn generateAssemblyStmt(self: *Generator, assembly: Ast.Node.Stmt.Assembly) Error!void {
         if (!self.in_function) {
-            self.error_info = .{ .message = "global assembly is not supported yet", .source_loc = @"asm".source_loc };
+            self.error_info = .{ .message = "global assembly is not supported yet", .source_loc = assembly.source_loc };
 
             return error.UnsupportedFeature;
         }
 
-        try self.hir.instructions.append(self.allocator, .{ .@"asm" = @"asm".content });
+        try self.hir.instructions.append(self.allocator, .{ .assembly = assembly.content });
     }
 
     fn generateReturnStmt(self: *Generator, @"return": Ast.Node.Stmt.Return) Error!void {

@@ -29,7 +29,7 @@ pub const Node = union(enum) {
     pub const Stmt = union(enum) {
         function_declaration: FunctionDeclaration,
         variable_declaration: VariableDeclaration,
-        @"asm": Assembly,
+        assembly: Assembly,
         @"return": Return,
 
         pub const FunctionDeclaration = struct {
@@ -361,7 +361,7 @@ pub const Parser = struct {
 
         return Node{
             .stmt = .{
-                .@"asm" = .{
+                .assembly = .{
                     .content = self.tokenValue(token),
                     .source_loc = self.tokenSourceLoc(token),
                 },
