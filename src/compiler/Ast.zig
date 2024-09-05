@@ -71,6 +71,7 @@ pub const Node = union(enum) {
         int: Int,
         float: Float,
         unary_operation: UnaryOperation,
+        binary_operation: BinaryOperation,
 
         pub const Identifier = struct {
             name: Name,
@@ -101,6 +102,18 @@ pub const Node = union(enum) {
             };
         };
 
+        pub const BinaryOperation = struct {
+            lhs: *Expr,
+            operator: Operator,
+            rhs: *Expr,
+            source_loc: SourceLoc,
+
+            pub const Operator = enum {
+                plus,
+                minus,
+            };
+        };
+
         pub fn getSourceLoc(self: Expr) SourceLoc {
             return switch (self) {
                 .identifier => |identifier| identifier.name.source_loc,
@@ -108,6 +121,7 @@ pub const Node = union(enum) {
                 .int => |int| int.source_loc,
                 .float => |float| float.source_loc,
                 .unary_operation => |unary_operation| unary_operation.source_loc,
+                .binary_operation => |binary_operation| binary_operation.source_loc,
             };
         }
     };
@@ -318,7 +332,7 @@ pub const Parser = struct {
 
             .keyword_return => self.parseReturnStmt(),
 
-            else => self.parseExpr(),
+            else => self.parseExpr(.lowest),
         };
     }
 
@@ -335,7 +349,7 @@ pub const Parser = struct {
             return error.UnexpectedToken;
         }
 
-        const value = try self.parseExpr();
+        const value = try self.parseExpr(.lowest);
 
         return Node{
             .stmt = .{
@@ -372,7 +386,7 @@ pub const Parser = struct {
     fn parseReturnStmt(self: *Parser) Error!Node {
         const keyword = self.nextToken();
 
-        const value = try self.parseExpr();
+        const value = try self.parseExpr(.lowest);
 
         return Node{
             .stmt = .{
@@ -384,8 +398,26 @@ pub const Parser = struct {
         };
     }
 
-    fn parseExpr(self: *Parser) Error!Node {
-        const lhs = try self.parseUnaryExpr();
+    const Precedence = enum {
+        lowest,
+        sum,
+        prefix,
+
+        fn from(token: Token) Precedence {
+            return switch (token.tag) {
+                .plus, .minus => .sum,
+
+                else => .lowest,
+            };
+        }
+    };
+
+    fn parseExpr(self: *Parser, precedence: Precedence) Error!Node {
+        var lhs = try self.parseUnaryExpr();
+
+        while (@intFromEnum(Precedence.from(self.peekToken())) > @intFromEnum(precedence)) {
+            lhs = try self.parseBinaryExpr(lhs);
+        }
 
         return Node{ .expr = lhs };
     }
@@ -487,11 +519,37 @@ pub const Parser = struct {
     fn parseUnaryOperationExpr(self: *Parser, operator: Node.Expr.UnaryOperation.Operator) Error!Node.Expr {
         const operator_token = self.nextToken();
 
-        const rhs = (try self.parseExpr()).expr;
+        const rhs = (try self.parseExpr(.prefix)).expr;
         const rhs_on_heap = try self.allocator.create(Node.Expr);
         rhs_on_heap.* = rhs;
 
         return Node.Expr{ .unary_operation = .{ .operator = operator, .rhs = rhs_on_heap, .source_loc = self.tokenSourceLoc(operator_token) } };
+    }
+
+    fn parseBinaryExpr(self: *Parser, lhs: Node.Expr) Error!Node.Expr {
+        switch (self.peekToken().tag) {
+            .plus => return self.parseBinaryOperationExpr(lhs, .plus),
+            .minus => return self.parseBinaryOperationExpr(lhs, .minus),
+
+            else => {
+                self.error_info = .{ .message = "unexpected token", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                return error.UnexpectedToken;
+            },
+        }
+    }
+
+    fn parseBinaryOperationExpr(self: *Parser, lhs: Node.Expr, operator: Node.Expr.BinaryOperation.Operator) Error!Node.Expr {
+        const lhs_on_heap = try self.allocator.create(Node.Expr);
+        lhs_on_heap.* = lhs;
+
+        const operator_token = self.nextToken();
+
+        const rhs = (try self.parseExpr(Precedence.from(operator_token))).expr;
+        const rhs_on_heap = try self.allocator.create(Node.Expr);
+        rhs_on_heap.* = rhs;
+
+        return Node.Expr{ .binary_operation = .{ .lhs = lhs_on_heap, .operator = operator, .rhs = rhs_on_heap, .source_loc = self.tokenSourceLoc(operator_token) } };
     }
 
     fn parseType(self: *Parser) Error!Type {

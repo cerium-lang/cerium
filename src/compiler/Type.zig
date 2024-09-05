@@ -50,14 +50,19 @@ pub fn isInt(self: Type) bool {
 
 pub fn isFloat(self: Type) bool {
     return switch (self.tag) {
-        .f32, .f64 => true,
+        .ambigiuous_float, .f32, .f64 => true,
 
         else => false,
     };
 }
 
+pub fn isIntOrFloat(self: Type) bool {
+    return (self.isInt() or self.isFloat());
+}
+
 pub fn minInt(self: Type) i128 {
     return switch (self.tag) {
+        .ambigiuous_int => std.math.minInt(i128),
         .u8 => std.math.minInt(u8),
         .u16 => std.math.minInt(u16),
         .u32 => std.math.minInt(u32),
@@ -71,8 +76,9 @@ pub fn minInt(self: Type) i128 {
     };
 }
 
-pub fn maxInt(self: Type) u64 {
+pub fn maxInt(self: Type) i128 {
     return switch (self.tag) {
+        .ambigiuous_int => std.math.maxInt(i128),
         .u8 => std.math.maxInt(u8),
         .u16 => std.math.maxInt(u16),
         .u32 => std.math.maxInt(u32),
@@ -89,7 +95,7 @@ pub fn maxInt(self: Type) u64 {
 pub fn minFloat(self: Type) f64 {
     return switch (self.tag) {
         .f32 => std.math.floatMin(f32),
-        .f64 => std.math.floatMin(f64),
+        .ambigiuous_float, .f64 => std.math.floatMin(f64),
 
         else => unreachable,
     };
@@ -98,7 +104,7 @@ pub fn minFloat(self: Type) f64 {
 pub fn maxFloat(self: Type) f64 {
     return switch (self.tag) {
         .f32 => std.math.floatMax(f32),
-        .f64 => std.math.floatMax(f64),
+        .ambigiuous_float, .f64 => std.math.floatMax(f64),
 
         else => unreachable,
     };
@@ -107,6 +113,14 @@ pub fn maxFloat(self: Type) f64 {
 pub fn canBeNegative(self: Type) bool {
     return switch (self.tag) {
         .ambigiuous_int, .ambigiuous_float, .i8, .i16, .i32, .i64, .f32, .f64 => true,
+
+        else => false,
+    };
+}
+
+pub fn isAmbigiuous(self: Type) bool {
+    return switch (self.tag) {
+        .ambigiuous_int, .ambigiuous_float => true,
 
         else => false,
     };

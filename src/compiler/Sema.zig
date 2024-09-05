@@ -107,6 +107,9 @@ fn hirInstruction(self: *Sema, instruction: Hir.Instruction) Error!void {
 
         .negate => |source_loc| try self.hirNegate(source_loc),
 
+        .add => |source_loc| try self.hirBinaryOperation(.plus, source_loc),
+        .sub => |source_loc| try self.hirBinaryOperation(.minus, source_loc),
+
         .pop => try self.hirPop(),
 
         .assembly => |assembly| try self.hirAssembly(assembly),
@@ -136,7 +139,7 @@ fn hirDeclare(self: *Sema, declare: Hir.Instruction.Declare) Error!void {
     });
 }
 
-fn checkValueCompatibility(self: *Sema, value: Value, intended_type: Type, source_loc: Ast.SourceLoc) Error!void {
+fn checkRepresentability(self: *Sema, value: Value, intended_type: Type, source_loc: Ast.SourceLoc) Error!void {
     if (!value.canImplicitCast(intended_type)) {
         var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
@@ -173,7 +176,7 @@ fn hirSet(self: *Sema, name: Ast.Name) Error!void {
 
     const value = self.stack.pop();
 
-    try self.checkValueCompatibility(value, symbol.type, name.source_loc);
+    try self.checkRepresentability(value, symbol.type, name.source_loc);
 
     try self.lir.instructions.append(self.allocator, .{ .set = name.buffer });
 }
@@ -215,38 +218,141 @@ fn hirFloat(self: *Sema, float: f64) Error!void {
 }
 
 fn hirNegate(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
-    const value = self.stack.pop();
+    const rhs = self.stack.pop();
 
-    if (!value.getType().canBeNegative()) {
+    if (!rhs.getType().canBeNegative()) {
         var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
-        try error_message_buf.writer(self.allocator).print("'{s}' cannot be negative", .{value.getType().toString()});
+        try error_message_buf.writer(self.allocator).print("'{s}' cannot be negative", .{rhs.getType().toString()});
 
         self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
 
         return error.MismatchedTypes;
     }
 
-    switch (value) {
-        .int => |int| {
-            try self.stack.append(self.allocator, .{ .int = -int });
+    switch (rhs) {
+        .int => |rhs_int| {
+            try self.stack.append(self.allocator, .{ .int = -rhs_int });
 
-            self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .int = -int };
+            self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .int = -rhs_int };
         },
 
-        .float => |float| {
-            const negated_float = -float;
+        .float => |rhs_float| {
+            try self.stack.append(self.allocator, .{ .float = -rhs_float });
 
-            try self.stack.append(self.allocator, .{ .float = negated_float });
-
-            self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .float = negated_float };
+            self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .float = -rhs_float };
         },
 
         else => {
-            try self.stack.append(self.allocator, value);
+            try self.stack.append(self.allocator, rhs);
 
             try self.lir.instructions.append(self.allocator, .negate);
         },
+    }
+}
+
+fn checkIntOrFloat(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {
+    if (!provided_type.isIntOrFloat()) {
+        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+        try error_message_buf.writer(self.allocator).print("'{s}' is not an integer nor float", .{provided_type.toString()});
+
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+
+        return error.MismatchedTypes;
+    }
+}
+
+fn reportIncompatibleTypes(self: *Sema, lhs: Type, rhs: Type, source_loc: Ast.SourceLoc) Error!void {
+    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+    try error_message_buf.writer(self.allocator).print("'{s}' is not compatible with '{s}'", .{ lhs.toString(), rhs.toString() });
+
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+
+    return error.MismatchedTypes;
+}
+
+const BinaryOperator = enum {
+    plus,
+    minus,
+};
+
+fn hirBinaryOperation(self: *Sema, operator: BinaryOperator, source_loc: Ast.SourceLoc) Error!void {
+    const rhs = self.stack.pop();
+    const lhs = self.stack.pop();
+
+    const lhs_type = lhs.getType();
+    const rhs_type = rhs.getType();
+
+    try self.checkIntOrFloat(lhs_type, source_loc);
+    try self.checkIntOrFloat(rhs_type, source_loc);
+
+    if (lhs_type.isInt() != rhs_type.isInt() or (lhs_type.tag != rhs_type.tag and !lhs_type.isAmbigiuous() and !rhs_type.isAmbigiuous())) {
+        try self.reportIncompatibleTypes(lhs_type, rhs_type, source_loc);
+    }
+
+    switch (lhs) {
+        .int => |lhs_int| switch (rhs) {
+            .int => |rhs_int| {
+                const result = switch (operator) {
+                    .plus => lhs_int + rhs_int,
+                    .minus => lhs_int - rhs_int,
+                };
+
+                try self.stack.append(self.allocator, .{ .int = result });
+
+                _ = self.lir.instructions.pop();
+
+                self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .int = result };
+
+                return;
+            },
+
+            else => {},
+        },
+
+        .float => |lhs_float| switch (rhs) {
+            .float => |rhs_float| {
+                const result = switch (operator) {
+                    .plus => lhs_float + rhs_float,
+                    .minus => lhs_float - rhs_float,
+                };
+
+                try self.stack.append(self.allocator, .{ .float = result });
+
+                _ = self.lir.instructions.pop();
+
+                self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .float = result };
+
+                return;
+            },
+
+            else => {},
+        },
+
+        else => {},
+    }
+
+    switch (operator) {
+        .plus => try self.lir.instructions.append(self.allocator, .add),
+        .minus => try self.lir.instructions.append(self.allocator, .sub),
+    }
+
+    if (!lhs_type.isAmbigiuous()) {
+        // Check if we can represent the rhs ambigiuous value as lhs type (e.g. x + 4)
+        if (rhs_type.isAmbigiuous()) {
+            try self.checkRepresentability(rhs, lhs_type, source_loc);
+        }
+
+        try self.stack.append(self.allocator, lhs);
+    } else {
+        // Check if we can represent the lhs ambigiuous value as rhs type (e.g. 4 + x)
+        if (!rhs_type.isAmbigiuous()) {
+            try self.checkRepresentability(lhs, rhs_type, source_loc);
+        }
+
+        try self.stack.append(self.allocator, rhs);
     }
 }
 
@@ -262,7 +368,7 @@ fn hirAssembly(self: *Sema, assembly: []const u8) Error!void {
 
 fn hirReturn(self: *Sema) Error!void {
     if (self.stack.popOrNull()) |return_value| {
-        try self.checkValueCompatibility(return_value, self.function.?.prototype.return_type, self.function.?.prototype.name.source_loc);
+        try self.checkRepresentability(return_value, self.function.?.prototype.return_type, self.function.?.prototype.name.source_loc);
     } else {
         if (self.function.?.prototype.return_type.tag != .void) {
             self.error_info = .{ .message = "function with non void return type implicitly returns", .source_loc = self.function.?.prototype.name.source_loc };

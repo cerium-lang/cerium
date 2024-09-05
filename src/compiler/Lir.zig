@@ -31,6 +31,10 @@ pub const Instruction = union(enum) {
     float: f64,
     /// Negate an integer or float
     negate,
+    /// Add two integers or floats on the top of the stack
+    add,
+    /// Subtract two integers or floats on the top of the stack
+    sub,
     /// Pop a value from the stack
     pop,
     /// Place a machine-specific assembly in the output

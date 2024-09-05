@@ -34,6 +34,10 @@ pub const Instruction = union(enum) {
     float: f64,
     /// Negate an integer or float
     negate: Ast.SourceLoc,
+    /// Add two integers or floats on the top of the stack
+    add: Ast.SourceLoc,
+    /// Subtract two integers or floats on the top of the stack
+    sub: Ast.SourceLoc,
     /// Pop a value from the stack
     pop,
     /// Place a machine-specific assembly in the output
@@ -200,7 +204,22 @@ pub const Generator = struct {
 
                 switch (unary_operation.operator) {
                     .minus => {
-                        try self.hir.instructions.append(self.allocator, .{ .negate = unary_operation.rhs.getSourceLoc() });
+                        try self.hir.instructions.append(self.allocator, .{ .negate = unary_operation.source_loc });
+                    },
+                }
+            },
+
+            .binary_operation => |binary_operation| {
+                try self.generateExpr(binary_operation.lhs.*);
+                try self.generateExpr(binary_operation.rhs.*);
+
+                switch (binary_operation.operator) {
+                    .plus => {
+                        try self.hir.instructions.append(self.allocator, .{ .add = binary_operation.source_loc });
+                    },
+
+                    .minus => {
+                        try self.hir.instructions.append(self.allocator, .{ .sub = binary_operation.source_loc });
                     },
                 }
             },

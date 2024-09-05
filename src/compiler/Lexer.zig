@@ -105,6 +105,14 @@ pub fn next(self: *Lexer) Token {
                     self.state = .equal_sign;
                 },
 
+                '+' => {
+                    result.buffer_loc.start = self.index;
+                    self.index += 1;
+                    result.buffer_loc.end = self.index;
+                    result.tag = .plus;
+                    break;
+                },
+
                 '-' => {
                     result.buffer_loc.start = self.index;
                     self.index += 1;

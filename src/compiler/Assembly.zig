@@ -157,6 +157,36 @@ pub const Aarch64 = struct {
                     try self.pushRegister(10, register_info);
                 },
 
+                .add => {
+                    const register_info = self.stack.getLast();
+
+                    try self.popRegister(9);
+                    try self.popRegister(8);
+
+                    if (register_info.prefix == 'd') {
+                        try text_section_writer.print("\tfadd d8, d8, d9\n", .{});
+                    } else {
+                        try text_section_writer.print("\tadd d8, d8, d9\n", .{});
+                    }
+
+                    try self.pushRegister(8, register_info);
+                },
+
+                .sub => {
+                    const register_info = self.stack.getLast();
+
+                    try self.popRegister(9);
+                    try self.popRegister(8);
+
+                    if (register_info.prefix == 'd') {
+                        try text_section_writer.print("\tfsub d8, d8, d9\n", .{});
+                    } else {
+                        try text_section_writer.print("\tsub d8, d8, d9\n", .{});
+                    }
+
+                    try self.pushRegister(8, register_info);
+                },
+
                 .pop => {
                     try self.popRegister(8);
                 },
@@ -344,6 +374,36 @@ pub const X86_64 = struct {
                     }
 
                     try self.pushRegister("bx", register_info);
+                },
+
+                .add => {
+                    const register_info = self.stack.getLast();
+
+                    try self.popRegister("bx");
+                    try self.popRegister("ax");
+
+                    if (register_info.floating_point) {
+                        try text_section_writer.print("\taddsd %xmm1, %xmm0\n", .{});
+                    } else {
+                        try text_section_writer.print("\taddq %rbx, %rax\n", .{});
+                    }
+
+                    try self.pushRegister("ax", register_info);
+                },
+
+                .sub => {
+                    const register_info = self.stack.getLast();
+
+                    try self.popRegister("bx");
+                    try self.popRegister("ax");
+
+                    if (register_info.floating_point) {
+                        try text_section_writer.print("\tsubsd %xmm1, %xmm0\n", .{});
+                    } else {
+                        try text_section_writer.print("\tsubq %rbx, %rax\n", .{});
+                    }
+
+                    try self.pushRegister("ax", register_info);
                 },
 
                 .pop => {
