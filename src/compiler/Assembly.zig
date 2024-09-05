@@ -66,15 +66,18 @@ pub const Aarch64 = struct {
                 },
 
                 .function_proluge => {
-                    self.stack_size = self.stack_alignment;
+                    var allocated_variables: std.StringHashMapUnmanaged(void) = .{};
+                    defer allocated_variables.deinit(self.allocator);
 
                     for (self.lir.instructions.items[i..]) |other_instruction| {
                         if (other_instruction == .set) {
-                            self.stack_size += self.stack_alignment;
+                            try allocated_variables.put(self.allocator, other_instruction.set, {});
                         } else if (other_instruction == .function_epilogue) {
                             break;
                         }
                     }
+
+                    self.stack_size = (allocated_variables.count() + 1) * self.stack_alignment;
 
                     try text_section_writer.print("\tsub sp, sp, #{}\n", .{self.stack_size});
                     try text_section_writer.print("\tstp x29, x30, [sp, #{}]\n", .{self.stack_alignment});
@@ -97,7 +100,15 @@ pub const Aarch64 = struct {
                 },
 
                 .set => |name| {
-                    try self.stack_map.put(name, self.stack.items.len - 1);
+                    if (self.stack_map.get(name)) |stack_loc| {
+                        const register_info = self.stack.items[stack_loc];
+
+                        try self.popRegister(8);
+
+                        try text_section_writer.print("\tstr {c}8, [x29, #{}]\n", .{ register_info.prefix, self.stack_offsets.items[stack_loc + 1] });
+                    } else {
+                        try self.stack_map.put(name, self.stack.items.len - 1);
+                    }
                 },
 
                 .get => |name| {
@@ -257,7 +268,15 @@ pub const X86_64 = struct {
                 },
 
                 .set => |name| {
-                    try self.stack_map.put(name, self.stack.items.len - 1);
+                    if (self.stack_map.get(name)) |stack_loc| {
+                        const register_info = self.stack.items[stack_loc];
+
+                        try self.popRegister("8");
+
+                        try self.copyToStack("8", register_info, self.stack_offsets.items[stack_loc + 1]);
+                    } else {
+                        try self.stack_map.put(name, self.stack.items.len - 1);
+                    }
                 },
 
                 .get => |name| {
@@ -325,13 +344,7 @@ pub const X86_64 = struct {
 
         try self.stack_offsets.append(stack_offset);
 
-        const text_section_writer = self.assembly.text_section.writer();
-
-        if (register_info.floating_point) {
-            try text_section_writer.print("\tmovsd %xmm{}, -{}(%rbp)\n", .{ suffixToNumber(register_suffix), stack_offset });
-        } else {
-            try text_section_writer.print("\tmovq %r{s}, -{}(%rbp)\n", .{ register_suffix, stack_offset });
-        }
+        try self.copyToStack(register_suffix, register_info, stack_offset);
     }
 
     fn copyFromStack(self: *X86_64, register_suffix: []const u8, register_info: RegisterInfo, stack_offset: usize) Error!void {
@@ -341,6 +354,16 @@ pub const X86_64 = struct {
             try text_section_writer.print("\tmovsd -{}(%rbp), %xmm{}\n", .{ stack_offset, suffixToNumber(register_suffix) });
         } else {
             try text_section_writer.print("\tmovq -{}(%rbp), %r{s}\n", .{ stack_offset, register_suffix });
+        }
+    }
+
+    fn copyToStack(self: *X86_64, register_suffix: []const u8, register_info: RegisterInfo, stack_offset: usize) Error!void {
+        const text_section_writer = self.assembly.text_section.writer();
+
+        if (register_info.floating_point) {
+            try text_section_writer.print("\tmovsd %xmm{}, -{}(%rbp)\n", .{ suffixToNumber(register_suffix), stack_offset });
+        } else {
+            try text_section_writer.print("\tmovq %r{s}, -{}(%rbp)\n", .{ register_suffix, stack_offset });
         }
     }
 
