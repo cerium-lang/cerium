@@ -142,12 +142,27 @@ pub const Aarch64 = struct {
                     try self.pushRegister(8, .{ .prefix = 'd' });
                 },
 
-                .@"asm" => |content| {
-                    try text_section_writer.print("\t{s}\n", .{content});
+                .negate => {
+                    const register_info = self.stack.getLast();
+
+                    try self.popRegister(9);
+
+                    if (register_info.prefix == 'd') {
+                        try text_section_writer.print("\tfneg d10, d9\n", .{});
+                    } else {
+                        try text_section_writer.print("\tmov {}8, {}zr\n", .{ register_info.prefix, register_info.prefix });
+                        try text_section_writer.print("\tsubs {}10, {}8, {}9\n", .{ register_info.prefix, register_info.prefix, register_info.prefix });
+                    }
+
+                    try self.pushRegister(10, register_info);
                 },
 
                 .pop => {
                     try self.popRegister(8);
+                },
+
+                .@"asm" => |content| {
+                    try text_section_writer.print("\t{s}\n", .{content});
                 },
 
                 .@"return" => {
@@ -160,7 +175,7 @@ pub const Aarch64 = struct {
     fn pushRegister(self: *Aarch64, register_number: u8, register_info: RegisterInfo) Error!void {
         try self.stack.append(register_info);
 
-        const stack_offset = self.stack_offsets.items[self.stack_offsets.items.len - 1] + self.stack_alignment;
+        const stack_offset = self.stack_offsets.getLast() + self.stack_alignment;
 
         try self.stack_offsets.append(stack_offset);
 
@@ -313,12 +328,30 @@ pub const X86_64 = struct {
                     try self.pushRegister("8", .{ .floating_point = true });
                 },
 
-                .@"asm" => |content| {
-                    try text_section_writer.print("\t{s}\n", .{content});
+                .negate => {
+                    const register_info = self.stack.getLast();
+
+                    try self.popRegister("bx");
+
+                    if (register_info.floating_point) {
+                        try text_section_writer.print("\tmovq %xmm1, %rbx\n", .{});
+                        try text_section_writer.print("\tmovabsq $0x8000000000000000, %rax\n", .{});
+                        try text_section_writer.print("\txorq %rax, %rbx\n", .{});
+                        try text_section_writer.print("\tmovsd %rbx, %xmm1\n", .{});
+                    } else {
+                        try text_section_writer.print("\txorq %rax, %rax\n", .{});
+                        try text_section_writer.print("\tsubq %rax, %rbx\n", .{});
+                    }
+
+                    try self.pushRegister("bx", register_info);
                 },
 
                 .pop => {
                     try self.popRegister("8");
+                },
+
+                .@"asm" => |content| {
+                    try text_section_writer.print("\t{s}\n", .{content});
                 },
 
                 .@"return" => {
@@ -332,6 +365,8 @@ pub const X86_64 = struct {
         // We only use the ax suffix for now, update this later
         if (std.mem.eql(u8, register_suffix, "ax")) {
             return 0;
+        } else if (std.mem.eql(u8, register_suffix, "bx")) {
+            return 1;
         } else {
             return register_suffix[0] - '0';
         }
@@ -340,7 +375,7 @@ pub const X86_64 = struct {
     fn pushRegister(self: *X86_64, register_suffix: []const u8, register_info: RegisterInfo) Error!void {
         try self.stack.append(register_info);
 
-        const stack_offset = self.stack_offsets.items[self.stack_offsets.items.len - 1] + self.stack_alignment;
+        const stack_offset = self.stack_offsets.getLast() + self.stack_alignment;
 
         try self.stack_offsets.append(stack_offset);
 

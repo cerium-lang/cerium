@@ -31,36 +31,27 @@ pub const ErrorInfo = struct {
 
 pub const Error = error{
     ExpectedExplicitReturn,
+    TypeCannotRepresentValue,
     MismatchedTypes,
     Undeclared,
 } || std.mem.Allocator.Error;
 
 const Value = union(enum) {
     string: []const u8,
-    int: u64,
+    int: i64,
     float: f64,
     symbol: Symbol,
 
     fn canImplicitCast(self: Value, to: Type) bool {
-        if (self == .int and !to.isInt()) {
-            return false;
-        } else if (self == .float and !to.isFloat()) {
-            return false;
-        } else if (self == .string and to.tag != .string_type) {
-            return false;
-        } else if (self == .symbol and self.symbol.type.tag != to.tag) {
-            return false;
-        }
-
-        return true;
+        return ((self == .int and to.isInt()) or (self == .float and to.isFloat()) or (self == .string and to.tag == .string) or (self == .symbol and self.symbol.type.tag == to.tag));
     }
 
-    fn getTypeString(self: Value) []const u8 {
+    fn getType(self: Value) Type {
         return switch (self) {
-            .string => "string",
-            .int => "ambiguous int",
-            .float => "ambiguous float",
-            .symbol => |symbol| symbol.type.toString(),
+            .string => Type{ .tag = .string },
+            .int => Type{ .tag = .ambigiuous_int },
+            .float => Type{ .tag = .ambigiuous_float },
+            .symbol => |symbol| symbol.type,
         };
     }
 };
@@ -101,6 +92,8 @@ fn hirInstruction(self: *Sema, instruction: Hir.Instruction) Error!void {
         .string => |string| try self.hirString(string),
         .int => |int| try self.hirInt(int),
         .float => |float| try self.hirFloat(float),
+
+        .negate => |source_loc| try self.hirNegate(source_loc),
 
         .pop => try self.hirPop(),
 
@@ -144,16 +137,26 @@ fn hirSet(self: *Sema, name: Ast.Name) Error!void {
         },
     };
 
-    const value = self.stack.getLast();
+    const value = self.stack.pop();
 
     if (!value.canImplicitCast(symbol.type)) {
         var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
-        try error_message_buf.writer(self.allocator).print("'{s}' cannot be implicitly casted to '{s}'", .{ value.getTypeString(), self.function.?.prototype.return_type.toString() });
+        try error_message_buf.writer(self.allocator).print("'{s}' cannot be implicitly casted to '{s}'", .{ value.getType().toString(), self.function.?.prototype.return_type.toString() });
 
         self.error_info = .{ .message = error_message_buf.items, .source_loc = name.source_loc };
 
         return error.MismatchedTypes;
+    }
+
+    if (value == .int and value.int < 0 and !symbol.type.canBeNegative()) {
+        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+        try error_message_buf.writer(self.allocator).print("'{s}' cannot represent integer value '{}'", .{ symbol.type.toString(), value.int });
+
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = name.source_loc };
+
+        return error.TypeCannotRepresentValue;
     }
 
     try self.lir.instructions.append(self.allocator, .{ .set = name.buffer });
@@ -183,7 +186,7 @@ fn hirString(self: *Sema, string: []const u8) Error!void {
     try self.lir.instructions.append(self.allocator, .{ .string = string });
 }
 
-fn hirInt(self: *Sema, int: u64) Error!void {
+fn hirInt(self: *Sema, int: i64) Error!void {
     try self.stack.append(self.allocator, .{ .int = int });
 
     try self.lir.instructions.append(self.allocator, .{ .int = int });
@@ -195,7 +198,45 @@ fn hirFloat(self: *Sema, float: f64) Error!void {
     try self.lir.instructions.append(self.allocator, .{ .float = float });
 }
 
+fn hirNegate(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
+    const value = self.stack.pop();
+
+    if (!value.getType().canBeNegative()) {
+        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+        try error_message_buf.writer(self.allocator).print("'{s}' cannot be negative", .{value.getType().toString()});
+
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+
+        return error.MismatchedTypes;
+    }
+
+    switch (value) {
+        .int => |int| {
+            try self.stack.append(self.allocator, .{ .int = -int });
+
+            self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .int = -int };
+        },
+
+        .float => |float| {
+            const negated_float = -float;
+
+            try self.stack.append(self.allocator, .{ .float = negated_float });
+
+            self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .float = negated_float };
+        },
+
+        else => {
+            try self.stack.append(self.allocator, value);
+
+            try self.lir.instructions.append(self.allocator, .negate);
+        },
+    }
+}
+
 fn hirPop(self: *Sema) Error!void {
+    _ = self.stack.pop();
+
     try self.lir.instructions.append(self.allocator, .pop);
 }
 
@@ -208,14 +249,14 @@ fn hirReturn(self: *Sema) Error!void {
         if (!return_value.canImplicitCast(self.function.?.prototype.return_type)) {
             var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
-            try error_message_buf.writer(self.allocator).print("'{s}' cannot be implicitly casted to '{s}'", .{ return_value.getTypeString(), self.function.?.prototype.return_type.toString() });
+            try error_message_buf.writer(self.allocator).print("'{s}' cannot be implicitly casted to '{s}'", .{ return_value.getType().toString(), self.function.?.prototype.return_type.toString() });
 
             self.error_info = .{ .message = error_message_buf.items, .source_loc = self.function.?.prototype.name.source_loc };
 
             return error.MismatchedTypes;
         }
     } else {
-        if (self.function.?.prototype.return_type.tag != .void_type) {
+        if (self.function.?.prototype.return_type.tag != .void) {
             self.error_info = .{ .message = "function with non void return type implicitly returns", .source_loc = self.function.?.prototype.name.source_loc };
 
             return error.ExpectedExplicitReturn;

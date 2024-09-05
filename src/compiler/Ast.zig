@@ -70,6 +70,7 @@ pub const Node = union(enum) {
         string: String,
         int: Int,
         float: Float,
+        unary_operation: UnaryOperation,
 
         pub const Identifier = struct {
             name: Name,
@@ -81,7 +82,7 @@ pub const Node = union(enum) {
         };
 
         pub const Int = struct {
-            value: u64,
+            value: i64,
             source_loc: SourceLoc,
         };
 
@@ -90,12 +91,23 @@ pub const Node = union(enum) {
             source_loc: SourceLoc,
         };
 
+        pub const UnaryOperation = struct {
+            operator: Operator,
+            rhs: *Expr,
+            source_loc: SourceLoc,
+
+            pub const Operator = enum {
+                minus,
+            };
+        };
+
         pub fn getSourceLoc(self: Expr) SourceLoc {
             return switch (self) {
                 .identifier => |identifier| identifier.name.source_loc,
                 .string => |string| string.source_loc,
                 .int => |int| int.source_loc,
                 .float => |float| float.source_loc,
+                .unary_operation => |unary_operation| unary_operation.source_loc,
             };
         }
     };
@@ -373,6 +385,12 @@ pub const Parser = struct {
     }
 
     fn parseExpr(self: *Parser) Error!Node {
+        const lhs = try self.parseUnaryExpr();
+
+        return Node{ .expr = lhs };
+    }
+
+    fn parseUnaryExpr(self: *Parser) Error!Node.Expr {
         switch (self.peekToken().tag) {
             .identifier => return self.parseIdentifierExpr(),
 
@@ -384,6 +402,8 @@ pub const Parser = struct {
 
             .float => return self.parseFloatExpr(),
 
+            .minus => return self.parseUnaryOperationExpr(.minus),
+
             else => {
                 self.error_info = .{ .message = "unexpected token", .source_loc = self.tokenSourceLoc(self.peekToken()) };
 
@@ -392,22 +412,24 @@ pub const Parser = struct {
         }
     }
 
-    fn parseIdentifierExpr(self: *Parser) Error!Node {
-        return Node{ .expr = .{ .identifier = .{ .name = try self.parseName() } } };
-    }
-
-    fn parseStringExpr(self: *Parser) Error!Node {
-        return Node{
-            .expr = .{
-                .string = .{
-                    .value = self.tokenValue(self.peekToken()),
-                    .source_loc = self.tokenSourceLoc(self.nextToken()),
-                },
+    fn parseIdentifierExpr(self: *Parser) Error!Node.Expr {
+        return Node.Expr{
+            .identifier = .{
+                .name = try self.parseName(),
             },
         };
     }
 
-    fn parseCharExpr(self: *Parser) Error!Node {
+    fn parseStringExpr(self: *Parser) Error!Node.Expr {
+        return Node.Expr{
+            .string = .{
+                .value = self.tokenValue(self.peekToken()),
+                .source_loc = self.tokenSourceLoc(self.nextToken()),
+            },
+        };
+    }
+
+    fn parseCharExpr(self: *Parser) Error!Node.Expr {
         const token = self.nextToken();
         const encoded = self.tokenValue(token);
         const location = self.tokenSourceLoc(token);
@@ -424,51 +446,69 @@ pub const Parser = struct {
             return error.InvalidChar;
         };
 
-        return Node{
-            .expr = .{
-                .int = .{
-                    .value = decoded,
-                    .source_loc = self.tokenSourceLoc(token),
-                },
+        return Node.Expr{
+            .int = .{
+                .value = decoded,
+                .source_loc = self.tokenSourceLoc(token),
             },
         };
     }
 
-    fn parseIntExpr(self: *Parser) Error!Node {
-        const value = std.fmt.parseInt(u64, self.tokenValue(self.peekToken()), 10) catch {
+    fn parseIntExpr(self: *Parser) Error!Node.Expr {
+        const value = std.fmt.parseInt(i64, self.tokenValue(self.peekToken()), 10) catch {
             self.error_info = .{ .message = "invalid number", .source_loc = self.tokenSourceLoc(self.peekToken()) };
 
             return error.InvalidNumber;
         };
 
-        return Node{ .expr = .{ .int = .{ .value = value, .source_loc = self.tokenSourceLoc(self.nextToken()) } } };
+        return Node.Expr{
+            .int = .{
+                .value = value,
+                .source_loc = self.tokenSourceLoc(self.nextToken()),
+            },
+        };
     }
 
-    fn parseFloatExpr(self: *Parser) Error!Node {
+    fn parseFloatExpr(self: *Parser) Error!Node.Expr {
         const value = std.fmt.parseFloat(f64, self.tokenValue(self.peekToken())) catch {
             self.error_info = .{ .message = "invalid number", .source_loc = self.tokenSourceLoc(self.peekToken()) };
 
             return error.InvalidNumber;
         };
 
-        return Node{ .expr = .{ .float = .{ .value = value, .source_loc = self.tokenSourceLoc(self.nextToken()) } } };
+        return Node.Expr{
+            .float = .{
+                .value = value,
+                .source_loc = self.tokenSourceLoc(self.nextToken()),
+            },
+        };
+    }
+
+    fn parseUnaryOperationExpr(self: *Parser, operator: Node.Expr.UnaryOperation.Operator) Error!Node.Expr {
+        const operator_token = self.nextToken();
+
+        const rhs = (try self.parseExpr()).expr;
+        const rhs_on_heap = try self.allocator.create(Node.Expr);
+        rhs_on_heap.* = rhs;
+
+        return Node.Expr{ .unary_operation = .{ .operator = operator, .rhs = rhs_on_heap, .source_loc = self.tokenSourceLoc(operator_token) } };
     }
 
     fn parseType(self: *Parser) Error!Type {
         const builtin_types = std.StaticStringMap(Type).initComptime(
             .{
-                .{ "void", .{ .tag = .void_type } },
-                .{ "string", .{ .tag = .string_type } },
-                .{ "u8", .{ .tag = .u8_type } },
-                .{ "u16", .{ .tag = .u16_type } },
-                .{ "u32", .{ .tag = .u32_type } },
-                .{ "u64", .{ .tag = .u64_type } },
-                .{ "i8", .{ .tag = .i8_type } },
-                .{ "i16", .{ .tag = .i16_type } },
-                .{ "i32", .{ .tag = .i32_type } },
-                .{ "i64", .{ .tag = .i64_type } },
-                .{ "f32", .{ .tag = .f32_type } },
-                .{ "f64", .{ .tag = .f64_type } },
+                .{ "void", .{ .tag = .void } },
+                .{ "string", .{ .tag = .string } },
+                .{ "u8", .{ .tag = .u8 } },
+                .{ "u16", .{ .tag = .u16 } },
+                .{ "u32", .{ .tag = .u32 } },
+                .{ "u64", .{ .tag = .u64 } },
+                .{ "i8", .{ .tag = .i8 } },
+                .{ "i16", .{ .tag = .i16 } },
+                .{ "i32", .{ .tag = .i32 } },
+                .{ "i64", .{ .tag = .i64 } },
+                .{ "f32", .{ .tag = .f32 } },
+                .{ "f64", .{ .tag = .f64 } },
             },
         );
 

@@ -29,9 +29,11 @@ pub const Instruction = union(enum) {
     /// Push a string literal onto the stack
     string: []const u8,
     /// Push an integer literal onto the stack
-    int: u64,
+    int: i64,
     /// Push a float literal onto the stack
     float: f64,
+    /// Negate an integer or float
+    negate: Ast.SourceLoc,
     /// Pop a value from the stack
     pop,
     /// Place a machine-specific assembly in the output
@@ -191,6 +193,16 @@ pub const Generator = struct {
 
             .float => |float| {
                 try self.hir.instructions.append(self.allocator, .{ .float = float.value });
+            },
+
+            .unary_operation => |unary_operation| {
+                try self.generateExpr(unary_operation.rhs.*);
+
+                switch (unary_operation.operator) {
+                    .minus => {
+                        try self.hir.instructions.append(self.allocator, .{ .negate = unary_operation.rhs.getSourceLoc() });
+                    },
+                }
             },
         }
     }
