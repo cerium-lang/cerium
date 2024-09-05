@@ -26,7 +26,7 @@ pub const Instruction = union(enum) {
     /// Push a string literal onto the stack
     string: []const u8,
     /// Push an integer literal onto the stack
-    int: i64,
+    int: i128,
     /// Push a float literal onto the stack
     float: f64,
     /// Negate an integer or float

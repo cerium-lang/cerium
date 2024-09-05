@@ -38,7 +38,7 @@ pub const Error = error{
 
 const Value = union(enum) {
     string: []const u8,
-    int: i64,
+    int: i128,
     float: f64,
     symbol: Symbol,
 
@@ -202,7 +202,7 @@ fn hirString(self: *Sema, string: []const u8) Error!void {
     try self.lir.instructions.append(self.allocator, .{ .string = string });
 }
 
-fn hirInt(self: *Sema, int: i64) Error!void {
+fn hirInt(self: *Sema, int: i128) Error!void {
     try self.stack.append(self.allocator, .{ .int = int });
 
     try self.lir.instructions.append(self.allocator, .{ .int = int });
