@@ -85,6 +85,15 @@ const Value = union(enum) {
             .runtime => |runtime| runtime.type,
         };
     }
+
+    pub fn format(self: Value, _: anytype, _: anytype, writer: anytype) !void {
+        switch (self) {
+            .int => |int| try writer.print("{}", .{int}),
+            .float => |float| try writer.print("{d}", .{float}),
+            .string => |string| try writer.print("{s}", .{string}),
+            .runtime => |runtime| try writer.print("<runtime value '{}'>", .{runtime.type}),
+        }
+    }
 };
 
 pub fn init(allocator: std.mem.Allocator) Sema {
@@ -177,7 +186,7 @@ fn checkRepresentability(self: *Sema, source_value: Value, destination_type: Typ
     if (!source_value.canBeRepresented(destination_type)) {
         var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
-        try error_message_buf.writer(self.allocator).print("'{}' cannot represent value '{}'", .{ destination_type, source_value.int });
+        try error_message_buf.writer(self.allocator).print("'{}' cannot represent value '{}'", .{ destination_type, source_value });
 
         self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
 
