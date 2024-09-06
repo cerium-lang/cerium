@@ -40,7 +40,17 @@ const Value = union(enum) {
     int: i128,
     float: f64,
     string: []const u8,
-    runtime: Type,
+    runtime: Runtime,
+
+    const Runtime = struct {
+        type: Type,
+        data: Data = .none,
+
+        const Data = union(enum) {
+            none,
+            name: Ast.Name,
+        };
+    };
 
     fn canImplicitCast(self: Value, to: Type) bool {
         return (self == .int and to.isInt()) or
@@ -62,7 +72,7 @@ const Value = union(enum) {
             .int => Type{ .tag = .ambigiuous_int },
             .float => Type{ .tag = .ambigiuous_float },
             .string => Type{ .tag = .pointer, .data = .{ .pointer = .{ .size = .many, .is_const = true, .child = &.{ .tag = .u8 } } } },
-            .runtime => |runtime| runtime,
+            .runtime => |runtime| runtime.type,
         };
     }
 };
@@ -99,13 +109,13 @@ fn hirInstruction(self: *Sema, instruction: Hir.Instruction) Error!void {
 
         .set => |name| try self.hirSet(name),
         .get => |name| try self.hirGet(name),
-        .get_ptr => |name| try self.hirGetPtr(name),
 
         .string => |string| try self.hirString(string),
         .int => |int| try self.hirInt(int),
         .float => |float| try self.hirFloat(float),
 
         .negate => |source_loc| try self.hirNegate(source_loc),
+        .reference => |source_loc| try self.hirReference(source_loc),
 
         .add => |source_loc| try self.hirBinaryOperation(.plus, source_loc),
         .sub => |source_loc| try self.hirBinaryOperation(.minus, source_loc),
@@ -196,30 +206,9 @@ fn hirGet(self: *Sema, name: Ast.Name) Error!void {
         },
     };
 
-    try self.stack.append(self.allocator, .{ .runtime = symbol.type });
+    try self.stack.append(self.allocator, .{ .runtime = .{ .type = symbol.type, .data = .{ .name = symbol.name } } });
 
     try self.lir.instructions.append(self.allocator, .{ .get = name.buffer });
-}
-
-fn hirGetPtr(self: *Sema, name: Ast.Name) Error!void {
-    const symbol = self.symbol_table.lookup(name.buffer) catch |err| switch (err) {
-        error.Undeclared => {
-            var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-            try error_message_buf.writer(self.allocator).print("{s} is not declared", .{name.buffer});
-
-            self.error_info = .{ .message = error_message_buf.items, .source_loc = name.source_loc };
-
-            return error.Undeclared;
-        },
-    };
-
-    const child_on_heap = try self.allocator.create(Type);
-    child_on_heap.* = symbol.type;
-
-    try self.stack.append(self.allocator, .{ .runtime = .{ .tag = .pointer, .data = .{ .pointer = .{ .size = .one, .is_const = false, .child = child_on_heap } } } });
-
-    try self.lir.instructions.append(self.allocator, .{ .get_ptr = name.buffer });
 }
 
 fn hirString(self: *Sema, string: []const u8) Error!void {
@@ -272,6 +261,43 @@ fn hirNegate(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
             try self.lir.instructions.append(self.allocator, .negate);
         },
     }
+}
+
+fn hirReference(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
+    const rhs = self.stack.pop();
+
+    if (!(rhs == .runtime and rhs.runtime.data == .name)) {
+        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+        try error_message_buf.writer(self.allocator).print("'{}' value cannot be referenced", .{rhs.getType()});
+
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+
+        return error.MismatchedTypes;
+    }
+
+    const rhs_runtime_name = rhs.runtime.data.name;
+    const rhs_runtime_type = rhs.runtime.type;
+
+    const child_on_heap = try self.allocator.create(Type);
+    child_on_heap.* = rhs_runtime_type;
+
+    try self.stack.append(self.allocator, .{
+        .runtime = .{
+            .type = .{
+                .tag = .pointer,
+                .data = .{
+                    .pointer = .{
+                        .size = .one,
+                        .is_const = false,
+                        .child = child_on_heap,
+                    },
+                },
+            },
+        },
+    });
+
+    self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .get_ptr = rhs_runtime_name.buffer };
 }
 
 fn checkIntOrFloat(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {
@@ -377,14 +403,14 @@ fn hirBinaryOperation(self: *Sema, operator: BinaryOperator, source_loc: Ast.Sou
             try self.checkRepresentability(rhs, lhs_type, source_loc);
         }
 
-        try self.stack.append(self.allocator, lhs);
+        try self.stack.append(self.allocator, .{ .runtime = .{ .type = lhs_type } });
     } else {
         // Check if we can represent the lhs ambigiuous value as rhs type (e.g. 4 + x)
         if (!rhs_type.isAmbigiuous()) {
             try self.checkRepresentability(lhs, rhs_type, source_loc);
         }
 
-        try self.stack.append(self.allocator, rhs);
+        try self.stack.append(self.allocator, .{ .runtime = .{ .type = rhs_type } });
     }
 }
 

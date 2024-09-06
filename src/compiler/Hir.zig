@@ -26,8 +26,6 @@ pub const Instruction = union(enum) {
     set: Ast.Name,
     /// Get a stack value using the specified name
     get: Ast.Name,
-    /// Get pointer of a stack value using specified name
-    get_ptr: Ast.Name,
     /// Push a string literal onto the stack
     string: []const u8,
     /// Push an integer literal onto the stack
@@ -36,6 +34,8 @@ pub const Instruction = union(enum) {
     float: f64,
     /// Negate an integer or float
     negate: Ast.SourceLoc,
+    /// Get a pointer of a value on the stack
+    reference: Ast.SourceLoc,
     /// Add two integers or floats on the top of the stack
     add: Ast.SourceLoc,
     /// Subtract two integers or floats on the top of the stack
@@ -200,16 +200,6 @@ pub const Generator = struct {
             },
 
             .unary_operation => |unary_operation| {
-                if (unary_operation.operator == .ampersand) {
-                    if (unary_operation.rhs.* != .identifier) {
-                        self.error_info = .{ .message = "expected the operand of '&' to be identifier", .source_loc = expr.getSourceLoc() };
-
-                        return error.UnexpectedExpression;
-                    }
-
-                    return try self.hir.instructions.append(self.allocator, .{ .get_ptr = unary_operation.rhs.identifier.name });
-                }
-
                 try self.generateExpr(unary_operation.rhs.*);
 
                 switch (unary_operation.operator) {
@@ -217,7 +207,9 @@ pub const Generator = struct {
                         try self.hir.instructions.append(self.allocator, .{ .negate = unary_operation.source_loc });
                     },
 
-                    .ampersand => unreachable,
+                    .ampersand => {
+                        return try self.hir.instructions.append(self.allocator, .{ .reference = unary_operation.source_loc });
+                    },
                 }
             },
 
