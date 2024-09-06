@@ -109,6 +109,8 @@ fn hirInstruction(self: *Sema, instruction: Hir.Instruction) Error!void {
 
         .add => |source_loc| try self.hirBinaryOperation(.plus, source_loc),
         .sub => |source_loc| try self.hirBinaryOperation(.minus, source_loc),
+        .mul => |source_loc| try self.hirBinaryOperation(.star, source_loc),
+        .div => |source_loc| try self.hirBinaryOperation(.forward_slash, source_loc),
 
         .pop => try self.hirPop(),
 
@@ -276,6 +278,8 @@ fn reportIncompatibleTypes(self: *Sema, lhs: Type, rhs: Type, source_loc: Ast.So
 const BinaryOperator = enum {
     plus,
     minus,
+    star,
+    forward_slash,
 };
 
 fn hirBinaryOperation(self: *Sema, operator: BinaryOperator, source_loc: Ast.SourceLoc) Error!void {
@@ -298,6 +302,9 @@ fn hirBinaryOperation(self: *Sema, operator: BinaryOperator, source_loc: Ast.Sou
                 const result = switch (operator) {
                     .plus => lhs_int + rhs_int,
                     .minus => lhs_int - rhs_int,
+                    .star => lhs_int * rhs_int,
+                    // TODO: Do we need to do it like Zig? using built in functions I mean
+                    .forward_slash => @divFloor(lhs_int, rhs_int),
                 };
 
                 try self.stack.append(self.allocator, .{ .int = result });
@@ -317,6 +324,8 @@ fn hirBinaryOperation(self: *Sema, operator: BinaryOperator, source_loc: Ast.Sou
                 const result = switch (operator) {
                     .plus => lhs_float + rhs_float,
                     .minus => lhs_float - rhs_float,
+                    .star => lhs_float * rhs_float,
+                    .forward_slash => lhs_float * rhs_float,
                 };
 
                 try self.stack.append(self.allocator, .{ .float = result });
@@ -337,6 +346,8 @@ fn hirBinaryOperation(self: *Sema, operator: BinaryOperator, source_loc: Ast.Sou
     switch (operator) {
         .plus => try self.lir.instructions.append(self.allocator, .add),
         .minus => try self.lir.instructions.append(self.allocator, .sub),
+        .star => try self.lir.instructions.append(self.allocator, .mul),
+        .forward_slash => try self.lir.instructions.append(self.allocator, .div),
     }
 
     if (!lhs_type.isAmbigiuous()) {

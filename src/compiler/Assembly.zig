@@ -150,14 +150,14 @@ pub const Aarch64 = struct {
                     if (register_info.prefix == 'd') {
                         try text_section_writer.print("\tfneg d10, d9\n", .{});
                     } else {
-                        try text_section_writer.print("\tmov {}8, {}zr\n", .{ register_info.prefix, register_info.prefix });
-                        try text_section_writer.print("\tsubs {}10, {}8, {}9\n", .{ register_info.prefix, register_info.prefix, register_info.prefix });
+                        try text_section_writer.print("\tmov {c}8, {c}zr\n", .{ register_info.prefix, register_info.prefix });
+                        try text_section_writer.print("\tsubs {c}10, {c}8, {}9\n", .{ register_info.prefix, register_info.prefix, register_info.prefix });
                     }
 
                     try self.pushRegister(10, register_info);
                 },
 
-                .add, .sub => {
+                .add, .sub, .mul, .div => {
                     const register_info = self.stack.getLast();
 
                     try self.popRegister(9);
@@ -166,6 +166,8 @@ pub const Aarch64 = struct {
                     const binary_operation_str = switch (instruction) {
                         .add => "add",
                         .sub => "sub",
+                        .mul => "mul",
+                        .div => "div",
 
                         else => unreachable,
                     };
@@ -173,7 +175,11 @@ pub const Aarch64 = struct {
                     if (register_info.prefix == 'd') {
                         try text_section_writer.print("\tf{s} d8, d8, d9\n", .{binary_operation_str});
                     } else {
-                        try text_section_writer.print("\t{s} d8, d8, d9\n", .{binary_operation_str});
+                        if (instruction == .div) {
+                            try text_section_writer.print("\ts{s} {c}8, {c}8, {c}9\n", .{ binary_operation_str, register_info.prefix, register_info.prefix, register_info.prefix });
+                        } else {
+                            try text_section_writer.print("\t{s} {c}8, {c}8, {c}9\n", .{ binary_operation_str, register_info.prefix, register_info.prefix, register_info.prefix });
+                        }
                     }
 
                     try self.pushRegister(8, register_info);
@@ -368,15 +374,17 @@ pub const X86_64 = struct {
                     try self.pushRegister("bx", register_info);
                 },
 
-                .add, .sub => {
+                .add, .sub, .mul, .div => {
                     const register_info = self.stack.getLast();
 
-                    try self.popRegister("bx");
+                    try self.popRegister("cx");
                     try self.popRegister("ax");
 
                     const binary_operation_str = switch (instruction) {
                         .add => "add",
                         .sub => "sub",
+                        .mul => "mul",
+                        .div => "div",
 
                         else => unreachable,
                     };
@@ -384,7 +392,15 @@ pub const X86_64 = struct {
                     if (register_info.floating_point) {
                         try text_section_writer.print("\t{s}sd %xmm1, %xmm0\n", .{binary_operation_str});
                     } else {
-                        try text_section_writer.print("\t{s}q %rbx, %rax\n", .{binary_operation_str});
+                        if (instruction == .mul) {
+                            try text_section_writer.print("\t{s}q %rcx\n", .{binary_operation_str});
+                        } else if (instruction == .div) {
+                            try text_section_writer.print("\tcqto\n", .{});
+
+                            try text_section_writer.print("\t{s}q %rcx\n", .{binary_operation_str});
+                        } else {
+                            try text_section_writer.print("\t{s}q %rcx, %rax\n", .{binary_operation_str});
+                        }
                     }
 
                     try self.pushRegister("ax", register_info);

@@ -19,6 +19,8 @@ pub const Tag = enum {
     double_equal_sign,
     plus,
     minus,
+    star,
+    forward_slash,
     comma,
     keyword_fn,
     keyword_let,

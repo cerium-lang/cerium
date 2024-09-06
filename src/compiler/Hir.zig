@@ -38,6 +38,10 @@ pub const Instruction = union(enum) {
     add: Ast.SourceLoc,
     /// Subtract two integers or floats on the top of the stack
     sub: Ast.SourceLoc,
+    /// Multiply two integers or floats on the top of the stack
+    mul: Ast.SourceLoc,
+    /// Divide two integers or floats on the top of the stack
+    div: Ast.SourceLoc,
     /// Pop a value from the stack
     pop,
     /// Place a machine-specific assembly in the output
@@ -220,6 +224,14 @@ pub const Generator = struct {
 
                     .minus => {
                         try self.hir.instructions.append(self.allocator, .{ .sub = binary_operation.source_loc });
+                    },
+
+                    .star => {
+                        try self.hir.instructions.append(self.allocator, .{ .mul = binary_operation.source_loc });
+                    },
+
+                    .forward_slash => {
+                        try self.hir.instructions.append(self.allocator, .{ .div = binary_operation.source_loc });
                     },
                 }
             },

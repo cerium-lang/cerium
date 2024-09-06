@@ -35,6 +35,10 @@ pub const Instruction = union(enum) {
     add,
     /// Subtract two integers or floats on the top of the stack
     sub,
+    /// Multiply two integers or floats on the top of the stack
+    mul,
+    /// Divide two integers or floats on the top of the stack
+    div,
     /// Pop a value from the stack
     pop,
     /// Place a machine-specific assembly in the output

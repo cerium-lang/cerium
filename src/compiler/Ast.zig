@@ -111,6 +111,8 @@ pub const Node = union(enum) {
             pub const Operator = enum {
                 plus,
                 minus,
+                star,
+                forward_slash,
             };
         };
 
@@ -401,11 +403,13 @@ pub const Parser = struct {
     const Precedence = enum {
         lowest,
         sum,
+        product,
         prefix,
 
         fn from(token: Token) Precedence {
             return switch (token.tag) {
                 .plus, .minus => .sum,
+                .star, .forward_slash => .product,
 
                 else => .lowest,
             };
@@ -530,6 +534,8 @@ pub const Parser = struct {
         switch (self.peekToken().tag) {
             .plus => return self.parseBinaryOperationExpr(lhs, .plus),
             .minus => return self.parseBinaryOperationExpr(lhs, .minus),
+            .star => return self.parseBinaryOperationExpr(lhs, .star),
+            .forward_slash => return self.parseBinaryOperationExpr(lhs, .forward_slash),
 
             else => {
                 self.error_info = .{ .message = "unexpected token", .source_loc = self.tokenSourceLoc(self.peekToken()) };

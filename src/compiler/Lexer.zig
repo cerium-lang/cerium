@@ -121,6 +121,22 @@ pub fn next(self: *Lexer) Token {
                     break;
                 },
 
+                '*' => {
+                    result.buffer_loc.start = self.index;
+                    self.index += 1;
+                    result.buffer_loc.end = self.index;
+                    result.tag = .star;
+                    break;
+                },
+
+                '/' => {
+                    result.buffer_loc.start = self.index;
+                    self.index += 1;
+                    result.buffer_loc.end = self.index;
+                    result.tag = .forward_slash;
+                    break;
+                },
+
                 ',' => {
                     result.buffer_loc.start = self.index;
                     self.index += 1;
