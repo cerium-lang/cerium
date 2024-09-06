@@ -6,7 +6,7 @@ A general purpose programming language that aims to be sane and at least functio
 
 I don't think you would need it, Zig and C and Rust and others would do the same thing and maybe better, but at least it is functional
 
-It exists as a "just works" programming language, no need to be the "ultimate, perfect, secure, most maintainable", it is cool that there are some programming languages like that, but that's not always why people use programming languages, the main idea is for a tool that provides easy access to make binary files (or programs) without having to work with writing Assembly by hand (or bytecode in the case of virtual machines), Cerium's goal is to achive main and required ideas of a programming language, a way to write human readable text that gets translated to machine readable code
+It exists as a "just works" programming language, no need to be the "ultimate, perfect, secure, most maintainable", it is cool that there are some programming languages like that, but that's not always why people use programming languages, the main idea is for a tool that provides easy access to make binary files (or programs) without having to work with writing Assembly by hand (or bytecode in the case of virtual machines), Cerium's goal is to achieve main and required ideas of a programming language, a way to write human readable text that gets translated to machine readable code
 
 If you like it give it a star and try it yourself, If you don't like it then I couldn't care less
 
