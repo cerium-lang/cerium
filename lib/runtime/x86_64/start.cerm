@@ -1,7 +1,9 @@
 fn _start() void {
-    asm "call main";
+    asm {
+        "call main"
 
-    asm "mov $60, %rax";
-    asm "mov $0, %rdi";
-    asm "syscall";
+        "mov $60, %rax"
+        "mov $0, %rdi"
+        "syscall"
+    };
 }

@@ -373,21 +373,40 @@ pub const Parser = struct {
     }
 
     fn parseAssemblyStmt(self: *Parser) Error!Node {
-        _ = self.nextToken();
+        const asm_keyword_token = self.nextToken();
 
-        const token = self.nextToken();
+        var content = std.ArrayList(u8).init(self.allocator);
 
-        if (token.tag != .string_literal) {
-            self.error_info = .{ .message = "expected the content of assembly to be a string literal", .source_loc = self.tokenSourceLoc(token) };
+        if (!self.eatToken(.open_brace)) {
+            self.error_info = .{ .message = "expected '{'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
 
             return error.UnexpectedToken;
+        }
+
+        while (!self.eatToken(.close_brace)) {
+            if (self.peekToken().tag == .eof) {
+                self.error_info = .{ .message = "expected '}'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                return error.UnexpectedToken;
+            }
+
+            const token = self.nextToken();
+
+            if (token.tag != .string_literal) {
+                self.error_info = .{ .message = "expected the content of assembly to be a string literal", .source_loc = self.tokenSourceLoc(token) };
+
+                return error.UnexpectedToken;
+            }
+
+            try content.appendSlice(self.tokenValue(token));
+            if (self.peekToken().tag != .close_brace) try content.append('\n');
         }
 
         return Node{
             .stmt = .{
                 .assembly = .{
-                    .content = self.tokenValue(token),
-                    .source_loc = self.tokenSourceLoc(token),
+                    .content = try content.toOwnedSlice(),
+                    .source_loc = self.tokenSourceLoc(asm_keyword_token),
                 },
             },
         };
