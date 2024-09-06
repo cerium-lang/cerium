@@ -71,7 +71,17 @@ const Value = union(enum) {
         return switch (self) {
             .int => Type{ .tag = .ambigiuous_int },
             .float => Type{ .tag = .ambigiuous_float },
-            .string => Type{ .tag = .pointer, .data = .{ .pointer = .{ .size = .many, .is_const = true, .child = &.{ .tag = .u8 } } } },
+            .string => Type{
+                .tag = .pointer,
+                .data = .{
+                    .pointer = .{
+                        .size = .many,
+                        .is_const = true,
+                        .is_local = false,
+                        .child = &.{ .tag = .u8 },
+                    },
+                },
+            },
             .runtime => |runtime| runtime.type,
         };
     }
@@ -151,25 +161,37 @@ fn hirDeclare(self: *Sema, declare: Hir.Instruction.Declare) Error!void {
     });
 }
 
-fn checkRepresentability(self: *Sema, value: Value, intended_type: Type, source_loc: Ast.SourceLoc) Error!void {
-    if (!value.canImplicitCast(intended_type)) {
+fn checkRepresentability(self: *Sema, source_value: Value, destination_type: Type, source_loc: Ast.SourceLoc) Error!void {
+    const source_type = source_value.getType();
+
+    if (!source_value.canImplicitCast(destination_type)) {
         var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
-        try error_message_buf.writer(self.allocator).print("'{}' cannot be implicitly casted to '{}'", .{ value.getType(), self.function.?.prototype.return_type });
+        try error_message_buf.writer(self.allocator).print("'{}' cannot be implicitly casted to '{}'", .{ source_type, self.function.?.prototype.return_type });
 
         self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
 
         return error.MismatchedTypes;
     }
 
-    if (!value.canBeRepresented(intended_type)) {
+    if (!source_value.canBeRepresented(destination_type)) {
         var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
-        try error_message_buf.writer(self.allocator).print("'{}' cannot represent value '{}'", .{ intended_type, value.int });
+        try error_message_buf.writer(self.allocator).print("'{}' cannot represent value '{}'", .{ destination_type, source_value.int });
 
         self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
 
         return error.TypeCannotRepresentValue;
+    }
+
+    if (source_type.isLocalPointer() and !destination_type.isLocalPointer()) {
+        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+        try error_message_buf.writer(self.allocator).print("'{}' is pointing to data that is local to this function and therefore cannot escape globally", .{source_type});
+
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+
+        return error.MismatchedTypes;
     }
 }
 
@@ -290,6 +312,9 @@ fn hirReference(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
                     .pointer = .{
                         .size = .one,
                         .is_const = false,
+                        // TODO: Check for symbol linkage when you add global variables, we don't have it right now
+                        // so we assume this is pointing to local variables
+                        .is_local = true,
                         .child = child_on_heap,
                     },
                 },

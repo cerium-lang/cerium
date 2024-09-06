@@ -138,6 +138,8 @@ pub const Parser = struct {
     tokens: []const Token,
     current_token_index: usize,
 
+    in_function: bool = false,
+
     error_info: ?ErrorInfo = null,
 
     pub const Error = error{
@@ -268,7 +270,12 @@ pub const Parser = struct {
 
         const prototype = try self.parseFunctionPrototype();
 
+        const was_in_function = self.in_function;
+        self.in_function = true;
+
         const body = try self.parseBody();
+
+        self.in_function = was_in_function;
 
         return Node{
             .stmt = .{
@@ -285,9 +292,9 @@ pub const Parser = struct {
 
         const parameters = try self.parseFunctionParameters();
 
-        const returnType = try self.parseType();
+        const return_type = try self.parseType();
 
-        return Node.Stmt.FunctionDeclaration.Prototype{ .name = name, .parameters = parameters, .return_type = returnType };
+        return Node.Stmt.FunctionDeclaration.Prototype{ .name = name, .parameters = parameters, .return_type = return_type };
     }
 
     fn parseFunctionParameters(self: *Parser) Error![]Node.Stmt.FunctionDeclaration.Prototype.Parameter {
@@ -352,7 +359,7 @@ pub const Parser = struct {
 
         const name = try self.parseName();
 
-        const var_type = try self.parseType();
+        const variable_type = try self.parseType();
 
         if (!self.eatToken(.equal_sign)) {
             self.error_info = .{ .message = "expected '='", .source_loc = self.tokenSourceLoc(self.peekToken()) };
@@ -366,7 +373,7 @@ pub const Parser = struct {
             .stmt = .{
                 .variable_declaration = .{
                     .name = name,
-                    .type = var_type,
+                    .type = variable_type,
                     .value = value.expr,
                 },
             },
@@ -627,7 +634,17 @@ pub const Parser = struct {
                 const child_on_heap = try self.allocator.create(Type);
                 child_on_heap.* = child;
 
-                return .{ .tag = .pointer, .data = .{ .pointer = .{ .size = .one, .is_const = is_const, .child = child_on_heap } } };
+                return .{
+                    .tag = .pointer,
+                    .data = .{
+                        .pointer = .{
+                            .size = .one,
+                            .is_const = is_const,
+                            .is_local = self.in_function,
+                            .child = child_on_heap,
+                        },
+                    },
+                };
             },
 
             .open_bracket => {
@@ -652,7 +669,17 @@ pub const Parser = struct {
                 const child_on_heap = try self.allocator.create(Type);
                 child_on_heap.* = child;
 
-                return .{ .tag = .pointer, .data = .{ .pointer = .{ .size = .many, .is_const = is_const, .child = child_on_heap } } };
+                return .{
+                    .tag = .pointer,
+                    .data = .{
+                        .pointer = .{
+                            .size = .many,
+                            .is_const = is_const,
+                            .is_local = self.in_function,
+                            .child = child_on_heap,
+                        },
+                    },
+                };
             },
 
             else => {

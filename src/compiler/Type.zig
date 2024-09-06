@@ -29,6 +29,7 @@ pub const Data = union(enum) {
     pub const Pointer = struct {
         size: Size,
         is_const: bool,
+        is_local: bool,
         child: *const Type,
 
         pub const Size = enum {
@@ -56,6 +57,10 @@ pub fn isFloat(self: Type) bool {
 
 pub fn isIntOrFloat(self: Type) bool {
     return (self.isInt() or self.isFloat());
+}
+
+pub fn isLocalPointer(self: Type) bool {
+    return self.data == .pointer and self.data == .pointer and self.data.pointer.is_local;
 }
 
 pub fn minInt(self: Type) i128 {
