@@ -589,7 +589,6 @@ pub const Parser = struct {
         const builtin_types = std.StaticStringMap(Type).initComptime(
             .{
                 .{ "void", .{ .tag = .void } },
-                .{ "string", .{ .tag = .string } },
                 .{ "u8", .{ .tag = .u8 } },
                 .{ "u16", .{ .tag = .u16 } },
                 .{ "u32", .{ .tag = .u32 } },
@@ -614,6 +613,44 @@ pub const Parser = struct {
 
                     return error.InvalidType;
                 }
+            },
+
+            .star => {
+                _ = self.nextToken();
+
+                const is_const = self.eatToken(.keyword_const);
+
+                const child = try self.parseType();
+
+                const child_on_heap = try self.allocator.create(Type);
+                child_on_heap.* = child;
+
+                return .{ .tag = .pointer, .data = .{ .pointer = .{ .size = .one, .is_const = is_const, .child = child_on_heap } } };
+            },
+
+            .open_bracket => {
+                _ = self.nextToken();
+
+                if (!self.eatToken(.star)) {
+                    self.error_info = .{ .message = "expected a '*'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                    return error.UnexpectedToken;
+                }
+
+                if (!self.eatToken(.close_bracket)) {
+                    self.error_info = .{ .message = "expected a ']'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                    return error.UnexpectedToken;
+                }
+
+                const is_const = self.eatToken(.keyword_const);
+
+                const child = try self.parseType();
+
+                const child_on_heap = try self.allocator.create(Type);
+                child_on_heap.* = child;
+
+                return .{ .tag = .pointer, .data = .{ .pointer = .{ .size = .many, .is_const = is_const, .child = child_on_heap } } };
             },
 
             else => {

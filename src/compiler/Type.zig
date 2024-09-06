@@ -3,10 +3,11 @@ const std = @import("std");
 const Type = @This();
 
 tag: Tag,
+data: Data = .none,
 
 pub const Tag = enum {
     void,
-    string,
+    pointer,
     ambigiuous_int,
     ambigiuous_float,
     u8,
@@ -21,24 +22,21 @@ pub const Tag = enum {
     f64,
 };
 
-pub fn toString(self: Type) []const u8 {
-    return switch (self.tag) {
-        .void => "void",
-        .string => "string",
-        .ambigiuous_int => "ambigiuous_int",
-        .ambigiuous_float => "ambigiuous_float",
-        .u8 => "u8",
-        .u16 => "u16",
-        .u32 => "u32",
-        .u64 => "u64",
-        .i8 => "i8",
-        .i16 => "i16",
-        .i32 => "i32",
-        .i64 => "i64",
-        .f32 => "f32",
-        .f64 => "f64",
+pub const Data = union(enum) {
+    none,
+    pointer: Pointer,
+
+    pub const Pointer = struct {
+        size: Size,
+        is_const: bool,
+        child: *const Type,
+
+        pub const Size = enum {
+            one,
+            many,
+        };
     };
-}
+};
 
 pub fn isInt(self: Type) bool {
     return switch (self.tag) {
@@ -124,4 +122,53 @@ pub fn isAmbigiuous(self: Type) bool {
 
         else => false,
     };
+}
+
+pub fn format(self: Type, _: anytype, _: anytype, writer: anytype) !void {
+    switch (self.tag) {
+        .void => try writer.writeAll("void"),
+
+        .pointer => {
+            if (self.data.pointer.size == .one) {
+                try writer.writeAll("*");
+            } else if (self.data.pointer.size == .many) {
+                try writer.writeAll("[*]");
+            }
+
+            if (self.data.pointer.is_const) {
+                try writer.writeAll("const ");
+            }
+
+            try writer.print("{}", .{self.data.pointer.child});
+        },
+
+        .ambigiuous_int => try writer.writeAll("ambigiuous_int"),
+        .ambigiuous_float => try writer.writeAll("ambigiuous_float"),
+        .u8 => try writer.writeAll("u8"),
+        .u16 => try writer.writeAll("u16"),
+        .u32 => try writer.writeAll("u32"),
+        .u64 => try writer.writeAll("u64"),
+        .i8 => try writer.writeAll("i8"),
+        .i16 => try writer.writeAll("i16"),
+        .i32 => try writer.writeAll("i32"),
+        .i64 => try writer.writeAll("i64"),
+        .f32 => try writer.writeAll("f32"),
+        .f64 => try writer.writeAll("f64"),
+    }
+}
+
+pub fn eql(self: Type, other: Type) bool {
+    if (self.tag != other.tag) {
+        return false;
+    }
+
+    if (self.tag == .pointer and
+        (!self.data.pointer.child.eql(other.data.pointer.child.*) or
+        self.data.pointer.is_const != other.data.pointer.is_const or
+        self.data.pointer.size != other.data.pointer.size))
+    {
+        return false;
+    }
+
+    return true;
 }

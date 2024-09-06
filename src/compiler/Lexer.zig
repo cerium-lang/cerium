@@ -99,6 +99,22 @@ pub fn next(self: *Lexer) Token {
                     break;
                 },
 
+                '[' => {
+                    result.buffer_loc.start = self.index;
+                    self.index += 1;
+                    result.buffer_loc.end = self.index;
+                    result.tag = .open_bracket;
+                    break;
+                },
+
+                ']' => {
+                    result.buffer_loc.start = self.index;
+                    self.index += 1;
+                    result.buffer_loc.end = self.index;
+                    result.tag = .close_bracket;
+                    break;
+                },
+
                 '=' => {
                     result.buffer_loc.start = self.index;
                     result.tag = .equal_sign;

@@ -43,24 +43,23 @@ const Value = union(enum) {
     symbol: Symbol,
 
     fn canImplicitCast(self: Value, to: Type) bool {
-        return ((self == .int and to.isInt()) or
+        return (self == .int and to.isInt()) or
             (self == .float and to.isFloat()) or
-            (self == .string and to.tag == .string) or
-            (self == .symbol and self.symbol.type.tag == to.tag));
+            self.getType().eql(to);
     }
 
     fn canBeRepresented(self: Value, as: Type) bool {
-        return ((self == .int and self.int >= as.minInt() and
+        return (self == .int and self.int >= as.minInt() and
             self == .int and self.int <= as.maxInt()) or
             (self == .float and self.float >= as.minFloat() and
             self == .float and self.float <= as.maxFloat()) or
             (self == .string) or
-            (self == .symbol));
+            (self == .symbol);
     }
 
     fn getType(self: Value) Type {
         return switch (self) {
-            .string => Type{ .tag = .string },
+            .string => Type{ .tag = .pointer, .data = .{ .pointer = .{ .size = .many, .is_const = true, .child = &.{ .tag = .u8 } } } },
             .int => Type{ .tag = .ambigiuous_int },
             .float => Type{ .tag = .ambigiuous_float },
             .symbol => |symbol| symbol.type,
@@ -145,7 +144,7 @@ fn checkRepresentability(self: *Sema, value: Value, intended_type: Type, source_
     if (!value.canImplicitCast(intended_type)) {
         var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
-        try error_message_buf.writer(self.allocator).print("'{s}' cannot be implicitly casted to '{s}'", .{ value.getType().toString(), self.function.?.prototype.return_type.toString() });
+        try error_message_buf.writer(self.allocator).print("'{}' cannot be implicitly casted to '{}'", .{ value.getType(), self.function.?.prototype.return_type });
 
         self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
 
@@ -155,7 +154,7 @@ fn checkRepresentability(self: *Sema, value: Value, intended_type: Type, source_
     if (!value.canBeRepresented(intended_type)) {
         var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
-        try error_message_buf.writer(self.allocator).print("'{s}' cannot represent value '{}'", .{ intended_type.toString(), value.int });
+        try error_message_buf.writer(self.allocator).print("'{}' cannot represent value '{}'", .{ intended_type, value.int });
 
         self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
 
@@ -225,7 +224,7 @@ fn hirNegate(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
     if (!rhs.getType().canBeNegative()) {
         var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
-        try error_message_buf.writer(self.allocator).print("'{s}' cannot be negative", .{rhs.getType().toString()});
+        try error_message_buf.writer(self.allocator).print("'{}' cannot be negative", .{rhs.getType()});
 
         self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
 
@@ -257,7 +256,7 @@ fn checkIntOrFloat(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) 
     if (!provided_type.isIntOrFloat()) {
         var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
-        try error_message_buf.writer(self.allocator).print("'{s}' is not an integer nor float", .{provided_type.toString()});
+        try error_message_buf.writer(self.allocator).print("'{}' is not an integer nor float", .{provided_type});
 
         self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
 
@@ -268,7 +267,7 @@ fn checkIntOrFloat(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) 
 fn reportIncompatibleTypes(self: *Sema, lhs: Type, rhs: Type, source_loc: Ast.SourceLoc) Error!void {
     var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
-    try error_message_buf.writer(self.allocator).print("'{s}' is not compatible with '{s}'", .{ lhs.toString(), rhs.toString() });
+    try error_message_buf.writer(self.allocator).print("'{}' is not compatible with '{}'", .{ lhs, rhs });
 
     self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
 
