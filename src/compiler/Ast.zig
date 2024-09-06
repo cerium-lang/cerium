@@ -499,7 +499,7 @@ pub const Parser = struct {
     }
 
     fn parseIntExpr(self: *Parser) Error!Node.Expr {
-        const value = std.fmt.parseInt(i128, self.tokenValue(self.peekToken()), 10) catch {
+        const value = std.fmt.parseInt(i128, self.tokenValue(self.peekToken()), 0) catch {
             self.error_info = .{ .message = "invalid number", .source_loc = self.tokenSourceLoc(self.peekToken()) };
 
             return error.InvalidNumber;
