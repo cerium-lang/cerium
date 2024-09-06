@@ -37,10 +37,10 @@ pub const Error = error{
 } || std.mem.Allocator.Error;
 
 const Value = union(enum) {
-    string: []const u8,
     int: i128,
     float: f64,
-    symbol: Symbol,
+    string: []const u8,
+    runtime: Type,
 
     fn canImplicitCast(self: Value, to: Type) bool {
         return (self == .int and to.isInt()) or
@@ -54,15 +54,15 @@ const Value = union(enum) {
             (self == .float and self.float >= as.minFloat() and
             self == .float and self.float <= as.maxFloat()) or
             (self == .string) or
-            (self == .symbol);
+            (self == .runtime);
     }
 
     fn getType(self: Value) Type {
         return switch (self) {
-            .string => Type{ .tag = .pointer, .data = .{ .pointer = .{ .size = .many, .is_const = true, .child = &.{ .tag = .u8 } } } },
             .int => Type{ .tag = .ambigiuous_int },
             .float => Type{ .tag = .ambigiuous_float },
-            .symbol => |symbol| symbol.type,
+            .string => Type{ .tag = .pointer, .data = .{ .pointer = .{ .size = .many, .is_const = true, .child = &.{ .tag = .u8 } } } },
+            .runtime => |runtime| runtime,
         };
     }
 };
@@ -195,7 +195,7 @@ fn hirGet(self: *Sema, name: Ast.Name) Error!void {
         },
     };
 
-    try self.stack.append(self.allocator, .{ .symbol = symbol });
+    try self.stack.append(self.allocator, .{ .runtime = symbol.type });
 
     try self.lir.instructions.append(self.allocator, .{ .get = name.buffer });
 }
