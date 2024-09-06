@@ -10,7 +10,7 @@ It exists as a "just works" programming language, no need to be the "ultimate, p
 
 If you like it give it a star and try it yourself, If you don't like it then I couldn't care less
 
-## What did you currently achive and what do you look for?
+## What did you currently achieve and what do you look for?
 
 - Semantics
     - Add support for Function Declarations [ ]
