@@ -13,53 +13,53 @@ If you like it give it a star and try it yourself, If you don't like it then I c
 ## What did you currently achieve and what do you look for?
 
 - Semantics
-    - Add support for Function Declarations [ ]
-        - Local Function Declarations [ ]
-        - Global Function Declarations [x]
-    - Add support for Function Calls [ ]
-    - Add support for Function Parameters Access [ ]
-    - Add support for Variable Declarations [ ]
-        - Local Variable Declarations [x]
-        - Global Variable Declarations [ ]
-    - Add support for Variable Access [ ]
-        - Local Variable Access [x]
-        - Global Variable Access [ ]
-    - Add support for Unary Operations [ ]
-        - Negation [x]
-        - Boolean Not [ ]
-        - Bitwise Not [ ]
-    - Add support for Binary Operations [ ]
-        - Addition [x]
-        - Subtraction [x]
-        - Multiplication [x]
-        - Division [x]
-        - Comparison [ ]
-            - Less Than [ ]
-            - Greater Than [ ]
-            - Equals To [ ]
-        - Bitwise Shfting [ ]
-    - Add support for Pointer Operations [ ]
-        - Get Pointer [ ]
-        - Access Pointer [ ]
-            - Write to Pointer [ ]
-            - Read from Pointer [ ]
+    - [ ] Add support for Function Declarations
+        - [ ] Local Function Declarations
+        - [x] Global Function Declarations
+    - [ ] Add support for Function Calls
+    - [ ] Add support for Function Parameters Access
+    - [ ] Add support for Variable Declarations
+        - [x] Local Variable Declarations
+        - [ ] Global Variable Declarations
+    - [ ] Add support for Variable Access
+        - [x] Local Variable Access
+        - [ ] Global Variable Access
+    - [ ] Add support for Unary Operations
+        - [x] Negation
+        - [ ] Boolean Not
+        - [ ] Bitwise Not
+    - [ ] Add support for Binary Operations
+        - [x] Addition
+        - [x] Subtraction
+        - [x] Multiplication
+        - [x] Division
+        - [ ] Comparison
+            - [ ] Less Than
+            - [ ] Greater Than
+            - [ ] Equals To
+        - [ ] Bitwise Shfting
+    - [ ] Add support for Pointer Operations
+        - [ ] Get Pointer
+        - [ ] Access Pointer
+            - [ ] Write to Pointer
+            - [ ] Read from Pointer
 
 - Standard Library
-    - Make a robust startup code (maybe called `runtime`) [ ]
-    - Let the startup code be compiled automatically with any provided code [ ]
-    - Add support for accessing the Standard Library [ ]
-    - Make a System Call API for various operating systems [ ]
-        - Make a System Call API for Linux [ ]
-        - Make a System Call API for Windows [ ]
+    - [ ] Make a robust startup code (maybe called `runtime`)
+    - [ ] Let the startup code be compiled automatically with any provided code
+    - [ ] Add support for accessing the Standard Library
+    - [ ] Make a System Call API for various operating systems
+        - [ ] Make a System Call API for Linux
+        - [ ] Make a System Call API for Windows
 
 - Cross Compilation
-    - Allow passing a Triple Target via Command Line Arguments [ ]
-    - Add support for compiling to various Assembly Outputs [x]
-        - Add support for compiling to Aarch64 Assembly [x]
-        - Add support for compiling to x86_64 Assembly [x]
+    - [ ] Allow passing a Triple Target via Command Line Arguments
+    - [x] Add support for compiling to various Assembly Outputs
+        - [x] Add support for compiling to Aarch64 Assembly
+        - [x] Add support for compiling to x86_64 Assembly
 
 - Inline Assembly
-    - Add support for outputing Assembly [x]
-    - Add support for input constraints [ ]
-    - Add support for output constraints [ ]
+    - [x] Add support for outputing Assembly
+    - [ ] Add support for input constraints
+    - [ ] Add support for output constraints
 
