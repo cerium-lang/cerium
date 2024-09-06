@@ -190,7 +190,7 @@ pub const Aarch64 = struct {
                 },
 
                 .assembly => |content| {
-                    try text_section_writer.print("\t{s}\n", .{content});
+                    try text_section_writer.print("{s}\n", .{content});
                 },
 
                 .@"return" => {
@@ -411,7 +411,7 @@ pub const X86_64 = struct {
                 },
 
                 .assembly => |content| {
-                    try text_section_writer.print("\t{s}\n", .{content});
+                    try text_section_writer.print("{s}\n", .{content});
                 },
 
                 .@"return" => {

@@ -156,12 +156,6 @@ pub const Generator = struct {
     }
 
     fn generateAssemblyStmt(self: *Generator, assembly: Ast.Node.Stmt.Assembly) Error!void {
-        if (!self.in_function) {
-            self.error_info = .{ .message = "global assembly is not supported yet", .source_loc = assembly.source_loc };
-
-            return error.UnsupportedFeature;
-        }
-
         try self.hir.instructions.append(self.allocator, .{ .assembly = assembly.content });
     }
 

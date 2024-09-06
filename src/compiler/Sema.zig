@@ -86,7 +86,7 @@ fn hirInstructions(self: *Sema, instructions: []const Hir.Instruction) Error!voi
 }
 
 fn hirInstruction(self: *Sema, instruction: Hir.Instruction) Error!void {
-    if (self.function == null and instruction != .label and instruction != .function_proluge) {
+    if (self.function == null and instruction != .label and instruction != .function_proluge and instruction != .assembly) {
         return;
     }
 
