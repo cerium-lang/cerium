@@ -23,6 +23,7 @@ pub const Tag = enum {
     minus,
     star,
     forward_slash,
+    ampersand,
     comma,
     semicolon,
     keyword_fn,

@@ -99,6 +99,7 @@ fn hirInstruction(self: *Sema, instruction: Hir.Instruction) Error!void {
 
         .set => |name| try self.hirSet(name),
         .get => |name| try self.hirGet(name),
+        .get_ptr => |name| try self.hirGetPtr(name),
 
         .string => |string| try self.hirString(string),
         .int => |int| try self.hirInt(int),
@@ -198,6 +199,27 @@ fn hirGet(self: *Sema, name: Ast.Name) Error!void {
     try self.stack.append(self.allocator, .{ .runtime = symbol.type });
 
     try self.lir.instructions.append(self.allocator, .{ .get = name.buffer });
+}
+
+fn hirGetPtr(self: *Sema, name: Ast.Name) Error!void {
+    const symbol = self.symbol_table.lookup(name.buffer) catch |err| switch (err) {
+        error.Undeclared => {
+            var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+            try error_message_buf.writer(self.allocator).print("{s} is not declared", .{name.buffer});
+
+            self.error_info = .{ .message = error_message_buf.items, .source_loc = name.source_loc };
+
+            return error.Undeclared;
+        },
+    };
+
+    const child_on_heap = try self.allocator.create(Type);
+    child_on_heap.* = symbol.type;
+
+    try self.stack.append(self.allocator, .{ .runtime = .{ .tag = .pointer, .data = .{ .pointer = .{ .size = .one, .is_const = false, .child = child_on_heap } } } });
+
+    try self.lir.instructions.append(self.allocator, .{ .get_ptr = name.buffer });
 }
 
 fn hirString(self: *Sema, string: []const u8) Error!void {

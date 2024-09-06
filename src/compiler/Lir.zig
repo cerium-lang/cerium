@@ -23,6 +23,8 @@ pub const Instruction = union(enum) {
     set: []const u8,
     /// Get a stack value using the specified name
     get: []const u8,
+    /// Get pointer of a stack value using specified name
+    get_ptr: []const u8,
     /// Push a string literal onto the stack
     string: []const u8,
     /// Push an integer literal onto the stack

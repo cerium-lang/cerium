@@ -121,6 +121,14 @@ pub const Aarch64 = struct {
                     try self.pushRegister(8, register_info);
                 },
 
+                .get_ptr => |name| {
+                    const stack_loc = self.stack_map.get(name).?;
+
+                    try text_section_writer.print("\tadd x8, x29, #{}\n", .{self.stack_offsets.items[stack_loc + 1]});
+
+                    try self.pushRegister(8, .{ .prefix = 'x' });
+                },
+
                 .string => |string| {
                     try rodata_section_writer.print("\tstr{}: .asciz \"{s}\"\n", .{ self.string_literals_index, string });
                     try text_section_writer.print("\tadr x8, str{}\n", .{self.string_literals_index});
@@ -332,6 +340,14 @@ pub const X86_64 = struct {
                     try self.pushRegister("8", register_info);
                 },
 
+                .get_ptr => |name| {
+                    const stack_loc = self.stack_map.get(name).?;
+
+                    try self.pointerToStack("8", self.stack_offsets.items[stack_loc + 1]);
+
+                    try self.pushRegister("8", .{ .floating_point = false });
+                },
+
                 .string => |string| {
                     try rodata_section_writer.print("\tstr{}: .asciz \"{s}\"\n", .{ self.string_literals_index, string });
                     try text_section_writer.print("\tleaq str{}(%rip), %r8\n", .{self.string_literals_index});
@@ -450,6 +466,12 @@ pub const X86_64 = struct {
         } else {
             try text_section_writer.print("\tmovq -{}(%rbp), %r{s}\n", .{ stack_offset, register_suffix });
         }
+    }
+
+    fn pointerToStack(self: *X86_64, register_suffix: []const u8, stack_offset: usize) Error!void {
+        const text_section_writer = self.assembly.text_section.writer();
+
+        try text_section_writer.print("\tleaq -{}(%rbp), %r{}\n", .{ stack_offset, suffixToNumber(register_suffix) });
     }
 
     fn copyToStack(self: *X86_64, register_suffix: []const u8, register_info: RegisterInfo, stack_offset: usize) Error!void {

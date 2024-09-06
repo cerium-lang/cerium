@@ -26,6 +26,8 @@ pub const Instruction = union(enum) {
     set: Ast.Name,
     /// Get a stack value using the specified name
     get: Ast.Name,
+    /// Get pointer of a stack value using specified name
+    get_ptr: Ast.Name,
     /// Push a string literal onto the stack
     string: []const u8,
     /// Push an integer literal onto the stack
@@ -198,12 +200,24 @@ pub const Generator = struct {
             },
 
             .unary_operation => |unary_operation| {
+                if (unary_operation.operator == .ampersand) {
+                    if (unary_operation.rhs.* != .identifier) {
+                        self.error_info = .{ .message = "expected the operand of '&' to be identifier", .source_loc = expr.getSourceLoc() };
+
+                        return error.UnexpectedExpression;
+                    }
+
+                    return try self.hir.instructions.append(self.allocator, .{ .get_ptr = unary_operation.rhs.identifier.name });
+                }
+
                 try self.generateExpr(unary_operation.rhs.*);
 
                 switch (unary_operation.operator) {
                     .minus => {
                         try self.hir.instructions.append(self.allocator, .{ .negate = unary_operation.source_loc });
                     },
+
+                    .ampersand => unreachable,
                 }
             },
 

@@ -99,6 +99,7 @@ pub const Node = union(enum) {
 
             pub const Operator = enum {
                 minus,
+                ampersand,
             };
         };
 
@@ -466,6 +467,7 @@ pub const Parser = struct {
             .float => return self.parseFloatExpr(),
 
             .minus => return self.parseUnaryOperationExpr(.minus),
+            .ampersand => return self.parseUnaryOperationExpr(.ampersand),
 
             else => {
                 self.error_info = .{ .message = "unexpected token", .source_loc = self.tokenSourceLoc(self.peekToken()) };

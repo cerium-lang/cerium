@@ -164,7 +164,7 @@ pub fn eql(self: Type, other: Type) bool {
 
     if (self.tag == .pointer and
         (!self.data.pointer.child.eql(other.data.pointer.child.*) or
-        self.data.pointer.is_const != other.data.pointer.is_const or
+        (self.data.pointer.is_const and !other.data.pointer.is_const) or
         self.data.pointer.size != other.data.pointer.size))
     {
         return false;
