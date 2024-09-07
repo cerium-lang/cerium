@@ -111,20 +111,8 @@ pub fn analyzeSemantics(self: *Compilation, hir: Hir) ?Lir {
 
 pub fn renderAssembly(self: *Compilation, lir: Lir) ?[]const u8 {
     return switch (self.env.target.cpu.arch) {
-        .aarch64 => blk: {
-            var backend = Assembly.Aarch64.init(self.allocator, lir);
-
-            backend.render() catch |err| {
-                std.debug.print("{s}\n", .{errorDescription(err)});
-
-                return null;
-            };
-
-            break :blk backend.dump() catch null;
-        },
-
         .x86_64 => blk: {
-            var backend = Assembly.X86_64.init(self.allocator, lir);
+            var backend = Assembly.x86_64.init(self.allocator, lir);
 
             backend.render() catch |err| {
                 std.debug.print("{s}\n", .{errorDescription(err)});

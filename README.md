@@ -54,8 +54,8 @@ If you like it give it a star and try it yourself, If you don't like it then I c
 
 - Cross Compilation
     - [ ] Allow passing a Triple Target via Command Line Arguments
-    - [x] Add support for compiling to various Assembly Outputs
-        - [x] Add support for compiling to Aarch64 Assembly
+    - [ ] Add support for compiling to various Assembly Outputs
+        - [ ] Add support for compiling to Aarch64 Assembly
         - [x] Add support for compiling to x86_64 Assembly
 
 - Inline Assembly
