@@ -141,7 +141,7 @@ const Cli = struct {
 
         const input_file_path_stem = std.fs.path.stem(options.file_path);
 
-        var output_file_path = std.ArrayList(u8).initCapacity(self.allocator, input_file_path_stem.len + 2) catch |err| {
+        var output_file_path = std.ArrayListUnmanaged(u8).initCapacity(self.allocator, input_file_path_stem.len + 2) catch |err| {
             std.debug.print("{s}\n", .{errorDescription(err)});
 
             return 1;
@@ -150,7 +150,7 @@ const Cli = struct {
         output_file_path.appendSliceAssumeCapacity(input_file_path_stem);
         output_file_path.appendSliceAssumeCapacity(".s");
 
-        const owned_output_file_path = output_file_path.toOwnedSlice() catch |err| {
+        const owned_output_file_path = output_file_path.toOwnedSlice(self.allocator) catch |err| {
             std.debug.print("{s}\n", .{errorDescription(err)});
 
             return 1;

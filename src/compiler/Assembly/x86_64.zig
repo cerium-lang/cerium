@@ -7,38 +7,42 @@ const x86_64 = @This();
 
 allocator: std.mem.Allocator,
 
-assembly: Assembly,
+assembly: Assembly = .{},
 
 lir: Lir,
 
-stack: std.ArrayList(RegisterInfo),
-stack_offsets: std.ArrayList(usize),
-stack_map: std.StringHashMap(usize),
+variables: std.StringHashMapUnmanaged(usize) = .{},
+
+stack: std.ArrayListUnmanaged(Value) = .{},
+stack_offsets: std.ArrayListUnmanaged(usize) = .{},
 stack_alignment: usize = 16,
 
 string_literals_index: usize = 0,
 floating_points_index: usize = 0,
 
-const RegisterInfo = struct {
+const Value = struct {
     floating_point: bool,
 };
 
 pub fn init(allocator: std.mem.Allocator, lir: Lir) x86_64 {
     return x86_64{
         .allocator = allocator,
-        .assembly = Assembly.init(allocator),
         .lir = lir,
-        .stack = std.ArrayList(RegisterInfo).init(allocator),
-        .stack_offsets = std.ArrayList(usize).init(allocator),
-        .stack_map = std.StringHashMap(usize).init(allocator),
     };
+}
+
+pub fn deinit(self: *x86_64) void {
+    self.assembly.deinit(self.allocator);
+    self.variables.clearAndFree(self.allocator);
+    self.stack.clearAndFree(self.allocator);
+    self.stack_offsets.clearAndFree(self.allocator);
 }
 
 pub const Error = std.mem.Allocator.Error;
 
 pub fn render(self: *x86_64) Error!void {
-    const text_section_writer = self.assembly.text_section.writer();
-    const rodata_section_writer = self.assembly.rodata_section.writer();
+    const text_section_writer = self.assembly.text_section.writer(self.allocator);
+    const rodata_section_writer = self.assembly.rodata_section.writer(self.allocator);
 
     for (self.lir.instructions.items) |instruction| {
         switch (instruction) {
@@ -51,7 +55,7 @@ pub fn render(self: *x86_64) Error!void {
                 try text_section_writer.print("\tpushq %rbp\n", .{});
                 try text_section_writer.print("\tmovq %rsp, %rbp\n", .{});
 
-                try self.stack_offsets.append(0);
+                try self.stack_offsets.append(self.allocator, 0);
             },
 
             .function_epilogue => {
@@ -61,25 +65,25 @@ pub fn render(self: *x86_64) Error!void {
 
                 try text_section_writer.print("\tpopq %rbp\n", .{});
 
-                self.stack.clearAndFree();
-                self.stack_offsets.clearAndFree();
-                self.stack_map.clearAndFree();
+                self.variables.clearRetainingCapacity();
+                self.stack.clearRetainingCapacity();
+                self.stack_offsets.clearRetainingCapacity();
             },
 
             .set => |name| {
-                if (self.stack_map.get(name)) |stack_loc| {
+                if (self.variables.get(name)) |stack_loc| {
                     const register_info = self.stack.items[stack_loc];
 
                     try self.popRegister("8");
 
                     try self.copyToStack("8", register_info, self.stack_offsets.items[stack_loc + 1]);
                 } else {
-                    try self.stack_map.put(name, self.stack.items.len - 1);
+                    try self.variables.put(self.allocator, name, self.stack.items.len - 1);
                 }
             },
 
             .get => |name| {
-                const stack_loc = self.stack_map.get(name).?;
+                const stack_loc = self.variables.get(name).?;
 
                 const register_info = self.stack.items[stack_loc];
 
@@ -89,7 +93,7 @@ pub fn render(self: *x86_64) Error!void {
             },
 
             .get_ptr => |name| {
-                const stack_loc = self.stack_map.get(name).?;
+                const stack_loc = self.variables.get(name).?;
 
                 try self.pointerToStack("8", self.stack_offsets.items[stack_loc + 1]);
 
@@ -196,18 +200,18 @@ fn suffixToNumber(register_suffix: []const u8) u8 {
     }
 }
 
-fn pushRegister(self: *x86_64, register_suffix: []const u8, register_info: RegisterInfo) Error!void {
-    try self.stack.append(register_info);
+fn pushRegister(self: *x86_64, register_suffix: []const u8, register_info: Value) Error!void {
+    try self.stack.append(self.allocator, register_info);
 
     const stack_offset = self.stack_offsets.getLast() + self.stack_alignment;
 
-    try self.stack_offsets.append(stack_offset);
+    try self.stack_offsets.append(self.allocator, stack_offset);
 
     try self.copyToStack(register_suffix, register_info, stack_offset);
 }
 
-fn copyFromStack(self: *x86_64, register_suffix: []const u8, register_info: RegisterInfo, stack_offset: usize) Error!void {
-    const text_section_writer = self.assembly.text_section.writer();
+fn copyFromStack(self: *x86_64, register_suffix: []const u8, register_info: Value, stack_offset: usize) Error!void {
+    const text_section_writer = self.assembly.text_section.writer(self.allocator);
 
     if (register_info.floating_point) {
         try text_section_writer.print("\tmovsd -{}(%rbp), %xmm{}\n", .{ stack_offset, suffixToNumber(register_suffix) });
@@ -217,13 +221,13 @@ fn copyFromStack(self: *x86_64, register_suffix: []const u8, register_info: Regi
 }
 
 fn pointerToStack(self: *x86_64, register_suffix: []const u8, stack_offset: usize) Error!void {
-    const text_section_writer = self.assembly.text_section.writer();
+    const text_section_writer = self.assembly.text_section.writer(self.allocator);
 
     try text_section_writer.print("\tleaq -{}(%rbp), %r{}\n", .{ stack_offset, suffixToNumber(register_suffix) });
 }
 
-fn copyToStack(self: *x86_64, register_suffix: []const u8, register_info: RegisterInfo, stack_offset: usize) Error!void {
-    const text_section_writer = self.assembly.text_section.writer();
+fn copyToStack(self: *x86_64, register_suffix: []const u8, register_info: Value, stack_offset: usize) Error!void {
+    const text_section_writer = self.assembly.text_section.writer(self.allocator);
 
     if (register_info.floating_point) {
         try text_section_writer.print("\tmovsd %xmm{}, -{}(%rbp)\n", .{ suffixToNumber(register_suffix), stack_offset });
@@ -241,9 +245,9 @@ fn popRegister(self: *x86_64, register_suffix: []const u8) Error!void {
 }
 
 pub fn dump(self: *x86_64) Error![]const u8 {
-    var result = std.ArrayList(u8).init(self.allocator);
+    var result: std.ArrayListUnmanaged(u8) = .{};
 
-    const result_writer = result.writer();
+    const result_writer = result.writer(self.allocator);
 
     if (self.assembly.text_section.items.len > 0) {
         try result_writer.print(".section \".text\"\n", .{});
@@ -260,7 +264,5 @@ pub fn dump(self: *x86_64) Error![]const u8 {
         try result_writer.writeAll(self.assembly.rodata_section.items);
     }
 
-    self.assembly.deinit();
-
-    return try result.toOwnedSlice();
+    return result.toOwnedSlice(self.allocator);
 }

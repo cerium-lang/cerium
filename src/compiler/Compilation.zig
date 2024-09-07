@@ -113,6 +113,7 @@ pub fn renderAssembly(self: *Compilation, lir: Lir) ?[]const u8 {
     return switch (self.env.target.cpu.arch) {
         .x86_64 => blk: {
             var backend = Assembly.x86_64.init(self.allocator, lir);
+            defer backend.deinit();
 
             backend.render() catch |err| {
                 std.debug.print("{s}\n", .{errorDescription(err)});

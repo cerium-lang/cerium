@@ -9,12 +9,12 @@ name: Name,
 type: Type,
 
 pub const Table = struct {
-    symbols: std.ArrayList(Symbol),
+    allocator: std.mem.Allocator,
+
+    symbols: std.ArrayListUnmanaged(Symbol) = .{},
 
     pub fn init(allocator: std.mem.Allocator) Table {
-        return Table{
-            .symbols = std.ArrayList(Symbol).init(allocator),
-        };
+        return Table{ .allocator = allocator };
     }
 
     pub fn set(self: *Table, symbol: Symbol) std.mem.Allocator.Error!void {
@@ -29,12 +29,12 @@ pub const Table = struct {
         }
 
         if (!swapped) {
-            try self.symbols.append(symbol);
+            try self.symbols.append(self.allocator, symbol);
         }
     }
 
     pub fn reset(self: *Table) void {
-        self.symbols.clearAndFree();
+        self.symbols.clearAndFree(self.allocator);
     }
 
     const LookupError = error{Undeclared};

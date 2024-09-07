@@ -4,20 +4,12 @@ pub const x86_64 = @import("Assembly/x86_64.zig");
 
 const Assembly = @This();
 
-text_section: std.ArrayList(u8),
-data_section: std.ArrayList(u8),
-rodata_section: std.ArrayList(u8),
+text_section: std.ArrayListUnmanaged(u8) = .{},
+data_section: std.ArrayListUnmanaged(u8) = .{},
+rodata_section: std.ArrayListUnmanaged(u8) = .{},
 
-pub fn init(allocator: std.mem.Allocator) Assembly {
-    return Assembly{
-        .text_section = std.ArrayList(u8).init(allocator),
-        .data_section = std.ArrayList(u8).init(allocator),
-        .rodata_section = std.ArrayList(u8).init(allocator),
-    };
-}
-
-pub fn deinit(self: Assembly) void {
-    self.text_section.deinit();
-    self.data_section.deinit();
-    self.rodata_section.deinit();
+pub fn deinit(self: *Assembly, allocator: std.mem.Allocator) void {
+    self.text_section.deinit(allocator);
+    self.data_section.deinit(allocator);
+    self.rodata_section.deinit(allocator);
 }

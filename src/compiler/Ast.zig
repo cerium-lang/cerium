@@ -156,14 +156,14 @@ pub const Parser = struct {
     };
 
     pub fn init(allocator: std.mem.Allocator, buffer: [:0]const u8) std.mem.Allocator.Error!Parser {
-        var tokens = std.ArrayList(Token).init(allocator);
+        var tokens: std.ArrayListUnmanaged(Token) = .{};
 
         var lexer = Lexer.init(buffer);
 
         while (true) {
             const token = lexer.next();
 
-            try tokens.append(token);
+            try tokens.append(allocator, token);
 
             if (token.tag == .eof) break;
         }
@@ -171,19 +171,19 @@ pub const Parser = struct {
         return Parser{
             .allocator = allocator,
             .buffer = buffer,
-            .tokens = try tokens.toOwnedSlice(),
+            .tokens = try tokens.toOwnedSlice(allocator),
             .current_token_index = 0,
         };
     }
 
     pub fn parse(self: *Parser) Error!Ast {
-        var body = std.ArrayList(Node).init(self.allocator);
+        var body: std.ArrayListUnmanaged(Node) = .{};
 
         while (self.peekToken().tag != .eof) {
-            try body.append(try self.parseStmt());
+            try body.append(self.allocator, try self.parseStmt());
         }
 
-        return Ast{ .body = try body.toOwnedSlice() };
+        return Ast{ .body = try body.toOwnedSlice(self.allocator) };
     }
 
     fn nextToken(self: *Parser) Token {
@@ -304,7 +304,7 @@ pub const Parser = struct {
             return error.UnexpectedToken;
         }
 
-        var paramters = std.ArrayList(Node.Stmt.FunctionDeclaration.Prototype.Parameter).init(self.allocator);
+        var paramters: std.ArrayListUnmanaged(Node.Stmt.FunctionDeclaration.Prototype.Parameter) = .{};
 
         while (!self.eatToken(.close_paren)) {
             if (self.peekToken().tag == .eof) {
@@ -313,7 +313,7 @@ pub const Parser = struct {
                 return error.UnexpectedToken;
             }
 
-            try paramters.append(try self.parseFunctionParameter());
+            try paramters.append(self.allocator, try self.parseFunctionParameter());
 
             if (!self.eatToken(.comma) and self.peekToken().tag != .close_paren) {
                 self.error_info = .{ .message = "expected ',' after parameter", .source_loc = self.tokenSourceLoc(self.peekToken()) };
@@ -322,7 +322,7 @@ pub const Parser = struct {
             }
         }
 
-        return try paramters.toOwnedSlice();
+        return paramters.toOwnedSlice(self.allocator);
     }
 
     fn parseFunctionParameter(self: *Parser) Error!Node.Stmt.FunctionDeclaration.Prototype.Parameter {
@@ -333,7 +333,7 @@ pub const Parser = struct {
     }
 
     fn parseBody(self: *Parser) Error![]Node {
-        var body = std.ArrayList(Node).init(self.allocator);
+        var body: std.ArrayListUnmanaged(Node) = .{};
 
         if (!self.eatToken(.open_brace)) {
             self.error_info = .{ .message = "expected '{'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
@@ -348,10 +348,10 @@ pub const Parser = struct {
                 return error.UnexpectedToken;
             }
 
-            try body.append(try self.parseStmt());
+            try body.append(self.allocator, try self.parseStmt());
         }
 
-        return body.toOwnedSlice();
+        return body.toOwnedSlice(self.allocator);
     }
 
     fn parseVariableDeclarationStmt(self: *Parser) Error!Node {
@@ -383,7 +383,7 @@ pub const Parser = struct {
     fn parseAssemblyStmt(self: *Parser) Error!Node {
         const asm_keyword_token = self.nextToken();
 
-        var content = std.ArrayList(u8).init(self.allocator);
+        var content: std.ArrayListUnmanaged(u8) = .{};
 
         if (!self.eatToken(.open_brace)) {
             self.error_info = .{ .message = "expected '{'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
@@ -406,14 +406,15 @@ pub const Parser = struct {
                 return error.UnexpectedToken;
             }
 
-            try content.appendSlice(self.tokenValue(token));
-            if (self.peekToken().tag != .close_brace) try content.append('\n');
+            try content.appendSlice(self.allocator, self.tokenValue(token));
+
+            if (self.peekToken().tag != .close_brace) try content.append(self.allocator, '\n');
         }
 
         return Node{
             .stmt = .{
                 .assembly = .{
-                    .content = try content.toOwnedSlice(),
+                    .content = try content.toOwnedSlice(self.allocator),
                     .source_loc = self.tokenSourceLoc(asm_keyword_token),
                 },
             },
