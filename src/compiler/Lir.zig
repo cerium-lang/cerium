@@ -5,8 +5,7 @@
 
 const std = @import("std");
 
-const Ast = @import("Ast.zig");
-const Type = @import("Type.zig");
+const Symbol = @import("Symbol.zig");
 
 const Lir = @This();
 
@@ -19,6 +18,8 @@ pub const Instruction = union(enum) {
     function_proluge,
     /// End a function block,
     function_epilogue,
+    /// Declare a function parameter, contains the symbol so the backend knows how to store it on the stack
+    function_parameter: Symbol,
     /// Set a stack value using the specified name
     set: []const u8,
     /// Get a stack value using the specified name

@@ -130,6 +130,7 @@ fn hirInstruction(self: *Sema, instruction: Hir.Instruction) Error!void {
 
         .function_proluge => |function| try self.hirFunctionProluge(function),
         .function_epilogue => try self.hirFunctionEpilogue(),
+        .function_parameter => try self.hirFunctionParameter(),
 
         .declare => |declare| try self.hirDeclare(declare),
 
@@ -168,6 +169,26 @@ fn hirFunctionProluge(self: *Sema, function: Ast.Node.Stmt.FunctionDeclaration) 
 
 fn hirFunctionEpilogue(self: *Sema) Error!void {
     try self.lir.instructions.append(self.allocator, .function_epilogue);
+}
+
+fn hirFunctionParameter(self: *Sema) Error!void {
+    const function_parameter = self.function.?.prototype.parameters[self.stack.items.len];
+
+    const function_parameter_symbol: Symbol = .{
+        .name = function_parameter.name,
+        .type = function_parameter.expected_type,
+    };
+
+    try self.symbol_table.set(function_parameter_symbol);
+
+    try self.lir.instructions.append(self.allocator, .{ .function_parameter = function_parameter_symbol });
+
+    // A replacement to function parameter counter, use the stack instead
+    if (self.stack.items.len == self.function.?.prototype.parameters.len - 1) {
+        self.stack.clearRetainingCapacity();
+    } else {
+        try self.stack.append(self.allocator, undefined);
+    }
 }
 
 fn hirDeclare(self: *Sema, declare: Hir.Instruction.Declare) Error!void {

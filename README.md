@@ -17,7 +17,7 @@ If you like it give it a star and try it yourself, If you don't like it then I c
         - [ ] Local Function Declarations
         - [x] Global Function Declarations
     - [ ] Add support for Function Calls
-    - [ ] Add support for Function Parameters Access
+    - [X] Add support for Function Parameters Access
     - [ ] Add support for Variable Declarations
         - [x] Local Variable Declarations
         - [ ] Global Variable Declarations

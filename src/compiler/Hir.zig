@@ -20,6 +20,8 @@ pub const Instruction = union(enum) {
     function_proluge: Ast.Node.Stmt.FunctionDeclaration,
     /// End a function block
     function_epilogue,
+    /// Declare a function parameter
+    function_parameter,
     /// Declare a variable
     declare: Declare,
     /// Set a stack value using the specified name
@@ -125,6 +127,10 @@ pub const Generator = struct {
         try self.hir.instructions.append(self.allocator, .{ .label = function.prototype.name.buffer });
 
         try self.hir.instructions.append(self.allocator, .{ .function_proluge = function });
+
+        for (0..function.prototype.parameters.len) |_| {
+            try self.hir.instructions.append(self.allocator, .function_parameter);
+        }
 
         for (function.body) |node| {
             try self.generateNode(node);

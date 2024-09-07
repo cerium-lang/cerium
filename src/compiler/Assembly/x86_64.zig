@@ -26,7 +26,7 @@ pub const Variable = struct {
 };
 
 const StackAllocation = struct {
-    floating_point: bool,
+    is_floating_point: bool,
 };
 
 pub fn init(allocator: std.mem.Allocator, lir: Lir) x86_64 {
@@ -49,7 +49,7 @@ pub fn render(self: *x86_64) Error!void {
     const text_section_writer = self.assembly.text_section.writer(self.allocator);
     const rodata_section_writer = self.assembly.rodata_section.writer(self.allocator);
 
-    for (self.lir.instructions.items) |instruction| {
+    for (self.lir.instructions.items, 0..) |instruction, i| {
         switch (instruction) {
             .label => |label| {
                 try text_section_writer.print(".global {s}\n", .{label});
@@ -73,6 +73,22 @@ pub fn render(self: *x86_64) Error!void {
                 self.variables.clearRetainingCapacity();
                 self.stack.clearRetainingCapacity();
                 self.stack_offsets.clearRetainingCapacity();
+            },
+
+            .function_parameter => |function_parameter| {
+                const function_parameter_index = i - 2 + 1;
+
+                const is_floating_point = function_parameter.type.isFloat();
+
+                if (is_floating_point) {
+                    try text_section_writer.print("\tmovq {}(%rbp), %xmm8\n", .{function_parameter_index * self.stack_alignment});
+                } else {
+                    try text_section_writer.print("\tmovq {}(%rbp), %r8\n", .{function_parameter_index * self.stack_alignment});
+                }
+
+                try self.pushRegister("8", .{ .is_floating_point = is_floating_point });
+
+                try self.variables.put(self.allocator, function_parameter.name.buffer, .{ .stack_index = self.stack.items.len - 1 });
             },
 
             .set => |name| {
@@ -102,7 +118,7 @@ pub fn render(self: *x86_64) Error!void {
 
                 try self.pointerToStack("8", self.stack_offsets.items[variable.stack_index + 1]);
 
-                try self.pushRegister("8", .{ .floating_point = false });
+                try self.pushRegister("8", .{ .is_floating_point = false });
             },
 
             .string => |string| {
@@ -111,13 +127,13 @@ pub fn render(self: *x86_64) Error!void {
 
                 self.string_literals_index += 1;
 
-                try self.pushRegister("8", .{ .floating_point = false });
+                try self.pushRegister("8", .{ .is_floating_point = false });
             },
 
             .int => |int| {
                 try text_section_writer.print("\tmovq ${}, %r8\n", .{int});
 
-                try self.pushRegister("8", .{ .floating_point = false });
+                try self.pushRegister("8", .{ .is_floating_point = false });
             },
 
             .float => |float| {
@@ -126,7 +142,7 @@ pub fn render(self: *x86_64) Error!void {
 
                 self.floating_points_index += 1;
 
-                try self.pushRegister("8", .{ .floating_point = true });
+                try self.pushRegister("8", .{ .is_floating_point = true });
             },
 
             .negate => {
@@ -134,7 +150,7 @@ pub fn render(self: *x86_64) Error!void {
 
                 try self.popRegister("bx");
 
-                if (stack_allocation.floating_point) {
+                if (stack_allocation.is_floating_point) {
                     try text_section_writer.print("\tmovq %xmm1, %rbx\n", .{});
                     try text_section_writer.print("\tmovabsq $0x8000000000000000, %rax\n", .{});
                     try text_section_writer.print("\txorq %rax, %rbx\n", .{});
@@ -162,7 +178,7 @@ pub fn render(self: *x86_64) Error!void {
                     else => unreachable,
                 };
 
-                if (stack_allocation.floating_point) {
+                if (stack_allocation.is_floating_point) {
                     try text_section_writer.print("\t{s}sd %xmm1, %xmm0\n", .{binary_operation_str});
                 } else {
                     if (instruction == .mul) {
@@ -200,6 +216,14 @@ fn suffixToNumber(register_suffix: []const u8) u8 {
         return 0;
     } else if (std.mem.eql(u8, register_suffix, "bx")) {
         return 1;
+    } else if (std.mem.eql(u8, register_suffix, "cx")) {
+        return 2;
+    } else if (std.mem.eql(u8, register_suffix, "dx")) {
+        return 3;
+    } else if (std.mem.eql(u8, register_suffix, "si")) {
+        return 4;
+    } else if (std.mem.eql(u8, register_suffix, "di")) {
+        return 5;
     } else {
         return register_suffix[0] - '0';
     }
@@ -218,7 +242,7 @@ fn pushRegister(self: *x86_64, register_suffix: []const u8, stack_allocation: St
 fn copyFromStack(self: *x86_64, register_suffix: []const u8, stack_allocation: StackAllocation, stack_offset: usize) Error!void {
     const text_section_writer = self.assembly.text_section.writer(self.allocator);
 
-    if (stack_allocation.floating_point) {
+    if (stack_allocation.is_floating_point) {
         try text_section_writer.print("\tmovsd -{}(%rbp), %xmm{}\n", .{ stack_offset, suffixToNumber(register_suffix) });
     } else {
         try text_section_writer.print("\tmovq -{}(%rbp), %r{s}\n", .{ stack_offset, register_suffix });
@@ -234,7 +258,7 @@ fn pointerToStack(self: *x86_64, register_suffix: []const u8, stack_offset: usiz
 fn copyToStack(self: *x86_64, register_suffix: []const u8, stack_allocation: StackAllocation, stack_offset: usize) Error!void {
     const text_section_writer = self.assembly.text_section.writer(self.allocator);
 
-    if (stack_allocation.floating_point) {
+    if (stack_allocation.is_floating_point) {
         try text_section_writer.print("\tmovsd %xmm{}, -{}(%rbp)\n", .{ suffixToNumber(register_suffix), stack_offset });
     } else {
         try text_section_writer.print("\tmovq %r{s}, -{}(%rbp)\n", .{ register_suffix, stack_offset });
