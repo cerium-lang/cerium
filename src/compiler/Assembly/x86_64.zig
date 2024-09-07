@@ -2,6 +2,7 @@ const std = @import("std");
 
 const Assembly = @import("../Assembly.zig");
 const Lir = @import("../Lir.zig");
+const Type = @import("../Type.zig");
 
 const x86_64 = @This();
 
@@ -11,16 +12,20 @@ assembly: Assembly = .{},
 
 lir: Lir,
 
-variables: std.StringHashMapUnmanaged(usize) = .{},
+variables: std.StringHashMapUnmanaged(Variable) = .{},
 
-stack: std.ArrayListUnmanaged(Value) = .{},
+stack: std.ArrayListUnmanaged(StackAllocation) = .{},
 stack_offsets: std.ArrayListUnmanaged(usize) = .{},
 stack_alignment: usize = 16,
 
 string_literals_index: usize = 0,
 floating_points_index: usize = 0,
 
-const Value = struct {
+pub const Variable = struct {
+    stack_index: usize,
+};
+
+const StackAllocation = struct {
     floating_point: bool,
 };
 
@@ -71,31 +76,31 @@ pub fn render(self: *x86_64) Error!void {
             },
 
             .set => |name| {
-                if (self.variables.get(name)) |stack_loc| {
-                    const register_info = self.stack.items[stack_loc];
+                if (self.variables.get(name)) |variable| {
+                    const stack_allocation = self.stack.items[variable.stack_index];
 
                     try self.popRegister("8");
 
-                    try self.copyToStack("8", register_info, self.stack_offsets.items[stack_loc + 1]);
+                    try self.copyToStack("8", stack_allocation, self.stack_offsets.items[variable.stack_index + 1]);
                 } else {
-                    try self.variables.put(self.allocator, name, self.stack.items.len - 1);
+                    try self.variables.put(self.allocator, name, .{ .stack_index = self.stack.items.len - 1 });
                 }
             },
 
             .get => |name| {
-                const stack_loc = self.variables.get(name).?;
+                const variable = self.variables.get(name).?;
 
-                const register_info = self.stack.items[stack_loc];
+                const value = self.stack.items[variable.stack_index];
 
-                try self.copyFromStack("8", register_info, self.stack_offsets.items[stack_loc + 1]);
+                try self.copyFromStack("8", value, self.stack_offsets.items[variable.stack_index + 1]);
 
-                try self.pushRegister("8", register_info);
+                try self.pushRegister("8", value);
             },
 
             .get_ptr => |name| {
-                const stack_loc = self.variables.get(name).?;
+                const variable = self.variables.get(name).?;
 
-                try self.pointerToStack("8", self.stack_offsets.items[stack_loc + 1]);
+                try self.pointerToStack("8", self.stack_offsets.items[variable.stack_index + 1]);
 
                 try self.pushRegister("8", .{ .floating_point = false });
             },
@@ -125,11 +130,11 @@ pub fn render(self: *x86_64) Error!void {
             },
 
             .negate => {
-                const register_info = self.stack.getLast();
+                const stack_allocation = self.stack.getLast();
 
                 try self.popRegister("bx");
 
-                if (register_info.floating_point) {
+                if (stack_allocation.floating_point) {
                     try text_section_writer.print("\tmovq %xmm1, %rbx\n", .{});
                     try text_section_writer.print("\tmovabsq $0x8000000000000000, %rax\n", .{});
                     try text_section_writer.print("\txorq %rax, %rbx\n", .{});
@@ -139,11 +144,11 @@ pub fn render(self: *x86_64) Error!void {
                     try text_section_writer.print("\tsubq %rax, %rbx\n", .{});
                 }
 
-                try self.pushRegister("bx", register_info);
+                try self.pushRegister("bx", stack_allocation);
             },
 
             .add, .sub, .mul, .div => {
-                const register_info = self.stack.getLast();
+                const stack_allocation = self.stack.getLast();
 
                 try self.popRegister("cx");
                 try self.popRegister("ax");
@@ -157,7 +162,7 @@ pub fn render(self: *x86_64) Error!void {
                     else => unreachable,
                 };
 
-                if (register_info.floating_point) {
+                if (stack_allocation.floating_point) {
                     try text_section_writer.print("\t{s}sd %xmm1, %xmm0\n", .{binary_operation_str});
                 } else {
                     if (instruction == .mul) {
@@ -171,7 +176,7 @@ pub fn render(self: *x86_64) Error!void {
                     }
                 }
 
-                try self.pushRegister("ax", register_info);
+                try self.pushRegister("ax", stack_allocation);
             },
 
             .pop => {
@@ -200,20 +205,20 @@ fn suffixToNumber(register_suffix: []const u8) u8 {
     }
 }
 
-fn pushRegister(self: *x86_64, register_suffix: []const u8, register_info: Value) Error!void {
-    try self.stack.append(self.allocator, register_info);
+fn pushRegister(self: *x86_64, register_suffix: []const u8, stack_allocation: StackAllocation) Error!void {
+    try self.stack.append(self.allocator, stack_allocation);
 
     const stack_offset = self.stack_offsets.getLast() + self.stack_alignment;
 
     try self.stack_offsets.append(self.allocator, stack_offset);
 
-    try self.copyToStack(register_suffix, register_info, stack_offset);
+    try self.copyToStack(register_suffix, stack_allocation, stack_offset);
 }
 
-fn copyFromStack(self: *x86_64, register_suffix: []const u8, register_info: Value, stack_offset: usize) Error!void {
+fn copyFromStack(self: *x86_64, register_suffix: []const u8, stack_allocation: StackAllocation, stack_offset: usize) Error!void {
     const text_section_writer = self.assembly.text_section.writer(self.allocator);
 
-    if (register_info.floating_point) {
+    if (stack_allocation.floating_point) {
         try text_section_writer.print("\tmovsd -{}(%rbp), %xmm{}\n", .{ stack_offset, suffixToNumber(register_suffix) });
     } else {
         try text_section_writer.print("\tmovq -{}(%rbp), %r{s}\n", .{ stack_offset, register_suffix });
@@ -226,10 +231,10 @@ fn pointerToStack(self: *x86_64, register_suffix: []const u8, stack_offset: usiz
     try text_section_writer.print("\tleaq -{}(%rbp), %r{}\n", .{ stack_offset, suffixToNumber(register_suffix) });
 }
 
-fn copyToStack(self: *x86_64, register_suffix: []const u8, register_info: Value, stack_offset: usize) Error!void {
+fn copyToStack(self: *x86_64, register_suffix: []const u8, stack_allocation: StackAllocation, stack_offset: usize) Error!void {
     const text_section_writer = self.assembly.text_section.writer(self.allocator);
 
-    if (register_info.floating_point) {
+    if (stack_allocation.floating_point) {
         try text_section_writer.print("\tmovsd %xmm{}, -{}(%rbp)\n", .{ suffixToNumber(register_suffix), stack_offset });
     } else {
         try text_section_writer.print("\tmovq %r{s}, -{}(%rbp)\n", .{ register_suffix, stack_offset });
@@ -237,11 +242,11 @@ fn copyToStack(self: *x86_64, register_suffix: []const u8, register_info: Value,
 }
 
 fn popRegister(self: *x86_64, register_suffix: []const u8) Error!void {
-    const register_info = self.stack.pop();
+    const stack_allocation = self.stack.pop();
 
     const stack_offset = self.stack_offsets.pop();
 
-    try self.copyFromStack(register_suffix, register_info, stack_offset);
+    try self.copyFromStack(register_suffix, stack_allocation, stack_offset);
 }
 
 pub fn dump(self: *x86_64) Error![]const u8 {
