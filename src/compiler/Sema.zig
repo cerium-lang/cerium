@@ -53,9 +53,16 @@ const Value = union(enum) {
     };
 
     fn canImplicitCast(self: Value, to: Type) bool {
+        const self_type = self.getType();
+
         return (self == .int and to.isInt()) or
             (self == .float and to.isFloat()) or
-            self.getType().eql(to);
+            (self_type.isInt() and to.isInt() and
+            self_type.maxInt() <= to.maxInt() and self_type.minInt() >= to.minInt() and
+            self_type.canBeNegative() == to.canBeNegative()) or
+            (self_type.isFloat() and to.isFloat() and
+            self_type.maxFloat() <= to.maxFloat() and self_type.minFloat() >= to.minFloat()) or
+            self_type.eql(to);
     }
 
     fn canBeRepresented(self: Value, as: Type) bool {
