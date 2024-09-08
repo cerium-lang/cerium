@@ -78,6 +78,7 @@ pub const Generator = struct {
 
     pub const Error = error{
         UnexpectedStatement,
+        UnexpectedExpression,
         UnsupportedFeature,
     } || std.mem.Allocator.Error;
 
@@ -95,9 +96,15 @@ pub const Generator = struct {
 
     fn generateNode(self: *Generator, node: Ast.Node) Error!void {
         switch (node) {
-            .stmt => try self.generateStmt(node.stmt),
-            .expr => {
-                try self.generateExpr(node.expr);
+            .stmt => |stmt| try self.generateStmt(stmt),
+            .expr => |expr| {
+                if (!self.in_function) {
+                    self.error_info = .{ .message = "did not expect an expression to be in top level", .source_loc = expr.getSourceLoc() };
+
+                    return error.UnexpectedExpression;
+                }
+
+                try self.generateExpr(expr);
 
                 try self.hir.instructions.append(self.allocator, .pop);
             },
