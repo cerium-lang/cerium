@@ -19,7 +19,6 @@ stack: std.ArrayListUnmanaged(StackAllocation) = .{},
 stack_offsets: std.ArrayListUnmanaged(usize) = .{},
 stack_alignment: usize = 16,
 
-function_parameter_index: usize = 0,
 string_literals_index: usize = 0,
 floating_points_index: usize = 0,
 
@@ -73,8 +72,6 @@ pub fn render(self: *x86_64) Error!void {
                 try text_section_writer.writeAll("\tmovq %rsp, %rbp\n");
 
                 try self.stack_offsets.append(self.allocator, 0);
-
-                self.function_parameter_index = 0;
             },
 
             .function_epilogue => {
@@ -97,21 +94,21 @@ pub fn render(self: *x86_64) Error!void {
             },
 
             .function_parameter => |function_parameter| {
-                self.function_parameter_index += 1;
+                const function_parameter_index, const function_parameter_symbol = function_parameter;
 
-                const is_floating_point = function_parameter.type.isFloat();
+                const is_floating_point = function_parameter_symbol.type.isFloat();
 
                 if (is_floating_point) {
-                    try text_section_writer.print("\tmovq {}(%rbp), %xmm8\n", .{self.function_parameter_index * self.stack_alignment});
+                    try text_section_writer.print("\tmovq {}(%rbp), %xmm8\n", .{(function_parameter_index + 1) * self.stack_alignment});
                 } else {
-                    try text_section_writer.print("\tmovq {}(%rbp), %r8\n", .{self.function_parameter_index * self.stack_alignment});
+                    try text_section_writer.print("\tmovq {}(%rbp), %r8\n", .{(function_parameter_index + 1) * self.stack_alignment});
                 }
 
                 try self.pushRegister("8", .{ .is_floating_point = is_floating_point });
 
                 try self.variables.put(
                     self.allocator,
-                    function_parameter.name.buffer,
+                    function_parameter_symbol.name.buffer,
                     .{
                         .stack_index = self.stack.items.len - 1,
                         .linkage = .local,

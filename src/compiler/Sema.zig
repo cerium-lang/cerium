@@ -19,6 +19,7 @@ lir: Lir = .{},
 stack: std.ArrayListUnmanaged(Value) = .{},
 
 function: ?Ast.Node.Stmt.FunctionDeclaration = null,
+function_parameter_index: usize = 0,
 
 symbol_table: Symbol.Table,
 
@@ -191,6 +192,7 @@ fn hirFunctionProluge(self: *Sema, function: Ast.Node.Stmt.FunctionDeclaration) 
     try self.lir.instructions.append(self.allocator, .function_proluge);
 
     self.function = function;
+    self.function_parameter_index = 0;
 }
 
 fn hirFunctionEpilogue(self: *Sema) Error!void {
@@ -198,7 +200,7 @@ fn hirFunctionEpilogue(self: *Sema) Error!void {
 }
 
 fn hirFunctionParameter(self: *Sema) Error!void {
-    const function_parameter = self.function.?.prototype.parameters[self.stack.items.len];
+    const function_parameter = self.function.?.prototype.parameters[self.function_parameter_index];
 
     const function_parameter_symbol: Symbol = .{
         .name = function_parameter.name,
@@ -208,14 +210,9 @@ fn hirFunctionParameter(self: *Sema) Error!void {
 
     try self.symbol_table.set(function_parameter_symbol);
 
-    try self.lir.instructions.append(self.allocator, .{ .function_parameter = function_parameter_symbol });
+    try self.lir.instructions.append(self.allocator, .{ .function_parameter = .{ self.function_parameter_index, function_parameter_symbol } });
 
-    // A replacement to function parameter counter, use the stack instead
-    if (self.stack.items.len == self.function.?.prototype.parameters.len - 1) {
-        self.stack.clearRetainingCapacity();
-    } else {
-        try self.stack.append(self.allocator, undefined);
-    }
+    self.function_parameter_index += 1;
 }
 
 fn hirCall(self: *Sema, call: Hir.Instruction.Call) Error!void {

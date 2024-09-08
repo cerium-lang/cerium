@@ -20,7 +20,7 @@ pub const Instruction = union(enum) {
     /// End a function block,
     function_epilogue,
     /// Declare a function parameter, contains the symbol so the backend knows how to store it on the stack
-    function_parameter: Symbol,
+    function_parameter: struct { usize, Symbol },
     /// Call a specific function pointer on the stack with the specified type
     call: Type.Data.Function,
     /// Set a stack value using the specified name
