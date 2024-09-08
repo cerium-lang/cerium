@@ -17,51 +17,32 @@ pub const Linkage = enum {
 pub const Table = struct {
     allocator: std.mem.Allocator,
 
-    symbols: std.ArrayListUnmanaged(Symbol) = .{},
+    original: std.StringHashMapUnmanaged(Symbol) = .{},
+    modified: std.StringHashMapUnmanaged(Symbol) = .{},
 
     pub fn init(allocator: std.mem.Allocator) Table {
         return Table{ .allocator = allocator };
     }
 
-    pub fn set(self: *Table, symbol: Symbol) std.mem.Allocator.Error!void {
-        var swapped = false;
+    pub fn put(self: *Table, symbol: Symbol) std.mem.Allocator.Error!void {
+        try self.modified.put(self.allocator, symbol.name.buffer, symbol);
 
-        for (self.symbols.items, 0..) |other, i| {
-            if (std.mem.eql(u8, symbol.name.buffer, other.name.buffer)) {
-                self.symbols.items[i] = symbol;
-
-                swapped = true;
-            }
-        }
-
-        if (!swapped) {
-            try self.symbols.append(self.allocator, symbol);
+        if (symbol.linkage == .global) {
+            try self.original.put(self.allocator, symbol.name.buffer, symbol);
         }
     }
 
-    pub fn reset(self: *Table) void {
-        var i: usize = 0;
-
-        while (i < self.symbols.items.len) {
-            const symbol = self.symbols.items[i];
-
-            if (symbol.linkage == .local) {
-                _ = self.symbols.swapRemove(i);
-            } else {
-                i += 1;
-            }
-        }
-    }
-
-    const LookupError = error{Undeclared};
-
-    pub fn lookup(self: Table, name: []const u8) ?Symbol {
-        for (self.symbols.items) |symbol| {
-            if (std.mem.eql(u8, symbol.name.buffer, name)) {
-                return symbol;
-            }
+    pub fn get(self: Table, name: []const u8) ?Symbol {
+        if (self.modified.get(name)) |symbol| {
+            return symbol;
+        } else if (self.original.get(name)) |symbol| {
+            return symbol;
         }
 
         return null;
+    }
+
+    pub fn clearAndFree(self: *Table) void {
+        self.modified.clearAndFree(self.allocator);
     }
 };

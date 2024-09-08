@@ -13,7 +13,7 @@ assembly: Assembly = .{},
 
 lir: Lir,
 
-variables: std.StringHashMapUnmanaged(Variable) = .{},
+variables: Variable.Table,
 
 stack: std.ArrayListUnmanaged(StackAllocation) = .{},
 stack_offsets: std.ArrayListUnmanaged(usize) = .{},
@@ -26,6 +26,49 @@ pub const Variable = struct {
     stack_index: usize,
     type: Type,
     linkage: Symbol.Linkage,
+
+    pub const Table = struct {
+        allocator: std.mem.Allocator,
+
+        original: std.StringHashMapUnmanaged(Variable) = .{},
+        modified: std.StringHashMapUnmanaged(Variable) = .{},
+
+        pub fn init(allocator: std.mem.Allocator) Table {
+            return Table{ .allocator = allocator };
+        }
+
+        pub fn put(self: *Table, name: []const u8, variable: Variable) std.mem.Allocator.Error!void {
+            try self.modified.put(self.allocator, name, variable);
+
+            if (variable.linkage == .global) {
+                try self.original.put(self.allocator, name, variable);
+            }
+        }
+
+        pub fn get(self: Table, name: []const u8) ?Variable {
+            if (self.modified.get(name)) |variable| {
+                return variable;
+            } else if (self.original.get(name)) |variable| {
+                return variable;
+            }
+
+            return null;
+        }
+
+        pub fn getPtr(self: *Table, name: []const u8) ?*Variable {
+            if (self.modified.getPtr(name)) |variable| {
+                return variable;
+            } else if (self.original.getPtr(name)) |variable| {
+                return variable;
+            }
+
+            return null;
+        }
+
+        pub fn reset(self: *Table) void {
+            self.modified.clearRetainingCapacity();
+        }
+    };
 };
 
 const StackAllocation = struct {
@@ -36,12 +79,12 @@ pub fn init(allocator: std.mem.Allocator, lir: Lir) x86_64 {
     return x86_64{
         .allocator = allocator,
         .lir = lir,
+        .variables = Variable.Table.init(allocator),
     };
 }
 
 pub fn deinit(self: *x86_64) void {
     self.assembly.deinit(self.allocator);
-    self.variables.clearAndFree(self.allocator);
     self.stack.clearAndFree(self.allocator);
     self.stack_offsets.clearAndFree(self.allocator);
 }
@@ -76,14 +119,7 @@ pub fn render(self: *x86_64) Error!void {
 
                 try text_section_writer.writeAll("\tpopq %rbp\n");
 
-                var variable_iterator = self.variables.iterator();
-
-                while (variable_iterator.next()) |variable_entry| {
-                    if (variable_entry.value_ptr.linkage == .local) {
-                        _ = self.variables.remove(variable_entry.key_ptr.*);
-                    }
-                }
-
+                self.variables.reset();
                 self.stack.clearRetainingCapacity();
                 self.stack_offsets.clearRetainingCapacity();
             },
@@ -102,7 +138,6 @@ pub fn render(self: *x86_64) Error!void {
                 try self.pushRegister(text_section_writer, "8", .{ .is_floating_point = is_floating_point });
 
                 try self.variables.put(
-                    self.allocator,
                     function_parameter_symbol.name.buffer,
                     .{
                         .stack_index = self.stack.items.len - 1,
@@ -132,7 +167,6 @@ pub fn render(self: *x86_64) Error!void {
 
             .variable => |symbol| {
                 try self.variables.put(
-                    self.allocator,
                     symbol.name.buffer,
                     .{
                         .stack_index = 0,

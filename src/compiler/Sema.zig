@@ -160,7 +160,7 @@ fn hirInstruction(self: *Sema, instruction: Hir.Instruction) Error!void {
 }
 
 fn hirLabel(self: *Sema, name: Ast.Name) Error!void {
-    if (self.symbol_table.lookup(name.buffer) != null) {
+    if (self.symbol_table.get(name.buffer) != null) {
         return self.reportRedeclaration(name);
     }
 
@@ -189,7 +189,7 @@ fn hirFunctionParameter(self: *Sema) Error!void {
         .linkage = .local,
     };
 
-    try self.symbol_table.set(function_parameter_symbol);
+    try self.symbol_table.put(function_parameter_symbol);
 
     try self.lir.instructions.append(self.allocator, .{ .function_parameter = .{ self.function_parameter_index, function_parameter_symbol } });
 
@@ -232,7 +232,7 @@ fn hirCall(self: *Sema, call: Hir.Instruction.Call) Error!void {
 }
 
 fn hirVariable(self: *Sema, symbol: Symbol) Error!void {
-    try self.symbol_table.set(symbol);
+    try self.symbol_table.put(symbol);
 
     try self.lir.instructions.append(self.allocator, .{ .variable = symbol });
 }
@@ -292,7 +292,7 @@ fn reportRedeclaration(self: *Sema, name: Ast.Name) Error!void {
 }
 
 fn hirSet(self: *Sema, name: Ast.Name) Error!void {
-    const symbol = self.symbol_table.lookup(name.buffer) orelse return self.reportNotDeclared(name);
+    const symbol = self.symbol_table.get(name.buffer) orelse return self.reportNotDeclared(name);
 
     const value = self.stack.pop();
 
@@ -308,7 +308,7 @@ fn hirSet(self: *Sema, name: Ast.Name) Error!void {
 }
 
 fn hirGet(self: *Sema, name: Ast.Name) Error!void {
-    const symbol = self.symbol_table.lookup(name.buffer) orelse return self.reportNotDeclared(name);
+    const symbol = self.symbol_table.get(name.buffer) orelse return self.reportNotDeclared(name);
 
     try self.lir.instructions.append(self.allocator, .{ .get = name.buffer });
 
@@ -383,7 +383,7 @@ fn hirReference(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
     const rhs_runtime_name = rhs.runtime.data.name;
     const rhs_runtime_type = rhs.runtime.type;
 
-    const rhs_symbol = self.symbol_table.lookup(rhs_runtime_name.buffer).?;
+    const rhs_symbol = self.symbol_table.get(rhs_runtime_name.buffer).?;
 
     const child_on_heap = try self.allocator.create(Type);
     child_on_heap.* = rhs_runtime_type;
@@ -546,7 +546,7 @@ fn hirReturn(self: *Sema) Error!void {
 
     self.function = null;
     self.stack.clearRetainingCapacity();
-    self.symbol_table.reset();
+    self.symbol_table.clearAndFree();
 
     try self.lir.instructions.append(self.allocator, .@"return");
 }
