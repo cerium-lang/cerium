@@ -24,6 +24,7 @@ floating_points_index: usize = 0,
 
 pub const Variable = struct {
     stack_index: usize,
+    type: Type,
     linkage: Symbol.Linkage,
 };
 
@@ -49,22 +50,16 @@ pub const Error = std.mem.Allocator.Error;
 
 pub fn render(self: *x86_64) Error!void {
     const text_section_writer = self.assembly.text_section.writer(self.allocator);
+    const data_section_writer = self.assembly.data_section.writer(self.allocator);
     const rodata_section_writer = self.assembly.rodata_section.writer(self.allocator);
 
-    for (self.lir.instructions.items) |instruction| {
+    for (self.lir.instructions.items, 0..) |instruction, i| {
         switch (instruction) {
             .label => |name| {
-                try text_section_writer.print(".global {s}\n", .{name});
-                try text_section_writer.print("{s}:\n", .{name});
+                const section_writer = if (self.lir.instructions.items[i + 1].variable.type.getFunction() == null) data_section_writer else text_section_writer;
 
-                try self.variables.put(
-                    self.allocator,
-                    name,
-                    .{
-                        .stack_index = 0,
-                        .linkage = .global,
-                    },
-                );
+                try section_writer.print(".global {s}\n", .{name});
+                try section_writer.print("{s}:\n", .{name});
             },
 
             .function_proluge => {
@@ -111,7 +106,8 @@ pub fn render(self: *x86_64) Error!void {
                     function_parameter_symbol.name.buffer,
                     .{
                         .stack_index = self.stack.items.len - 1,
-                        .linkage = .local,
+                        .type = function_parameter_symbol.type,
+                        .linkage = function_parameter_symbol.linkage,
                     },
                 );
             },
@@ -119,13 +115,13 @@ pub fn render(self: *x86_64) Error!void {
             .call => |function| {
                 try self.popRegister(text_section_writer, "8");
 
-                for (function.parameters, 0..) |parameter, i| {
+                for (function.parameters, 0..) |parameter, j| {
                     try self.popRegister(text_section_writer, "9");
 
                     if (parameter.isFloat()) {
-                        try text_section_writer.print("\tmovq %xmm9, {}(%rsp)\n", .{i * self.stack_alignment});
+                        try text_section_writer.print("\tmovq %xmm9, {}(%rsp)\n", .{j * self.stack_alignment});
                     } else {
-                        try text_section_writer.print("\tmovq %r9, {}(%rsp)\n", .{i * self.stack_alignment});
+                        try text_section_writer.print("\tmovq %r9, {}(%rsp)\n", .{j * self.stack_alignment});
                     }
                 }
 
@@ -136,22 +132,35 @@ pub fn render(self: *x86_64) Error!void {
                 try self.pushRegister(text_section_writer, "ax", .{ .is_floating_point = function.return_type.isFloat() });
             },
 
+            .variable => |symbol| {
+                try self.variables.put(
+                    self.allocator,
+                    symbol.name.buffer,
+                    .{
+                        .stack_index = 0,
+                        .type = symbol.type,
+                        .linkage = symbol.linkage,
+                    },
+                );
+            },
+
             .set => |name| {
-                if (self.variables.get(name)) |variable| {
+                const variable = self.variables.getPtr(name).?;
+
+                if (variable.linkage == .global) {
+                    const stack_allocation = self.stack.items[variable.stack_index];
+
+                    try self.popRegister(text_section_writer, "8");
+
+                    try copyToData(text_section_writer, "8", stack_allocation, name);
+                } else if (variable.stack_index == 0) {
+                    variable.stack_index = self.stack.items.len - 1;
+                } else {
                     const stack_allocation = self.stack.items[variable.stack_index];
 
                     try self.popRegister(text_section_writer, "8");
 
                     try copyToStack(text_section_writer, "8", stack_allocation, self.stack_offsets.items[variable.stack_index + 1]);
-                } else {
-                    try self.variables.put(
-                        self.allocator,
-                        name,
-                        .{
-                            .stack_index = self.stack.items.len - 1,
-                            .linkage = .local,
-                        },
-                    );
                 }
             },
 
@@ -160,17 +169,19 @@ pub fn render(self: *x86_64) Error!void {
 
                 switch (variable.linkage) {
                     .local => {
-                        const value = self.stack.items[variable.stack_index];
+                        const stack_allocation = self.stack.items[variable.stack_index];
 
-                        try copyFromStack(text_section_writer, "8", value, self.stack_offsets.items[variable.stack_index + 1]);
+                        try copyFromStack(text_section_writer, "8", stack_allocation, self.stack_offsets.items[variable.stack_index + 1]);
 
-                        try self.pushRegister(text_section_writer, "8", value);
+                        try self.pushRegister(text_section_writer, "8", stack_allocation);
                     },
 
                     .global => {
-                        try pointerToData(text_section_writer, "8", name);
+                        const stack_allocation: StackAllocation = .{ .is_floating_point = variable.type.isFloat() };
 
-                        try self.pushRegister(text_section_writer, "8", .{ .is_floating_point = false });
+                        try copyFromData(text_section_writer, "8", stack_allocation, name);
+
+                        try self.pushRegister(text_section_writer, "8", stack_allocation);
                     },
                 }
             },
@@ -194,27 +205,39 @@ pub fn render(self: *x86_64) Error!void {
             },
 
             .string => |string| {
-                try rodata_section_writer.print("\tstr{}: .asciz \"{s}\"\n", .{ self.string_literals_index, string });
-                try text_section_writer.print("\tleaq str{}(%rip), %r8\n", .{self.string_literals_index});
+                if (self.stack.items.len == 0) {
+                    try rodata_section_writer.print("\t.asciz \"{s}\"\n", .{string});
+                } else {
+                    try rodata_section_writer.print("\tstr{}: .asciz \"{s}\"\n", .{ self.string_literals_index, string });
+                    try text_section_writer.print("\tleaq str{}(%rip), %r8\n", .{self.string_literals_index});
 
-                self.string_literals_index += 1;
+                    self.string_literals_index += 1;
 
-                try self.pushRegister(text_section_writer, "8", .{ .is_floating_point = false });
+                    try self.pushRegister(text_section_writer, "8", .{ .is_floating_point = false });
+                }
             },
 
             .int => |int| {
-                try text_section_writer.print("\tmovq ${}, %r8\n", .{int});
+                if (self.stack.items.len == 0) {
+                    try data_section_writer.print("\t.quad {}\n", .{int});
+                } else {
+                    try text_section_writer.print("\tmovq ${}, %r8\n", .{int});
 
-                try self.pushRegister(text_section_writer, "8", .{ .is_floating_point = false });
+                    try self.pushRegister(text_section_writer, "8", .{ .is_floating_point = false });
+                }
             },
 
             .float => |float| {
-                try rodata_section_writer.print("flt{}: .quad {}\n", .{ self.floating_points_index, @as(u64, @bitCast(float)) });
-                try text_section_writer.print("\tmovsd flt{}(%rip), %xmm8\n", .{self.floating_points_index});
+                if (self.stack.items.len == 0) {
+                    try data_section_writer.print("\t.quad {}\n", .{@as(u64, @bitCast(float))});
+                } else {
+                    try rodata_section_writer.print("flt{}: .quad {}\n", .{ self.floating_points_index, @as(u64, @bitCast(float)) });
+                    try text_section_writer.print("\tmovsd flt{}(%rip), %xmm8\n", .{self.floating_points_index});
 
-                self.floating_points_index += 1;
+                    self.floating_points_index += 1;
 
-                try self.pushRegister(text_section_writer, "8", .{ .is_floating_point = true });
+                    try self.pushRegister(text_section_writer, "8", .{ .is_floating_point = true });
+                }
             },
 
             .negate => {
@@ -324,6 +347,35 @@ fn popRegister(self: *x86_64, text_section_writer: anytype, register_suffix: []c
     try copyFromStack(text_section_writer, register_suffix, stack_allocation, stack_offset);
 }
 
+fn pointerToStack(
+    text_section_writer: anytype,
+    register_suffix: []const u8,
+    stack_offset: usize,
+) Error!void {
+    try text_section_writer.print("\tleaq -{}(%rbp), %r{s}\n", .{ stack_offset, register_suffix });
+}
+
+fn pointerToData(
+    text_section_writer: anytype,
+    register_suffix: []const u8,
+    data_name: []const u8,
+) Error!void {
+    try text_section_writer.print("\tleaq {s}(%rip), %r{s}\n", .{ data_name, register_suffix });
+}
+
+fn copyToStack(
+    text_section_writer: anytype,
+    register_suffix: []const u8,
+    stack_allocation: StackAllocation,
+    stack_offset: usize,
+) Error!void {
+    if (stack_allocation.is_floating_point) {
+        try text_section_writer.print("\tmovsd %xmm{}, -{}(%rbp)\n", .{ suffixToNumber(register_suffix), stack_offset });
+    } else {
+        try text_section_writer.print("\tmovq %r{s}, -{}(%rbp)\n", .{ register_suffix, stack_offset });
+    }
+}
+
 fn copyFromStack(
     text_section_writer: anytype,
     register_suffix: []const u8,
@@ -337,32 +389,29 @@ fn copyFromStack(
     }
 }
 
-fn pointerToStack(
-    text_section_writer: anytype,
-    register_suffix: []const u8,
-    stack_offset: usize,
-) Error!void {
-    try text_section_writer.print("\tleaq -{}(%rbp), %r{}\n", .{ stack_offset, suffixToNumber(register_suffix) });
-}
-
-fn pointerToData(
-    text_section_writer: anytype,
-    register_suffix: []const u8,
-    data_name: []const u8,
-) Error!void {
-    try text_section_writer.print("\tleaq {s}(%rip), %r{}\n", .{ data_name, suffixToNumber(register_suffix) });
-}
-
-fn copyToStack(
+fn copyToData(
     text_section_writer: anytype,
     register_suffix: []const u8,
     stack_allocation: StackAllocation,
-    stack_offset: usize,
+    data_name: []const u8,
 ) Error!void {
     if (stack_allocation.is_floating_point) {
-        try text_section_writer.print("\tmovsd %xmm{}, -{}(%rbp)\n", .{ suffixToNumber(register_suffix), stack_offset });
+        try text_section_writer.print("\tmovq %xmm{}, {s}(%rip)\n", .{ suffixToNumber(register_suffix), data_name });
     } else {
-        try text_section_writer.print("\tmovq %r{s}, -{}(%rbp)\n", .{ register_suffix, stack_offset });
+        try text_section_writer.print("\tmovq %r{s}, {s}(%rip)\n", .{ register_suffix, data_name });
+    }
+}
+
+fn copyFromData(
+    text_section_writer: anytype,
+    register_suffix: []const u8,
+    stack_allocation: StackAllocation,
+    data_name: []const u8,
+) Error!void {
+    if (stack_allocation.is_floating_point) {
+        try text_section_writer.print("\tmovq {s}(%rip), %xmm{}\n", .{ data_name, suffixToNumber(register_suffix) });
+    } else {
+        try text_section_writer.print("\tmovq {s}(%rip), %r{s}\n", .{ data_name, register_suffix });
     }
 }
 

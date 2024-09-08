@@ -16,12 +16,12 @@ If you like it give it a star and try it yourself, If you don't like it then I c
     - [x] Add support for Function Declarations
     - [x] Add support for Function Calls
     - [x] Add support for Function Parameters Access
-    - [ ] Add support for Variable Declarations
+    - [x] Add support for Variable Declarations
         - [x] Local Variable Declarations
-        - [ ] Global Variable Declarations
-    - [ ] Add support for Variable Access
+        - [x] Global Variable Declarations
+    - [x] Add support for Variable Access
         - [x] Local Variable Access
-        - [ ] Global Variable Access
+        - [x] Global Variable Access
     - [ ] Add support for Unary Operations
         - [x] Negation
         - [ ] Boolean Not

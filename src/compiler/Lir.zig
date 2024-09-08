@@ -23,6 +23,8 @@ pub const Instruction = union(enum) {
     function_parameter: struct { usize, Symbol },
     /// Call a specific function pointer on the stack with the specified type
     call: Type.Data.Function,
+    /// Declare a variable using the specified name and type
+    variable: Symbol,
     /// Set a stack value using the specified name
     set: []const u8,
     /// Get a value using the specified name

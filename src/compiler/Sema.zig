@@ -31,6 +31,7 @@ pub const ErrorInfo = struct {
 };
 
 pub const Error = error{
+    ExpectedCompiletimeConstant,
     UnexpectedArgumentsCount,
     ExpectedExplicitReturn,
     TypeCannotRepresentValue,
@@ -124,10 +125,6 @@ fn hirInstructions(self: *Sema, instructions: []const Hir.Instruction) Error!voi
 }
 
 fn hirInstruction(self: *Sema, instruction: Hir.Instruction) Error!void {
-    if (self.function == null and instruction != .label and instruction != .function_proluge and instruction != .assembly) {
-        return;
-    }
-
     switch (instruction) {
         .label => |name| try self.hirLabel(name),
 
@@ -171,29 +168,6 @@ fn hirLabel(self: *Sema, name: Ast.Name) Error!void {
 }
 
 fn hirFunctionProluge(self: *Sema, function: Ast.Node.Stmt.FunctionDeclaration) Error!void {
-    var function_parameters: std.ArrayListUnmanaged(Type) = .{};
-
-    for (function.prototype.parameters) |ast_function_parameter| {
-        try function_parameters.append(self.allocator, ast_function_parameter.expected_type);
-    }
-
-    const function_return_type_on_heap = try self.allocator.create(Type);
-    function_return_type_on_heap.* = function.prototype.return_type;
-
-    try self.symbol_table.set(.{
-        .name = function.prototype.name,
-        .type = .{
-            .tag = .function,
-            .data = .{
-                .function = .{
-                    .parameters = try function_parameters.toOwnedSlice(self.allocator),
-                    .return_type = function_return_type_on_heap,
-                },
-            },
-        },
-        .linkage = .global,
-    });
-
     try self.lir.instructions.append(self.allocator, .function_proluge);
 
     self.function = function;
@@ -201,6 +175,8 @@ fn hirFunctionProluge(self: *Sema, function: Ast.Node.Stmt.FunctionDeclaration) 
 }
 
 fn hirFunctionEpilogue(self: *Sema) Error!void {
+    if (self.function == null) return;
+
     try self.lir.instructions.append(self.allocator, .function_epilogue);
 }
 
@@ -257,6 +233,8 @@ fn hirCall(self: *Sema, call: Hir.Instruction.Call) Error!void {
 
 fn hirVariable(self: *Sema, symbol: Symbol) Error!void {
     try self.symbol_table.set(symbol);
+
+    try self.lir.instructions.append(self.allocator, .{ .variable = symbol });
 }
 
 fn checkRepresentability(self: *Sema, source_value: Value, destination_type: Type, source_loc: Ast.SourceLoc) Error!void {
@@ -318,9 +296,15 @@ fn hirSet(self: *Sema, name: Ast.Name) Error!void {
 
     const value = self.stack.pop();
 
+    if (value == .runtime and symbol.linkage == .global and self.function == null) {
+        self.error_info = .{ .message = "expected global variable initializer to be compile time constant", .source_loc = name.source_loc };
+
+        return error.ExpectedCompiletimeConstant;
+    }
+
     try self.checkRepresentability(value, symbol.type, name.source_loc);
 
-    try self.lir.instructions.append(self.allocator, .{ .set = name.buffer });
+    if (symbol.linkage == .local) try self.lir.instructions.append(self.allocator, .{ .set = name.buffer });
 }
 
 fn hirGet(self: *Sema, name: Ast.Name) Error!void {
@@ -548,6 +532,8 @@ fn hirAssembly(self: *Sema, assembly: []const u8) Error!void {
 }
 
 fn hirReturn(self: *Sema) Error!void {
+    if (self.function == null) return;
+
     if (self.stack.popOrNull()) |return_value| {
         try self.checkRepresentability(return_value, self.function.?.prototype.return_type, self.function.?.prototype.name.source_loc);
     } else {

@@ -77,9 +77,7 @@ pub const Generator = struct {
     };
 
     pub const Error = error{
-        UnexpectedReturn,
         UnexpectedStatement,
-        UnexpectedExpression,
         UnsupportedFeature,
     } || std.mem.Allocator.Error;
 
@@ -130,6 +128,31 @@ pub const Generator = struct {
 
         try self.hir.instructions.append(self.allocator, .{ .label = function.prototype.name });
 
+        var function_parameters: std.ArrayListUnmanaged(Type) = .{};
+
+        for (function.prototype.parameters) |ast_function_parameter| {
+            try function_parameters.append(self.allocator, ast_function_parameter.expected_type);
+        }
+
+        const function_return_type_on_heap = try self.allocator.create(Type);
+        function_return_type_on_heap.* = function.prototype.return_type;
+
+        const function_symbol: Symbol = .{
+            .name = function.prototype.name,
+            .type = .{
+                .tag = .function,
+                .data = .{
+                    .function = .{
+                        .parameters = try function_parameters.toOwnedSlice(self.allocator),
+                        .return_type = function_return_type_on_heap,
+                    },
+                },
+            },
+            .linkage = .global,
+        };
+
+        try self.hir.instructions.append(self.allocator, .{ .variable = function_symbol });
+
         try self.hir.instructions.append(self.allocator, .{ .function_proluge = function });
 
         for (0..function.prototype.parameters.len) |_| {
@@ -146,13 +169,7 @@ pub const Generator = struct {
     }
 
     fn generateVariableDeclarationStmt(self: *Generator, variable: Ast.Node.Stmt.VariableDeclaration) Error!void {
-        if (!self.in_function) {
-            self.error_info = .{ .message = "global variables are not supported yet", .source_loc = variable.name.source_loc };
-
-            return error.UnsupportedFeature;
-        }
-
-        try self.generateExpr(variable.value);
+        if (!self.in_function) try self.hir.instructions.append(self.allocator, .{ .label = variable.name });
 
         try self.hir.instructions.append(
             self.allocator,
@@ -160,10 +177,12 @@ pub const Generator = struct {
                 .variable = .{
                     .name = variable.name,
                     .type = variable.type,
-                    .linkage = .local,
+                    .linkage = if (self.in_function) .local else .global,
                 },
             },
         );
+
+        try self.generateExpr(variable.value);
 
         try self.hir.instructions.append(self.allocator, .{ .set = variable.name });
     }
@@ -176,7 +195,7 @@ pub const Generator = struct {
         if (!self.in_function) {
             self.error_info = .{ .message = "expected the return statement to be inside a function", .source_loc = @"return".source_loc };
 
-            return error.UnexpectedReturn;
+            return error.UnexpectedStatement;
         }
 
         try self.generateExpr(@"return".value);
@@ -187,12 +206,6 @@ pub const Generator = struct {
     }
 
     fn generateExpr(self: *Generator, expr: Ast.Node.Expr) Error!void {
-        if (!self.in_function) {
-            self.error_info = .{ .message = "expected the expression to be inside a function", .source_loc = expr.getSourceLoc() };
-
-            return error.UnexpectedExpression;
-        }
-
         switch (expr) {
             .identifier => |identifier| {
                 try self.hir.instructions.append(self.allocator, .{ .get = identifier.name });
