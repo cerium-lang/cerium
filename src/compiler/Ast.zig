@@ -72,6 +72,7 @@ pub const Node = union(enum) {
         float: Float,
         unary_operation: UnaryOperation,
         binary_operation: BinaryOperation,
+        call: Call,
 
         pub const Identifier = struct {
             name: Name,
@@ -117,6 +118,12 @@ pub const Node = union(enum) {
             };
         };
 
+        pub const Call = struct {
+            callable: *Expr,
+            arguments: []const Expr,
+            source_loc: SourceLoc,
+        };
+
         pub fn getSourceLoc(self: Expr) SourceLoc {
             return switch (self) {
                 .identifier => |identifier| identifier.name.source_loc,
@@ -125,6 +132,7 @@ pub const Node = union(enum) {
                 .float => |float| float.source_loc,
                 .unary_operation => |unary_operation| unary_operation.source_loc,
                 .binary_operation => |binary_operation| binary_operation.source_loc,
+                .call => |call| call.source_loc,
             };
         }
     };
@@ -441,11 +449,13 @@ pub const Parser = struct {
         sum,
         product,
         prefix,
+        call,
 
         fn from(token: Token) Precedence {
             return switch (token.tag) {
                 .plus, .minus => .sum,
                 .star, .forward_slash => .product,
+                .open_paren => .call,
 
                 else => .lowest,
             };
@@ -574,6 +584,8 @@ pub const Parser = struct {
             .star => return self.parseBinaryOperationExpr(lhs, .star),
             .forward_slash => return self.parseBinaryOperationExpr(lhs, .forward_slash),
 
+            .open_paren => return self.parseCallExpr(lhs),
+
             else => {
                 self.error_info = .{ .message = "unexpected token", .source_loc = self.tokenSourceLoc(self.peekToken()) };
 
@@ -592,7 +604,53 @@ pub const Parser = struct {
         const rhs_on_heap = try self.allocator.create(Node.Expr);
         rhs_on_heap.* = rhs;
 
-        return Node.Expr{ .binary_operation = .{ .lhs = lhs_on_heap, .operator = operator, .rhs = rhs_on_heap, .source_loc = self.tokenSourceLoc(operator_token) } };
+        return Node.Expr{
+            .binary_operation = .{
+                .lhs = lhs_on_heap,
+                .operator = operator,
+                .rhs = rhs_on_heap,
+                .source_loc = self.tokenSourceLoc(operator_token),
+            },
+        };
+    }
+
+    fn parseCallExpr(self: *Parser, callable: Node.Expr) Error!Node.Expr {
+        const callable_on_heap = try self.allocator.create(Node.Expr);
+        callable_on_heap.* = callable;
+
+        const open_paren_token = self.nextToken();
+
+        const arguments = try self.parseCallArguments();
+
+        return Node.Expr{
+            .call = .{
+                .callable = callable_on_heap,
+                .arguments = arguments,
+                .source_loc = self.tokenSourceLoc(open_paren_token),
+            },
+        };
+    }
+
+    fn parseCallArguments(self: *Parser) Error![]Node.Expr {
+        var arguments = std.ArrayList(Node.Expr).init(self.allocator);
+
+        while (self.peekToken().tag != .eof and self.peekToken().tag != .close_paren) {
+            try arguments.append((try self.parseExpr(.lowest)).expr);
+
+            if (!self.eatToken(.comma) and self.peekToken().tag != .close_paren) {
+                self.error_info = .{ .message = "expected a ','", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                return error.UnexpectedToken;
+            }
+        }
+
+        if (!self.eatToken(.close_paren)) {
+            self.error_info = .{ .message = "expected a ')'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+            return error.UnexpectedToken;
+        }
+
+        return arguments.items;
     }
 
     fn parseType(self: *Parser) Error!Type {

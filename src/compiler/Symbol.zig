@@ -7,6 +7,12 @@ const Symbol = @This();
 
 name: Name,
 type: Type,
+linkage: Linkage,
+
+pub const Linkage = enum {
+    local,
+    global,
+};
 
 pub const Table = struct {
     allocator: std.mem.Allocator,
@@ -34,7 +40,17 @@ pub const Table = struct {
     }
 
     pub fn reset(self: *Table) void {
-        self.symbols.clearAndFree(self.allocator);
+        var i: usize = 0;
+
+        while (i < self.symbols.items.len) {
+            const symbol = self.symbols.items[i];
+
+            if (symbol.linkage == .local) {
+                _ = self.symbols.swapRemove(i);
+            } else {
+                i += 1;
+            }
+        }
     }
 
     const LookupError = error{Undeclared};

@@ -8,6 +8,7 @@ data: Data = .none,
 pub const Tag = enum {
     void,
     pointer,
+    function,
     ambigiuous_int,
     ambigiuous_float,
     u8,
@@ -25,6 +26,7 @@ pub const Tag = enum {
 pub const Data = union(enum) {
     none,
     pointer: Pointer,
+    function: Function,
 
     pub const Pointer = struct {
         size: Size,
@@ -36,6 +38,11 @@ pub const Data = union(enum) {
             one,
             many,
         };
+    };
+
+    pub const Function = struct {
+        parameters: []const Type,
+        return_type: *const Type,
     };
 };
 
@@ -129,6 +136,26 @@ pub fn isAmbigiuous(self: Type) bool {
     };
 }
 
+pub fn getPointer(self: Type) ?Type.Data.Pointer {
+    if (self.tag != .pointer) {
+        return null;
+    }
+
+    return self.data.pointer;
+}
+
+pub fn getFunction(self: Type) ?Type.Data.Function {
+    if (self.getPointer()) |pointer| {
+        return pointer.child.getFunction();
+    }
+
+    if (self.tag != .function) {
+        return null;
+    }
+
+    return self.data.function;
+}
+
 pub fn format(self: Type, _: anytype, _: anytype, writer: anytype) !void {
     switch (self.tag) {
         .void => try writer.writeAll("void"),
@@ -147,6 +174,20 @@ pub fn format(self: Type, _: anytype, _: anytype, writer: anytype) !void {
             try writer.print("{}", .{self.data.pointer.child});
         },
 
+        .function => {
+            try writer.writeAll("fn (");
+
+            for (self.data.function.parameters, 0..) |parameter, i| {
+                try writer.print("{}", .{parameter});
+
+                if (i < self.data.function.parameters.len - 1) {
+                    try writer.writeAll(", ");
+                }
+            }
+
+            try writer.print(") {}", .{self.data.function.return_type});
+        },
+
         .ambigiuous_int => try writer.writeAll("ambigiuous_int"),
         .ambigiuous_float => try writer.writeAll("ambigiuous_float"),
         .u8 => try writer.writeAll("u8"),
@@ -163,17 +204,36 @@ pub fn format(self: Type, _: anytype, _: anytype, writer: anytype) !void {
 }
 
 pub fn eql(self: Type, other: Type) bool {
-    if (self.tag != other.tag) {
-        return false;
-    }
+    if (self.getFunction()) |function| {
+        const other_function = other.getFunction() orelse return false;
 
-    if (self.tag == .pointer and
-        (!self.data.pointer.child.eql(other.data.pointer.child.*) or
-        (self.data.pointer.is_const and !other.data.pointer.is_const) or
-        self.data.pointer.size != other.data.pointer.size))
-    {
-        return false;
-    }
+        if (function.parameters.len != other_function.parameters.len) {
+            return false;
+        }
 
-    return true;
+        for (function.parameters, other_function.parameters) |parameter, other_parameter| {
+            if (!parameter.eql(other_parameter)) {
+                return false;
+            }
+        }
+
+        if (!function.return_type.eql(other_function.return_type.*)) {
+            return false;
+        }
+
+        return true;
+    } else if (self.getPointer()) |pointer| {
+        const other_pointer = other.getPointer() orelse return false;
+
+        if (!pointer.child.eql(other_pointer.child.*) or
+            (pointer.is_const and !other_pointer.is_const) or
+            pointer.size != other_pointer.size)
+        {
+            return false;
+        }
+
+        return true;
+    } else {
+        return self.tag == other.tag;
+    }
 }

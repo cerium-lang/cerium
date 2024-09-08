@@ -6,6 +6,7 @@
 const std = @import("std");
 
 const Symbol = @import("Symbol.zig");
+const Type = @import("Type.zig");
 
 const Lir = @This();
 
@@ -20,11 +21,13 @@ pub const Instruction = union(enum) {
     function_epilogue,
     /// Declare a function parameter, contains the symbol so the backend knows how to store it on the stack
     function_parameter: Symbol,
+    /// Call a specific function pointer on the stack with the specified type
+    call: Type.Data.Function,
     /// Set a stack value using the specified name
     set: []const u8,
-    /// Get a stack value using the specified name
+    /// Get a value using the specified name
     get: []const u8,
-    /// Get pointer of a stack value using specified name
+    /// Get pointer of a value using specified name
     get_ptr: []const u8,
     /// Push a string literal onto the stack
     string: []const u8,

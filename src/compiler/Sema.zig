@@ -30,6 +30,7 @@ pub const ErrorInfo = struct {
 };
 
 pub const Error = error{
+    UnexpectedArgumentsCount,
     ExpectedExplicitReturn,
     TypeCannotRepresentValue,
     MismatchedTypes,
@@ -132,6 +133,8 @@ fn hirInstruction(self: *Sema, instruction: Hir.Instruction) Error!void {
         .function_epilogue => try self.hirFunctionEpilogue(),
         .function_parameter => try self.hirFunctionParameter(),
 
+        .call => |call| try self.hirCall(call),
+
         .declare => |declare| try self.hirDeclare(declare),
 
         .set => |name| try self.hirSet(name),
@@ -162,9 +165,32 @@ fn hirLabel(self: *Sema, label: []const u8) Error!void {
 }
 
 fn hirFunctionProluge(self: *Sema, function: Ast.Node.Stmt.FunctionDeclaration) Error!void {
-    self.function = function;
+    var function_parameters: std.ArrayListUnmanaged(Type) = .{};
+
+    for (function.prototype.parameters) |ast_function_parameter| {
+        try function_parameters.append(self.allocator, ast_function_parameter.expected_type);
+    }
+
+    const function_return_type_on_heap = try self.allocator.create(Type);
+    function_return_type_on_heap.* = function.prototype.return_type;
+
+    try self.symbol_table.set(.{
+        .name = function.prototype.name,
+        .type = .{
+            .tag = .function,
+            .data = .{
+                .function = .{
+                    .parameters = try function_parameters.toOwnedSlice(self.allocator),
+                    .return_type = function_return_type_on_heap,
+                },
+            },
+        },
+        .linkage = .global,
+    });
 
     try self.lir.instructions.append(self.allocator, .function_proluge);
+
+    self.function = function;
 }
 
 fn hirFunctionEpilogue(self: *Sema) Error!void {
@@ -177,6 +203,7 @@ fn hirFunctionParameter(self: *Sema) Error!void {
     const function_parameter_symbol: Symbol = .{
         .name = function_parameter.name,
         .type = function_parameter.expected_type,
+        .linkage = .local,
     };
 
     try self.symbol_table.set(function_parameter_symbol);
@@ -191,10 +218,44 @@ fn hirFunctionParameter(self: *Sema) Error!void {
     }
 }
 
+fn hirCall(self: *Sema, call: Hir.Instruction.Call) Error!void {
+    const callable = self.stack.pop();
+    const callable_type = callable.getType();
+
+    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+    if (callable_type.getFunction()) |function| {
+        if (function.parameters.len != call.arguments_count) {
+            try error_message_buf.writer(self.allocator).print("expected {} argument(s) got {} argument(s)", .{ function.parameters.len, call.arguments_count });
+
+            self.error_info = .{ .message = error_message_buf.items, .source_loc = call.source_loc };
+
+            return error.UnexpectedArgumentsCount;
+        }
+
+        for (function.parameters[function.parameters.len - 1 ..]) |parameter| {
+            const argument = self.stack.pop();
+
+            try self.checkRepresentability(argument, parameter, call.source_loc);
+        }
+
+        try self.lir.instructions.append(self.allocator, .{ .call = function });
+
+        try self.stack.append(self.allocator, .{ .runtime = .{ .type = function.return_type.*, .data = .none } });
+    } else {
+        try error_message_buf.writer(self.allocator).print("'{}' is not a callable", .{callable_type});
+
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = call.source_loc };
+
+        return error.MismatchedTypes;
+    }
+}
+
 fn hirDeclare(self: *Sema, declare: Hir.Instruction.Declare) Error!void {
     try self.symbol_table.set(.{
         .name = declare.name,
         .type = declare.type,
+        .linkage = .local,
     });
 }
 
@@ -265,9 +326,9 @@ fn hirGet(self: *Sema, name: Ast.Name) Error!void {
         },
     };
 
-    try self.stack.append(self.allocator, .{ .runtime = .{ .type = symbol.type, .data = .{ .name = symbol.name } } });
-
     try self.lir.instructions.append(self.allocator, .{ .get = name.buffer });
+
+    try self.stack.append(self.allocator, .{ .runtime = .{ .type = symbol.type, .data = .{ .name = symbol.name } } });
 }
 
 fn hirString(self: *Sema, string: []const u8) Error!void {
@@ -303,21 +364,21 @@ fn hirNegate(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
 
     switch (rhs) {
         .int => |rhs_int| {
-            try self.stack.append(self.allocator, .{ .int = -rhs_int });
-
             self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .int = -rhs_int };
+
+            try self.stack.append(self.allocator, .{ .int = -rhs_int });
         },
 
         .float => |rhs_float| {
-            try self.stack.append(self.allocator, .{ .float = -rhs_float });
-
             self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .float = -rhs_float };
+
+            try self.stack.append(self.allocator, .{ .float = -rhs_float });
         },
 
         else => {
-            try self.stack.append(self.allocator, rhs);
-
             try self.lir.instructions.append(self.allocator, .negate);
+
+            try self.stack.append(self.allocator, rhs);
         },
     }
 }
@@ -338,8 +399,12 @@ fn hirReference(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
     const rhs_runtime_name = rhs.runtime.data.name;
     const rhs_runtime_type = rhs.runtime.type;
 
+    const rhs_symbol = self.symbol_table.lookup(rhs_runtime_name.buffer) catch unreachable;
+
     const child_on_heap = try self.allocator.create(Type);
     child_on_heap.* = rhs_runtime_type;
+
+    self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .get_ptr = rhs_runtime_name.buffer };
 
     try self.stack.append(self.allocator, .{
         .runtime = .{
@@ -349,17 +414,13 @@ fn hirReference(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
                     .pointer = .{
                         .size = .one,
                         .is_const = false,
-                        // TODO: Check for symbol linkage when you add global variables, we don't have it right now
-                        // so we assume this is pointing to local variables
-                        .is_local = true,
+                        .is_local = rhs_symbol.linkage == .local,
                         .child = child_on_heap,
                     },
                 },
             },
         },
     });
-
-    self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .get_ptr = rhs_runtime_name.buffer };
 }
 
 fn checkIntOrFloat(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {

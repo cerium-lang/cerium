@@ -22,11 +22,13 @@ pub const Instruction = union(enum) {
     function_epilogue,
     /// Declare a function parameter
     function_parameter,
+    /// Call a specific function pointer on the stack with the specified argument count
+    call: Call,
     /// Declare a variable
     declare: Declare,
     /// Set a stack value using the specified name
     set: Ast.Name,
-    /// Get a stack value using the specified name
+    /// Get a value using the specified name
     get: Ast.Name,
     /// Push a string literal onto the stack
     string: []const u8,
@@ -56,6 +58,11 @@ pub const Instruction = union(enum) {
     pub const Declare = struct {
         name: Ast.Name,
         type: Type,
+    };
+
+    pub const Call = struct {
+        arguments_count: usize,
+        source_loc: Ast.SourceLoc,
     };
 };
 
@@ -240,6 +247,24 @@ pub const Generator = struct {
                         try self.hir.instructions.append(self.allocator, .{ .div = binary_operation.source_loc });
                     },
                 }
+            },
+
+            .call => |call| {
+                for (call.arguments) |argument| {
+                    try self.generateExpr(argument);
+                }
+
+                try self.generateExpr(call.callable.*);
+
+                try self.hir.instructions.append(
+                    self.allocator,
+                    .{
+                        .call = .{
+                            .arguments_count = call.arguments.len,
+                            .source_loc = call.source_loc,
+                        },
+                    },
+                );
             },
         }
     }
