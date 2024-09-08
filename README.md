@@ -37,7 +37,7 @@ If you like it give it a star and try it yourself, If you don't like it then I c
             - [ ] Equals To
         - [ ] Bitwise Shfting
     - [ ] Add support for Pointer Operations
-        - [ ] Get Pointer
+        - [x] Get Pointer
         - [ ] Access Pointer
             - [ ] Write to Pointer
             - [ ] Read from Pointer
