@@ -125,7 +125,7 @@ pub fn render(self: *x86_64) Error!void {
                     }
                 }
 
-                try text_section_writer.writeAll("\tcall *%r8\n");
+                try text_section_writer.writeAll("\tcallq *%r8\n");
 
                 try self.pushRegister(text_section_writer, "ax", .{ .is_floating_point = function.return_type.isFloat() });
             },
