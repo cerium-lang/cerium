@@ -293,18 +293,18 @@ fn checkRepresentability(self: *Sema, source_value: Value, destination_type: Typ
     }
 }
 
+fn reportNotDeclared(self: *Sema, name: Ast.Name) Error!void {
+    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+    try error_message_buf.writer(self.allocator).print("{s} is not declared", .{name.buffer});
+
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = name.source_loc };
+
+    return error.Undeclared;
+}
+
 fn hirSet(self: *Sema, name: Ast.Name) Error!void {
-    const symbol = self.symbol_table.lookup(name.buffer) catch |err| switch (err) {
-        error.Undeclared => {
-            var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-            try error_message_buf.writer(self.allocator).print("{s} is not declared", .{name.buffer});
-
-            self.error_info = .{ .message = error_message_buf.items, .source_loc = name.source_loc };
-
-            return error.Undeclared;
-        },
-    };
+    const symbol = self.symbol_table.lookup(name.buffer) orelse return self.reportNotDeclared(name);
 
     const value = self.stack.pop();
 
@@ -314,17 +314,7 @@ fn hirSet(self: *Sema, name: Ast.Name) Error!void {
 }
 
 fn hirGet(self: *Sema, name: Ast.Name) Error!void {
-    const symbol = self.symbol_table.lookup(name.buffer) catch |err| switch (err) {
-        error.Undeclared => {
-            var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-            try error_message_buf.writer(self.allocator).print("{s} is not declared", .{name.buffer});
-
-            self.error_info = .{ .message = error_message_buf.items, .source_loc = name.source_loc };
-
-            return error.Undeclared;
-        },
-    };
+    const symbol = self.symbol_table.lookup(name.buffer) orelse return self.reportNotDeclared(name);
 
     try self.lir.instructions.append(self.allocator, .{ .get = name.buffer });
 
@@ -399,7 +389,7 @@ fn hirReference(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
     const rhs_runtime_name = rhs.runtime.data.name;
     const rhs_runtime_type = rhs.runtime.type;
 
-    const rhs_symbol = self.symbol_table.lookup(rhs_runtime_name.buffer) catch unreachable;
+    const rhs_symbol = self.symbol_table.lookup(rhs_runtime_name.buffer).?;
 
     const child_on_heap = try self.allocator.create(Type);
     child_on_heap.* = rhs_runtime_type;

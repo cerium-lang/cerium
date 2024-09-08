@@ -55,13 +55,13 @@ pub const Table = struct {
 
     const LookupError = error{Undeclared};
 
-    pub fn lookup(self: Table, name: []const u8) LookupError!Symbol {
+    pub fn lookup(self: Table, name: []const u8) ?Symbol {
         for (self.symbols.items) |symbol| {
             if (std.mem.eql(u8, symbol.name.buffer, name)) {
                 return symbol;
             }
         }
 
-        return error.Undeclared;
+        return null;
     }
 };
