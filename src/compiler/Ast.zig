@@ -152,6 +152,7 @@ pub const Parser = struct {
 
     pub const Error = error{
         UnexpectedToken,
+        InvalidString,
         InvalidChar,
         InvalidNumber,
         InvalidType,
@@ -406,15 +407,15 @@ pub const Parser = struct {
                 return error.UnexpectedToken;
             }
 
-            const token = self.nextToken();
-
-            if (token.tag != .string_literal) {
-                self.error_info = .{ .message = "expected the content of assembly to be a string literal", .source_loc = self.tokenSourceLoc(token) };
+            if (self.peekToken().tag != .string_literal) {
+                self.error_info = .{ .message = "expected the content of assembly to be a string literal", .source_loc = self.tokenSourceLoc(self.peekToken()) };
 
                 return error.UnexpectedToken;
             }
 
-            try content.appendSlice(self.allocator, self.tokenValue(token));
+            const parsed_string = try self.parseStringExpr();
+
+            try content.appendSlice(self.allocator, parsed_string.string.value);
 
             if (self.peekToken().tag != .close_brace) try content.append(self.allocator, '\n');
         }
@@ -504,10 +505,75 @@ pub const Parser = struct {
     }
 
     fn parseStringExpr(self: *Parser) Error!Node.Expr {
+        const content = self.tokenValue(self.peekToken());
+        const source_loc = self.tokenSourceLoc(self.nextToken());
+
+        var unescaped = try std.ArrayListUnmanaged(u8).initCapacity(self.allocator, content.len);
+
+        var unescaping = false;
+
+        for (content) |char| {
+            switch (unescaping) {
+                false => switch (char) {
+                    '\\' => unescaping = true,
+
+                    else => unescaped.appendAssumeCapacity(char),
+                },
+
+                true => {
+                    unescaping = false;
+
+                    switch (char) {
+                        '\\' => {
+                            unescaped.appendAssumeCapacity('\\');
+                        },
+
+                        'n' => {
+                            unescaped.appendAssumeCapacity('\n');
+                        },
+
+                        'r' => {
+                            unescaped.appendAssumeCapacity('\r');
+                        },
+
+                        't' => {
+                            unescaped.appendAssumeCapacity('\t');
+                        },
+
+                        'e' => {
+                            unescaped.appendAssumeCapacity(27);
+                        },
+
+                        'v' => {
+                            unescaped.appendAssumeCapacity(11);
+                        },
+
+                        'b' => {
+                            unescaped.appendAssumeCapacity(8);
+                        },
+
+                        'f' => {
+                            unescaped.appendAssumeCapacity(20);
+                        },
+
+                        '"' => {
+                            unescaped.appendAssumeCapacity('"');
+                        },
+
+                        else => {
+                            self.error_info = .{ .message = "invalid escape character in string", .source_loc = source_loc };
+
+                            return error.InvalidString;
+                        },
+                    }
+                },
+            }
+        }
+
         return Node.Expr{
             .string = .{
-                .value = self.tokenValue(self.peekToken()),
-                .source_loc = self.tokenSourceLoc(self.nextToken()),
+                .value = unescaped.items,
+                .source_loc = source_loc,
             },
         };
     }

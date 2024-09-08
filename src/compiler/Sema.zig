@@ -233,10 +233,12 @@ fn hirCall(self: *Sema, call: Hir.Instruction.Call) Error!void {
             return error.UnexpectedArgumentsCount;
         }
 
-        for (function.parameters[function.parameters.len - 1 ..]) |parameter| {
-            const argument = self.stack.pop();
+        if (function.parameters.len > 0) {
+            for (function.parameters[function.parameters.len - 1 ..]) |parameter| {
+                const argument = self.stack.pop();
 
-            try self.checkRepresentability(argument, parameter, call.source_loc);
+                try self.checkRepresentability(argument, parameter, call.source_loc);
+            }
         }
 
         try self.lir.instructions.append(self.allocator, .{ .call = function });
