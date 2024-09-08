@@ -82,6 +82,7 @@ pub const Generator = struct {
 
     pub const Error = error{
         UnexpectedReturn,
+        UnexpectedStatement,
         UnexpectedExpression,
         UnsupportedFeature,
     } || std.mem.Allocator.Error;
@@ -123,9 +124,9 @@ pub const Generator = struct {
 
     fn generateFunctionDeclarationStmt(self: *Generator, function: Ast.Node.Stmt.FunctionDeclaration) Error!void {
         if (self.in_function) {
-            self.error_info = .{ .message = "local functions are not supported yet", .source_loc = function.prototype.name.source_loc };
+            self.error_info = .{ .message = "cannot declare functions inside other functions", .source_loc = function.prototype.name.source_loc };
 
-            return error.UnsupportedFeature;
+            return error.UnexpectedStatement;
         }
 
         self.in_function = true;

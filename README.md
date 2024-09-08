@@ -13,9 +13,7 @@ If you like it give it a star and try it yourself, If you don't like it then I c
 ## What did you currently achieve and what do you look for?
 
 - Semantics
-    - [ ] Add support for Function Declarations
-        - [ ] Local Function Declarations
-        - [x] Global Function Declarations
+    - [x] Add support for Function Declarations
     - [x] Add support for Function Calls
     - [x] Add support for Function Parameters Access
     - [ ] Add support for Variable Declarations
