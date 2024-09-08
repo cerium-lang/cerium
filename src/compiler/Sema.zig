@@ -89,7 +89,7 @@ const Value = union(enum) {
                         .size = .many,
                         .is_const = true,
                         .is_local = false,
-                        .child = &.{ .tag = .u8 },
+                        .child_type = &.{ .tag = .u8 },
                     },
                 },
             },
@@ -203,19 +203,19 @@ fn hirCall(self: *Sema, call: Hir.Instruction.Call) Error!void {
     var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
     if (callable_type.getFunction()) |function| {
-        if (function.parameters.len != call.arguments_count) {
-            try error_message_buf.writer(self.allocator).print("expected {} argument(s) got {} argument(s)", .{ function.parameters.len, call.arguments_count });
+        if (function.parameter_types.len != call.arguments_count) {
+            try error_message_buf.writer(self.allocator).print("expected {} argument(s) got {} argument(s)", .{ function.parameter_types.len, call.arguments_count });
 
             self.error_info = .{ .message = error_message_buf.items, .source_loc = call.source_loc };
 
             return error.UnexpectedArgumentsCount;
         }
 
-        if (function.parameters.len > 0) {
-            for (function.parameters[function.parameters.len - 1 ..]) |parameter| {
+        if (function.parameter_types.len > 0) {
+            for (function.parameter_types[function.parameter_types.len - 1 ..]) |parameter_type| {
                 const argument = self.stack.pop();
 
-                try self.checkRepresentability(argument, parameter, call.source_loc);
+                try self.checkRepresentability(argument, parameter_type, call.source_loc);
             }
         }
 
@@ -399,7 +399,7 @@ fn hirReference(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
                         .size = .one,
                         .is_const = false,
                         .is_local = rhs_symbol.linkage == .local,
-                        .child = child_on_heap,
+                        .child_type = child_on_heap,
                     },
                 },
             },

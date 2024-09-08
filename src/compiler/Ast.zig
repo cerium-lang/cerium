@@ -766,7 +766,7 @@ pub const Parser = struct {
                             .size = .one,
                             .is_const = is_const,
                             .is_local = self.in_function,
-                            .child = child_on_heap,
+                            .child_type = child_on_heap,
                         },
                     },
                 };
@@ -801,7 +801,7 @@ pub const Parser = struct {
                             .size = .many,
                             .is_const = is_const,
                             .is_local = self.in_function,
-                            .child = child_on_heap,
+                            .child_type = child_on_heap,
                         },
                     },
                 };

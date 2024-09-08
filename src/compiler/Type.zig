@@ -32,7 +32,7 @@ pub const Data = union(enum) {
         size: Size,
         is_const: bool,
         is_local: bool,
-        child: *const Type,
+        child_type: *const Type,
 
         pub const Size = enum {
             one,
@@ -41,7 +41,7 @@ pub const Data = union(enum) {
     };
 
     pub const Function = struct {
-        parameters: []const Type,
+        parameter_types: []const Type,
         return_type: *const Type,
     };
 };
@@ -146,7 +146,7 @@ pub fn getPointer(self: Type) ?Type.Data.Pointer {
 
 pub fn getFunction(self: Type) ?Type.Data.Function {
     if (self.getPointer()) |pointer| {
-        return pointer.child.getFunction();
+        return pointer.child_type.getFunction();
     }
 
     if (self.tag != .function) {
@@ -171,16 +171,16 @@ pub fn format(self: Type, _: anytype, _: anytype, writer: anytype) !void {
                 try writer.writeAll("const ");
             }
 
-            try writer.print("{}", .{self.data.pointer.child});
+            try writer.print("{}", .{self.data.pointer.child_type});
         },
 
         .function => {
             try writer.writeAll("fn (");
 
-            for (self.data.function.parameters, 0..) |parameter, i| {
+            for (self.data.function.parameter_types, 0..) |parameter, i| {
                 try writer.print("{}", .{parameter});
 
-                if (i < self.data.function.parameters.len - 1) {
+                if (i < self.data.function.parameter_types.len - 1) {
                     try writer.writeAll(", ");
                 }
             }
@@ -207,11 +207,11 @@ pub fn eql(self: Type, other: Type) bool {
     if (self.getFunction()) |function| {
         const other_function = other.getFunction() orelse return false;
 
-        if (function.parameters.len != other_function.parameters.len) {
+        if (function.parameter_types.len != other_function.parameter_types.len) {
             return false;
         }
 
-        for (function.parameters, other_function.parameters) |parameter, other_parameter| {
+        for (function.parameter_types, other_function.parameter_types) |parameter, other_parameter| {
             if (!parameter.eql(other_parameter)) {
                 return false;
             }
@@ -225,7 +225,7 @@ pub fn eql(self: Type, other: Type) bool {
     } else if (self.getPointer()) |pointer| {
         const other_pointer = other.getPointer() orelse return false;
 
-        if (!pointer.child.eql(other_pointer.child.*) or
+        if (!pointer.child_type.eql(other_pointer.child_type.*) or
             (pointer.is_const and !other_pointer.is_const) or
             pointer.size != other_pointer.size)
         {

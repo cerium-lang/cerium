@@ -150,10 +150,10 @@ pub fn render(self: *x86_64) Error!void {
             .call => |function| {
                 try self.popRegister(text_section_writer, "8");
 
-                for (function.parameters, 0..) |parameter, j| {
+                for (function.parameter_types, 0..) |parameter_type, j| {
                     try self.popRegister(text_section_writer, "9");
 
-                    if (parameter.isFloat()) {
+                    if (parameter_type.isFloat()) {
                         try text_section_writer.print("\tmovq %xmm9, {}(%rsp)\n", .{j * self.stack_alignment});
                     } else {
                         try text_section_writer.print("\tmovq %r9, {}(%rsp)\n", .{j * self.stack_alignment});

@@ -135,10 +135,10 @@ pub const Generator = struct {
 
         try self.hir.instructions.append(self.allocator, .{ .label = function.prototype.name });
 
-        var function_parameters: std.ArrayListUnmanaged(Type) = .{};
+        var function_parameter_types: std.ArrayListUnmanaged(Type) = .{};
 
         for (function.prototype.parameters) |ast_function_parameter| {
-            try function_parameters.append(self.allocator, ast_function_parameter.expected_type);
+            try function_parameter_types.append(self.allocator, ast_function_parameter.expected_type);
         }
 
         const function_return_type_on_heap = try self.allocator.create(Type);
@@ -150,7 +150,7 @@ pub const Generator = struct {
                 .tag = .function,
                 .data = .{
                     .function = .{
-                        .parameters = try function_parameters.toOwnedSlice(self.allocator),
+                        .parameter_types = try function_parameter_types.toOwnedSlice(self.allocator),
                         .return_type = function_return_type_on_heap,
                     },
                 },
