@@ -36,6 +36,7 @@ pub const Error = error{
     TypeCannotRepresentValue,
     MismatchedTypes,
     Undeclared,
+    Redeclared,
 } || std.mem.Allocator.Error;
 
 const Value = union(enum) {
@@ -128,7 +129,7 @@ fn hirInstruction(self: *Sema, instruction: Hir.Instruction) Error!void {
     }
 
     switch (instruction) {
-        .label => |label| try self.hirLabel(label),
+        .label => |name| try self.hirLabel(name),
 
         .function_proluge => |function| try self.hirFunctionProluge(function),
         .function_epilogue => try self.hirFunctionEpilogue(),
@@ -136,7 +137,7 @@ fn hirInstruction(self: *Sema, instruction: Hir.Instruction) Error!void {
 
         .call => |call| try self.hirCall(call),
 
-        .declare => |declare| try self.hirDeclare(declare),
+        .variable => |symbol| try self.hirVariable(symbol),
 
         .set => |name| try self.hirSet(name),
         .get => |name| try self.hirGet(name),
@@ -161,8 +162,12 @@ fn hirInstruction(self: *Sema, instruction: Hir.Instruction) Error!void {
     }
 }
 
-fn hirLabel(self: *Sema, label: []const u8) Error!void {
-    try self.lir.instructions.append(self.allocator, .{ .label = label });
+fn hirLabel(self: *Sema, name: Ast.Name) Error!void {
+    if (self.symbol_table.lookup(name.buffer) != null) {
+        return self.reportRedeclaration(name);
+    }
+
+    try self.lir.instructions.append(self.allocator, .{ .label = name.buffer });
 }
 
 fn hirFunctionProluge(self: *Sema, function: Ast.Node.Stmt.FunctionDeclaration) Error!void {
@@ -250,12 +255,8 @@ fn hirCall(self: *Sema, call: Hir.Instruction.Call) Error!void {
     }
 }
 
-fn hirDeclare(self: *Sema, declare: Hir.Instruction.Declare) Error!void {
-    try self.symbol_table.set(.{
-        .name = declare.name,
-        .type = declare.type,
-        .linkage = .local,
-    });
+fn hirVariable(self: *Sema, symbol: Symbol) Error!void {
+    try self.symbol_table.set(symbol);
 }
 
 fn checkRepresentability(self: *Sema, source_value: Value, destination_type: Type, source_loc: Ast.SourceLoc) Error!void {
@@ -295,11 +296,21 @@ fn checkRepresentability(self: *Sema, source_value: Value, destination_type: Typ
 fn reportNotDeclared(self: *Sema, name: Ast.Name) Error!void {
     var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
-    try error_message_buf.writer(self.allocator).print("{s} is not declared", .{name.buffer});
+    try error_message_buf.writer(self.allocator).print("'{s}' is not declared", .{name.buffer});
 
     self.error_info = .{ .message = error_message_buf.items, .source_loc = name.source_loc };
 
     return error.Undeclared;
+}
+
+fn reportRedeclaration(self: *Sema, name: Ast.Name) Error!void {
+    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+    try error_message_buf.writer(self.allocator).print("redeclaration of '{s}'", .{name.buffer});
+
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = name.source_loc };
+
+    return error.Redeclared;
 }
 
 fn hirSet(self: *Sema, name: Ast.Name) Error!void {

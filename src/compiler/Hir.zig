@@ -7,6 +7,7 @@
 const std = @import("std");
 
 const Ast = @import("Ast.zig");
+const Symbol = @import("Symbol.zig");
 const Type = @import("Type.zig");
 
 const Hir = @This();
@@ -15,7 +16,7 @@ instructions: std.ArrayListUnmanaged(Instruction) = .{},
 
 pub const Instruction = union(enum) {
     /// Start a labeled block
-    label: []const u8,
+    label: Ast.Name,
     /// Start a function block, pass the function declaration node to enable more checks
     function_proluge: Ast.Node.Stmt.FunctionDeclaration,
     /// End a function block
@@ -24,9 +25,9 @@ pub const Instruction = union(enum) {
     function_parameter,
     /// Call a specific function pointer on the stack with the specified argument count
     call: Call,
-    /// Declare a variable
-    declare: Declare,
-    /// Set a stack value using the specified name
+    /// Declare a variable using the specified name and type
+    variable: Symbol,
+    /// Set a value using the specified name
     set: Ast.Name,
     /// Get a value using the specified name
     get: Ast.Name,
@@ -54,11 +55,6 @@ pub const Instruction = union(enum) {
     assembly: []const u8,
     /// Return to the parent block
     @"return",
-
-    pub const Declare = struct {
-        name: Ast.Name,
-        type: Type,
-    };
 
     pub const Call = struct {
         arguments_count: usize,
@@ -132,7 +128,7 @@ pub const Generator = struct {
         self.in_function = true;
         defer self.in_function = false;
 
-        try self.hir.instructions.append(self.allocator, .{ .label = function.prototype.name.buffer });
+        try self.hir.instructions.append(self.allocator, .{ .label = function.prototype.name });
 
         try self.hir.instructions.append(self.allocator, .{ .function_proluge = function });
 
@@ -161,9 +157,10 @@ pub const Generator = struct {
         try self.hir.instructions.append(
             self.allocator,
             .{
-                .declare = .{
+                .variable = .{
                     .name = variable.name,
                     .type = variable.type,
+                    .linkage = .local,
                 },
             },
         );

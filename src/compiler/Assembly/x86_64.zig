@@ -53,13 +53,13 @@ pub fn render(self: *x86_64) Error!void {
 
     for (self.lir.instructions.items) |instruction| {
         switch (instruction) {
-            .label => |label| {
-                try text_section_writer.print(".global {s}\n", .{label});
-                try text_section_writer.print("{s}:\n", .{label});
+            .label => |name| {
+                try text_section_writer.print(".global {s}\n", .{name});
+                try text_section_writer.print("{s}:\n", .{name});
 
                 try self.variables.put(
                     self.allocator,
-                    label,
+                    name,
                     .{
                         .stack_index = 0,
                         .linkage = .global,
