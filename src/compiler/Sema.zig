@@ -1,6 +1,6 @@
 //! Semantic Analyzer.
 //!
-//! An analyzer that lowers down `Hir` to `Lir` while checking if the sematics are completely right.
+//! An analyzer that lowers down `Hir` to `Lir` while checking if the semantics are completely right.
 
 const std = @import("std");
 
