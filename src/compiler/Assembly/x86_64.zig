@@ -125,8 +125,6 @@ pub fn render(self: *x86_64) Error!void {
                     }
                 }
 
-                try self.pushRegister(text_section_writer, "8", .{ .is_floating_point = false });
-
                 try text_section_writer.writeAll("\tcall *%r8\n");
 
                 try self.pushRegister(text_section_writer, "ax", .{ .is_floating_point = function.return_type.isFloat() });
@@ -179,9 +177,15 @@ pub fn render(self: *x86_64) Error!void {
                     .global => {
                         const stack_allocation: StackAllocation = .{ .is_floating_point = variable.type.isFloat() };
 
-                        try copyFromData(text_section_writer, "8", stack_allocation, name);
+                        if (variable.type.getFunction() != null) {
+                            try pointerToData(text_section_writer, "8", name);
 
-                        try self.pushRegister(text_section_writer, "8", stack_allocation);
+                            try self.pushRegister(text_section_writer, "8", stack_allocation);
+                        } else {
+                            try copyFromData(text_section_writer, "8", stack_allocation, name);
+
+                            try self.pushRegister(text_section_writer, "8", stack_allocation);
+                        }
                     },
                 }
             },
@@ -205,7 +209,7 @@ pub fn render(self: *x86_64) Error!void {
             },
 
             .string => |string| {
-                if (self.stack.items.len == 0) {
+                if (self.stack_offsets.items.len == 0) {
                     try rodata_section_writer.print("\t.asciz \"{s}\"\n", .{string});
                 } else {
                     try rodata_section_writer.print("\tstr{}: .asciz \"{s}\"\n", .{ self.string_literals_index, string });
@@ -218,7 +222,7 @@ pub fn render(self: *x86_64) Error!void {
             },
 
             .int => |int| {
-                if (self.stack.items.len == 0) {
+                if (self.stack_offsets.items.len == 0) {
                     try data_section_writer.print("\t.quad {}\n", .{int});
                 } else {
                     try text_section_writer.print("\tmovq ${}, %r8\n", .{int});
@@ -228,7 +232,7 @@ pub fn render(self: *x86_64) Error!void {
             },
 
             .float => |float| {
-                if (self.stack.items.len == 0) {
+                if (self.stack_offsets.items.len == 0) {
                     try data_section_writer.print("\t.quad {}\n", .{@as(u64, @bitCast(float))});
                 } else {
                     try rodata_section_writer.print("flt{}: .quad {}\n", .{ self.floating_points_index, @as(u64, @bitCast(float)) });
