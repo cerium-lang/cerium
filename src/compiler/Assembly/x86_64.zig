@@ -309,10 +309,7 @@ pub fn render(self: *x86_64) Error!void {
             .bool_not => {
                 try self.popRegister(text_section_writer, "ax");
 
-                // ((1 ^ -1) + 2) = 0
-                // ((0 ^ -1) + 2) = 1
-                try text_section_writer.writeAll("\txorq $-1, %rax\n");
-                try text_section_writer.writeAll("\taddq $2, %rax\n");
+                try text_section_writer.writeAll("\txorq $1, %rax\n");
 
                 try self.pushRegister(text_section_writer, "ax", .{ .is_floating_point = false });
             },
