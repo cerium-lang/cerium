@@ -36,7 +36,7 @@ If you like it give it a star and try it yourself, If you don't like it then I c
             - [ ] Greater Than
             - [ ] Equals To
         - [ ] Bitwise Shfting
-    - [ ] Add support for Pointer Operations
+    - [x] Add support for Pointer Operations
         - [x] Get Pointer
         - [x] Access Pointer
             - [x] Write to Pointer
