@@ -150,6 +150,8 @@ fn hirInstruction(self: *Sema, instruction: Hir.Instruction) Error!void {
 
         .negate => |source_loc| try self.hirNegate(source_loc),
 
+        .bool_not => |source_loc| try self.hirBoolNot(source_loc),
+
         .reference => |source_loc| try self.hirReference(source_loc),
 
         .read => |source_loc| try self.hirRead(source_loc),
@@ -376,11 +378,45 @@ fn hirNegate(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
             try self.stack.append(self.allocator, .{ .float = -rhs_float });
         },
 
-        else => {
+        .runtime => |rhs_runtime| {
             try self.lir.instructions.append(self.allocator, .negate);
 
-            try self.stack.append(self.allocator, rhs);
+            try self.stack.append(self.allocator, .{ .runtime = .{ .type = rhs_runtime.type } });
         },
+
+        else => unreachable,
+    }
+}
+
+fn checkBool(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {
+    if (provided_type.tag != .bool) {
+        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+        try error_message_buf.writer(self.allocator).print("'{}' is provided while expected 'bool'", .{provided_type});
+
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+
+        return error.MismatchedTypes;
+    }
+}
+
+fn hirBoolNot(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
+    const rhs = self.stack.pop();
+
+    try self.checkBool(rhs.getType(), source_loc);
+
+    switch (rhs) {
+        .boolean => |rhs_boolean| {
+            self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .boolean = !rhs_boolean };
+        },
+
+        .runtime => |rhs_runtime| {
+            try self.lir.instructions.append(self.allocator, .bool_not);
+
+            try self.stack.append(self.allocator, .{ .runtime = .{ .type = rhs_runtime.type } });
+        },
+
+        else => unreachable,
     }
 }
 

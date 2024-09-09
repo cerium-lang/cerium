@@ -106,6 +106,7 @@ pub const Node = union(enum) {
 
             pub const Operator = enum {
                 minus,
+                bang,
                 ampersand,
                 star,
             };
@@ -495,6 +496,7 @@ pub const Parser = struct {
             .keyword_false => return self.parseBooleanExpr(false),
 
             .minus => return self.parseUnaryOperationExpr(.minus),
+            .bang => return self.parseUnaryOperationExpr(.bang),
             .ampersand => return self.parseUnaryOperationExpr(.ampersand),
             .star => return self.parseUnaryOperationExpr(.star),
 

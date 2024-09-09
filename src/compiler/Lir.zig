@@ -41,6 +41,8 @@ pub const Instruction = union(enum) {
     boolean: bool,
     /// Negate an integer or float
     negate,
+    /// Reverse a boolean from true to false and from false to true
+    bool_not,
     /// Read the data that the pointer is pointing to
     read: Type,
     /// Override the data that the pointer is pointing to

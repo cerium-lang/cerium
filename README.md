@@ -25,7 +25,7 @@ A general-purpose programming language that aims to be the most sane
     - Data 
         - [x] Add support for Integers
         - [x] Add support for Floats
-        - [x] Add support for Booleans 
+        - [x] Add support for Booleans
         - [x] Add support for Pointers
         - [x] Add support for Functions
         - [ ] Add support for Structures
@@ -35,7 +35,7 @@ A general-purpose programming language that aims to be the most sane
     - Operations
         - [ ] Add support for Unary Operations
             - [x] Negation
-            - [ ] Boolean Not
+            - [x] Boolean Not
             - [ ] Bitwise Not
         - [ ] Add support for Binary Operations
             - [x] Addition

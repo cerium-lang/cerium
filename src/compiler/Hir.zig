@@ -41,6 +41,8 @@ pub const Instruction = union(enum) {
     boolean: bool,
     /// Negate an integer or float
     negate: Ast.SourceLoc,
+    /// Reverse a boolean from true to false and from false to true
+    bool_not: Ast.SourceLoc,
     /// Get a pointer of a value on the stack
     reference: Ast.SourceLoc,
     /// Read the data that the pointer is pointing to
@@ -246,6 +248,10 @@ pub const Generator = struct {
                 switch (unary_operation.operator) {
                     .minus => {
                         try self.hir.instructions.append(self.allocator, .{ .negate = unary_operation.source_loc });
+                    },
+
+                    .bang => {
+                        try self.hir.instructions.append(self.allocator, .{ .bool_not = unary_operation.source_loc });
                     },
 
                     .ampersand => {
