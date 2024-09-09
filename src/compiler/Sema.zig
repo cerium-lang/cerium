@@ -148,6 +148,7 @@ fn hirInstruction(self: *Sema, instruction: Hir.Instruction) Error!void {
         .reference => |source_loc| try self.hirReference(source_loc),
 
         .read => |source_loc| try self.hirRead(source_loc),
+        .write => |source_loc| try self.hirWrite(source_loc),
 
         .add => |source_loc| try self.hirBinaryOperation(.plus, source_loc),
         .sub => |source_loc| try self.hirBinaryOperation(.minus, source_loc),
@@ -246,7 +247,7 @@ fn checkRepresentability(self: *Sema, source_value: Value, destination_type: Typ
     if (!source_value.canImplicitCast(destination_type)) {
         var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
-        try error_message_buf.writer(self.allocator).print("'{}' cannot be implicitly casted to '{}'", .{ source_type, self.function.?.prototype.return_type });
+        try error_message_buf.writer(self.allocator).print("'{}' cannot be implicitly casted to '{}'", .{ source_type, destination_type });
 
         self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
 
@@ -307,7 +308,9 @@ fn hirSet(self: *Sema, name: Ast.Name) Error!void {
 
     try self.checkRepresentability(value, symbol.type, name.source_loc);
 
-    if (symbol.linkage == .local) try self.lir.instructions.append(self.allocator, .{ .set = name.buffer });
+    if (self.function != null) {
+        try self.lir.instructions.append(self.allocator, .{ .set = name.buffer });
+    }
 }
 
 fn hirGet(self: *Sema, name: Ast.Name) Error!void {
@@ -410,25 +413,40 @@ fn hirReference(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
     });
 }
 
+fn reportNotPointer(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {
+    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+    try error_message_buf.writer(self.allocator).print("'{}' is not a pointer", .{provided_type});
+
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+
+    return error.MismatchedTypes;
+}
+
 fn hirRead(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
     const rhs = self.stack.pop();
     const rhs_type = rhs.getType();
 
-    if (rhs_type.getPointer()) |rhs_pointer| {
-        const result_type = rhs_pointer.child_type.*;
+    const rhs_pointer = rhs_type.getPointer() orelse return self.reportNotPointer(rhs_type, source_loc);
 
-        try self.lir.instructions.append(self.allocator, .{ .read = result_type });
+    const result_type = rhs_pointer.child_type.*;
 
-        try self.stack.append(self.allocator, .{ .runtime = .{ .type = result_type } });
-    } else {
-        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+    try self.lir.instructions.append(self.allocator, .{ .read = result_type });
 
-        try error_message_buf.writer(self.allocator).print("'{}' is not a pointer", .{rhs_type});
+    try self.stack.append(self.allocator, .{ .runtime = .{ .type = result_type } });
+}
 
-        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+fn hirWrite(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
+    const rhs = self.stack.pop();
 
-        return error.MismatchedTypes;
-    }
+    const lhs = self.stack.pop();
+    const lhs_type = lhs.getType();
+
+    const lhs_pointer = lhs_type.getPointer() orelse return self.reportNotPointer(lhs_type, source_loc);
+
+    try self.checkRepresentability(rhs, lhs_pointer.child_type.*, source_loc);
+
+    try self.lir.instructions.append(self.allocator, .write);
 }
 
 fn checkIntOrFloat(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {

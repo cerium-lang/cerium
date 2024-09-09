@@ -41,6 +41,8 @@ pub const Instruction = union(enum) {
     negate,
     /// Read the data that the pointer is pointing to
     read: Type,
+    /// Override the data that the pointer is pointing to
+    write,
     /// Add two integers or floats on the top of the stack
     add,
     /// Subtract two integers or floats on the top of the stack

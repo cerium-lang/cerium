@@ -43,6 +43,8 @@ pub const Instruction = union(enum) {
     reference: Ast.SourceLoc,
     /// Read the data that the pointer is pointing to
     read: Ast.SourceLoc,
+    /// Override the data that the pointer is pointing to
+    write: Ast.SourceLoc,
     /// Add two integers or floats on the top of the stack
     add: Ast.SourceLoc,
     /// Subtract two integers or floats on the top of the stack
@@ -251,24 +253,52 @@ pub const Generator = struct {
             },
 
             .binary_operation => |binary_operation| {
-                try self.generateExpr(binary_operation.lhs.*);
-                try self.generateExpr(binary_operation.rhs.*);
-
                 switch (binary_operation.operator) {
                     .plus => {
+                        try self.generateExpr(binary_operation.lhs.*);
+                        try self.generateExpr(binary_operation.rhs.*);
+
                         try self.hir.instructions.append(self.allocator, .{ .add = binary_operation.source_loc });
                     },
 
                     .minus => {
+                        try self.generateExpr(binary_operation.lhs.*);
+                        try self.generateExpr(binary_operation.rhs.*);
+
                         try self.hir.instructions.append(self.allocator, .{ .sub = binary_operation.source_loc });
                     },
 
                     .star => {
+                        try self.generateExpr(binary_operation.lhs.*);
+                        try self.generateExpr(binary_operation.rhs.*);
+
                         try self.hir.instructions.append(self.allocator, .{ .mul = binary_operation.source_loc });
                     },
 
                     .forward_slash => {
+                        try self.generateExpr(binary_operation.lhs.*);
+                        try self.generateExpr(binary_operation.rhs.*);
+
                         try self.hir.instructions.append(self.allocator, .{ .div = binary_operation.source_loc });
+                    },
+
+                    .equal_sign => {
+                        if (binary_operation.lhs.* == .unary_operation and binary_operation.lhs.unary_operation.operator == .star) {
+                            try self.generateExpr(binary_operation.lhs.unary_operation.rhs.*);
+                            try self.generateExpr(binary_operation.rhs.*);
+
+                            try self.hir.instructions.append(self.allocator, .{ .write = binary_operation.source_loc });
+                        } else if (binary_operation.lhs.* == .identifier) {
+                            try self.generateExpr(binary_operation.rhs.*);
+
+                            try self.hir.instructions.append(self.allocator, .{ .set = binary_operation.lhs.identifier.name });
+                        } else {
+                            self.error_info = .{ .message = "expected an identifier or a pointer dereference", .source_loc = binary_operation.lhs.getSourceLoc() };
+
+                            return error.UnexpectedExpression;
+                        }
+
+                        try self.generateExpr(binary_operation.rhs.*);
                     },
                 }
             },

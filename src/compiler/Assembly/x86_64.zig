@@ -310,6 +310,19 @@ pub fn render(self: *x86_64) Error!void {
                 try self.pushRegister(text_section_writer, "bx", stack_allocation);
             },
 
+            .write => {
+                const stack_allocation = self.stack.pop();
+
+                try self.popRegister(text_section_writer, "ax");
+                try self.popRegister(text_section_writer, "bx");
+
+                if (stack_allocation.is_floating_point) {
+                    try text_section_writer.writeAll("\tmovq %xmm0, 0(%rbx)\n");
+                } else {
+                    try text_section_writer.writeAll("\tmovq %rax, 0(%rbx)\n");
+                }
+            },
+
             .add, .sub, .mul, .div => {
                 const stack_allocation = self.stack.getLast();
 

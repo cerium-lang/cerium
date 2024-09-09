@@ -38,8 +38,8 @@ If you like it give it a star and try it yourself, If you don't like it then I c
         - [ ] Bitwise Shfting
     - [ ] Add support for Pointer Operations
         - [x] Get Pointer
-        - [ ] Access Pointer
-            - [ ] Write to Pointer
+        - [x] Access Pointer
+            - [x] Write to Pointer
             - [x] Read from Pointer
 
 - Standard Library

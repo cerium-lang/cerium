@@ -116,6 +116,7 @@ pub const Node = union(enum) {
                 minus,
                 star,
                 forward_slash,
+                equal_sign,
             };
         };
 
@@ -448,6 +449,7 @@ pub const Parser = struct {
 
     const Precedence = enum {
         lowest,
+        assign,
         sum,
         product,
         prefix,
@@ -455,6 +457,7 @@ pub const Parser = struct {
 
         fn from(token: Token) Precedence {
             return switch (token.tag) {
+                .equal_sign => .assign,
                 .plus, .minus => .sum,
                 .star, .forward_slash => .product,
                 .open_paren => .call,
@@ -651,6 +654,7 @@ pub const Parser = struct {
             .minus => return self.parseBinaryOperationExpr(lhs, .minus),
             .star => return self.parseBinaryOperationExpr(lhs, .star),
             .forward_slash => return self.parseBinaryOperationExpr(lhs, .forward_slash),
+            .equal_sign => return self.parseBinaryOperationExpr(lhs, .equal_sign),
 
             .open_paren => return self.parseCallExpr(lhs),
 
