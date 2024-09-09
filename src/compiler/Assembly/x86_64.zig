@@ -296,6 +296,20 @@ pub fn render(self: *x86_64) Error!void {
                 try self.pushRegister(text_section_writer, "bx", stack_allocation);
             },
 
+            .read => |result_type| {
+                const stack_allocation: StackAllocation = .{ .is_floating_point = result_type.isFloat() };
+
+                try self.popRegister(text_section_writer, "ax");
+
+                if (stack_allocation.is_floating_point) {
+                    try text_section_writer.writeAll("\tmovq 0(%rax), %xmm1\n");
+                } else {
+                    try text_section_writer.writeAll("\tmovq 0(%rax), %rbx\n");
+                }
+
+                try self.pushRegister(text_section_writer, "bx", stack_allocation);
+            },
+
             .add, .sub, .mul, .div => {
                 const stack_allocation = self.stack.getLast();
 

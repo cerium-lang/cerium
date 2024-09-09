@@ -40,7 +40,7 @@ If you like it give it a star and try it yourself, If you don't like it then I c
         - [x] Get Pointer
         - [ ] Access Pointer
             - [ ] Write to Pointer
-            - [ ] Read from Pointer
+            - [x] Read from Pointer
 
 - Standard Library
     - [ ] Make a robust startup code (maybe called `runtime`)

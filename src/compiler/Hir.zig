@@ -41,6 +41,8 @@ pub const Instruction = union(enum) {
     negate: Ast.SourceLoc,
     /// Get a pointer of a value on the stack
     reference: Ast.SourceLoc,
+    /// Read the data that the pointer is pointing to
+    read: Ast.SourceLoc,
     /// Add two integers or floats on the top of the stack
     add: Ast.SourceLoc,
     /// Subtract two integers or floats on the top of the stack
@@ -239,7 +241,11 @@ pub const Generator = struct {
                     },
 
                     .ampersand => {
-                        return try self.hir.instructions.append(self.allocator, .{ .reference = unary_operation.source_loc });
+                        try self.hir.instructions.append(self.allocator, .{ .reference = unary_operation.source_loc });
+                    },
+
+                    .star => {
+                        try self.hir.instructions.append(self.allocator, .{ .read = unary_operation.source_loc });
                     },
                 }
             },

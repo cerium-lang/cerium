@@ -144,7 +144,10 @@ fn hirInstruction(self: *Sema, instruction: Hir.Instruction) Error!void {
         .float => |float| try self.hirFloat(float),
 
         .negate => |source_loc| try self.hirNegate(source_loc),
+
         .reference => |source_loc| try self.hirReference(source_loc),
+
+        .read => |source_loc| try self.hirRead(source_loc),
 
         .add => |source_loc| try self.hirBinaryOperation(.plus, source_loc),
         .sub => |source_loc| try self.hirBinaryOperation(.minus, source_loc),
@@ -405,6 +408,27 @@ fn hirReference(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
             },
         },
     });
+}
+
+fn hirRead(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
+    const rhs = self.stack.pop();
+    const rhs_type = rhs.getType();
+
+    if (rhs_type.getPointer()) |rhs_pointer| {
+        const result_type = rhs_pointer.child_type.*;
+
+        try self.lir.instructions.append(self.allocator, .{ .read = result_type });
+
+        try self.stack.append(self.allocator, .{ .runtime = .{ .type = result_type } });
+    } else {
+        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+        try error_message_buf.writer(self.allocator).print("'{}' is not a pointer", .{rhs_type});
+
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+
+        return error.MismatchedTypes;
+    }
 }
 
 fn checkIntOrFloat(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {

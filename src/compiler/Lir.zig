@@ -39,6 +39,8 @@ pub const Instruction = union(enum) {
     float: f64,
     /// Negate an integer or float
     negate,
+    /// Read the data that the pointer is pointing to
+    read: Type,
     /// Add two integers or floats on the top of the stack
     add,
     /// Subtract two integers or floats on the top of the stack
