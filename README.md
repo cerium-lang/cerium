@@ -1,49 +1,56 @@
 # Cerium
 
-A general purpose programming language that aims to be sane and at least functional
+A general-purpose programming language that aims to be the most sane
 
-## Why would I need this?
+## Roadmap
 
-I don't think you would need it, Zig and C and Rust and others would do the same thing and maybe better, but at least it is functional
+- Language
+    - Syntax 
+        - [x] Add support for Function Declarations
+        - [x] Add support for Function Calls
+        - [x] Add support for Function Parameters Access
+        - [x] Add support for Variable Declarations
+            - [x] Local Variable Declarations
+            - [x] Global Variable Declarations
+        - [x] Add support for Variable Access
+            - [x] Local Variable Access
+            - [x] Global Variable Access
 
-It exists as a "just works" programming language, no need to be the "ultimate, perfect, secure, most maintainable", it is cool that there are some programming languages like that, but that's not always why people use programming languages, the main idea is for a tool that provides easy access to make binary files (or programs) without having to work with writing Assembly by hand (or bytecode in the case of virtual machines), Cerium's goal is to achieve main and required ideas of a programming language, a way to write human readable text that gets translated to machine readable code
+    - Control Flow
+        - [ ] Add support for Conditionals
+            - [ ] If Condition 
+        - [ ] Add support for Loops
+            - [ ] While Loop
 
-If you like it give it a star and try it yourself, If you don't like it then I couldn't care less
+    - Data 
+        - [x] Add support for Integers
+        - [x] Add support for Floats
+        - [x] Add support for Pointers
+        - [x] Add support for Functions
+        - [ ] Add support for Structures
+        - [ ] Add support for Enumerations 
+        - [ ] Add support for Unions 
 
-## What did you currently achieve and what do you look for?
-
-- Semantics
-    - [x] Add support for Function Declarations
-    - [x] Add support for Function Calls
-    - [x] Add support for Function Parameters Access
-    - [x] Add support for Variable Declarations
-        - [x] Local Variable Declarations
-        - [x] Global Variable Declarations
-    - [x] Add support for Variable Access
-        - [x] Local Variable Access
-        - [x] Global Variable Access
-    - [ ] Add support for Unary Operations
-        - [x] Negation
-        - [ ] Boolean Not
-        - [ ] Bitwise Not
-    - [ ] Add support for Binary Operations
-        - [x] Addition
-        - [x] Subtraction
-        - [x] Multiplication
-        - [x] Division
-        - [ ] Comparison
-            - [ ] Less Than
-            - [ ] Greater Than
-            - [ ] Equals To
-        - [ ] Bitwise Shfting
-    - [x] Add support for Pointer Operations
-        - [x] Get Pointer
-        - [x] Access Pointer
-            - [x] Write to Pointer
-            - [x] Read from Pointer
+    - Operations
+        - [ ] Add support for Unary Operations
+            - [x] Negation
+            - [ ] Boolean Not
+            - [ ] Bitwise Not
+        - [ ] Add support for Binary Operations
+            - [x] Addition
+            - [x] Subtraction
+            - [x] Multiplication
+            - [x] Division
+            - [ ] Comparison
+                - [ ] Less Than
+                - [ ] Greater Than
+                - [ ] Equals To
+            - [ ] Bitwise Shfting
+                - [ ] Shift Left 
+                - [ ] Shift Right 
 
 - Standard Library
-    - [ ] Make a robust startup code (maybe called `runtime`)
+    - [ ] Make a robust startup code
     - [ ] Let the startup code be compiled automatically with any provided code
     - [ ] Add support for accessing the Standard Library
     - [ ] Make a System Call API for various operating systems
@@ -60,4 +67,3 @@ If you like it give it a star and try it yourself, If you don't like it then I c
     - [x] Add support for outputing Assembly
     - [ ] Add support for input constraints
     - [ ] Add support for output constraints
-
