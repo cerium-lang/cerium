@@ -31,12 +31,14 @@ pub const Instruction = union(enum) {
     get: []const u8,
     /// Get pointer of a value using specified name
     get_ptr: []const u8,
-    /// Push a string literal onto the stack
+    /// Push a string onto the stack
     string: []const u8,
-    /// Push an integer literal onto the stack
+    /// Push an integer onto the stack
     int: i128,
-    /// Push a float literal onto the stack
+    /// Push a float onto the stack
     float: f64,
+    /// Push a boolean onto the stack
+    boolean: bool,
     /// Negate an integer or float
     negate,
     /// Read the data that the pointer is pointing to

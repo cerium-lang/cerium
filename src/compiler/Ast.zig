@@ -70,6 +70,7 @@ pub const Node = union(enum) {
         string: String,
         int: Int,
         float: Float,
+        boolean: Boolean,
         unary_operation: UnaryOperation,
         binary_operation: BinaryOperation,
         call: Call,
@@ -90,6 +91,11 @@ pub const Node = union(enum) {
 
         pub const Float = struct {
             value: f64,
+            source_loc: SourceLoc,
+        };
+
+        pub const Boolean = struct {
+            value: bool,
             source_loc: SourceLoc,
         };
 
@@ -129,12 +135,8 @@ pub const Node = union(enum) {
         pub fn getSourceLoc(self: Expr) SourceLoc {
             return switch (self) {
                 .identifier => |identifier| identifier.name.source_loc,
-                .string => |string| string.source_loc,
-                .int => |int| int.source_loc,
-                .float => |float| float.source_loc,
-                .unary_operation => |unary_operation| unary_operation.source_loc,
-                .binary_operation => |binary_operation| binary_operation.source_loc,
-                .call => |call| call.source_loc,
+
+                inline else => |other| other.source_loc,
             };
         }
     };
@@ -489,6 +491,9 @@ pub const Parser = struct {
 
             .float => return self.parseFloatExpr(),
 
+            .keyword_true => return self.parseBooleanExpr(true),
+            .keyword_false => return self.parseBooleanExpr(false),
+
             .minus => return self.parseUnaryOperationExpr(.minus),
             .ampersand => return self.parseUnaryOperationExpr(.ampersand),
             .star => return self.parseUnaryOperationExpr(.star),
@@ -638,6 +643,15 @@ pub const Parser = struct {
         };
     }
 
+    fn parseBooleanExpr(self: *Parser, value: bool) Node.Expr {
+        return Node.Expr{
+            .boolean = .{
+                .value = value,
+                .source_loc = self.tokenSourceLoc(self.nextToken()),
+            },
+        };
+    }
+
     fn parseUnaryOperationExpr(self: *Parser, operator: Node.Expr.UnaryOperation.Operator) Error!Node.Expr {
         const operator_token = self.nextToken();
 
@@ -739,6 +753,7 @@ pub const Parser = struct {
                 .{ "i64", .{ .tag = .i64 } },
                 .{ "f32", .{ .tag = .f32 } },
                 .{ "f64", .{ .tag = .f64 } },
+                .{ "bool", .{ .tag = .bool } },
             },
         );
 

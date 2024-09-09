@@ -31,12 +31,14 @@ pub const Instruction = union(enum) {
     set: Ast.Name,
     /// Get a value using the specified name
     get: Ast.Name,
-    /// Push a string literal onto the stack
+    /// Push a string onto the stack
     string: []const u8,
-    /// Push an integer literal onto the stack
+    /// Push an integer onto the stack
     int: i128,
-    /// Push a float literal onto the stack
+    /// Push a float onto the stack
     float: f64,
+    /// Push a boolean onto the stack
+    boolean: bool,
     /// Negate an integer or float
     negate: Ast.SourceLoc,
     /// Get a pointer of a value on the stack
@@ -232,6 +234,10 @@ pub const Generator = struct {
 
             .float => |float| {
                 try self.hir.instructions.append(self.allocator, .{ .float = float.value });
+            },
+
+            .boolean => |boolean| {
+                try self.hir.instructions.append(self.allocator, .{ .boolean = boolean.value });
             },
 
             .unary_operation => |unary_operation| {

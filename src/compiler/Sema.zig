@@ -41,9 +41,10 @@ pub const Error = error{
 } || std.mem.Allocator.Error;
 
 const Value = union(enum) {
+    string: []const u8,
     int: i128,
     float: f64,
-    string: []const u8,
+    boolean: bool,
     runtime: Runtime,
 
     const Runtime = struct {
@@ -74,6 +75,7 @@ const Value = union(enum) {
             self == .int and self.int <= as.maxInt()) or
             (self == .float and self.float >= as.minFloat() and
             self == .float and self.float <= as.maxFloat()) or
+            (self == .boolean) or
             (self == .string) or
             (self == .runtime);
     }
@@ -82,6 +84,7 @@ const Value = union(enum) {
         return switch (self) {
             .int => Type{ .tag = .ambigiuous_int },
             .float => Type{ .tag = .ambigiuous_float },
+            .boolean => Type{ .tag = .bool },
             .string => Type{
                 .tag = .pointer,
                 .data = .{
@@ -101,6 +104,7 @@ const Value = union(enum) {
         switch (self) {
             .int => |int| try writer.print("{}", .{int}),
             .float => |float| try writer.print("{d}", .{float}),
+            .boolean => |boolean| try writer.print("{}", .{boolean}),
             .string => |string| try writer.print("{s}", .{string}),
             .runtime => |runtime| try writer.print("<runtime value '{}'>", .{runtime.type}),
         }
@@ -142,6 +146,7 @@ fn hirInstruction(self: *Sema, instruction: Hir.Instruction) Error!void {
         .string => |string| try self.hirString(string),
         .int => |int| try self.hirInt(int),
         .float => |float| try self.hirFloat(float),
+        .boolean => |boolean| try self.hirBoolean(boolean),
 
         .negate => |source_loc| try self.hirNegate(source_loc),
 
@@ -337,6 +342,12 @@ fn hirFloat(self: *Sema, float: f64) Error!void {
     try self.stack.append(self.allocator, .{ .float = float });
 
     try self.lir.instructions.append(self.allocator, .{ .float = float });
+}
+
+fn hirBoolean(self: *Sema, boolean: bool) Error!void {
+    try self.stack.append(self.allocator, .{ .boolean = boolean });
+
+    try self.lir.instructions.append(self.allocator, .{ .boolean = boolean });
 }
 
 fn hirNegate(self: *Sema, source_loc: Ast.SourceLoc) Error!void {

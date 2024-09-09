@@ -25,6 +25,7 @@ A general-purpose programming language that aims to be the most sane
     - Data 
         - [x] Add support for Integers
         - [x] Add support for Floats
+        - [x] Add support for Booleans 
         - [x] Add support for Pointers
         - [x] Add support for Functions
         - [ ] Add support for Structures

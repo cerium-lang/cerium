@@ -31,6 +31,8 @@ pub const Tag = enum {
     keyword_const,
     keyword_asm,
     keyword_return,
+    keyword_true,
+    keyword_false,
 };
 
 pub const BufferLoc = struct {
@@ -44,4 +46,6 @@ pub const keywords = std.StaticStringMap(Tag).initComptime(.{
     .{ "const", .keyword_const },
     .{ "asm", .keyword_asm },
     .{ "return", .keyword_return },
+    .{ "true", .keyword_true },
+    .{ "false", .keyword_false },
 });

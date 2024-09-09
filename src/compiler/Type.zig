@@ -21,6 +21,7 @@ pub const Tag = enum {
     i64,
     f32,
     f64,
+    bool,
 };
 
 pub const Data = union(enum) {
@@ -200,6 +201,7 @@ pub fn format(self: Type, _: anytype, _: anytype, writer: anytype) !void {
         .i64 => try writer.writeAll("i64"),
         .f32 => try writer.writeAll("f32"),
         .f64 => try writer.writeAll("f64"),
+        .bool => try writer.writeAll("bool"),
     }
 }
 

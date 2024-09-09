@@ -278,6 +278,16 @@ pub fn render(self: *x86_64) Error!void {
                 }
             },
 
+            .boolean => |boolean| {
+                if (self.stack_offsets.items.len == 0) {
+                    try data_section_writer.print("\t.quad {}\n", .{@intFromBool(boolean)});
+                } else {
+                    try text_section_writer.print("\tmovq ${}, %r8\n", .{@intFromBool(boolean)});
+
+                    try self.pushRegister(text_section_writer, "8", .{ .is_floating_point = false });
+                }
+            },
+
             .negate => {
                 const stack_allocation = self.stack.getLast();
 
