@@ -62,6 +62,8 @@ const Value = union(enum) {
 
         return (self == .int and to.isInt()) or
             (self == .float and to.isFloat()) or
+            (to.tag == .ambigiuous_int and self_type.isInt()) or
+            (to.tag == .ambigiuous_float and self_type.isFloat()) or
             (self_type.isInt() and to.isInt() and
             self_type.maxInt() <= to.maxInt() and self_type.minInt() >= to.minInt() and
             self_type.canBeNegative() == to.canBeNegative()) or
@@ -161,6 +163,7 @@ fn hirInstruction(self: *Sema, instruction: Hir.Instruction) Error!void {
         .sub => |source_loc| try self.hirBinaryOperation(.minus, source_loc),
         .mul => |source_loc| try self.hirBinaryOperation(.star, source_loc),
         .div => |source_loc| try self.hirBinaryOperation(.forward_slash, source_loc),
+        .eql => |source_loc| try self.hirBinaryOperation(.double_equal_sign, source_loc),
 
         .pop => try self.hirPop(),
 
@@ -498,14 +501,36 @@ fn hirWrite(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
 
 fn checkIntOrFloat(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {
     if (!provided_type.isIntOrFloat()) {
-        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-        try error_message_buf.writer(self.allocator).print("'{}' is not an integer nor float", .{provided_type});
-
-        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
-
-        return error.MismatchedTypes;
+        return self.reportNotIntNorFloat(provided_type, source_loc);
     }
+}
+
+fn checkCanBeCompared(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {
+    if (provided_type.getPointer()) |pointer| {
+        if (pointer.size == .many) {
+            return self.reportCannotCompare(provided_type, source_loc);
+        }
+    }
+}
+
+fn reportNotIntNorFloat(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {
+    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+    try error_message_buf.writer(self.allocator).print("'{}' is not an integer nor float", .{provided_type});
+
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+
+    return error.MismatchedTypes;
+}
+
+fn reportCannotCompare(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {
+    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+    try error_message_buf.writer(self.allocator).print("'{}' cannot be compared", .{provided_type});
+
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+
+    return error.MismatchedTypes;
 }
 
 fn reportIncompatibleTypes(self: *Sema, lhs: Type, rhs: Type, source_loc: Ast.SourceLoc) Error!void {
@@ -523,38 +548,56 @@ const BinaryOperator = enum {
     minus,
     star,
     forward_slash,
+    double_equal_sign,
 };
 
-fn hirBinaryOperation(self: *Sema, operator: BinaryOperator, source_loc: Ast.SourceLoc) Error!void {
+fn hirBinaryOperation(self: *Sema, comptime operator: BinaryOperator, source_loc: Ast.SourceLoc) Error!void {
     const rhs = self.stack.pop();
     const lhs = self.stack.pop();
 
     const lhs_type = lhs.getType();
     const rhs_type = rhs.getType();
 
-    try self.checkIntOrFloat(lhs_type, source_loc);
-    try self.checkIntOrFloat(rhs_type, source_loc);
+    if (operator != .double_equal_sign) {
+        try self.checkIntOrFloat(lhs_type, source_loc);
+        try self.checkIntOrFloat(rhs_type, source_loc);
+    } else {
+        try self.checkCanBeCompared(lhs_type, source_loc);
+        try self.checkCanBeCompared(rhs_type, source_loc);
+        try self.checkRepresentability(lhs, rhs_type, source_loc);
+        try self.checkRepresentability(rhs, lhs_type, source_loc);
+    }
 
     if (lhs_type.isInt() != rhs_type.isInt() or (lhs_type.tag != rhs_type.tag and !lhs_type.isAmbigiuous() and !rhs_type.isAmbigiuous())) {
-        try self.reportIncompatibleTypes(lhs_type, rhs_type, source_loc);
+        return self.reportIncompatibleTypes(lhs_type, rhs_type, source_loc);
     }
 
     switch (lhs) {
         .int => |lhs_int| switch (rhs) {
             .int => |rhs_int| {
-                const result = switch (operator) {
-                    .plus => lhs_int + rhs_int,
-                    .minus => lhs_int - rhs_int,
-                    .star => lhs_int * rhs_int,
-                    // TODO: Do we need to do it like Zig? using built in functions I mean
-                    .forward_slash => @divFloor(lhs_int, rhs_int),
-                };
+                if (operator == .double_equal_sign) {
+                    const result = lhs_int == rhs_int;
 
-                try self.stack.append(self.allocator, .{ .int = result });
+                    try self.stack.append(self.allocator, .{ .boolean = result });
 
-                _ = self.lir.instructions.pop();
+                    _ = self.lir.instructions.pop();
 
-                self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .int = result };
+                    self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .boolean = result };
+                } else {
+                    const result = switch (operator) {
+                        .plus => lhs_int + rhs_int,
+                        .minus => lhs_int - rhs_int,
+                        .star => lhs_int * rhs_int,
+                        .forward_slash => @divFloor(lhs_int, rhs_int),
+                        else => unreachable,
+                    };
+
+                    try self.stack.append(self.allocator, .{ .int = result });
+
+                    _ = self.lir.instructions.pop();
+
+                    self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .int = result };
+                }
 
                 return;
             },
@@ -564,18 +607,45 @@ fn hirBinaryOperation(self: *Sema, operator: BinaryOperator, source_loc: Ast.Sou
 
         .float => |lhs_float| switch (rhs) {
             .float => |rhs_float| {
-                const result = switch (operator) {
-                    .plus => lhs_float + rhs_float,
-                    .minus => lhs_float - rhs_float,
-                    .star => lhs_float * rhs_float,
-                    .forward_slash => lhs_float * rhs_float,
-                };
+                if (operator == .double_equal_sign) {
+                    const result = lhs_float == rhs_float;
 
-                try self.stack.append(self.allocator, .{ .float = result });
+                    try self.stack.append(self.allocator, .{ .boolean = result });
+
+                    _ = self.lir.instructions.pop();
+
+                    self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .boolean = result };
+                } else {
+                    const result = switch (operator) {
+                        .plus => lhs_float + rhs_float,
+                        .minus => lhs_float - rhs_float,
+                        .star => lhs_float * rhs_float,
+                        .forward_slash => lhs_float * rhs_float,
+                        else => unreachable,
+                    };
+
+                    try self.stack.append(self.allocator, .{ .float = result });
+
+                    _ = self.lir.instructions.pop();
+
+                    self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .float = result };
+                }
+
+                return;
+            },
+
+            else => {},
+        },
+
+        .boolean => |lhs_boolean| switch (rhs) {
+            .boolean => |rhs_boolean| {
+                const result = lhs_boolean == rhs_boolean;
+
+                try self.stack.append(self.allocator, .{ .boolean = result });
 
                 _ = self.lir.instructions.pop();
 
-                self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .float = result };
+                self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .boolean = result };
 
                 return;
             },
@@ -591,22 +661,27 @@ fn hirBinaryOperation(self: *Sema, operator: BinaryOperator, source_loc: Ast.Sou
         .minus => try self.lir.instructions.append(self.allocator, .sub),
         .star => try self.lir.instructions.append(self.allocator, .mul),
         .forward_slash => try self.lir.instructions.append(self.allocator, .div),
+        .double_equal_sign => try self.lir.instructions.append(self.allocator, .eql),
     }
 
-    if (!lhs_type.isAmbigiuous()) {
-        // Check if we can represent the rhs ambigiuous value as lhs type (e.g. x + 4)
-        if (rhs_type.isAmbigiuous()) {
-            try self.checkRepresentability(rhs, lhs_type, source_loc);
-        }
-
-        try self.stack.append(self.allocator, .{ .runtime = .{ .type = lhs_type } });
+    if (operator == .double_equal_sign) {
+        try self.stack.append(self.allocator, .{ .runtime = .{ .type = .{ .tag = .bool } } });
     } else {
-        // Check if we can represent the lhs ambigiuous value as rhs type (e.g. 4 + x)
-        if (!rhs_type.isAmbigiuous()) {
-            try self.checkRepresentability(lhs, rhs_type, source_loc);
-        }
+        if (!lhs_type.isAmbigiuous()) {
+            // Check if we can represent the rhs ambigiuous value as lhs type (e.g. x + 4)
+            if (rhs_type.isAmbigiuous()) {
+                try self.checkRepresentability(rhs, lhs_type, source_loc);
+            }
 
-        try self.stack.append(self.allocator, .{ .runtime = .{ .type = rhs_type } });
+            try self.stack.append(self.allocator, .{ .runtime = .{ .type = lhs_type } });
+        } else {
+            // Check if we can represent the lhs ambigiuous value as rhs type (e.g. 4 + x)
+            if (!rhs_type.isAmbigiuous()) {
+                try self.checkRepresentability(lhs, rhs_type, source_loc);
+            }
+
+            try self.stack.append(self.allocator, .{ .runtime = .{ .type = rhs_type } });
+        }
     }
 }
 

@@ -373,6 +373,28 @@ pub fn render(self: *x86_64) Error!void {
                 try self.pushRegister(text_section_writer, "ax", stack_allocation);
             },
 
+            .eql => {
+                const stack_allocation = self.stack.getLast();
+
+                try self.popRegister(text_section_writer, "cx");
+                try self.popRegister(text_section_writer, "ax");
+
+                if (stack_allocation.is_floating_point) {
+                    try text_section_writer.writeAll("\tucomisd %xmm2, %xmm0\n");
+                    try text_section_writer.writeAll("\tsete %al\n");
+                    try text_section_writer.writeAll("\tsetnp %cl\n");
+                    try text_section_writer.writeAll("\tandb %cl, %al\n");
+                    try text_section_writer.writeAll("\tmovzbq %al, %rax\n");
+                } else {
+                    try text_section_writer.writeAll("\tcmpq %rcx, %rax\n");
+                    try text_section_writer.writeAll("\tsete %al\n");
+                    try text_section_writer.writeAll("\tandb $1, %al\n");
+                    try text_section_writer.writeAll("\tmovzbq %al, %rax\n");
+                }
+
+                try self.pushRegister(text_section_writer, "ax", .{ .is_floating_point = false });
+            },
+
             .pop => {
                 try self.popRegister(text_section_writer, "8");
             },

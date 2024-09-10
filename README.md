@@ -45,7 +45,7 @@ A general-purpose programming language that aims to be the most sane
             - [ ] Comparison
                 - [ ] Less Than
                 - [ ] Greater Than
-                - [ ] Equals To
+                - [x] Equals To
             - [ ] Bitwise Shfting
                 - [ ] Shift Left 
                 - [ ] Shift Right 

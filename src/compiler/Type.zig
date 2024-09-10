@@ -1,5 +1,4 @@
 const std = @import("std");
-
 const Type = @This();
 
 tag: Tag,

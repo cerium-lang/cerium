@@ -55,6 +55,8 @@ pub const Instruction = union(enum) {
     mul,
     /// Divide two integers or floats on the top of the stack
     div,
+    /// Compare between two values on the stack and check for equality
+    eql,
     /// Pop a value from the stack
     pop,
     /// Place a machine-specific assembly in the output

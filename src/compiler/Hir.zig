@@ -57,6 +57,8 @@ pub const Instruction = union(enum) {
     mul: Ast.SourceLoc,
     /// Divide two integers or floats on the top of the stack
     div: Ast.SourceLoc,
+    /// Compare between two values on the stack and check for equality
+    eql: Ast.SourceLoc,
     /// Pop a value from the stack
     pop,
     /// Place a machine-specific assembly in the output
@@ -311,6 +313,17 @@ pub const Generator = struct {
                         }
 
                         try self.generateExpr(binary_operation.rhs.*);
+                    },
+
+                    .double_equal_sign, .bang_equal_sign => {
+                        try self.generateExpr(binary_operation.lhs.*);
+                        try self.generateExpr(binary_operation.rhs.*);
+
+                        try self.hir.instructions.append(self.allocator, .{ .eql = binary_operation.source_loc });
+
+                        if (binary_operation.operator == .bang_equal_sign) {
+                            try self.hir.instructions.append(self.allocator, .{ .bool_not = binary_operation.source_loc });
+                        }
                     },
                 }
             },
