@@ -18,6 +18,7 @@ pub const Tag = enum {
     open_bracket,
     close_bracket,
     bang,
+    tilde,
     ampersand,
     comma,
     semicolon,

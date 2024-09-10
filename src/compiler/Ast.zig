@@ -107,6 +107,7 @@ pub const Node = union(enum) {
             pub const Operator = enum {
                 minus,
                 bang,
+                tilde,
                 ampersand,
                 star,
             };
@@ -501,6 +502,7 @@ pub const Parser = struct {
 
             .minus => return self.parseUnaryOperationExpr(.minus),
             .bang => return self.parseUnaryOperationExpr(.bang),
+            .tilde => return self.parseUnaryOperationExpr(.tilde),
             .ampersand => return self.parseUnaryOperationExpr(.ampersand),
             .star => return self.parseUnaryOperationExpr(.star),
 
@@ -658,7 +660,7 @@ pub const Parser = struct {
         };
     }
 
-    fn parseUnaryOperationExpr(self: *Parser, operator: Node.Expr.UnaryOperation.Operator) Error!Node.Expr {
+    fn parseUnaryOperationExpr(self: *Parser, comptime operator: Node.Expr.UnaryOperation.Operator) Error!Node.Expr {
         const operator_token = self.nextToken();
 
         const rhs = (try self.parseExpr(.prefix)).expr;
@@ -688,7 +690,7 @@ pub const Parser = struct {
         }
     }
 
-    fn parseBinaryOperationExpr(self: *Parser, lhs: Node.Expr, operator: Node.Expr.BinaryOperation.Operator) Error!Node.Expr {
+    fn parseBinaryOperationExpr(self: *Parser, lhs: Node.Expr, comptime operator: Node.Expr.BinaryOperation.Operator) Error!Node.Expr {
         const lhs_on_heap = try self.allocator.create(Node.Expr);
         lhs_on_heap.* = lhs;
 

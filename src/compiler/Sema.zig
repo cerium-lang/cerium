@@ -152,7 +152,8 @@ fn hirInstruction(self: *Sema, instruction: Hir.Instruction) Error!void {
 
         .negate => |source_loc| try self.hirNegate(source_loc),
 
-        .bool_not => |source_loc| try self.hirBoolNot(source_loc),
+        .bool_not => |source_loc| try self.hirNot(.bool, source_loc),
+        .bit_not => |source_loc| try self.hirNot(.bit, source_loc),
 
         .reference => |source_loc| try self.hirReference(source_loc),
 
@@ -391,6 +392,18 @@ fn hirNegate(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
     }
 }
 
+fn checkInt(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {
+    if (!provided_type.isInt()) {
+        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+        try error_message_buf.writer(self.allocator).print("'{}' is provided while expected an integer", .{provided_type});
+
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+
+        return error.MismatchedTypes;
+    }
+}
+
 fn checkBool(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {
     if (provided_type.tag != .bool) {
         var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
@@ -403,18 +416,36 @@ fn checkBool(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!
     }
 }
 
-fn hirBoolNot(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
-    const rhs = self.stack.pop();
+const NotOperation = enum {
+    bool,
+    bit,
+};
 
-    try self.checkBool(rhs.getType(), source_loc);
+fn hirNot(self: *Sema, comptime operand: NotOperation, source_loc: Ast.SourceLoc) Error!void {
+    const rhs = self.stack.pop();
+    const rhs_type = rhs.getType();
+
+    if (operand == .bool) {
+        try self.checkBool(rhs_type, source_loc);
+    } else if (operand == .bit) {
+        try self.checkInt(rhs_type, source_loc);
+    }
 
     switch (rhs) {
+        .int => |rhs_int| {
+            self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .int = ~rhs_int };
+
+            try self.stack.append(self.allocator, .{ .int = ~rhs_int });
+        },
+
         .boolean => |rhs_boolean| {
             self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .boolean = !rhs_boolean };
+
+            try self.stack.append(self.allocator, .{ .boolean = !rhs_boolean });
         },
 
         .runtime => |rhs_runtime| {
-            try self.lir.instructions.append(self.allocator, .bool_not);
+            try self.lir.instructions.append(self.allocator, if (operand == .bool) .bool_not else .bit_not);
 
             try self.stack.append(self.allocator, .{ .runtime = .{ .type = rhs_runtime.type } });
         },
@@ -501,36 +532,28 @@ fn hirWrite(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
 
 fn checkIntOrFloat(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {
     if (!provided_type.isIntOrFloat()) {
-        return self.reportNotIntNorFloat(provided_type, source_loc);
+        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+        try error_message_buf.writer(self.allocator).print("'{}' is provided while expected an integer or float", .{provided_type});
+
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+
+        return error.MismatchedTypes;
     }
 }
 
 fn checkCanBeCompared(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {
     if (provided_type.getPointer()) |pointer| {
         if (pointer.size == .many) {
-            return self.reportCannotCompare(provided_type, source_loc);
+            var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+            try error_message_buf.writer(self.allocator).print("'{}' cannot be compared", .{provided_type});
+
+            self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+
+            return error.MismatchedTypes;
         }
     }
-}
-
-fn reportNotIntNorFloat(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {
-    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-    try error_message_buf.writer(self.allocator).print("'{}' is not an integer nor float", .{provided_type});
-
-    self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
-
-    return error.MismatchedTypes;
-}
-
-fn reportCannotCompare(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {
-    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-    try error_message_buf.writer(self.allocator).print("'{}' cannot be compared", .{provided_type});
-
-    self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
-
-    return error.MismatchedTypes;
 }
 
 fn reportIncompatibleTypes(self: *Sema, lhs: Type, rhs: Type, source_loc: Ast.SourceLoc) Error!void {

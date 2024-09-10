@@ -43,6 +43,8 @@ pub const Instruction = union(enum) {
     negate: Ast.SourceLoc,
     /// Reverse a boolean from true to false and from false to true
     bool_not: Ast.SourceLoc,
+    /// Reverse the bits of an integer on the stack
+    bit_not: Ast.SourceLoc,
     /// Get a pointer of a value on the stack
     reference: Ast.SourceLoc,
     /// Read the data that the pointer is pointing to
@@ -254,6 +256,10 @@ pub const Generator = struct {
 
                     .bang => {
                         try self.hir.instructions.append(self.allocator, .{ .bool_not = unary_operation.source_loc });
+                    },
+
+                    .tilde => {
+                        try self.hir.instructions.append(self.allocator, .{ .bit_not = unary_operation.source_loc });
                     },
 
                     .ampersand => {

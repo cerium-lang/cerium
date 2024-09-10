@@ -314,6 +314,14 @@ pub fn render(self: *x86_64) Error!void {
                 try self.pushRegister(text_section_writer, "ax", .{ .is_floating_point = false });
             },
 
+            .bit_not => {
+                try self.popRegister(text_section_writer, "ax");
+
+                try text_section_writer.writeAll("\txorq $-1, %rax\n");
+
+                try self.pushRegister(text_section_writer, "ax", .{ .is_floating_point = false });
+            },
+
             .read => |result_type| {
                 const stack_allocation: StackAllocation = .{ .is_floating_point = result_type.isFloat() };
 
