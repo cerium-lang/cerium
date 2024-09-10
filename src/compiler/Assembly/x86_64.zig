@@ -419,7 +419,6 @@ pub fn render(self: *x86_64) Error!void {
 }
 
 fn suffixToNumber(register_suffix: []const u8) u8 {
-    // We only use the ax suffix for now, update this later
     if (std.mem.eql(u8, register_suffix, "ax")) {
         return 0;
     } else if (std.mem.eql(u8, register_suffix, "bx")) {
