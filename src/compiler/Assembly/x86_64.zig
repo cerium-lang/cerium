@@ -150,7 +150,13 @@ pub fn render(self: *x86_64) Error!void {
             .call => |function| {
                 try self.popRegister(text_section_writer, "8");
 
-                for (function.parameter_types, 0..) |parameter_type, j| {
+                var j: usize = function.parameter_types.len;
+
+                while (j > 0) {
+                    j -= 1;
+
+                    const parameter_type = function.parameter_types[j];
+
                     try self.popRegister(text_section_writer, "9");
 
                     if (parameter_type.isFloat()) {
