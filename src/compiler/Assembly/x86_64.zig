@@ -150,6 +150,10 @@ pub fn render(self: *x86_64) Error!void {
             .call => |function| {
                 try self.popRegister(text_section_writer, "8");
 
+                const stack_top_offset = (function.parameter_types.len + self.stack.items.len) * self.stack_alignment;
+
+                try text_section_writer.print("\tsubq ${}, %rsp\n", .{stack_top_offset});
+
                 var j: usize = function.parameter_types.len;
 
                 while (j > 0) {
@@ -167,6 +171,8 @@ pub fn render(self: *x86_64) Error!void {
                 }
 
                 try text_section_writer.writeAll("\tcallq *%r8\n");
+
+                try text_section_writer.print("\taddq ${}, %rsp\n", .{stack_top_offset});
 
                 try self.pushRegister(text_section_writer, "ax", .{ .is_floating_point = function.return_type.isFloat() });
             },
