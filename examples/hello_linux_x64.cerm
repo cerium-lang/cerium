@@ -23,7 +23,7 @@ fn exit_group(status_code u8) void {
 }
 
 fn _start() void {
-    write(1, "Hello, World!\n", 14);
+    write(STDOUT, "Hello, World!\n", 14);
 
     exit_group(0);
 }
