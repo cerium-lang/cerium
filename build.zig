@@ -23,4 +23,14 @@ pub fn build(b: *std.Build) void {
 
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
+
+    const exe_check = b.addExecutable(.{
+        .name = "cerium",
+        .root_source_file = b.path("src/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const check_step = b.step("check", "Checks if the app can compile");
+    check_step.dependOn(&exe_check.step);
 }
