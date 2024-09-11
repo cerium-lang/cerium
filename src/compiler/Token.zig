@@ -26,6 +26,8 @@ pub const Tag = enum {
     plus,
     minus,
     star,
+    less_than,
+    greater_than,
     equal_sign,
     double_equal_sign,
     bang_equal_sign,

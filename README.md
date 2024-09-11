@@ -42,9 +42,9 @@ A general-purpose programming language that aims to be the most sane
             - [x] Subtraction
             - [x] Multiplication
             - [x] Division
-            - [ ] Comparison
-                - [ ] Less Than
-                - [ ] Greater Than
+            - [x] Comparison
+                - [x] Less Than
+                - [x] Greater Than
                 - [x] Equals To
             - [ ] Bitwise Shfting
                 - [ ] Shift Left 

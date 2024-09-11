@@ -165,6 +165,8 @@ fn hirInstruction(self: *Sema, instruction: Hir.Instruction) Error!void {
         .sub => |source_loc| try self.hirBinaryOperation(.minus, source_loc),
         .mul => |source_loc| try self.hirBinaryOperation(.star, source_loc),
         .div => |source_loc| try self.hirBinaryOperation(.forward_slash, source_loc),
+        .lt => |source_loc| try self.hirBinaryOperation(.less_than, source_loc),
+        .gt => |source_loc| try self.hirBinaryOperation(.greater_than, source_loc),
         .eql => |source_loc| try self.hirBinaryOperation(.double_equal_sign, source_loc),
 
         .pop => try self.hirPop(),
@@ -582,7 +584,13 @@ const BinaryOperator = enum {
     minus,
     star,
     forward_slash,
+    less_than,
+    greater_than,
     double_equal_sign,
+
+    fn isComparison(self: BinaryOperator) bool {
+        return self == .less_than or self == .greater_than or self == .double_equal_sign;
+    }
 };
 
 fn hirBinaryOperation(self: *Sema, comptime operator: BinaryOperator, source_loc: Ast.SourceLoc) Error!void {
@@ -609,8 +617,13 @@ fn hirBinaryOperation(self: *Sema, comptime operator: BinaryOperator, source_loc
     switch (lhs) {
         .int => |lhs_int| switch (rhs) {
             .int => |rhs_int| {
-                if (operator == .double_equal_sign) {
-                    const result = lhs_int == rhs_int;
+                if (operator.isComparison()) {
+                    const result = switch (operator) {
+                        .less_than => lhs_int < rhs_int,
+                        .greater_than => lhs_int > rhs_int,
+                        .double_equal_sign => lhs_int == rhs_int,
+                        else => unreachable,
+                    };
 
                     try self.stack.append(self.allocator, .{ .boolean = result });
 
@@ -641,8 +654,13 @@ fn hirBinaryOperation(self: *Sema, comptime operator: BinaryOperator, source_loc
 
         .float => |lhs_float| switch (rhs) {
             .float => |rhs_float| {
-                if (operator == .double_equal_sign) {
-                    const result = lhs_float == rhs_float;
+                if (operator.isComparison()) {
+                    const result = switch (operator) {
+                        .less_than => lhs_float < rhs_float,
+                        .greater_than => lhs_float > rhs_float,
+                        .double_equal_sign => lhs_float == rhs_float,
+                        else => unreachable,
+                    };
 
                     try self.stack.append(self.allocator, .{ .boolean = result });
 
@@ -695,10 +713,12 @@ fn hirBinaryOperation(self: *Sema, comptime operator: BinaryOperator, source_loc
         .minus => try self.lir.instructions.append(self.allocator, .sub),
         .star => try self.lir.instructions.append(self.allocator, .mul),
         .forward_slash => try self.lir.instructions.append(self.allocator, .div),
+        .less_than => try self.lir.instructions.append(self.allocator, .lt),
+        .greater_than => try self.lir.instructions.append(self.allocator, .gt),
         .double_equal_sign => try self.lir.instructions.append(self.allocator, .eql),
     }
 
-    if (operator == .double_equal_sign) {
+    if (operator.isComparison()) {
         try self.stack.append(self.allocator, .{ .runtime = .{ .type = .{ .tag = .bool } } });
     } else {
         if (!lhs_type.isAmbigiuous()) {

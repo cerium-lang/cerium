@@ -57,6 +57,10 @@ pub const Instruction = union(enum) {
     mul,
     /// Divide two integers or floats on the top of the stack
     div,
+    /// Compare between two integers or floats on the stack and check for order (in this case, lhs less than rhs)
+    lt,
+    /// Compare between two integers or floats on the stack and check for order (in this case, lhs greater than rhs)
+    gt,
     /// Compare between two values on the stack and check for equality
     eql,
     /// Pop a value from the stack

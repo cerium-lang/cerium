@@ -128,6 +128,22 @@ pub fn next(self: *Lexer) Token {
                     self.state = .bang;
                 },
 
+                '>' => {
+                    result.buffer_loc.start = self.index;
+                    self.index += 1;
+                    result.buffer_loc.end = self.index;
+                    result.tag = .greater_than;
+                    break;
+                },
+
+                '<' => {
+                    result.buffer_loc.start = self.index;
+                    self.index += 1;
+                    result.buffer_loc.end = self.index;
+                    result.tag = .less_than;
+                    break;
+                },
+
                 '~' => {
                     result.buffer_loc.start = self.index;
                     self.index += 1;
