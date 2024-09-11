@@ -1,0 +1,29 @@
+let SYS_write u64 = 1;
+let SYS_exit_group u64 = 231;
+
+let STDOUT u32 = 1;
+
+fn write(fd u32, buf [*]const u8, count u64) u64 {
+    return asm {
+        "syscall"
+        : "rax" (SYS_write),
+          "rdi" (fd),
+          "rsi" (buf),
+          "rdx" (count),
+        : "rax" (u64)
+    };
+}
+
+fn exit_group(status_code u8) void {
+    asm {
+        "syscall"
+        : "rax" (SYS_exit_group),
+          "rdi" (status_code),
+    };
+}
+
+fn _start() void {
+    write(1, "Hello, World!\n", 14);
+
+    exit_group(0);
+}
