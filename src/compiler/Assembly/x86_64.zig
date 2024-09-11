@@ -403,12 +403,30 @@ pub fn render(self: *x86_64) Error!void {
                 try self.pushRegister(text_section_writer, "ax", .{ .is_floating_point = false });
             },
 
-            .pop => {
-                try self.popRegister(text_section_writer, "8");
-            },
-
             .assembly => |content| {
                 try text_section_writer.print("{s}\n", .{content});
+            },
+
+            .assembly_input => |register| {
+                _ = self.stack.pop();
+
+                const stack_offset = self.stack_offsets.pop();
+
+                try text_section_writer.print("\tmovq -{}(%rbp), %{s}\n", .{ stack_offset, register });
+            },
+
+            .assembly_output => |register| {
+                try self.stack.append(self.allocator, .{ .is_floating_point = if (register.len > 0) register[0] == 'x' else false });
+
+                const stack_offset = self.stack_offsets.getLast() + self.stack_alignment;
+
+                try self.stack_offsets.append(self.allocator, stack_offset);
+
+                try text_section_writer.print("\tmovq %{s}, -{}(%rbp)\n", .{ register, stack_offset });
+            },
+
+            .pop => {
+                try self.popRegister(text_section_writer, "8");
             },
 
             .@"return" => {

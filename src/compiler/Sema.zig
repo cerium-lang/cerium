@@ -35,6 +35,7 @@ pub const Error = error{
     UnexpectedArgumentsCount,
     ExpectedExplicitReturn,
     TypeCannotRepresentValue,
+    UnexpectedType,
     MismatchedTypes,
     Undeclared,
     Redeclared,
@@ -226,12 +227,16 @@ fn hirCall(self: *Sema, call: Hir.Instruction.Call) Error!void {
             return error.UnexpectedArgumentsCount;
         }
 
-        if (function.parameter_types.len > 0) {
-            for (function.parameter_types[function.parameter_types.len - 1 ..]) |parameter_type| {
-                const argument = self.stack.pop();
+        var i: usize = function.parameter_types.len;
 
-                try self.checkRepresentability(argument, parameter_type, call.source_loc);
-            }
+        while (i > 0) {
+            i -= 1;
+
+            const parameter_type = function.parameter_types[i];
+
+            const argument = self.stack.pop();
+
+            try self.checkRepresentability(argument, parameter_type, call.source_loc);
         }
 
         try self.lir.instructions.append(self.allocator, .{ .call = function });
@@ -247,6 +252,12 @@ fn hirCall(self: *Sema, call: Hir.Instruction.Call) Error!void {
 }
 
 fn hirVariable(self: *Sema, symbol: Symbol) Error!void {
+    if (symbol.type.tag == .void) {
+        self.error_info = .{ .message = "you cannot declare a symbol with type 'void'", .source_loc = symbol.name.source_loc };
+
+        return error.UnexpectedType;
+    }
+
     try self.symbol_table.put(symbol);
 
     try self.lir.instructions.append(self.allocator, .{ .variable = symbol });
@@ -709,13 +720,35 @@ fn hirBinaryOperation(self: *Sema, comptime operator: BinaryOperator, source_loc
 }
 
 fn hirPop(self: *Sema) Error!void {
-    _ = self.stack.pop();
-
-    try self.lir.instructions.append(self.allocator, .pop);
+    if (self.stack.popOrNull()) |unused_value| {
+        if (unused_value.getType().tag != .void) {
+            try self.lir.instructions.append(self.allocator, .pop);
+        }
+    }
 }
 
-fn hirAssembly(self: *Sema, assembly: []const u8) Error!void {
-    try self.lir.instructions.append(self.allocator, .{ .assembly = assembly });
+fn hirAssembly(self: *Sema, assembly: Ast.Node.Expr.Assembly) Error!void {
+    var i: usize = assembly.input_constraints.len;
+
+    while (i > 0) {
+        i -= 1;
+
+        _ = self.stack.pop();
+
+        const input_constraint = assembly.input_constraints[i];
+
+        try self.lir.instructions.append(self.allocator, .{ .assembly_input = input_constraint.register });
+    }
+
+    try self.lir.instructions.append(self.allocator, .{ .assembly = assembly.content });
+
+    if (assembly.output_constraint) |output_constraint| {
+        try self.lir.instructions.append(self.allocator, .{ .assembly_output = output_constraint.register });
+
+        try self.stack.append(self.allocator, .{ .runtime = .{ .type = output_constraint.type } });
+    } else {
+        try self.stack.append(self.allocator, .{ .runtime = .{ .type = .{ .tag = .void } } });
+    }
 }
 
 fn hirReturn(self: *Sema) Error!void {

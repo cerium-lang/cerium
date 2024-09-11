@@ -33,10 +33,10 @@ A general-purpose programming language that aims to be the most sane
         - [ ] Add support for Unions 
 
     - Operations
-        - [ ] Add support for Unary Operations
+        - [x] Add support for Unary Operations
             - [x] Negation
             - [x] Boolean Not
-            - [ ] Bitwise Not
+            - [x] Bitwise Not
         - [ ] Add support for Binary Operations
             - [x] Addition
             - [x] Subtraction
@@ -66,5 +66,5 @@ A general-purpose programming language that aims to be the most sane
 
 - Inline Assembly
     - [x] Add support for outputing Assembly
-    - [ ] Add support for input constraints
-    - [ ] Add support for output constraints
+    - [x] Add support for input constraints
+    - [x] Add support for output constraints

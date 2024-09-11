@@ -21,6 +21,7 @@ pub const Tag = enum {
     tilde,
     ampersand,
     comma,
+    colon,
     semicolon,
     plus,
     minus,

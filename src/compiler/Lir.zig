@@ -63,6 +63,10 @@ pub const Instruction = union(enum) {
     pop,
     /// Place a machine-specific assembly in the output
     assembly: []const u8,
+    // Pop a value from the stack into a machine-specific register
+    assembly_input: []const u8,
+    // Push a machine-specific register onto the stack
+    assembly_output: []const u8,
     /// Return to the parent block
     @"return",
 };

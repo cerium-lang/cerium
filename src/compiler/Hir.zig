@@ -61,10 +61,10 @@ pub const Instruction = union(enum) {
     div: Ast.SourceLoc,
     /// Compare between two values on the stack and check for equality
     eql: Ast.SourceLoc,
+    /// Place a machine-specific assembly in the output
+    assembly: Ast.Node.Expr.Assembly,
     /// Pop a value from the stack
     pop,
-    /// Place a machine-specific assembly in the output
-    assembly: []const u8,
     /// Return to the parent block
     @"return",
 
@@ -128,8 +128,6 @@ pub const Generator = struct {
             .function_declaration => try self.generateFunctionDeclarationStmt(stmt.function_declaration),
 
             .variable_declaration => try self.generateVariableDeclarationStmt(stmt.variable_declaration),
-
-            .assembly => try self.generateAssemblyStmt(stmt.assembly),
 
             .@"return" => try self.generateReturnStmt(stmt.@"return"),
         }
@@ -206,10 +204,6 @@ pub const Generator = struct {
         try self.hir.instructions.append(self.allocator, .{ .set = variable.name });
     }
 
-    fn generateAssemblyStmt(self: *Generator, assembly: Ast.Node.Stmt.Assembly) Error!void {
-        try self.hir.instructions.append(self.allocator, .{ .assembly = assembly.content });
-    }
-
     fn generateReturnStmt(self: *Generator, @"return": Ast.Node.Stmt.Return) Error!void {
         if (!self.in_function) {
             self.error_info = .{ .message = "expected the return statement to be inside a function", .source_loc = @"return".source_loc };
@@ -226,131 +220,157 @@ pub const Generator = struct {
 
     fn generateExpr(self: *Generator, expr: Ast.Node.Expr) Error!void {
         switch (expr) {
-            .identifier => |identifier| {
-                try self.hir.instructions.append(self.allocator, .{ .get = identifier.name });
+            .identifier => |identifier| try self.generateIdentifierExpr(identifier),
+
+            .string => |string| try self.generateStringExpr(string),
+
+            .int => |int| try self.generateIntExpr(int),
+
+            .float => |float| try self.generateFloatExpr(float),
+
+            .boolean => |boolean| try self.generateBooleanExpr(boolean),
+
+            .assembly => |assembly| try self.generateAssemblyExpr(assembly),
+
+            .unary_operation => |unary_operation| try self.generateUnaryOperationExpr(unary_operation),
+
+            .binary_operation => |binary_operation| try self.generateBinaryOperationExpr(binary_operation),
+
+            .call => |call| try self.generateCallExpr(call),
+        }
+    }
+
+    fn generateIdentifierExpr(self: *Generator, identifier: Ast.Node.Expr.Identifier) Error!void {
+        try self.hir.instructions.append(self.allocator, .{ .get = identifier.name });
+    }
+
+    fn generateStringExpr(self: *Generator, string: Ast.Node.Expr.String) Error!void {
+        try self.hir.instructions.append(self.allocator, .{ .string = string.value });
+    }
+
+    fn generateIntExpr(self: *Generator, int: Ast.Node.Expr.Int) Error!void {
+        try self.hir.instructions.append(self.allocator, .{ .int = int.value });
+    }
+
+    fn generateFloatExpr(self: *Generator, float: Ast.Node.Expr.Float) Error!void {
+        try self.hir.instructions.append(self.allocator, .{ .float = float.value });
+    }
+
+    fn generateBooleanExpr(self: *Generator, boolean: Ast.Node.Expr.Boolean) Error!void {
+        try self.hir.instructions.append(self.allocator, .{ .boolean = boolean.value });
+    }
+
+    fn generateAssemblyExpr(self: *Generator, assembly: Ast.Node.Expr.Assembly) Error!void {
+        for (assembly.input_constraints) |input_constraint| {
+            try self.generateExpr(input_constraint.value.*);
+        }
+
+        try self.hir.instructions.append(self.allocator, .{ .assembly = assembly });
+    }
+
+    fn generateUnaryOperationExpr(self: *Generator, unary_operation: Ast.Node.Expr.UnaryOperation) Error!void {
+        try self.generateExpr(unary_operation.rhs.*);
+
+        switch (unary_operation.operator) {
+            .minus => {
+                try self.hir.instructions.append(self.allocator, .{ .negate = unary_operation.source_loc });
             },
 
-            .string => |string| {
-                try self.hir.instructions.append(self.allocator, .{ .string = string.value });
+            .bang => {
+                try self.hir.instructions.append(self.allocator, .{ .bool_not = unary_operation.source_loc });
             },
 
-            .int => |int| {
-                try self.hir.instructions.append(self.allocator, .{ .int = int.value });
+            .tilde => {
+                try self.hir.instructions.append(self.allocator, .{ .bit_not = unary_operation.source_loc });
             },
 
-            .float => |float| {
-                try self.hir.instructions.append(self.allocator, .{ .float = float.value });
+            .ampersand => {
+                try self.hir.instructions.append(self.allocator, .{ .reference = unary_operation.source_loc });
             },
 
-            .boolean => |boolean| {
-                try self.hir.instructions.append(self.allocator, .{ .boolean = boolean.value });
-            },
-
-            .unary_operation => |unary_operation| {
-                try self.generateExpr(unary_operation.rhs.*);
-
-                switch (unary_operation.operator) {
-                    .minus => {
-                        try self.hir.instructions.append(self.allocator, .{ .negate = unary_operation.source_loc });
-                    },
-
-                    .bang => {
-                        try self.hir.instructions.append(self.allocator, .{ .bool_not = unary_operation.source_loc });
-                    },
-
-                    .tilde => {
-                        try self.hir.instructions.append(self.allocator, .{ .bit_not = unary_operation.source_loc });
-                    },
-
-                    .ampersand => {
-                        try self.hir.instructions.append(self.allocator, .{ .reference = unary_operation.source_loc });
-                    },
-
-                    .star => {
-                        try self.hir.instructions.append(self.allocator, .{ .read = unary_operation.source_loc });
-                    },
-                }
-            },
-
-            .binary_operation => |binary_operation| {
-                switch (binary_operation.operator) {
-                    .plus => {
-                        try self.generateExpr(binary_operation.lhs.*);
-                        try self.generateExpr(binary_operation.rhs.*);
-
-                        try self.hir.instructions.append(self.allocator, .{ .add = binary_operation.source_loc });
-                    },
-
-                    .minus => {
-                        try self.generateExpr(binary_operation.lhs.*);
-                        try self.generateExpr(binary_operation.rhs.*);
-
-                        try self.hir.instructions.append(self.allocator, .{ .sub = binary_operation.source_loc });
-                    },
-
-                    .star => {
-                        try self.generateExpr(binary_operation.lhs.*);
-                        try self.generateExpr(binary_operation.rhs.*);
-
-                        try self.hir.instructions.append(self.allocator, .{ .mul = binary_operation.source_loc });
-                    },
-
-                    .forward_slash => {
-                        try self.generateExpr(binary_operation.lhs.*);
-                        try self.generateExpr(binary_operation.rhs.*);
-
-                        try self.hir.instructions.append(self.allocator, .{ .div = binary_operation.source_loc });
-                    },
-
-                    .equal_sign => {
-                        if (binary_operation.lhs.* == .unary_operation and binary_operation.lhs.unary_operation.operator == .star) {
-                            try self.generateExpr(binary_operation.lhs.unary_operation.rhs.*);
-                            try self.generateExpr(binary_operation.rhs.*);
-
-                            try self.hir.instructions.append(self.allocator, .{ .write = binary_operation.source_loc });
-                        } else if (binary_operation.lhs.* == .identifier) {
-                            try self.generateExpr(binary_operation.rhs.*);
-
-                            try self.hir.instructions.append(self.allocator, .{ .set = binary_operation.lhs.identifier.name });
-                        } else {
-                            self.error_info = .{ .message = "expected an identifier or a pointer dereference", .source_loc = binary_operation.lhs.getSourceLoc() };
-
-                            return error.UnexpectedExpression;
-                        }
-
-                        try self.generateExpr(binary_operation.rhs.*);
-                    },
-
-                    .double_equal_sign, .bang_equal_sign => {
-                        try self.generateExpr(binary_operation.lhs.*);
-                        try self.generateExpr(binary_operation.rhs.*);
-
-                        try self.hir.instructions.append(self.allocator, .{ .eql = binary_operation.source_loc });
-
-                        if (binary_operation.operator == .bang_equal_sign) {
-                            try self.hir.instructions.append(self.allocator, .{ .bool_not = binary_operation.source_loc });
-                        }
-                    },
-                }
-            },
-
-            .call => |call| {
-                for (call.arguments) |argument| {
-                    try self.generateExpr(argument);
-                }
-
-                try self.generateExpr(call.callable.*);
-
-                try self.hir.instructions.append(
-                    self.allocator,
-                    .{
-                        .call = .{
-                            .arguments_count = call.arguments.len,
-                            .source_loc = call.source_loc,
-                        },
-                    },
-                );
+            .star => {
+                try self.hir.instructions.append(self.allocator, .{ .read = unary_operation.source_loc });
             },
         }
+    }
+
+    fn generateBinaryOperationExpr(self: *Generator, binary_operation: Ast.Node.Expr.BinaryOperation) Error!void {
+        switch (binary_operation.operator) {
+            .plus => {
+                try self.generateExpr(binary_operation.lhs.*);
+                try self.generateExpr(binary_operation.rhs.*);
+
+                try self.hir.instructions.append(self.allocator, .{ .add = binary_operation.source_loc });
+            },
+
+            .minus => {
+                try self.generateExpr(binary_operation.lhs.*);
+                try self.generateExpr(binary_operation.rhs.*);
+
+                try self.hir.instructions.append(self.allocator, .{ .sub = binary_operation.source_loc });
+            },
+
+            .star => {
+                try self.generateExpr(binary_operation.lhs.*);
+                try self.generateExpr(binary_operation.rhs.*);
+
+                try self.hir.instructions.append(self.allocator, .{ .mul = binary_operation.source_loc });
+            },
+
+            .forward_slash => {
+                try self.generateExpr(binary_operation.lhs.*);
+                try self.generateExpr(binary_operation.rhs.*);
+
+                try self.hir.instructions.append(self.allocator, .{ .div = binary_operation.source_loc });
+            },
+
+            .equal_sign => {
+                if (binary_operation.lhs.* == .unary_operation and binary_operation.lhs.unary_operation.operator == .star) {
+                    try self.generateExpr(binary_operation.lhs.unary_operation.rhs.*);
+                    try self.generateExpr(binary_operation.rhs.*);
+
+                    try self.hir.instructions.append(self.allocator, .{ .write = binary_operation.source_loc });
+                } else if (binary_operation.lhs.* == .identifier) {
+                    try self.generateExpr(binary_operation.rhs.*);
+
+                    try self.hir.instructions.append(self.allocator, .{ .set = binary_operation.lhs.identifier.name });
+                } else {
+                    self.error_info = .{ .message = "expected an identifier or a pointer dereference", .source_loc = binary_operation.lhs.getSourceLoc() };
+
+                    return error.UnexpectedExpression;
+                }
+
+                try self.generateExpr(binary_operation.rhs.*);
+            },
+
+            .double_equal_sign, .bang_equal_sign => {
+                try self.generateExpr(binary_operation.lhs.*);
+                try self.generateExpr(binary_operation.rhs.*);
+
+                try self.hir.instructions.append(self.allocator, .{ .eql = binary_operation.source_loc });
+
+                if (binary_operation.operator == .bang_equal_sign) {
+                    try self.hir.instructions.append(self.allocator, .{ .bool_not = binary_operation.source_loc });
+                }
+            },
+        }
+    }
+
+    fn generateCallExpr(self: *Generator, call: Ast.Node.Expr.Call) Error!void {
+        for (call.arguments) |argument| {
+            try self.generateExpr(argument);
+        }
+
+        try self.generateExpr(call.callable.*);
+
+        try self.hir.instructions.append(
+            self.allocator,
+            .{
+                .call = .{
+                    .arguments_count = call.arguments.len,
+                    .source_loc = call.source_loc,
+                },
+            },
+        );
     }
 };

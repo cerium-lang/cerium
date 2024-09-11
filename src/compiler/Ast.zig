@@ -29,7 +29,6 @@ pub const Node = union(enum) {
     pub const Stmt = union(enum) {
         function_declaration: FunctionDeclaration,
         variable_declaration: VariableDeclaration,
-        assembly: Assembly,
         @"return": Return,
 
         pub const FunctionDeclaration = struct {
@@ -54,11 +53,6 @@ pub const Node = union(enum) {
             value: Node.Expr,
         };
 
-        pub const Assembly = struct {
-            content: []const u8,
-            source_loc: SourceLoc,
-        };
-
         pub const Return = struct {
             value: Expr,
             source_loc: SourceLoc,
@@ -71,6 +65,7 @@ pub const Node = union(enum) {
         int: Int,
         float: Float,
         boolean: Boolean,
+        assembly: Assembly,
         unary_operation: UnaryOperation,
         binary_operation: BinaryOperation,
         call: Call,
@@ -99,9 +94,26 @@ pub const Node = union(enum) {
             source_loc: SourceLoc,
         };
 
+        pub const Assembly = struct {
+            content: []const u8,
+            input_constraints: []const InputConstraint,
+            output_constraint: ?OutputConstraint,
+            source_loc: SourceLoc,
+
+            const InputConstraint = struct {
+                register: []const u8,
+                value: *const Expr,
+            };
+
+            const OutputConstraint = struct {
+                register: []const u8,
+                type: Type,
+            };
+        };
+
         pub const UnaryOperation = struct {
             operator: Operator,
-            rhs: *Expr,
+            rhs: *const Expr,
             source_loc: SourceLoc,
 
             pub const Operator = enum {
@@ -114,9 +126,9 @@ pub const Node = union(enum) {
         };
 
         pub const BinaryOperation = struct {
-            lhs: *Expr,
+            lhs: *const Expr,
             operator: Operator,
-            rhs: *Expr,
+            rhs: *const Expr,
             source_loc: SourceLoc,
 
             pub const Operator = enum {
@@ -131,7 +143,7 @@ pub const Node = union(enum) {
         };
 
         pub const Call = struct {
-            callable: *Expr,
+            callable: *const Expr,
             arguments: []const Expr,
             source_loc: SourceLoc,
         };
@@ -253,8 +265,6 @@ pub const Parser = struct {
             .keyword_fn => return self.parseFunctionDeclarationStmt(),
 
             .keyword_let => try self.parseVariableDeclarationStmt(),
-
-            .keyword_asm => try self.parseAssemblyStmt(),
 
             .keyword_return => try self.parseReturnStmt(),
 
@@ -397,47 +407,6 @@ pub const Parser = struct {
         };
     }
 
-    fn parseAssemblyStmt(self: *Parser) Error!Node {
-        const asm_keyword_token = self.nextToken();
-
-        var content: std.ArrayListUnmanaged(u8) = .{};
-
-        if (!self.eatToken(.open_brace)) {
-            self.error_info = .{ .message = "expected '{'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
-
-            return error.UnexpectedToken;
-        }
-
-        while (!self.eatToken(.close_brace)) {
-            if (self.peekToken().tag == .eof) {
-                self.error_info = .{ .message = "expected '}'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
-
-                return error.UnexpectedToken;
-            }
-
-            if (self.peekToken().tag != .string_literal) {
-                self.error_info = .{ .message = "expected the content of assembly to be a string literal", .source_loc = self.tokenSourceLoc(self.peekToken()) };
-
-                return error.UnexpectedToken;
-            }
-
-            const parsed_string = try self.parseStringExpr();
-
-            try content.appendSlice(self.allocator, parsed_string.string.value);
-
-            if (self.peekToken().tag != .close_brace) try content.append(self.allocator, '\n');
-        }
-
-        return Node{
-            .stmt = .{
-                .assembly = .{
-                    .content = try content.toOwnedSlice(self.allocator),
-                    .source_loc = self.tokenSourceLoc(asm_keyword_token),
-                },
-            },
-        };
-    }
-
     fn parseReturnStmt(self: *Parser) Error!Node {
         const keyword = self.nextToken();
 
@@ -499,6 +468,8 @@ pub const Parser = struct {
 
             .keyword_true => return self.parseBooleanExpr(true),
             .keyword_false => return self.parseBooleanExpr(false),
+
+            .keyword_asm => return self.parseAssemblyExpr(),
 
             .minus => return self.parseUnaryOperationExpr(.minus),
             .bang => return self.parseUnaryOperationExpr(.bang),
@@ -657,6 +628,144 @@ pub const Parser = struct {
                 .value = value,
                 .source_loc = self.tokenSourceLoc(self.nextToken()),
             },
+        };
+    }
+
+    fn parseAssemblyExpr(self: *Parser) Error!Node.Expr {
+        const asm_keyword_token = self.nextToken();
+
+        var content: std.ArrayListUnmanaged(u8) = .{};
+
+        if (!self.eatToken(.open_brace)) {
+            self.error_info = .{ .message = "expected a '{'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+            return error.UnexpectedToken;
+        }
+
+        var input_constraints: []const Node.Expr.Assembly.InputConstraint = &.{};
+        var output_constraint: ?Node.Expr.Assembly.OutputConstraint = null;
+
+        while (!self.eatToken(.close_brace)) {
+            if (self.peekToken().tag == .eof) {
+                self.error_info = .{ .message = "expected a '}'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                return error.UnexpectedToken;
+            }
+
+            if (self.peekToken().tag != .string_literal) {
+                self.error_info = .{ .message = "expected a valid string", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                return error.UnexpectedToken;
+            }
+
+            try content.appendSlice(self.allocator, (try self.parseStringExpr()).string.value);
+
+            var parsed_constraints = false;
+
+            if (self.eatToken(.colon)) {
+                input_constraints = try self.parseAssemblyInputConstraints();
+                parsed_constraints = true;
+            }
+
+            if (self.eatToken(.colon)) {
+                output_constraint = try self.parseAssemblyOutputConstraint();
+            }
+
+            if (self.peekToken().tag != .close_brace) {
+                if (parsed_constraints) {
+                    self.error_info = .{ .message = "expected a '}'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                    return error.UnexpectedToken;
+                } else {
+                    try content.append(self.allocator, '\n');
+                }
+            }
+        }
+
+        return Node.Expr{
+            .assembly = .{
+                .content = try content.toOwnedSlice(self.allocator),
+                .input_constraints = input_constraints,
+                .output_constraint = output_constraint,
+                .source_loc = self.tokenSourceLoc(asm_keyword_token),
+            },
+        };
+    }
+
+    fn parseAssemblyInputConstraints(self: *Parser) Error![]Node.Expr.Assembly.InputConstraint {
+        var constraints = std.ArrayList(Node.Expr.Assembly.InputConstraint).init(self.allocator);
+
+        while (self.peekToken().tag != .eof and self.peekToken().tag != .colon and self.peekToken().tag != .close_brace) {
+            try constraints.append(try self.parseAssemblyInputConstraint());
+
+            if (!self.eatToken(.comma) and self.peekToken().tag != .colon and self.peekToken().tag != .close_brace) {
+                self.error_info = .{ .message = "expected a ','", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                return error.UnexpectedToken;
+            }
+        }
+
+        return constraints.toOwnedSlice();
+    }
+
+    fn parseAssemblyInputConstraint(self: *Parser) Error!Node.Expr.Assembly.InputConstraint {
+        if (self.peekToken().tag != .string_literal) {
+            self.error_info = .{ .message = "expected a valid string", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+            return error.UnexpectedToken;
+        }
+
+        const register = (try self.parseStringExpr()).string.value;
+
+        if (!self.eatToken(.open_paren)) {
+            self.error_info = .{ .message = "expected a '('", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+            return error.UnexpectedToken;
+        }
+
+        const value = (try self.parseExpr(.lowest)).expr;
+
+        if (!self.eatToken(.close_paren)) {
+            self.error_info = .{ .message = "expected a ')'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+            return error.UnexpectedToken;
+        }
+
+        const value_on_heap = try self.allocator.create(Node.Expr);
+        value_on_heap.* = value;
+
+        return Node.Expr.Assembly.InputConstraint{
+            .register = register,
+            .value = value_on_heap,
+        };
+    }
+
+    fn parseAssemblyOutputConstraint(self: *Parser) Error!Node.Expr.Assembly.OutputConstraint {
+        if (self.peekToken().tag != .string_literal) {
+            self.error_info = .{ .message = "expected a valid string", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+            return error.UnexpectedToken;
+        }
+
+        const register = (try self.parseStringExpr()).string.value;
+
+        if (!self.eatToken(.open_paren)) {
+            self.error_info = .{ .message = "expected a '('", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+            return error.UnexpectedToken;
+        }
+
+        const @"type" = try self.parseType();
+
+        if (!self.eatToken(.close_paren)) {
+            self.error_info = .{ .message = "expected a ')'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+            return error.UnexpectedToken;
+        }
+
+        return Node.Expr.Assembly.OutputConstraint{
+            .register = register,
+            .type = @"type",
         };
     }
 
