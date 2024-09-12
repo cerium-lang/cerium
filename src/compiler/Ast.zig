@@ -268,7 +268,7 @@ pub const Parser = struct {
         const node = switch (self.peekToken().tag) {
             .keyword_fn => return self.parseFunctionDeclarationStmt(),
 
-            .keyword_let => try self.parseVariableDeclarationStmt(),
+            .keyword_var => try self.parseVariableDeclarationStmt(),
 
             .keyword_return => try self.parseReturnStmt(),
 
@@ -390,7 +390,7 @@ pub const Parser = struct {
 
         const name = try self.parseName();
 
-        const variable_type = try self.parseType();
+        const @"type" = try self.parseType();
 
         if (!self.eatToken(.equal_sign)) {
             self.error_info = .{ .message = "expected '='", .source_loc = self.tokenSourceLoc(self.peekToken()) };
@@ -404,7 +404,7 @@ pub const Parser = struct {
             .stmt = .{
                 .variable_declaration = .{
                     .name = name,
-                    .type = variable_type,
+                    .type = @"type",
                     .value = value.expr,
                 },
             },

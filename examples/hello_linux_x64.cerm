@@ -1,7 +1,7 @@
-let SYS_write u64 = 1;
-let SYS_exit_group u64 = 231;
+var SYS_write u64 = 1;
+var SYS_exit_group u64 = 231;
 
-let STDOUT u32 = 1;
+var STDOUT u32 = 1;
 
 fn write(fd u32, buf [*]const u8, count u64) u64 {
     return asm {

@@ -35,7 +35,7 @@ pub const Tag = enum {
     bang_equal_sign,
     forward_slash,
     keyword_fn,
-    keyword_let,
+    keyword_var,
     keyword_const,
     keyword_asm,
     keyword_return,
@@ -50,7 +50,7 @@ pub const BufferLoc = struct {
 
 pub const keywords = std.StaticStringMap(Tag).initComptime(.{
     .{ "fn", .keyword_fn },
-    .{ "let", .keyword_let },
+    .{ "var", .keyword_var },
     .{ "const", .keyword_const },
     .{ "asm", .keyword_asm },
     .{ "return", .keyword_return },
