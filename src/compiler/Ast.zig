@@ -390,8 +390,7 @@ pub const Parser = struct {
 
         const name = try self.parseName();
 
-        const @"type" =
-            if (self.eatToken(.equal_sign))
+        const @"type" = if (self.eatToken(.equal_sign))
             null
         else
             try self.parseType();
