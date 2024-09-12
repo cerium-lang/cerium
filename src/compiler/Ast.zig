@@ -49,7 +49,7 @@ pub const Node = union(enum) {
 
         pub const VariableDeclaration = struct {
             name: Name,
-            type: Type,
+            type: ?Type,
             value: Node.Expr,
         };
 
@@ -390,9 +390,13 @@ pub const Parser = struct {
 
         const name = try self.parseName();
 
-        const @"type" = try self.parseType();
+        const @"type" =
+            if (self.eatToken(.equal_sign))
+            null
+        else
+            try self.parseType();
 
-        if (!self.eatToken(.equal_sign)) {
+        if (@"type" != null and !self.eatToken(.equal_sign)) {
             self.error_info = .{ .message = "expected '='", .source_loc = self.tokenSourceLoc(self.peekToken()) };
 
             return error.UnexpectedToken;

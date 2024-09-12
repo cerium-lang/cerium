@@ -13,8 +13,8 @@ const Lir = @This();
 instructions: std.ArrayListUnmanaged(Instruction) = .{},
 
 pub const Instruction = union(enum) {
-    /// Start a labeled block
-    label: []const u8,
+    /// Start a labeled block, the boolean specifies whether this is a label for a function or a label for a global variable
+    label: struct { bool, []const u8 },
     /// Start a function block
     function_proluge,
     /// End a function block,

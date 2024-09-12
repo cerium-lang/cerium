@@ -96,10 +96,12 @@ pub fn render(self: *x86_64) Error!void {
     const data_section_writer = self.assembly.data_section.writer(self.allocator);
     const rodata_section_writer = self.assembly.rodata_section.writer(self.allocator);
 
-    for (self.lir.instructions.items, 0..) |instruction, i| {
+    for (self.lir.instructions.items) |instruction| {
         switch (instruction) {
-            .label => |name| {
-                const section_writer = if (self.lir.instructions.items[i + 1].variable.type.getFunction() == null) data_section_writer else text_section_writer;
+            .label => |info| {
+                const is_function, const name = info;
+
+                const section_writer = if (!is_function) data_section_writer else text_section_writer;
 
                 try section_writer.print(".global {s}\n", .{name});
                 try section_writer.print("{s}:\n", .{name});
@@ -150,23 +152,23 @@ pub fn render(self: *x86_64) Error!void {
             .call => |function| {
                 try self.popRegister(text_section_writer, "8");
 
-                const stack_top_offset = (function.parameter_types.len + self.stack.items.len) * self.stack_alignment;
+                var i: usize = function.parameter_types.len;
+
+                const stack_top_offset = (i + self.stack.items.len) * self.stack_alignment;
 
                 try text_section_writer.print("\tsubq ${}, %rsp\n", .{stack_top_offset});
 
-                var j: usize = function.parameter_types.len;
+                while (i > 0) {
+                    i -= 1;
 
-                while (j > 0) {
-                    j -= 1;
-
-                    const parameter_type = function.parameter_types[j];
+                    const parameter_type = function.parameter_types[i];
 
                     try self.popRegister(text_section_writer, "9");
 
                     if (parameter_type.isFloat()) {
-                        try text_section_writer.print("\tmovq %xmm9, {}(%rsp)\n", .{j * self.stack_alignment});
+                        try text_section_writer.print("\tmovq %xmm9, {}(%rsp)\n", .{i * self.stack_alignment});
                     } else {
-                        try text_section_writer.print("\tmovq %r9, {}(%rsp)\n", .{j * self.stack_alignment});
+                        try text_section_writer.print("\tmovq %r9, {}(%rsp)\n", .{i * self.stack_alignment});
                     }
                 }
 

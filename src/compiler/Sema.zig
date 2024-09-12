@@ -133,15 +133,16 @@ fn hirInstructions(self: *Sema, instructions: []const Hir.Instruction) Error!voi
 
 fn hirInstruction(self: *Sema, instruction: Hir.Instruction) Error!void {
     switch (instruction) {
-        .label => |name| try self.hirLabel(name),
+        .label => |info| try self.hirLabel(info),
 
         .function_proluge => |function| try self.hirFunctionProluge(function),
         .function_epilogue => try self.hirFunctionEpilogue(),
         .function_parameter => try self.hirFunctionParameter(),
 
-        .call => |call| try self.hirCall(call),
+        .call => |info| try self.hirCall(info),
 
         .variable => |symbol| try self.hirVariable(symbol),
+        .variable_infer => |symbol| try self.hirVariableInfer(symbol),
 
         .set => |name| try self.hirSet(name),
         .get => |name| try self.hirGet(name),
@@ -179,12 +180,14 @@ fn hirInstruction(self: *Sema, instruction: Hir.Instruction) Error!void {
     }
 }
 
-fn hirLabel(self: *Sema, name: Ast.Name) Error!void {
+fn hirLabel(self: *Sema, info: struct { bool, Ast.Name }) Error!void {
+    const is_function, const name = info;
+
     if (self.symbol_table.get(name.buffer) != null) {
         return self.reportRedeclaration(name);
     }
 
-    try self.lir.instructions.append(self.allocator, .{ .label = name.buffer });
+    try self.lir.instructions.append(self.allocator, .{ .label = .{ is_function, name.buffer } });
 }
 
 fn hirFunctionProluge(self: *Sema, function: Ast.Node.Stmt.FunctionDeclaration) Error!void {
@@ -216,17 +219,19 @@ fn hirFunctionParameter(self: *Sema) Error!void {
     self.function_parameter_index += 1;
 }
 
-fn hirCall(self: *Sema, call: Hir.Instruction.Call) Error!void {
+fn hirCall(self: *Sema, info: struct { usize, Ast.SourceLoc }) Error!void {
+    const arguments_count, const source_loc = info;
+
     const callable = self.stack.pop();
     const callable_type = callable.getType();
 
     var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
     if (callable_type.getFunction()) |function| {
-        if (function.parameter_types.len != call.arguments_count) {
-            try error_message_buf.writer(self.allocator).print("expected {} argument(s) got {} argument(s)", .{ function.parameter_types.len, call.arguments_count });
+        if (function.parameter_types.len != arguments_count) {
+            try error_message_buf.writer(self.allocator).print("expected {} argument(s) got {} argument(s)", .{ function.parameter_types.len, arguments_count });
 
-            self.error_info = .{ .message = error_message_buf.items, .source_loc = call.source_loc };
+            self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
 
             return error.UnexpectedArgumentsCount;
         }
@@ -240,7 +245,7 @@ fn hirCall(self: *Sema, call: Hir.Instruction.Call) Error!void {
 
             const argument = self.stack.pop();
 
-            try self.checkRepresentability(argument, parameter_type, call.source_loc);
+            try self.checkRepresentability(argument, parameter_type, source_loc);
         }
 
         try self.lir.instructions.append(self.allocator, .{ .call = function });
@@ -249,7 +254,7 @@ fn hirCall(self: *Sema, call: Hir.Instruction.Call) Error!void {
     } else {
         try error_message_buf.writer(self.allocator).print("'{}' is not a callable", .{callable_type});
 
-        self.error_info = .{ .message = error_message_buf.items, .source_loc = call.source_loc };
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
 
         return error.MismatchedTypes;
     }
@@ -257,7 +262,7 @@ fn hirCall(self: *Sema, call: Hir.Instruction.Call) Error!void {
 
 fn hirVariable(self: *Sema, symbol: Symbol) Error!void {
     if (symbol.type.tag == .void) {
-        self.error_info = .{ .message = "you cannot declare a symbol with type 'void'", .source_loc = symbol.name.source_loc };
+        self.error_info = .{ .message = "you cannot declare a variable with type 'void'", .source_loc = symbol.name.source_loc };
 
         return error.UnexpectedType;
     }
@@ -265,6 +270,28 @@ fn hirVariable(self: *Sema, symbol: Symbol) Error!void {
     try self.symbol_table.put(symbol);
 
     try self.lir.instructions.append(self.allocator, .{ .variable = symbol });
+}
+
+fn hirVariableInfer(self: *Sema, symbol: Symbol) Error!void {
+    var modified_symbol = symbol;
+
+    modified_symbol.type = self.stack.getLast().getType();
+
+    if (modified_symbol.type.tag == .void) {
+        self.error_info = .{ .message = "you cannot declare a variable with type 'void'", .source_loc = modified_symbol.name.source_loc };
+
+        return error.UnexpectedType;
+    }
+
+    if (modified_symbol.type.isAmbigiuous()) {
+        self.error_info = .{ .message = "you cannot declare a variable with an ambigiuous type", .source_loc = modified_symbol.name.source_loc };
+
+        return error.UnexpectedType;
+    }
+
+    try self.symbol_table.put(modified_symbol);
+
+    try self.lir.instructions.append(self.allocator, .{ .variable = modified_symbol });
 }
 
 fn checkRepresentability(self: *Sema, source_value: Value, destination_type: Type, source_loc: Ast.SourceLoc) Error!void {

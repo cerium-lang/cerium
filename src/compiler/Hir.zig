@@ -15,8 +15,8 @@ const Hir = @This();
 instructions: std.ArrayListUnmanaged(Instruction) = .{},
 
 pub const Instruction = union(enum) {
-    /// Start a labeled block
-    label: Ast.Name,
+    /// Start a labeled block, the boolean specifies whether this is a label for a function or a label for a global variable
+    label: struct { bool, Ast.Name },
     /// Start a function block, pass the function declaration node to enable more checks
     function_proluge: Ast.Node.Stmt.FunctionDeclaration,
     /// End a function block
@@ -24,9 +24,11 @@ pub const Instruction = union(enum) {
     /// Declare a function parameter
     function_parameter,
     /// Call a specific function pointer on the stack with the specified argument count
-    call: Call,
+    call: struct { usize, Ast.SourceLoc },
     /// Declare a variable using the specified name and type
     variable: Symbol,
+    /// Same as `variable` but the type is unknown at the point of declaration
+    variable_infer: Symbol,
     /// Set a value using the specified name
     set: Ast.Name,
     /// Get a value using the specified name
@@ -75,11 +77,6 @@ pub const Instruction = union(enum) {
     pop,
     /// Return to the parent block
     @"return",
-
-    pub const Call = struct {
-        arguments_count: usize,
-        source_loc: Ast.SourceLoc,
-    };
 };
 
 pub const Generator = struct {
@@ -151,7 +148,7 @@ pub const Generator = struct {
         self.in_function = true;
         defer self.in_function = false;
 
-        try self.hir.instructions.append(self.allocator, .{ .label = function.prototype.name });
+        try self.hir.instructions.append(self.allocator, .{ .label = .{ true, function.prototype.name } });
 
         var function_parameter_types: std.ArrayListUnmanaged(Type) = .{};
 
@@ -194,20 +191,29 @@ pub const Generator = struct {
     }
 
     fn generateVariableDeclarationStmt(self: *Generator, variable: Ast.Node.Stmt.VariableDeclaration) Error!void {
-        if (!self.in_function) try self.hir.instructions.append(self.allocator, .{ .label = variable.name });
+        if (!self.in_function) try self.hir.instructions.append(self.allocator, .{ .label = .{ false, variable.name } });
+
+        try self.generateExpr(variable.value);
 
         try self.hir.instructions.append(
             self.allocator,
-            .{
-                .variable = .{
-                    .name = variable.name,
-                    .type = variable.type,
-                    .linkage = if (self.in_function) .local else .global,
+            if (variable.type) |@"type"|
+                .{
+                    .variable = .{
+                        .name = variable.name,
+                        .type = @"type",
+                        .linkage = if (self.in_function) .local else .global,
+                    },
+                }
+            else
+                .{
+                    .variable_infer = .{
+                        .name = variable.name,
+                        .type = .{ .tag = .void },
+                        .linkage = if (self.in_function) .local else .global,
+                    },
                 },
-            },
         );
-
-        try self.generateExpr(variable.value);
 
         try self.hir.instructions.append(self.allocator, .{ .set = variable.name });
     }
@@ -399,14 +405,6 @@ pub const Generator = struct {
 
         try self.generateExpr(call.callable.*);
 
-        try self.hir.instructions.append(
-            self.allocator,
-            .{
-                .call = .{
-                    .arguments_count = call.arguments.len,
-                    .source_loc = call.source_loc,
-                },
-            },
-        );
+        try self.hir.instructions.append(self.allocator, .{ .call = .{ call.arguments.len, call.source_loc } });
     }
 };
