@@ -35,8 +35,10 @@ A general-purpose programming language that aims to be the most sane
     - Operations
         - [x] Add support for Unary Operations
             - [x] Negation
-            - [x] Boolean Not
-            - [x] Bitwise Not
+            - [x] Boolean Operations
+                - [x] Not
+            - [x] Bitwise Operations
+                - [x] Not
         - [ ] Add support for Binary Operations
             - [x] Addition
             - [x] Subtraction
@@ -46,9 +48,14 @@ A general-purpose programming language that aims to be the most sane
                 - [x] Less Than
                 - [x] Greater Than
                 - [x] Equals To
-            - [ ] Bitwise Shfting
-                - [ ] Shift Left 
-                - [ ] Shift Right 
+            - [ ] Bitwise Operations
+                - [x] Shift
+                    - [x] Shift Left
+                    - [x] Shift Right
+                - [ ] Logical
+                    - [ ] And
+                    - [ ] Or
+                    - [ ] Xor
 
 - Standard Library
     - [ ] Make a robust startup code

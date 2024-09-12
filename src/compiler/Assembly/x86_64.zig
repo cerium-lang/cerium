@@ -361,7 +361,7 @@ pub fn render(self: *x86_64) Error!void {
                 }
             },
 
-            .add, .sub, .mul, .div => {
+            .add, .sub, .mul, .div, .shl, .shr => {
                 const stack_allocation = self.stack.getLast();
 
                 try self.popRegister(text_section_writer, "cx");
@@ -372,6 +372,8 @@ pub fn render(self: *x86_64) Error!void {
                     .sub => "sub",
                     .mul => "mul",
                     .div => "div",
+                    .shl => "shl",
+                    .shr => "shr",
 
                     else => unreachable,
                 };
@@ -385,6 +387,8 @@ pub fn render(self: *x86_64) Error!void {
                         try text_section_writer.writeAll("\tcqto\n");
 
                         try text_section_writer.print("\t{s}q %rcx\n", .{binary_operation_str});
+                    } else if (instruction == .shl or instruction == .shr) {
+                        try text_section_writer.print("\t{s}q %cl, %rax\n", .{binary_operation_str});
                     } else {
                         try text_section_writer.print("\t{s}q %rcx, %rax\n", .{binary_operation_str});
                     }

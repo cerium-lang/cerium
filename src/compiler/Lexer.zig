@@ -16,6 +16,8 @@ pub const State = enum {
     number,
     equal_sign,
     bang,
+    less_than,
+    greater_than,
 };
 
 pub fn init(buffer: [:0]const u8) Lexer {
@@ -128,20 +130,16 @@ pub fn next(self: *Lexer) Token {
                     self.state = .bang;
                 },
 
-                '>' => {
-                    result.buffer_loc.start = self.index;
-                    self.index += 1;
-                    result.buffer_loc.end = self.index;
-                    result.tag = .greater_than;
-                    break;
-                },
-
                 '<' => {
                     result.buffer_loc.start = self.index;
-                    self.index += 1;
-                    result.buffer_loc.end = self.index;
                     result.tag = .less_than;
-                    break;
+                    self.state = .less_than;
+                },
+
+                '>' => {
+                    result.buffer_loc.start = self.index;
+                    result.tag = .greater_than;
+                    self.state = .greater_than;
                 },
 
                 '~' => {
@@ -325,6 +323,38 @@ pub fn next(self: *Lexer) Token {
                     self.index += 1;
                     result.buffer_loc.end = self.index;
                     result.tag = .bang_equal_sign;
+                    self.state = .start;
+                    break;
+                },
+
+                else => {
+                    result.buffer_loc.end = self.index;
+                    self.state = .start;
+                    break;
+                },
+            },
+
+            .less_than => switch (current_char) {
+                '<' => {
+                    self.index += 1;
+                    result.buffer_loc.end = self.index;
+                    result.tag = .double_less_than;
+                    self.state = .start;
+                    break;
+                },
+
+                else => {
+                    result.buffer_loc.end = self.index;
+                    self.state = .start;
+                    break;
+                },
+            },
+
+            .greater_than => switch (current_char) {
+                '>' => {
+                    self.index += 1;
+                    result.buffer_loc.end = self.index;
+                    result.tag = .double_greater_than;
                     self.state = .start;
                     break;
                 },

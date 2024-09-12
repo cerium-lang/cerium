@@ -168,6 +168,8 @@ fn hirInstruction(self: *Sema, instruction: Hir.Instruction) Error!void {
         .lt => |source_loc| try self.hirBinaryOperation(.less_than, source_loc),
         .gt => |source_loc| try self.hirBinaryOperation(.greater_than, source_loc),
         .eql => |source_loc| try self.hirBinaryOperation(.double_equal_sign, source_loc),
+        .shl => |source_loc| try self.hirBinaryOperation(.double_less_than, source_loc),
+        .shr => |source_loc| try self.hirBinaryOperation(.double_greater_than, source_loc),
 
         .pop => try self.hirPop(),
 
@@ -585,11 +587,17 @@ const BinaryOperator = enum {
     star,
     forward_slash,
     less_than,
+    double_less_than,
     greater_than,
+    double_greater_than,
     double_equal_sign,
 
     fn isComparison(self: BinaryOperator) bool {
         return self == .less_than or self == .greater_than or self == .double_equal_sign;
+    }
+
+    fn isBitShift(self: BinaryOperator) bool {
+        return self == .double_less_than or self == .double_greater_than;
     }
 };
 
@@ -600,14 +608,17 @@ fn hirBinaryOperation(self: *Sema, comptime operator: BinaryOperator, source_loc
     const lhs_type = lhs.getType();
     const rhs_type = rhs.getType();
 
-    if (operator != .double_equal_sign) {
-        try self.checkIntOrFloat(lhs_type, source_loc);
-        try self.checkIntOrFloat(rhs_type, source_loc);
-    } else {
+    if (operator == .double_equal_sign) {
         try self.checkCanBeCompared(lhs_type, source_loc);
         try self.checkCanBeCompared(rhs_type, source_loc);
         try self.checkRepresentability(lhs, rhs_type, source_loc);
         try self.checkRepresentability(rhs, lhs_type, source_loc);
+    } else if (operator.isBitShift()) {
+        try self.checkInt(lhs_type, source_loc);
+        try self.checkRepresentability(rhs, .{ .tag = .u8 }, source_loc);
+    } else {
+        try self.checkIntOrFloat(lhs_type, source_loc);
+        try self.checkIntOrFloat(rhs_type, source_loc);
     }
 
     if (lhs_type.isInt() != rhs_type.isInt() or (lhs_type.tag != rhs_type.tag and !lhs_type.isAmbigiuous() and !rhs_type.isAmbigiuous())) {
@@ -630,6 +641,27 @@ fn hirBinaryOperation(self: *Sema, comptime operator: BinaryOperator, source_loc
                     _ = self.lir.instructions.pop();
 
                     self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .boolean = result };
+                } else if (operator.isBitShift()) {
+                    if (rhs_int > std.math.maxInt(u7)) {
+                        self.error_info = .{
+                            .message = "cannot bit shift with a count more than '" ++ std.fmt.comptimePrint("{}", .{std.math.maxInt(u7)}) ++ "'",
+                            .source_loc = source_loc,
+                        };
+
+                        return error.TypeCannotRepresentValue;
+                    }
+
+                    const result = switch (operator) {
+                        .double_less_than => lhs_int << @intCast(rhs_int),
+                        .double_greater_than => lhs_int >> @intCast(rhs_int),
+                        else => unreachable,
+                    };
+
+                    try self.stack.append(self.allocator, .{ .int = result });
+
+                    _ = self.lir.instructions.pop();
+
+                    self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .int = result };
                 } else {
                     const result = switch (operator) {
                         .plus => lhs_int + rhs_int,
@@ -714,12 +746,16 @@ fn hirBinaryOperation(self: *Sema, comptime operator: BinaryOperator, source_loc
         .star => try self.lir.instructions.append(self.allocator, .mul),
         .forward_slash => try self.lir.instructions.append(self.allocator, .div),
         .less_than => try self.lir.instructions.append(self.allocator, .lt),
+        .double_less_than => try self.lir.instructions.append(self.allocator, .shl),
         .greater_than => try self.lir.instructions.append(self.allocator, .gt),
+        .double_greater_than => try self.lir.instructions.append(self.allocator, .shr),
         .double_equal_sign => try self.lir.instructions.append(self.allocator, .eql),
     }
 
     if (operator.isComparison()) {
         try self.stack.append(self.allocator, .{ .runtime = .{ .type = .{ .tag = .bool } } });
+    } else if (operator.isBitShift()) {
+        try self.stack.append(self.allocator, .{ .runtime = .{ .type = lhs_type } });
     } else {
         if (!lhs_type.isAmbigiuous()) {
             // Check if we can represent the rhs ambigiuous value as lhs type (e.g. x + 4)

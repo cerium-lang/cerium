@@ -63,6 +63,10 @@ pub const Instruction = union(enum) {
     gt,
     /// Compare between two values on the stack and check for equality
     eql,
+    /// Shift to left the bits of lhs using rhs offset
+    shl,
+    /// Shift to right the bits of lhs using rhs offset
+    shr,
     /// Pop a value from the stack
     pop,
     /// Place a machine-specific assembly in the output

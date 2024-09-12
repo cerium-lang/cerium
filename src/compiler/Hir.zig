@@ -65,6 +65,10 @@ pub const Instruction = union(enum) {
     gt: Ast.SourceLoc,
     /// Compare between two values on the stack and check for equality
     eql: Ast.SourceLoc,
+    /// Shift to left the bits of lhs using rhs offset
+    shl: Ast.SourceLoc,
+    /// Shift to right the bits of lhs using rhs offset
+    shr: Ast.SourceLoc,
     /// Place a machine-specific assembly in the output
     assembly: Ast.Node.Expr.Assembly,
     /// Pop a value from the stack
@@ -359,6 +363,20 @@ pub const Generator = struct {
                 try self.generateExpr(binary_operation.rhs.*);
 
                 try self.hir.instructions.append(self.allocator, .{ .gt = binary_operation.source_loc });
+            },
+
+            .double_less_than => {
+                try self.generateExpr(binary_operation.lhs.*);
+                try self.generateExpr(binary_operation.rhs.*);
+
+                try self.hir.instructions.append(self.allocator, .{ .shl = binary_operation.source_loc });
+            },
+
+            .double_greater_than => {
+                try self.generateExpr(binary_operation.lhs.*);
+                try self.generateExpr(binary_operation.rhs.*);
+
+                try self.hir.instructions.append(self.allocator, .{ .shr = binary_operation.source_loc });
             },
 
             .double_equal_sign, .bang_equal_sign => {
