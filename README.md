@@ -5,24 +5,12 @@ A general-purpose programming language that aims to be the most sane
 ## Roadmap
 
 - Language
-    - Syntax 
-        - [x] Add support for Function Declarations
-        - [x] Add support for Function Calls
-        - [x] Add support for Function Parameters Access
-        - [x] Add support for Variable Declarations
-            - [x] Local Variable Declarations
-            - [x] Global Variable Declarations
-        - [x] Add support for Variable Access
-            - [x] Local Variable Access
-            - [x] Global Variable Access
-
-    - Control Flow
+    - Control
         - [ ] Add support for Conditionals
-            - [ ] If Condition 
         - [ ] Add support for Loops
-            - [ ] While Loop
+        - [ ] Add support for Switch
 
-    - Data 
+    - Data
         - [x] Add support for Integers
         - [x] Add support for Floats
         - [x] Add support for Booleans
