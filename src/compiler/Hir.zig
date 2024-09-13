@@ -43,8 +43,6 @@ pub const Instruction = union(enum) {
     int: i128,
     /// Push a float onto the stack
     float: f64,
-    /// Push a boolean onto the stack
-    boolean: bool,
     /// Negate an integer or float
     negate: Ast.SourceLoc,
     /// Reverse a boolean from true to false and from false to true
@@ -263,8 +261,6 @@ pub const Generator = struct {
 
             .float => |float| try self.generateFloatExpr(float),
 
-            .boolean => |boolean| try self.generateBooleanExpr(boolean),
-
             .assembly => |assembly| try self.generateAssemblyExpr(assembly),
 
             .unary_operation => |unary_operation| try self.generateUnaryOperationExpr(unary_operation),
@@ -289,10 +285,6 @@ pub const Generator = struct {
 
     fn generateFloatExpr(self: *Generator, float: Ast.Node.Expr.Float) Error!void {
         try self.hir.instructions.append(self.allocator, .{ .float = float.value });
-    }
-
-    fn generateBooleanExpr(self: *Generator, boolean: Ast.Node.Expr.Boolean) Error!void {
-        try self.hir.instructions.append(self.allocator, .{ .boolean = boolean.value });
     }
 
     fn generateAssemblyExpr(self: *Generator, assembly: Ast.Node.Expr.Assembly) Error!void {

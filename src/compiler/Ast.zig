@@ -65,7 +65,6 @@ pub const Node = union(enum) {
         string: String,
         int: Int,
         float: Float,
-        boolean: Boolean,
         assembly: Assembly,
         unary_operation: UnaryOperation,
         binary_operation: BinaryOperation,
@@ -87,11 +86,6 @@ pub const Node = union(enum) {
 
         pub const Float = struct {
             value: f64,
-            source_loc: SourceLoc,
-        };
-
-        pub const Boolean = struct {
-            value: bool,
             source_loc: SourceLoc,
         };
 
@@ -477,9 +471,6 @@ pub const Parser = struct {
 
             .float => return self.parseFloatExpr(),
 
-            .keyword_true => return self.parseBooleanExpr(true),
-            .keyword_false => return self.parseBooleanExpr(false),
-
             .keyword_asm => return self.parseAssemblyExpr(),
 
             .minus => return self.parseUnaryOperationExpr(.minus),
@@ -627,15 +618,6 @@ pub const Parser = struct {
 
         return Node.Expr{
             .float = .{
-                .value = value,
-                .source_loc = self.tokenSourceLoc(self.nextToken()),
-            },
-        };
-    }
-
-    fn parseBooleanExpr(self: *Parser, value: bool) Node.Expr {
-        return Node.Expr{
-            .boolean = .{
                 .value = value,
                 .source_loc = self.tokenSourceLoc(self.nextToken()),
             },

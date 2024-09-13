@@ -135,6 +135,20 @@ pub fn analyze(self: *Sema, hir: Hir) Error!void {
 
     self.scope = global_scope;
 
+    try self.scope.put(self.allocator, "true", .{
+        .is_const = true,
+        .is_comptime = true,
+        .symbol = undefined,
+        .maybe_value = .{ .boolean = true },
+    });
+
+    try self.scope.put(self.allocator, "false", .{
+        .is_const = true,
+        .is_comptime = true,
+        .symbol = undefined,
+        .maybe_value = .{ .boolean = false },
+    });
+
     try self.hirInstructions(hir.instructions.items);
 }
 
@@ -166,7 +180,6 @@ fn hirInstruction(self: *Sema, instruction: Hir.Instruction) Error!void {
         .string => |string| try self.hirString(string),
         .int => |int| try self.hirInt(int),
         .float => |float| try self.hirFloat(float),
-        .boolean => |boolean| try self.hirBoolean(boolean),
 
         .negate => |source_loc| try self.hirNegate(source_loc),
 
@@ -451,12 +464,6 @@ fn hirFloat(self: *Sema, float: f64) Error!void {
     try self.stack.append(self.allocator, .{ .float = float });
 
     try self.lir.instructions.append(self.allocator, .{ .float = float });
-}
-
-fn hirBoolean(self: *Sema, boolean: bool) Error!void {
-    try self.stack.append(self.allocator, .{ .boolean = boolean });
-
-    try self.lir.instructions.append(self.allocator, .{ .boolean = boolean });
 }
 
 fn hirNegate(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
