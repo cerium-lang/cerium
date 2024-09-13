@@ -187,20 +187,26 @@ fn hirInstruction(self: *Sema, instruction: Hir.Instruction) Error!void {
         .bool_not => |source_loc| try self.hirNot(.bool, source_loc),
         .bit_not => |source_loc| try self.hirNot(.bit, source_loc),
 
+        .bit_and => |source_loc| try self.hirBitwiseArithmetic(.bit_and, source_loc),
+        .bit_or => |source_loc| try self.hirBitwiseArithmetic(.bit_or, source_loc),
+        .bit_xor => |source_loc| try self.hirBitwiseArithmetic(.bit_xor, source_loc),
+
         .reference => |source_loc| try self.hirReference(source_loc),
 
         .read => |source_loc| try self.hirRead(source_loc),
         .write => |source_loc| try self.hirWrite(source_loc),
 
-        .add => |source_loc| try self.hirBinaryOperation(.plus, source_loc),
-        .sub => |source_loc| try self.hirBinaryOperation(.minus, source_loc),
-        .mul => |source_loc| try self.hirBinaryOperation(.star, source_loc),
-        .div => |source_loc| try self.hirBinaryOperation(.forward_slash, source_loc),
-        .lt => |source_loc| try self.hirBinaryOperation(.less_than, source_loc),
-        .gt => |source_loc| try self.hirBinaryOperation(.greater_than, source_loc),
-        .eql => |source_loc| try self.hirBinaryOperation(.double_equal_sign, source_loc),
-        .shl => |source_loc| try self.hirBinaryOperation(.double_less_than, source_loc),
-        .shr => |source_loc| try self.hirBinaryOperation(.double_greater_than, source_loc),
+        .add => |source_loc| try self.hirArithmetic(.add, source_loc),
+        .sub => |source_loc| try self.hirArithmetic(.sub, source_loc),
+        .mul => |source_loc| try self.hirArithmetic(.mul, source_loc),
+        .div => |source_loc| try self.hirArithmetic(.div, source_loc),
+
+        .lt => |source_loc| try self.hirComparison(.lt, source_loc),
+        .gt => |source_loc| try self.hirComparison(.gt, source_loc),
+        .eql => |source_loc| try self.hirComparison(.eql, source_loc),
+
+        .shl => |source_loc| try self.hirBitwiseShift(.left, source_loc),
+        .shr => |source_loc| try self.hirBitwiseShift(.right, source_loc),
 
         .pop => try self.hirPop(),
 
@@ -684,102 +690,44 @@ fn reportIncompatibleTypes(self: *Sema, lhs: Type, rhs: Type, source_loc: Ast.So
     return error.MismatchedTypes;
 }
 
-const BinaryOperator = enum {
-    plus,
-    minus,
-    star,
-    forward_slash,
-    less_than,
-    double_less_than,
-    greater_than,
-    double_greater_than,
-    double_equal_sign,
-
-    fn isComparison(self: BinaryOperator) bool {
-        return self == .less_than or self == .greater_than or self == .double_equal_sign;
-    }
-
-    fn isBitShift(self: BinaryOperator) bool {
-        return self == .double_less_than or self == .double_greater_than;
-    }
+const ComparisonOperation = enum {
+    lt,
+    gt,
+    eql,
 };
 
-fn hirBinaryOperation(self: *Sema, comptime operator: BinaryOperator, source_loc: Ast.SourceLoc) Error!void {
+fn hirComparison(self: *Sema, comptime operation: ComparisonOperation, source_loc: Ast.SourceLoc) Error!void {
     const rhs = self.stack.pop();
     const lhs = self.stack.pop();
 
     const lhs_type = lhs.getType();
     const rhs_type = rhs.getType();
 
-    if (operator == .double_equal_sign) {
-        try self.checkCanBeCompared(lhs_type, source_loc);
-        try self.checkCanBeCompared(rhs_type, source_loc);
-        try self.checkRepresentability(lhs, rhs_type, source_loc);
-        try self.checkRepresentability(rhs, lhs_type, source_loc);
-    } else if (operator.isBitShift()) {
-        try self.checkInt(lhs_type, source_loc);
-        try self.checkRepresentability(rhs, .{ .tag = .u8 }, source_loc);
-    } else {
+    if (operation == .lt or operation == .gt) {
         try self.checkIntOrFloat(lhs_type, source_loc);
         try self.checkIntOrFloat(rhs_type, source_loc);
     }
 
-    if (lhs_type.isInt() != rhs_type.isInt() or (lhs_type.tag != rhs_type.tag and !lhs_type.isAmbigiuous() and !rhs_type.isAmbigiuous())) {
-        return self.reportIncompatibleTypes(lhs_type, rhs_type, source_loc);
-    }
+    try self.checkCanBeCompared(lhs_type, source_loc);
+    try self.checkCanBeCompared(rhs_type, source_loc);
+
+    try self.checkRepresentability(lhs, rhs_type, source_loc);
+    try self.checkRepresentability(rhs, lhs_type, source_loc);
 
     switch (lhs) {
         .int => |lhs_int| switch (rhs) {
             .int => |rhs_int| {
-                if (operator.isComparison()) {
-                    const result = switch (operator) {
-                        .less_than => lhs_int < rhs_int,
-                        .greater_than => lhs_int > rhs_int,
-                        .double_equal_sign => lhs_int == rhs_int,
-                        else => unreachable,
-                    };
+                const result = switch (operation) {
+                    .lt => lhs_int < rhs_int,
+                    .gt => lhs_int > rhs_int,
+                    .eql => lhs_int == rhs_int,
+                };
 
-                    try self.stack.append(self.allocator, .{ .boolean = result });
+                _ = self.lir.instructions.pop();
 
-                    _ = self.lir.instructions.pop();
+                self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .boolean = result };
 
-                    self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .boolean = result };
-                } else if (operator.isBitShift()) {
-                    if (rhs_int > std.math.maxInt(u7)) {
-                        self.error_info = .{
-                            .message = "cannot bit shift with a count more than '" ++ std.fmt.comptimePrint("{}", .{std.math.maxInt(u7)}) ++ "'",
-                            .source_loc = source_loc,
-                        };
-
-                        return error.TypeCannotRepresentValue;
-                    }
-
-                    const result = switch (operator) {
-                        .double_less_than => lhs_int << @intCast(rhs_int),
-                        .double_greater_than => lhs_int >> @intCast(rhs_int),
-                        else => unreachable,
-                    };
-
-                    try self.stack.append(self.allocator, .{ .int = result });
-
-                    _ = self.lir.instructions.pop();
-
-                    self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .int = result };
-                } else {
-                    const result = switch (operator) {
-                        .plus => lhs_int + rhs_int,
-                        .minus => lhs_int - rhs_int,
-                        .star => lhs_int * rhs_int,
-                        .forward_slash => @divFloor(lhs_int, rhs_int),
-                        else => unreachable,
-                    };
-
-                    try self.stack.append(self.allocator, .{ .int = result });
-
-                    _ = self.lir.instructions.pop();
-
-                    self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .int = result };
-                }
+                try self.stack.append(self.allocator, .{ .boolean = result });
 
                 return;
             },
@@ -789,34 +737,17 @@ fn hirBinaryOperation(self: *Sema, comptime operator: BinaryOperator, source_loc
 
         .float => |lhs_float| switch (rhs) {
             .float => |rhs_float| {
-                if (operator.isComparison()) {
-                    const result = switch (operator) {
-                        .less_than => lhs_float < rhs_float,
-                        .greater_than => lhs_float > rhs_float,
-                        .double_equal_sign => lhs_float == rhs_float,
-                        else => unreachable,
-                    };
+                const result = switch (operation) {
+                    .lt => lhs_float < rhs_float,
+                    .gt => lhs_float > rhs_float,
+                    .eql => lhs_float == rhs_float,
+                };
 
-                    try self.stack.append(self.allocator, .{ .boolean = result });
+                _ = self.lir.instructions.pop();
 
-                    _ = self.lir.instructions.pop();
+                self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .boolean = result };
 
-                    self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .boolean = result };
-                } else {
-                    const result = switch (operator) {
-                        .plus => lhs_float + rhs_float,
-                        .minus => lhs_float - rhs_float,
-                        .star => lhs_float * rhs_float,
-                        .forward_slash => lhs_float * rhs_float,
-                        else => unreachable,
-                    };
-
-                    try self.stack.append(self.allocator, .{ .float = result });
-
-                    _ = self.lir.instructions.pop();
-
-                    self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .float = result };
-                }
+                try self.stack.append(self.allocator, .{ .boolean = result });
 
                 return;
             },
@@ -826,13 +757,17 @@ fn hirBinaryOperation(self: *Sema, comptime operator: BinaryOperator, source_loc
 
         .boolean => |lhs_boolean| switch (rhs) {
             .boolean => |rhs_boolean| {
-                const result = lhs_boolean == rhs_boolean;
+                const result = switch (operation) {
+                    .eql => lhs_boolean == rhs_boolean,
 
-                try self.stack.append(self.allocator, .{ .boolean = result });
+                    else => unreachable,
+                };
 
                 _ = self.lir.instructions.pop();
 
                 self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .boolean = result };
+
+                try self.stack.append(self.allocator, .{ .boolean = result });
 
                 return;
             },
@@ -843,38 +778,217 @@ fn hirBinaryOperation(self: *Sema, comptime operator: BinaryOperator, source_loc
         else => {},
     }
 
-    switch (operator) {
-        .plus => try self.lir.instructions.append(self.allocator, .add),
-        .minus => try self.lir.instructions.append(self.allocator, .sub),
-        .star => try self.lir.instructions.append(self.allocator, .mul),
-        .forward_slash => try self.lir.instructions.append(self.allocator, .div),
-        .less_than => try self.lir.instructions.append(self.allocator, .lt),
-        .double_less_than => try self.lir.instructions.append(self.allocator, .shl),
-        .greater_than => try self.lir.instructions.append(self.allocator, .gt),
-        .double_greater_than => try self.lir.instructions.append(self.allocator, .shr),
-        .double_equal_sign => try self.lir.instructions.append(self.allocator, .eql),
+    switch (operation) {
+        .lt => try self.lir.instructions.append(self.allocator, .lt),
+        .gt => try self.lir.instructions.append(self.allocator, .gt),
+        .eql => try self.lir.instructions.append(self.allocator, .eql),
     }
 
-    if (operator.isComparison()) {
-        try self.stack.append(self.allocator, .{ .runtime = .{ .type = .{ .tag = .bool } } });
-    } else if (operator.isBitShift()) {
+    try self.stack.append(self.allocator, .{ .runtime = .{ .type = .{ .tag = .bool } } });
+}
+
+const BitwiseShiftDirection = enum {
+    left,
+    right,
+};
+
+fn hirBitwiseShift(self: *Sema, comptime direction: BitwiseShiftDirection, source_loc: Ast.SourceLoc) Error!void {
+    const rhs = self.stack.pop();
+    const lhs = self.stack.pop();
+
+    const lhs_type = lhs.getType();
+
+    try self.checkInt(lhs_type, source_loc);
+    try self.checkRepresentability(rhs, .{ .tag = .u8 }, source_loc);
+
+    if (lhs != .runtime and rhs != .runtime) {
+        const lhs_int = lhs.int;
+        const rhs_int = rhs.int;
+
+        if (rhs_int > std.math.maxInt(u7)) {
+            self.error_info = .{
+                .message = "cannot bit shift with a count more than '" ++ std.fmt.comptimePrint("{}", .{std.math.maxInt(u7)}) ++ "'",
+                .source_loc = source_loc,
+            };
+
+            return error.TypeCannotRepresentValue;
+        }
+
+        const result = switch (direction) {
+            .left => lhs_int << @intCast(rhs_int),
+            .right => lhs_int >> @intCast(rhs_int),
+        };
+
+        try self.stack.append(self.allocator, .{ .int = result });
+
+        _ = self.lir.instructions.pop();
+
+        self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .int = result };
+    } else {
+        switch (direction) {
+            .left => try self.lir.instructions.append(self.allocator, .shl),
+            .right => try self.lir.instructions.append(self.allocator, .shr),
+        }
+
+        try self.stack.append(self.allocator, .{ .runtime = .{ .type = lhs_type } });
+    }
+}
+
+const BitwiseArithmeticOperation = enum {
+    bit_and,
+    bit_or,
+    bit_xor,
+};
+
+fn hirBitwiseArithmetic(self: *Sema, comptime operation: BitwiseArithmeticOperation, source_loc: Ast.SourceLoc) Error!void {
+    const rhs = self.stack.pop();
+    const lhs = self.stack.pop();
+
+    const lhs_type = lhs.getType();
+    const rhs_type = rhs.getType();
+
+    try self.checkInt(lhs_type, source_loc);
+    try self.checkInt(rhs_type, source_loc);
+
+    if (lhs_type.tag != rhs_type.tag and !lhs_type.isAmbigiuous() and !rhs_type.isAmbigiuous()) {
+        return self.reportIncompatibleTypes(lhs_type, rhs_type, source_loc);
+    }
+
+    switch (operation) {
+        .bit_and => try self.lir.instructions.append(self.allocator, .bit_and),
+        .bit_or => try self.lir.instructions.append(self.allocator, .bit_or),
+        .bit_xor => try self.lir.instructions.append(self.allocator, .bit_xor),
+    }
+
+    switch (lhs) {
+        .int => |lhs_int| switch (rhs) {
+            .int => |rhs_int| {
+                const result = switch (operation) {
+                    .bit_and => lhs_int & rhs_int,
+                    .bit_or => lhs_int | rhs_int,
+                    .bit_xor => lhs_int ^ rhs_int,
+                };
+
+                try self.stack.append(self.allocator, .{ .int = result });
+
+                _ = self.lir.instructions.pop();
+
+                self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .int = result };
+
+                return;
+            },
+
+            else => {},
+        },
+
+        else => {},
+    }
+
+    if (!lhs_type.isAmbigiuous()) {
+        // Check if we can represent the rhs ambigiuous value as lhs type (e.g. x + 4)
+        if (rhs_type.isAmbigiuous()) {
+            try self.checkRepresentability(rhs, lhs_type, source_loc);
+        }
+
         try self.stack.append(self.allocator, .{ .runtime = .{ .type = lhs_type } });
     } else {
-        if (!lhs_type.isAmbigiuous()) {
-            // Check if we can represent the rhs ambigiuous value as lhs type (e.g. x + 4)
-            if (rhs_type.isAmbigiuous()) {
-                try self.checkRepresentability(rhs, lhs_type, source_loc);
-            }
-
-            try self.stack.append(self.allocator, .{ .runtime = .{ .type = lhs_type } });
-        } else {
-            // Check if we can represent the lhs ambigiuous value as rhs type (e.g. 4 + x)
-            if (!rhs_type.isAmbigiuous()) {
-                try self.checkRepresentability(lhs, rhs_type, source_loc);
-            }
-
-            try self.stack.append(self.allocator, .{ .runtime = .{ .type = rhs_type } });
+        // Check if we can represent the lhs ambigiuous value as rhs type (e.g. 4 + x)
+        if (!rhs_type.isAmbigiuous()) {
+            try self.checkRepresentability(lhs, rhs_type, source_loc);
         }
+
+        try self.stack.append(self.allocator, .{ .runtime = .{ .type = rhs_type } });
+    }
+}
+
+const ArithmeticOperation = enum {
+    add,
+    sub,
+    mul,
+    div,
+};
+
+fn hirArithmetic(self: *Sema, comptime operation: ArithmeticOperation, source_loc: Ast.SourceLoc) Error!void {
+    const rhs = self.stack.pop();
+    const lhs = self.stack.pop();
+
+    const lhs_type = lhs.getType();
+    const rhs_type = rhs.getType();
+
+    try self.checkIntOrFloat(lhs_type, source_loc);
+    try self.checkIntOrFloat(rhs_type, source_loc);
+
+    if (lhs_type.isInt() != rhs_type.isInt() or (lhs_type.tag != rhs_type.tag and !lhs_type.isAmbigiuous() and !rhs_type.isAmbigiuous())) {
+        return self.reportIncompatibleTypes(lhs_type, rhs_type, source_loc);
+    }
+
+    switch (lhs) {
+        .int => |lhs_int| switch (rhs) {
+            .int => |rhs_int| {
+                const result = switch (operation) {
+                    .add => lhs_int + rhs_int,
+                    .sub => lhs_int - rhs_int,
+                    .mul => lhs_int * rhs_int,
+                    .div => @divFloor(lhs_int, rhs_int),
+                };
+
+                try self.stack.append(self.allocator, .{ .int = result });
+
+                _ = self.lir.instructions.pop();
+
+                self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .int = result };
+
+                return;
+            },
+
+            else => {},
+        },
+
+        .float => |lhs_float| switch (rhs) {
+            .float => |rhs_float| {
+                const result = switch (operation) {
+                    .add => lhs_float + rhs_float,
+                    .sub => lhs_float - rhs_float,
+                    .mul => lhs_float * rhs_float,
+                    .div => lhs_float * rhs_float,
+                };
+
+                try self.stack.append(self.allocator, .{ .float = result });
+
+                _ = self.lir.instructions.pop();
+
+                self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .float = result };
+
+                return;
+            },
+
+            else => {},
+        },
+
+        else => {},
+    }
+
+    switch (operation) {
+        .add => try self.lir.instructions.append(self.allocator, .add),
+        .sub => try self.lir.instructions.append(self.allocator, .sub),
+        .mul => try self.lir.instructions.append(self.allocator, .mul),
+        .div => try self.lir.instructions.append(self.allocator, .div),
+    }
+
+    if (!lhs_type.isAmbigiuous()) {
+        // Check if we can represent the rhs ambigiuous value as lhs type (e.g. x + 4)
+        if (rhs_type.isAmbigiuous()) {
+            try self.checkRepresentability(rhs, lhs_type, source_loc);
+        }
+
+        try self.stack.append(self.allocator, .{ .runtime = .{ .type = lhs_type } });
+    } else {
+        // Check if we can represent the lhs ambigiuous value as rhs type (e.g. 4 + x)
+        if (!rhs_type.isAmbigiuous()) {
+            try self.checkRepresentability(lhs, rhs_type, source_loc);
+        }
+
+        try self.stack.append(self.allocator, .{ .runtime = .{ .type = rhs_type } });
     }
 }
 

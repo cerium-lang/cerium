@@ -47,8 +47,14 @@ pub const Instruction = union(enum) {
     negate: Ast.SourceLoc,
     /// Reverse a boolean from true to false and from false to true
     bool_not: Ast.SourceLoc,
-    /// Reverse the bits of an integer on the stack
+    /// Perform bitwise NOT operation on the bits of rhs (Which is to reverse its bits representation)
     bit_not: Ast.SourceLoc,
+    /// Perform bitwise AND operation on the bits of lhs and rhs
+    bit_and: Ast.SourceLoc,
+    /// Perform bitwise OR operation on the bits of lhs and rhs
+    bit_or: Ast.SourceLoc,
+    /// Perform bitwise XOR operation on the bits of lhs and rhs
+    bit_xor: Ast.SourceLoc,
     /// Get a pointer of a value on the stack
     reference: Ast.SourceLoc,
     /// Read the data that the pointer is pointing to
@@ -396,6 +402,27 @@ pub const Generator = struct {
                 try self.generateExpr(binary_operation.rhs.*);
 
                 try self.hir.instructions.append(self.allocator, .{ .shr = binary_operation.source_loc });
+            },
+
+            .ampersand => {
+                try self.generateExpr(binary_operation.lhs.*);
+                try self.generateExpr(binary_operation.rhs.*);
+
+                try self.hir.instructions.append(self.allocator, .{ .bit_and = binary_operation.source_loc });
+            },
+
+            .pipe => {
+                try self.generateExpr(binary_operation.lhs.*);
+                try self.generateExpr(binary_operation.rhs.*);
+
+                try self.hir.instructions.append(self.allocator, .{ .bit_or = binary_operation.source_loc });
+            },
+
+            .caret => {
+                try self.generateExpr(binary_operation.lhs.*);
+                try self.generateExpr(binary_operation.rhs.*);
+
+                try self.hir.instructions.append(self.allocator, .{ .bit_xor = binary_operation.source_loc });
             },
 
             .double_equal_sign, .bang_equal_sign => {

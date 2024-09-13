@@ -43,8 +43,14 @@ pub const Instruction = union(enum) {
     negate,
     /// Reverse a boolean from true to false and from false to true
     bool_not,
-    /// Reverse the bits of an integer on the stack
+    /// Perform bitwise NOT operation on the bits of rhs (Which is to reverse its bits representation)
     bit_not,
+    /// Perform bitwise AND operation on the bits of lhs and rhs
+    bit_and,
+    /// Perform bitwise OR operation on the bits of lhs and rhs
+    bit_or,
+    /// Perform bitwise XOR operation on the bits of lhs and rhs
+    bit_xor,
     /// Read the data that the pointer is pointing to
     read: Type,
     /// Override the data that the pointer is pointing to

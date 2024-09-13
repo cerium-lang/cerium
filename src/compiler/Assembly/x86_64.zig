@@ -327,7 +327,7 @@ pub fn render(self: *x86_64) Error!void {
                 }
             },
 
-            .add, .sub, .mul, .div, .shl, .shr => {
+            .add, .sub, .mul, .div, .bit_and, .bit_or, .bit_xor, .shl, .shr => {
                 const stack_allocation = self.stack.getLast();
 
                 try self.popRegister(text_section_writer, "cx");
@@ -338,6 +338,9 @@ pub fn render(self: *x86_64) Error!void {
                     .sub => "sub",
                     .mul => "mul",
                     .div => "div",
+                    .bit_and => "and",
+                    .bit_or => "or",
+                    .bit_xor => "xor",
                     .shl => "shl",
                     .shr => "shr",
 
