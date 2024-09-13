@@ -117,7 +117,7 @@ pub const Generator = struct {
         switch (node) {
             .stmt => |stmt| try self.generateStmt(stmt),
             .expr => |expr| {
-                if (!self.in_function) {
+                if (!self.in_function and expr != .assembly) {
                     self.error_info = .{ .message = "did not expect an expression to be in top level", .source_loc = expr.getSourceLoc() };
 
                     return error.UnexpectedExpression;
