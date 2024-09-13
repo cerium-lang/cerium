@@ -36,6 +36,7 @@ pub const Error = error{
     UnexpectedArgumentsCount,
     ExpectedExplicitReturn,
     UnexpectedMutation,
+    UnexpectedAssemblyConstraints,
     TypeCannotRepresentValue,
     UnexpectedType,
     MismatchedTypes,
@@ -886,6 +887,12 @@ fn hirPop(self: *Sema) Error!void {
 }
 
 fn hirAssembly(self: *Sema, assembly: Ast.Node.Expr.Assembly) Error!void {
+    if (self.function == null and (assembly.input_constraints.len > 0 or assembly.output_constraint != null)) {
+        self.error_info = .{ .message = "global assembly should not contain any input or output constraints", .source_loc = assembly.source_loc };
+
+        return error.UnexpectedAssemblyConstraints;
+    }
+
     var i: usize = assembly.input_constraints.len;
 
     while (i > 0) {
