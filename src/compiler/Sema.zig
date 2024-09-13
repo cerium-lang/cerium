@@ -21,7 +21,8 @@ stack: std.ArrayListUnmanaged(Value) = .{},
 function: ?Ast.Node.Stmt.FunctionDeclaration = null,
 function_parameter_index: usize = 0,
 
-symbol_table: Symbol.Table,
+scope_stack: std.ArrayListUnmanaged(Symbol.Scope(Variable)) = .{},
+scope: *Symbol.Scope(Variable) = undefined,
 
 error_info: ?ErrorInfo = null,
 
@@ -34,6 +35,7 @@ pub const Error = error{
     ExpectedCompiletimeConstant,
     UnexpectedArgumentsCount,
     ExpectedExplicitReturn,
+    UnexpectedMutation,
     TypeCannotRepresentValue,
     UnexpectedType,
     MismatchedTypes,
@@ -114,14 +116,25 @@ const Value = union(enum) {
     }
 };
 
+const Variable = struct {
+    symbol: Symbol,
+    is_const: bool = false,
+    is_comptime: bool = false,
+    maybe_value: ?Value = null,
+};
+
 pub fn init(allocator: std.mem.Allocator) Sema {
     return Sema{
         .allocator = allocator,
-        .symbol_table = Symbol.Table.init(allocator),
     };
 }
 
 pub fn analyze(self: *Sema, hir: Hir) Error!void {
+    const global_scope = try self.scope_stack.addOne(self.allocator);
+    global_scope.* = .{};
+
+    self.scope = global_scope;
+
     try self.hirInstructions(hir.instructions.items);
 }
 
@@ -141,8 +154,11 @@ fn hirInstruction(self: *Sema, instruction: Hir.Instruction) Error!void {
 
         .call => |info| try self.hirCall(info),
 
-        .variable => |symbol| try self.hirVariable(symbol),
-        .variable_infer => |symbol| try self.hirVariableInfer(symbol),
+        .constant => |symbol| try self.hirConstant(false, symbol),
+        .constant_infer => |symbol| try self.hirConstant(true, symbol),
+
+        .variable => |symbol| try self.hirVariable(false, symbol),
+        .variable_infer => |symbol| try self.hirVariable(true, symbol),
 
         .set => |name| try self.hirSet(name),
         .get => |name| try self.hirGet(name),
@@ -183,7 +199,7 @@ fn hirInstruction(self: *Sema, instruction: Hir.Instruction) Error!void {
 fn hirLabel(self: *Sema, info: struct { bool, Ast.Name }) Error!void {
     const is_function, const name = info;
 
-    if (self.symbol_table.get(name.buffer) != null) {
+    if (self.scope.get(name.buffer) != null) {
         return self.reportRedeclaration(name);
     }
 
@@ -195,6 +211,10 @@ fn hirFunctionProluge(self: *Sema, function: Ast.Node.Stmt.FunctionDeclaration) 
 
     self.function = function;
     self.function_parameter_index = 0;
+
+    const new_scope = try self.scope_stack.addOne(self.allocator);
+    new_scope.* = .{ .maybe_parent = self.scope };
+    self.scope = new_scope;
 }
 
 fn hirFunctionEpilogue(self: *Sema) Error!void {
@@ -212,7 +232,7 @@ fn hirFunctionParameter(self: *Sema) Error!void {
         .linkage = .local,
     };
 
-    try self.symbol_table.put(function_parameter_symbol);
+    try self.scope.put(self.allocator, function_parameter_symbol.name.buffer, .{ .is_const = true, .symbol = function_parameter_symbol });
 
     try self.lir.instructions.append(self.allocator, .{ .function_parameter = .{ self.function_parameter_index, function_parameter_symbol } });
 
@@ -260,38 +280,61 @@ fn hirCall(self: *Sema, info: struct { usize, Ast.SourceLoc }) Error!void {
     }
 }
 
-fn hirVariable(self: *Sema, symbol: Symbol) Error!void {
-    if (symbol.type.tag == .void) {
-        self.error_info = .{ .message = "you cannot declare a variable with type 'void'", .source_loc = symbol.name.source_loc };
+fn hirConstant(self: *Sema, infer: bool, symbol: Symbol) Error!void {
+    var variable: Variable = .{ .is_const = true, .is_comptime = true, .symbol = symbol };
+
+    const value = self.stack.getLast();
+
+    if (infer) {
+        variable.symbol.type = value.getType();
+    }
+
+    if (variable.symbol.type.tag == .void) {
+        self.error_info = .{ .message = "you cannot declare a constant with type 'void'", .source_loc = variable.symbol.name.source_loc };
 
         return error.UnexpectedType;
     }
 
-    try self.symbol_table.put(symbol);
+    if (value == .runtime) {
+        self.error_info = .{ .message = "expected the constant initializer to be compile time known", .source_loc = variable.symbol.name.source_loc };
 
-    try self.lir.instructions.append(self.allocator, .{ .variable = symbol });
+        return error.ExpectedCompiletimeConstant;
+    }
+
+    // Remove the label and initializer
+    {
+        _ = self.lir.instructions.pop();
+
+        if (variable.symbol.linkage == .global) {
+            _ = self.lir.instructions.pop();
+        }
+    }
+
+    try self.scope.put(self.allocator, variable.symbol.name.buffer, variable);
 }
 
-fn hirVariableInfer(self: *Sema, symbol: Symbol) Error!void {
-    var modified_symbol = symbol;
+fn hirVariable(self: *Sema, infer: bool, symbol: Symbol) Error!void {
+    var variable: Variable = .{ .symbol = symbol };
 
-    modified_symbol.type = self.stack.getLast().getType();
+    if (infer) {
+        variable.symbol.type = self.stack.getLast().getType();
+    }
 
-    if (modified_symbol.type.tag == .void) {
-        self.error_info = .{ .message = "you cannot declare a variable with type 'void'", .source_loc = modified_symbol.name.source_loc };
+    if (variable.symbol.type.tag == .void) {
+        self.error_info = .{ .message = "you cannot declare a variable with type 'void'", .source_loc = variable.symbol.name.source_loc };
 
         return error.UnexpectedType;
     }
 
-    if (modified_symbol.type.isAmbigiuous()) {
-        self.error_info = .{ .message = "you cannot declare a variable with an ambigiuous type", .source_loc = modified_symbol.name.source_loc };
+    if (variable.symbol.type.isAmbigiuous()) {
+        self.error_info = .{ .message = "you cannot declare a variable with an ambigiuous type", .source_loc = variable.symbol.name.source_loc };
 
         return error.UnexpectedType;
     }
 
-    try self.symbol_table.put(modified_symbol);
+    try self.scope.put(self.allocator, variable.symbol.name.buffer, variable);
 
-    try self.lir.instructions.append(self.allocator, .{ .variable = modified_symbol });
+    try self.lir.instructions.append(self.allocator, .{ .variable = variable.symbol });
 }
 
 fn checkRepresentability(self: *Sema, source_value: Value, destination_type: Type, source_loc: Ast.SourceLoc) Error!void {
@@ -349,29 +392,47 @@ fn reportRedeclaration(self: *Sema, name: Ast.Name) Error!void {
 }
 
 fn hirSet(self: *Sema, name: Ast.Name) Error!void {
-    const symbol = self.symbol_table.get(name.buffer) orelse return self.reportNotDeclared(name);
+    const variable = self.scope.getPtr(name.buffer) orelse return self.reportNotDeclared(name);
 
     const value = self.stack.pop();
 
-    if (value == .runtime and symbol.linkage == .global and self.function == null) {
-        self.error_info = .{ .message = "expected global variable initializer to be compile time constant", .source_loc = name.source_loc };
+    if (variable.is_comptime and variable.maybe_value == null) {
+        variable.maybe_value = value;
+    } else if (variable.is_const) {
+        self.error_info = .{ .message = "you cannot mutate the value of a constant", .source_loc = name.source_loc };
+
+        return error.UnexpectedMutation;
+    } else if (variable.symbol.linkage == .global and value == .runtime and self.function == null) {
+        self.error_info = .{ .message = "expected global variable initializer to be compile time known", .source_loc = name.source_loc };
 
         return error.ExpectedCompiletimeConstant;
-    }
+    } else {
+        try self.checkRepresentability(value, variable.symbol.type, name.source_loc);
 
-    try self.checkRepresentability(value, symbol.type, name.source_loc);
-
-    if (self.function != null) {
-        try self.lir.instructions.append(self.allocator, .{ .set = name.buffer });
+        if (self.function != null) {
+            try self.lir.instructions.append(self.allocator, .{ .set = name.buffer });
+        }
     }
 }
 
 fn hirGet(self: *Sema, name: Ast.Name) Error!void {
-    const symbol = self.symbol_table.get(name.buffer) orelse return self.reportNotDeclared(name);
+    const variable = self.scope.get(name.buffer) orelse return self.reportNotDeclared(name);
 
-    try self.lir.instructions.append(self.allocator, .{ .get = name.buffer });
+    if (variable.maybe_value) |value| {
+        switch (value) {
+            .string => |value_string| try self.lir.instructions.append(self.allocator, .{ .string = value_string }),
+            .int => |value_int| try self.lir.instructions.append(self.allocator, .{ .int = value_int }),
+            .float => |value_float| try self.lir.instructions.append(self.allocator, .{ .float = value_float }),
+            .boolean => |value_boolean| try self.lir.instructions.append(self.allocator, .{ .boolean = value_boolean }),
+            .runtime => unreachable,
+        }
 
-    try self.stack.append(self.allocator, .{ .runtime = .{ .type = symbol.type, .data = .{ .name = symbol.name } } });
+        try self.stack.append(self.allocator, value);
+    } else {
+        try self.lir.instructions.append(self.allocator, .{ .get = name.buffer });
+
+        try self.stack.append(self.allocator, .{ .runtime = .{ .type = variable.symbol.type, .data = .{ .name = variable.symbol.name } } });
+    }
 }
 
 fn hirString(self: *Sema, string: []const u8) Error!void {
@@ -512,7 +573,8 @@ fn hirReference(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
     const rhs_runtime_name = rhs.runtime.data.name;
     const rhs_runtime_type = rhs.runtime.type;
 
-    const rhs_symbol = self.symbol_table.get(rhs_runtime_name.buffer).?;
+    const rhs_variable = self.scope.get(rhs_runtime_name.buffer).?;
+    const rhs_symbol = rhs_variable.symbol;
 
     const child_on_heap = try self.allocator.create(Type);
     child_on_heap.* = rhs_runtime_type;
@@ -526,7 +588,7 @@ fn hirReference(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
                 .data = .{
                     .pointer = .{
                         .size = .one,
-                        .is_const = false,
+                        .is_const = rhs_variable.is_const,
                         .is_local = rhs_symbol.linkage == .local,
                         .child_type = child_on_heap,
                     },
@@ -566,6 +628,12 @@ fn hirWrite(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
     const lhs_type = lhs.getType();
 
     const lhs_pointer = lhs_type.getPointer() orelse return self.reportNotPointer(lhs_type, source_loc);
+
+    if (lhs_pointer.is_const) {
+        self.error_info = .{ .message = "you cannot mutate data pointed by this pointer, it points to read-only data", .source_loc = source_loc };
+
+        return error.UnexpectedMutation;
+    }
 
     try self.checkRepresentability(rhs, lhs_pointer.child_type.*, source_loc);
 
@@ -849,7 +917,10 @@ fn hirReturn(self: *Sema) Error!void {
 
     self.function = null;
     self.stack.clearRetainingCapacity();
-    self.symbol_table.clearAndFree();
+
+    self.scope.clearAndFree(self.allocator);
+    self.scope = self.scope.maybe_parent.?;
+    _ = self.scope_stack.pop();
 
     try self.lir.instructions.append(self.allocator, .@"return");
 }

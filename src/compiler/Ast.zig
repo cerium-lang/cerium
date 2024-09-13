@@ -48,6 +48,7 @@ pub const Node = union(enum) {
         };
 
         pub const VariableDeclaration = struct {
+            is_const: bool,
             name: Name,
             type: ?Type,
             value: Node.Expr,
@@ -268,7 +269,7 @@ pub const Parser = struct {
         const node = switch (self.peekToken().tag) {
             .keyword_fn => return self.parseFunctionDeclarationStmt(),
 
-            .keyword_var => try self.parseVariableDeclarationStmt(),
+            .keyword_const, .keyword_var => try self.parseVariableDeclarationStmt(),
 
             .keyword_return => try self.parseReturnStmt(),
 
@@ -386,7 +387,7 @@ pub const Parser = struct {
     }
 
     fn parseVariableDeclarationStmt(self: *Parser) Error!Node {
-        _ = self.nextToken();
+        const is_const = self.nextToken().tag == .keyword_const;
 
         const name = try self.parseName();
 
@@ -406,6 +407,7 @@ pub const Parser = struct {
         return Node{
             .stmt = .{
                 .variable_declaration = .{
+                    .is_const = is_const,
                     .name = name,
                     .type = @"type",
                     .value = value.expr,

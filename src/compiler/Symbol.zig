@@ -14,35 +14,44 @@ pub const Linkage = enum {
     global,
 };
 
-pub const Table = struct {
-    allocator: std.mem.Allocator,
+pub fn Scope(comptime V: type) type {
+    return struct {
+        const Self = @This();
 
-    original: std.StringHashMapUnmanaged(Symbol) = .{},
-    modified: std.StringHashMapUnmanaged(Symbol) = .{},
+        maybe_parent: ?*Self = null,
 
-    pub fn init(allocator: std.mem.Allocator) Table {
-        return Table{ .allocator = allocator };
-    }
+        items: std.StringHashMapUnmanaged(V) = .{},
 
-    pub fn put(self: *Table, symbol: Symbol) std.mem.Allocator.Error!void {
-        try self.modified.put(self.allocator, symbol.name.buffer, symbol);
-
-        if (symbol.linkage == .global) {
-            try self.original.put(self.allocator, symbol.name.buffer, symbol);
-        }
-    }
-
-    pub fn get(self: Table, name: []const u8) ?Symbol {
-        if (self.modified.get(name)) |symbol| {
-            return symbol;
-        } else if (self.original.get(name)) |symbol| {
-            return symbol;
+        pub fn put(self: *Self, allocator: std.mem.Allocator, name: []const u8, value: V) std.mem.Allocator.Error!void {
+            try self.items.put(allocator, name, value);
         }
 
-        return null;
-    }
+        pub fn get(self: Self, name: []const u8) ?V {
+            if (self.items.get(name)) |value| {
+                return value;
+            }
 
-    pub fn clearAndFree(self: *Table) void {
-        self.modified.clearAndFree(self.allocator);
-    }
-};
+            if (self.maybe_parent) |parent| {
+                return parent.get(name);
+            }
+
+            return null;
+        }
+
+        pub fn getPtr(self: *Self, name: []const u8) ?*V {
+            if (self.items.getPtr(name)) |value| {
+                return value;
+            }
+
+            if (self.maybe_parent) |parent| {
+                return parent.getPtr(name);
+            }
+
+            return null;
+        }
+
+        pub fn clearAndFree(self: *Self, allocator: std.mem.Allocator) void {
+            self.items.clearAndFree(allocator);
+        }
+    };
+}

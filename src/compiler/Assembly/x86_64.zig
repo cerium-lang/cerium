@@ -13,11 +13,12 @@ assembly: Assembly = .{},
 
 lir: Lir,
 
-variables: Variable.Table,
-
 stack: std.ArrayListUnmanaged(StackAllocation) = .{},
 stack_offsets: std.ArrayListUnmanaged(usize) = .{},
 stack_alignment: usize = 16,
+
+scope_stack: std.ArrayListUnmanaged(Symbol.Scope(Variable)) = .{},
+scope: *Symbol.Scope(Variable) = undefined,
 
 string_literals_index: usize = 0,
 floating_points_index: usize = 0,
@@ -26,49 +27,6 @@ pub const Variable = struct {
     stack_index: usize,
     type: Type,
     linkage: Symbol.Linkage,
-
-    pub const Table = struct {
-        allocator: std.mem.Allocator,
-
-        original: std.StringHashMapUnmanaged(Variable) = .{},
-        modified: std.StringHashMapUnmanaged(Variable) = .{},
-
-        pub fn init(allocator: std.mem.Allocator) Table {
-            return Table{ .allocator = allocator };
-        }
-
-        pub fn put(self: *Table, name: []const u8, variable: Variable) std.mem.Allocator.Error!void {
-            try self.modified.put(self.allocator, name, variable);
-
-            if (variable.linkage == .global) {
-                try self.original.put(self.allocator, name, variable);
-            }
-        }
-
-        pub fn get(self: Table, name: []const u8) ?Variable {
-            if (self.modified.get(name)) |variable| {
-                return variable;
-            } else if (self.original.get(name)) |variable| {
-                return variable;
-            }
-
-            return null;
-        }
-
-        pub fn getPtr(self: *Table, name: []const u8) ?*Variable {
-            if (self.modified.getPtr(name)) |variable| {
-                return variable;
-            } else if (self.original.getPtr(name)) |variable| {
-                return variable;
-            }
-
-            return null;
-        }
-
-        pub fn reset(self: *Table) void {
-            self.modified.clearRetainingCapacity();
-        }
-    };
 };
 
 const StackAllocation = struct {
@@ -79,7 +37,6 @@ pub fn init(allocator: std.mem.Allocator, lir: Lir) x86_64 {
     return x86_64{
         .allocator = allocator,
         .lir = lir,
-        .variables = Variable.Table.init(allocator),
     };
 }
 
@@ -95,6 +52,11 @@ pub fn render(self: *x86_64) Error!void {
     const text_section_writer = self.assembly.text_section.writer(self.allocator);
     const data_section_writer = self.assembly.data_section.writer(self.allocator);
     const rodata_section_writer = self.assembly.rodata_section.writer(self.allocator);
+
+    const global_scope = try self.scope_stack.addOne(self.allocator);
+    global_scope.* = .{};
+
+    self.scope = global_scope;
 
     for (self.lir.instructions.items) |instruction| {
         switch (instruction) {
@@ -112,6 +74,10 @@ pub fn render(self: *x86_64) Error!void {
                 try text_section_writer.writeAll("\tmovq %rsp, %rbp\n");
 
                 try self.stack_offsets.append(self.allocator, 0);
+
+                const new_scope = try self.scope_stack.addOne(self.allocator);
+                new_scope.* = .{ .maybe_parent = self.scope };
+                self.scope = new_scope;
             },
 
             .function_epilogue => {
@@ -120,10 +86,6 @@ pub fn render(self: *x86_64) Error!void {
                 }
 
                 try text_section_writer.writeAll("\tpopq %rbp\n");
-
-                self.variables.reset();
-                self.stack.clearRetainingCapacity();
-                self.stack_offsets.clearRetainingCapacity();
             },
 
             .function_parameter => |function_parameter| {
@@ -139,7 +101,8 @@ pub fn render(self: *x86_64) Error!void {
 
                 try self.pushRegister(text_section_writer, "8", .{ .is_floating_point = is_floating_point });
 
-                try self.variables.put(
+                try self.scope.put(
+                    self.allocator,
                     function_parameter_symbol.name.buffer,
                     .{
                         .stack_index = self.stack.items.len - 1,
@@ -180,7 +143,8 @@ pub fn render(self: *x86_64) Error!void {
             },
 
             .variable => |symbol| {
-                try self.variables.put(
+                try self.scope.put(
+                    self.allocator,
                     symbol.name.buffer,
                     .{
                         .stack_index = 0,
@@ -191,7 +155,7 @@ pub fn render(self: *x86_64) Error!void {
             },
 
             .set => |name| {
-                const variable = self.variables.getPtr(name).?;
+                const variable = self.scope.getPtr(name).?;
 
                 if (variable.linkage == .global) {
                     const stack_allocation = self.stack.items[variable.stack_index];
@@ -211,7 +175,7 @@ pub fn render(self: *x86_64) Error!void {
             },
 
             .get => |name| {
-                const variable = self.variables.get(name).?;
+                const variable = self.scope.get(name).?;
 
                 switch (variable.linkage) {
                     .local => {
@@ -239,7 +203,7 @@ pub fn render(self: *x86_64) Error!void {
             },
 
             .get_ptr => |name| {
-                const variable = self.variables.get(name).?;
+                const variable = self.scope.get(name).?;
 
                 switch (variable.linkage) {
                     .local => {
@@ -456,6 +420,13 @@ pub fn render(self: *x86_64) Error!void {
             },
 
             .@"return" => {
+                self.stack.clearRetainingCapacity();
+                self.stack_offsets.clearRetainingCapacity();
+
+                self.scope.clearAndFree(self.allocator);
+                self.scope = self.scope.maybe_parent.?;
+                _ = self.scope_stack.pop();
+
                 try text_section_writer.writeAll("\tretq\n");
             },
         }

@@ -1,7 +1,7 @@
-var SYS_write u64 = 1;
-var SYS_exit_group u64 = 231;
+const SYS_write = 1;
+const SYS_exit_group = 231;
 
-var STDOUT u32 = 1;
+const STDOUT = 1;
 
 fn write(fd u32, buf [*]const u8, count u64) u64 {
     return asm {
@@ -23,7 +23,9 @@ fn exit_group(status_code u8) void {
 }
 
 fn _start() void {
+    const n = 5;
+
     write(STDOUT, "Hello, World!\n", 14);
 
-    exit_group(0);
+    exit_group(n);
 }

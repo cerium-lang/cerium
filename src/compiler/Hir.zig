@@ -25,6 +25,10 @@ pub const Instruction = union(enum) {
     function_parameter,
     /// Call a specific function pointer on the stack with the specified argument count
     call: struct { usize, Ast.SourceLoc },
+    /// Declare a constant using the specified name and type
+    constant: Symbol,
+    /// Same as `constant` but the type is unknown at the point of declaration
+    constant_infer: Symbol,
     /// Declare a variable using the specified name and type
     variable: Symbol,
     /// Same as `variable` but the type is unknown at the point of declaration
@@ -198,10 +202,27 @@ pub const Generator = struct {
         try self.hir.instructions.append(
             self.allocator,
             if (variable.type) |@"type"|
+                if (variable.is_const)
+                    .{
+                        .constant = .{
+                            .name = variable.name,
+                            .type = @"type",
+                            .linkage = if (self.in_function) .local else .global,
+                        },
+                    }
+                else
+                    .{
+                        .variable = .{
+                            .name = variable.name,
+                            .type = @"type",
+                            .linkage = if (self.in_function) .local else .global,
+                        },
+                    }
+            else if (variable.is_const)
                 .{
-                    .variable = .{
+                    .constant_infer = .{
                         .name = variable.name,
-                        .type = @"type",
+                        .type = .{ .tag = .void },
                         .linkage = if (self.in_function) .local else .global,
                     },
                 }
