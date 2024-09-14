@@ -189,7 +189,7 @@ pub const Parser = struct {
         source_loc: SourceLoc,
     };
 
-    pub fn init(allocator: std.mem.Allocator, compilation: Compilation, buffer: [:0]const u8) std.mem.Allocator.Error!Parser {
+    pub fn init(allocator: std.mem.Allocator, env: Compilation.Environment, buffer: [:0]const u8) std.mem.Allocator.Error!Parser {
         var tokens: std.ArrayListUnmanaged(Token) = .{};
 
         var lexer = Lexer.init(buffer);
@@ -211,12 +211,12 @@ pub const Parser = struct {
         builtin_types.putAssumeCapacity("u16", .{ .tag = .u16 });
         builtin_types.putAssumeCapacity("u32", .{ .tag = .u32 });
         builtin_types.putAssumeCapacity("u64", .{ .tag = .u64 });
-        builtin_types.putAssumeCapacity("usize", Type.makeInt(false, compilation.env.target.ptrBitWidth()));
+        builtin_types.putAssumeCapacity("usize", Type.makeInt(false, env.target.ptrBitWidth()));
         builtin_types.putAssumeCapacity("i8", .{ .tag = .i8 });
         builtin_types.putAssumeCapacity("i16", .{ .tag = .i16 });
         builtin_types.putAssumeCapacity("i32", .{ .tag = .i32 });
         builtin_types.putAssumeCapacity("i64", .{ .tag = .i64 });
-        builtin_types.putAssumeCapacity("isize", Type.makeInt(true, compilation.env.target.ptrBitWidth()));
+        builtin_types.putAssumeCapacity("isize", Type.makeInt(true, env.target.ptrBitWidth()));
         builtin_types.putAssumeCapacity("f32", .{ .tag = .f32 });
         builtin_types.putAssumeCapacity("f64", .{ .tag = .f64 });
         builtin_types.putAssumeCapacity("bool", .{ .tag = .bool });

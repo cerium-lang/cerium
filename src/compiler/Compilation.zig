@@ -46,7 +46,7 @@ fn errorDescription(e: anyerror) []const u8 {
 }
 
 pub fn parse(self: Compilation, input: [:0]const u8) ?Ast {
-    var ast_parser = Ast.Parser.init(self.allocator, self, input) catch |err| {
+    var ast_parser = Ast.Parser.init(self.allocator, self.env, input) catch |err| {
         std.debug.print("{s}\n", .{errorDescription(err)});
 
         return null;
@@ -90,7 +90,7 @@ pub fn generateHir(self: Compilation, ast: Ast) ?Hir {
 }
 
 pub fn analyzeSemantics(self: Compilation, hir: Hir) ?Lir {
-    var sema = Sema.init(self.allocator, self);
+    var sema = Sema.init(self.allocator, self.env);
 
     sema.analyze(hir) catch |err| switch (err) {
         error.OutOfMemory => {

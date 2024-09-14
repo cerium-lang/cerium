@@ -15,7 +15,7 @@ const Sema = @This();
 
 allocator: std.mem.Allocator,
 
-compilation: Compilation,
+env: Compilation.Environment,
 
 lir: Lir = .{},
 
@@ -127,10 +127,10 @@ const Variable = struct {
     maybe_value: ?Value = null,
 };
 
-pub fn init(allocator: std.mem.Allocator, compilation: Compilation) Sema {
+pub fn init(allocator: std.mem.Allocator, env: Compilation.Environment) Sema {
     return Sema{
         .allocator = allocator,
-        .compilation = compilation,
+        .env = env,
     };
 }
 
@@ -935,7 +935,7 @@ fn hirArithmetic(self: *Sema, comptime operation: ArithmeticOperation, source_lo
         try self.checkIntOrFloatOrPointer(lhs_type, source_loc);
         try self.checkIntOrFloatOrPointer(rhs_type, source_loc);
 
-        const usize_type = Type.makeInt(false, self.compilation.env.target.ptrBitWidth());
+        const usize_type = Type.makeInt(false, self.env.target.ptrBitWidth());
 
         if (lhs_type.tag == .pointer) {
             try self.checkRepresentability(rhs, usize_type, source_loc);
