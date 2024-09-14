@@ -505,6 +505,8 @@ pub const Parser = struct {
 
             .keyword_asm => return self.parseAssemblyExpr(),
 
+            .open_paren => return self.parseParenthesesExpr(),
+
             .minus => return self.parseUnaryOperationExpr(.minus),
             .bang => return self.parseUnaryOperationExpr(.bang),
             .tilde => return self.parseUnaryOperationExpr(.tilde),
@@ -792,6 +794,20 @@ pub const Parser = struct {
             .register = register,
             .type = @"type",
         };
+    }
+
+    fn parseParenthesesExpr(self: *Parser) Error!Node.Expr {
+        _ = self.nextToken();
+
+        const value = (try self.parseExpr(.lowest)).expr;
+
+        if (!self.eatToken(.close_paren)) {
+            self.error_info = .{ .message = "expected a ')'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+            return error.UnexpectedToken;
+        }
+
+        return value;
     }
 
     fn parseUnaryOperationExpr(self: *Parser, comptime operator: Node.Expr.UnaryOperation.Operator) Error!Node.Expr {
