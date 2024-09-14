@@ -45,8 +45,8 @@ fn errorDescription(e: anyerror) []const u8 {
     };
 }
 
-pub fn parse(self: *Compilation, input: [:0]const u8) ?Ast {
-    var ast_parser = Ast.Parser.init(self.allocator, input) catch |err| {
+pub fn parse(self: Compilation, input: [:0]const u8) ?Ast {
+    var ast_parser = Ast.Parser.init(self.allocator, self, input) catch |err| {
         std.debug.print("{s}\n", .{errorDescription(err)});
 
         return null;
@@ -69,7 +69,7 @@ pub fn parse(self: *Compilation, input: [:0]const u8) ?Ast {
     return ast;
 }
 
-pub fn generateHir(self: *Compilation, ast: Ast) ?Hir {
+pub fn generateHir(self: Compilation, ast: Ast) ?Hir {
     var hir_generator = Hir.Generator.init(self.allocator);
 
     hir_generator.generate(ast) catch |err| switch (err) {
@@ -89,8 +89,8 @@ pub fn generateHir(self: *Compilation, ast: Ast) ?Hir {
     return hir_generator.hir;
 }
 
-pub fn analyzeSemantics(self: *Compilation, hir: Hir) ?Lir {
-    var sema = Sema.init(self.allocator);
+pub fn analyzeSemantics(self: Compilation, hir: Hir) ?Lir {
+    var sema = Sema.init(self.allocator, self);
 
     sema.analyze(hir) catch |err| switch (err) {
         error.OutOfMemory => {
@@ -109,7 +109,7 @@ pub fn analyzeSemantics(self: *Compilation, hir: Hir) ?Lir {
     return sema.lir;
 }
 
-pub fn renderAssembly(self: *Compilation, lir: Lir) ?[]const u8 {
+pub fn renderAssembly(self: Compilation, lir: Lir) ?[]const u8 {
     return switch (self.env.target.cpu.arch) {
         .x86_64 => blk: {
             var backend = Assembly.x86_64.init(self.allocator, lir);

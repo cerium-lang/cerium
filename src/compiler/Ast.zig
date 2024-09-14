@@ -4,6 +4,7 @@
 
 const std = @import("std");
 
+const Compilation = @import("Compilation.zig");
 const Token = @import("Token.zig");
 const Lexer = @import("Lexer.zig");
 const Type = @import("Type.zig");
@@ -163,6 +164,8 @@ pub const Node = union(enum) {
 pub const Parser = struct {
     allocator: std.mem.Allocator,
 
+    builtin_types: std.StringHashMapUnmanaged(Type),
+
     buffer: [:0]const u8,
 
     tokens: []const Token,
@@ -186,7 +189,7 @@ pub const Parser = struct {
         source_loc: SourceLoc,
     };
 
-    pub fn init(allocator: std.mem.Allocator, buffer: [:0]const u8) std.mem.Allocator.Error!Parser {
+    pub fn init(allocator: std.mem.Allocator, compilation: Compilation, buffer: [:0]const u8) std.mem.Allocator.Error!Parser {
         var tokens: std.ArrayListUnmanaged(Token) = .{};
 
         var lexer = Lexer.init(buffer);
@@ -199,8 +202,28 @@ pub const Parser = struct {
             if (token.tag == .eof) break;
         }
 
+        var builtin_types: std.StringHashMapUnmanaged(Type) = .{};
+
+        try builtin_types.ensureTotalCapacity(allocator, 14);
+
+        builtin_types.putAssumeCapacity("void", .{ .tag = .void });
+        builtin_types.putAssumeCapacity("u8", .{ .tag = .u8 });
+        builtin_types.putAssumeCapacity("u16", .{ .tag = .u16 });
+        builtin_types.putAssumeCapacity("u32", .{ .tag = .u32 });
+        builtin_types.putAssumeCapacity("u64", .{ .tag = .u64 });
+        builtin_types.putAssumeCapacity("usize", Type.makeInt(false, compilation.env.target.ptrBitWidth()));
+        builtin_types.putAssumeCapacity("i8", .{ .tag = .i8 });
+        builtin_types.putAssumeCapacity("i16", .{ .tag = .i16 });
+        builtin_types.putAssumeCapacity("i32", .{ .tag = .i32 });
+        builtin_types.putAssumeCapacity("i64", .{ .tag = .i64 });
+        builtin_types.putAssumeCapacity("isize", Type.makeInt(true, compilation.env.target.ptrBitWidth()));
+        builtin_types.putAssumeCapacity("f32", .{ .tag = .f32 });
+        builtin_types.putAssumeCapacity("f64", .{ .tag = .f64 });
+        builtin_types.putAssumeCapacity("bool", .{ .tag = .bool });
+
         return Parser{
             .allocator = allocator,
+            .builtin_types = builtin_types,
             .buffer = buffer,
             .tokens = try tokens.toOwnedSlice(allocator),
             .current_token_index = 0,
@@ -868,33 +891,12 @@ pub const Parser = struct {
     }
 
     fn parseType(self: *Parser) Error!Type {
-        const builtin_types = std.StaticStringMap(Type).initComptime(
-            .{
-                .{ "void", .{ .tag = .void } },
-                .{ "u8", .{ .tag = .u8 } },
-                .{ "u16", .{ .tag = .u16 } },
-                .{ "u32", .{ .tag = .u32 } },
-                .{ "u64", .{ .tag = .u64 } },
-                .{ "i8", .{ .tag = .i8 } },
-                .{ "i16", .{ .tag = .i16 } },
-                .{ "i32", .{ .tag = .i32 } },
-                .{ "i64", .{ .tag = .i64 } },
-                .{ "f32", .{ .tag = .f32 } },
-                .{ "f64", .{ .tag = .f64 } },
-                .{ "bool", .{ .tag = .bool } },
-            },
-        );
-
         switch (self.peekToken().tag) {
             .identifier => {
-                if (builtin_types.get(self.tokenValue(self.peekToken()))) |builtin_type| {
+                if (self.builtin_types.get(self.tokenValue(self.peekToken()))) |builtin_type| {
                     _ = self.nextToken();
 
                     return builtin_type;
-                } else {
-                    self.error_info = .{ .message = "invalid type", .source_loc = self.tokenSourceLoc(self.peekToken()) };
-
-                    return error.InvalidType;
                 }
             },
 
@@ -956,11 +958,11 @@ pub const Parser = struct {
                 };
             },
 
-            else => {
-                self.error_info = .{ .message = "invalid type", .source_loc = self.tokenSourceLoc(self.peekToken()) };
-
-                return error.InvalidType;
-            },
+            else => {},
         }
+
+        self.error_info = .{ .message = "invalid type", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+        return error.InvalidType;
     }
 };

@@ -1,4 +1,7 @@
 const std = @import("std");
+
+const Compilation = @import("Compilation.zig");
+
 const Type = @This();
 
 tag: Tag,
@@ -64,6 +67,32 @@ pub fn isFloat(self: Type) bool {
 
 pub fn isIntOrFloat(self: Type) bool {
     return (self.isInt() or self.isFloat());
+}
+
+pub fn isIntOrFloatOrPointer(self: Type) bool {
+    return (self.isInt() or self.isFloat() or self.tag == .pointer);
+}
+
+pub fn makeInt(signedness: bool, bits: u16) Type {
+    if (signedness) {
+        switch (bits) {
+            8 => return Type{ .tag = .i8 },
+            16 => return Type{ .tag = .i16 },
+            32 => return Type{ .tag = .i32 },
+            64 => return Type{ .tag = .i64 },
+
+            else => unreachable,
+        }
+    } else {
+        switch (bits) {
+            8 => return Type{ .tag = .u8 },
+            16 => return Type{ .tag = .u16 },
+            32 => return Type{ .tag = .u32 },
+            64 => return Type{ .tag = .u64 },
+
+            else => unreachable,
+        }
+    }
 }
 
 pub fn isLocalPointer(self: Type) bool {

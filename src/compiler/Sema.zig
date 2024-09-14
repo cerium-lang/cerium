@@ -6,6 +6,7 @@ const std = @import("std");
 
 const Ast = @import("Ast.zig");
 const Hir = @import("Hir.zig");
+const Compilation = @import("Compilation.zig");
 const Lir = @import("Lir.zig");
 const Symbol = @import("Symbol.zig");
 const Type = @import("Type.zig");
@@ -13,6 +14,8 @@ const Type = @import("Type.zig");
 const Sema = @This();
 
 allocator: std.mem.Allocator,
+
+compilation: Compilation,
 
 lir: Lir = .{},
 
@@ -124,10 +127,147 @@ const Variable = struct {
     maybe_value: ?Value = null,
 };
 
-pub fn init(allocator: std.mem.Allocator) Sema {
+pub fn init(allocator: std.mem.Allocator, compilation: Compilation) Sema {
     return Sema{
         .allocator = allocator,
+        .compilation = compilation,
     };
+}
+
+fn checkRepresentability(self: *Sema, source_value: Value, destination_type: Type, source_loc: Ast.SourceLoc) Error!void {
+    const source_type = source_value.getType();
+
+    if (!source_value.canImplicitCast(destination_type)) {
+        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+        try error_message_buf.writer(self.allocator).print("'{}' cannot be implicitly casted to '{}'", .{ source_type, destination_type });
+
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+
+        return error.MismatchedTypes;
+    }
+
+    if (!source_value.canBeRepresented(destination_type)) {
+        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+        try error_message_buf.writer(self.allocator).print("'{}' cannot represent value '{}'", .{ destination_type, source_value });
+
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+
+        return error.TypeCannotRepresentValue;
+    }
+
+    if (source_type.isLocalPointer() and !destination_type.isLocalPointer()) {
+        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+        try error_message_buf.writer(self.allocator).print("'{}' is pointing to data that is local to this function and therefore cannot escape globally", .{source_type});
+
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+
+        return error.MismatchedTypes;
+    }
+}
+
+fn checkIntOrFloat(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {
+    if (!provided_type.isIntOrFloat()) {
+        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+        try error_message_buf.writer(self.allocator).print("'{}' is provided while expected an integer or float", .{provided_type});
+
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+
+        return error.MismatchedTypes;
+    }
+}
+
+fn checkIntOrFloatOrPointer(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {
+    if (!provided_type.isIntOrFloatOrPointer()) {
+        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+        try error_message_buf.writer(self.allocator).print("'{}' is provided while expected an integer or float or pointer", .{provided_type});
+
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+
+        return error.MismatchedTypes;
+    }
+}
+
+fn checkInt(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {
+    if (!provided_type.isInt()) {
+        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+        try error_message_buf.writer(self.allocator).print("'{}' is provided while expected an integer", .{provided_type});
+
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+
+        return error.MismatchedTypes;
+    }
+}
+
+fn checkBool(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {
+    if (provided_type.tag != .bool) {
+        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+        try error_message_buf.writer(self.allocator).print("'{}' is provided while expected 'bool'", .{provided_type});
+
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+
+        return error.MismatchedTypes;
+    }
+}
+
+fn checkCanBeCompared(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {
+    if (provided_type.getPointer()) |pointer| {
+        if (pointer.size == .many) {
+            var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+            try error_message_buf.writer(self.allocator).print("'{}' cannot be compared", .{provided_type});
+
+            self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+
+            return error.MismatchedTypes;
+        }
+    }
+}
+
+fn reportIncompatibleTypes(self: *Sema, lhs: Type, rhs: Type, source_loc: Ast.SourceLoc) Error!void {
+    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+    try error_message_buf.writer(self.allocator).print("'{}' is not compatible with '{}'", .{ lhs, rhs });
+
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+
+    return error.MismatchedTypes;
+}
+
+fn reportNotDeclared(self: *Sema, name: Ast.Name) Error!void {
+    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+    try error_message_buf.writer(self.allocator).print("'{s}' is not declared", .{name.buffer});
+
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = name.source_loc };
+
+    return error.Undeclared;
+}
+
+fn reportRedeclaration(self: *Sema, name: Ast.Name) Error!void {
+    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+    try error_message_buf.writer(self.allocator).print("redeclaration of '{s}'", .{name.buffer});
+
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = name.source_loc };
+
+    return error.Redeclared;
+}
+
+fn reportNotPointer(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {
+    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+    try error_message_buf.writer(self.allocator).print("'{}' is not a pointer", .{provided_type});
+
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+
+    return error.MismatchedTypes;
 }
 
 pub fn analyze(self: *Sema, hir: Hir) Error!void {
@@ -357,60 +497,6 @@ fn hirVariable(self: *Sema, infer: bool, symbol: Symbol) Error!void {
     try self.lir.instructions.append(self.allocator, .{ .variable = variable.symbol });
 }
 
-fn checkRepresentability(self: *Sema, source_value: Value, destination_type: Type, source_loc: Ast.SourceLoc) Error!void {
-    const source_type = source_value.getType();
-
-    if (!source_value.canImplicitCast(destination_type)) {
-        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-        try error_message_buf.writer(self.allocator).print("'{}' cannot be implicitly casted to '{}'", .{ source_type, destination_type });
-
-        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
-
-        return error.MismatchedTypes;
-    }
-
-    if (!source_value.canBeRepresented(destination_type)) {
-        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-        try error_message_buf.writer(self.allocator).print("'{}' cannot represent value '{}'", .{ destination_type, source_value });
-
-        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
-
-        return error.TypeCannotRepresentValue;
-    }
-
-    if (source_type.isLocalPointer() and !destination_type.isLocalPointer()) {
-        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-        try error_message_buf.writer(self.allocator).print("'{}' is pointing to data that is local to this function and therefore cannot escape globally", .{source_type});
-
-        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
-
-        return error.MismatchedTypes;
-    }
-}
-
-fn reportNotDeclared(self: *Sema, name: Ast.Name) Error!void {
-    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-    try error_message_buf.writer(self.allocator).print("'{s}' is not declared", .{name.buffer});
-
-    self.error_info = .{ .message = error_message_buf.items, .source_loc = name.source_loc };
-
-    return error.Undeclared;
-}
-
-fn reportRedeclaration(self: *Sema, name: Ast.Name) Error!void {
-    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-    try error_message_buf.writer(self.allocator).print("redeclaration of '{s}'", .{name.buffer});
-
-    self.error_info = .{ .message = error_message_buf.items, .source_loc = name.source_loc };
-
-    return error.Redeclared;
-}
-
 fn hirSet(self: *Sema, name: Ast.Name) Error!void {
     const variable = self.scope.getPtr(name.buffer) orelse return self.reportNotDeclared(name);
 
@@ -509,30 +595,6 @@ fn hirNegate(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
     }
 }
 
-fn checkInt(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {
-    if (!provided_type.isInt()) {
-        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-        try error_message_buf.writer(self.allocator).print("'{}' is provided while expected an integer", .{provided_type});
-
-        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
-
-        return error.MismatchedTypes;
-    }
-}
-
-fn checkBool(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {
-    if (provided_type.tag != .bool) {
-        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-        try error_message_buf.writer(self.allocator).print("'{}' is provided while expected 'bool'", .{provided_type});
-
-        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
-
-        return error.MismatchedTypes;
-    }
-}
-
 const NotOperation = enum {
     bool,
     bit,
@@ -612,16 +674,6 @@ fn hirReference(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
     });
 }
 
-fn reportNotPointer(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {
-    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-    try error_message_buf.writer(self.allocator).print("'{}' is not a pointer", .{provided_type});
-
-    self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
-
-    return error.MismatchedTypes;
-}
-
 fn hirRead(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
     const rhs = self.stack.pop();
     const rhs_type = rhs.getType();
@@ -652,42 +704,6 @@ fn hirWrite(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
     try self.checkRepresentability(rhs, lhs_pointer.child_type.*, source_loc);
 
     try self.lir.instructions.append(self.allocator, .write);
-}
-
-fn checkIntOrFloat(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {
-    if (!provided_type.isIntOrFloat()) {
-        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-        try error_message_buf.writer(self.allocator).print("'{}' is provided while expected an integer or float", .{provided_type});
-
-        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
-
-        return error.MismatchedTypes;
-    }
-}
-
-fn checkCanBeCompared(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {
-    if (provided_type.getPointer()) |pointer| {
-        if (pointer.size == .many) {
-            var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-            try error_message_buf.writer(self.allocator).print("'{}' cannot be compared", .{provided_type});
-
-            self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
-
-            return error.MismatchedTypes;
-        }
-    }
-}
-
-fn reportIncompatibleTypes(self: *Sema, lhs: Type, rhs: Type, source_loc: Ast.SourceLoc) Error!void {
-    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-    try error_message_buf.writer(self.allocator).print("'{}' is not compatible with '{}'", .{ lhs, rhs });
-
-    self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
-
-    return error.MismatchedTypes;
 }
 
 const ComparisonOperation = enum {
@@ -915,11 +931,30 @@ fn hirArithmetic(self: *Sema, comptime operation: ArithmeticOperation, source_lo
     const lhs_type = lhs.getType();
     const rhs_type = rhs.getType();
 
-    try self.checkIntOrFloat(lhs_type, source_loc);
-    try self.checkIntOrFloat(rhs_type, source_loc);
+    if (operation == .add or operation == .sub) {
+        try self.checkIntOrFloatOrPointer(lhs_type, source_loc);
+        try self.checkIntOrFloatOrPointer(rhs_type, source_loc);
 
-    if (lhs_type.isInt() != rhs_type.isInt() or (lhs_type.tag != rhs_type.tag and !lhs_type.isAmbigiuous() and !rhs_type.isAmbigiuous())) {
-        return self.reportIncompatibleTypes(lhs_type, rhs_type, source_loc);
+        const usize_type = Type.makeInt(false, self.compilation.env.target.ptrBitWidth());
+
+        if (lhs_type.tag == .pointer) {
+            try self.checkRepresentability(rhs, usize_type, source_loc);
+        } else if (rhs_type.tag == .pointer) {
+            try self.checkRepresentability(lhs, usize_type, source_loc);
+        } else if ((lhs_type.isInt() != rhs_type.isInt()) or
+            (lhs_type.tag != rhs_type.tag and !lhs_type.isAmbigiuous() and !rhs_type.isAmbigiuous()))
+        {
+            return self.reportIncompatibleTypes(lhs_type, rhs_type, source_loc);
+        }
+    } else {
+        try self.checkIntOrFloat(lhs_type, source_loc);
+        try self.checkIntOrFloat(rhs_type, source_loc);
+
+        if ((lhs_type.isInt() != rhs_type.isInt()) or
+            (lhs_type.tag != rhs_type.tag and !lhs_type.isAmbigiuous() and !rhs_type.isAmbigiuous()))
+        {
+            return self.reportIncompatibleTypes(lhs_type, rhs_type, source_loc);
+        }
     }
 
     switch (lhs) {
@@ -975,7 +1010,11 @@ fn hirArithmetic(self: *Sema, comptime operation: ArithmeticOperation, source_lo
         .div => try self.lir.instructions.append(self.allocator, .div),
     }
 
-    if (!lhs_type.isAmbigiuous()) {
+    if (lhs_type.tag == .pointer) {
+        try self.stack.append(self.allocator, .{ .runtime = .{ .type = lhs_type } });
+    } else if (rhs_type.tag == .pointer) {
+        try self.stack.append(self.allocator, .{ .runtime = .{ .type = rhs_type } });
+    } else if (!lhs_type.isAmbigiuous()) {
         // Check if we can represent the rhs ambigiuous value as lhs type (e.g. x + 4)
         if (rhs_type.isAmbigiuous()) {
             try self.checkRepresentability(rhs, lhs_type, source_loc);
