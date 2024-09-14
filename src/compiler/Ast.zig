@@ -529,93 +529,120 @@ pub const Parser = struct {
         };
     }
 
-    fn parseStringExpr(self: *Parser) Error!Node.Expr {
-        const content = self.tokenValue(self.peekToken());
-        const source_loc = self.tokenSourceLoc(self.nextToken());
+    const UnescapeError = error{InvalidEscapeCharacter} || std.mem.Allocator.Error;
 
-        var unescaped = try std.ArrayListUnmanaged(u8).initCapacity(self.allocator, content.len);
+    fn unescape(output: *std.ArrayList(u8), input: []const u8) UnescapeError!void {
+        try output.ensureTotalCapacity(input.len);
 
         var unescaping = false;
 
-        for (content) |char| {
+        for (input) |input_char| {
             switch (unescaping) {
-                false => switch (char) {
+                false => switch (input_char) {
                     '\\' => unescaping = true,
 
-                    else => unescaped.appendAssumeCapacity(char),
+                    else => output.appendAssumeCapacity(input_char),
                 },
 
                 true => {
                     unescaping = false;
 
-                    switch (char) {
+                    switch (input_char) {
                         '\\' => {
-                            unescaped.appendAssumeCapacity('\\');
+                            output.appendAssumeCapacity('\\');
                         },
 
                         'n' => {
-                            unescaped.appendAssumeCapacity('\n');
+                            output.appendAssumeCapacity('\n');
                         },
 
                         'r' => {
-                            unescaped.appendAssumeCapacity('\r');
+                            output.appendAssumeCapacity('\r');
                         },
 
                         't' => {
-                            unescaped.appendAssumeCapacity('\t');
+                            output.appendAssumeCapacity('\t');
                         },
 
                         'e' => {
-                            unescaped.appendAssumeCapacity(27);
+                            output.appendAssumeCapacity(27);
                         },
 
                         'v' => {
-                            unescaped.appendAssumeCapacity(11);
+                            output.appendAssumeCapacity(11);
                         },
 
                         'b' => {
-                            unescaped.appendAssumeCapacity(8);
+                            output.appendAssumeCapacity(8);
                         },
 
                         'f' => {
-                            unescaped.appendAssumeCapacity(20);
+                            output.appendAssumeCapacity(20);
                         },
 
                         '"' => {
-                            unescaped.appendAssumeCapacity('"');
+                            output.appendAssumeCapacity('"');
                         },
 
-                        else => {
-                            self.error_info = .{ .message = "invalid escape character in string", .source_loc = source_loc };
-
-                            return error.InvalidString;
-                        },
+                        else => return error.InvalidEscapeCharacter,
                     }
                 },
             }
         }
+    }
+
+    fn parseStringExpr(self: *Parser) Error!Node.Expr {
+        const content = self.tokenValue(self.peekToken());
+        const source_loc = self.tokenSourceLoc(self.nextToken());
+
+        var unescaped_list = std.ArrayList(u8).init(self.allocator);
+
+        unescape(&unescaped_list, content) catch |err| switch (err) {
+            error.InvalidEscapeCharacter => {
+                self.error_info = .{ .message = "invalid escape character", .source_loc = source_loc };
+
+                return error.InvalidString;
+            },
+
+            inline else => |other_err| return other_err,
+        };
+
+        const unescaped = unescaped_list.items;
 
         return Node.Expr{
             .string = .{
-                .value = unescaped.items,
+                .value = unescaped,
                 .source_loc = source_loc,
             },
         };
     }
 
     fn parseCharExpr(self: *Parser) Error!Node.Expr {
-        const token = self.nextToken();
-        const encoded = self.tokenValue(token);
-        const location = self.tokenSourceLoc(token);
+        const encoded = self.tokenValue(self.peekToken());
+        const source_loc = self.tokenSourceLoc(self.nextToken());
 
-        const decoded = switch (encoded.len) {
-            1 => encoded[0],
-            2 => std.unicode.utf8Decode2(encoded[0..2].*),
-            3 => std.unicode.utf8Decode3(encoded[0..3].*),
-            4 => std.unicode.utf8Decode4(encoded[0..4].*),
+        var unescaped_list = std.ArrayList(u8).init(self.allocator);
+
+        unescape(&unescaped_list, encoded) catch |err| switch (err) {
+            error.InvalidEscapeCharacter => {
+                self.error_info = .{ .message = "invalid escape character", .source_loc = source_loc };
+
+                return error.InvalidChar;
+            },
+
+            inline else => |other_err| return other_err,
+        };
+
+        const unescaped = unescaped_list.items;
+
+        const decoded = switch (unescaped.len) {
+            1 => unescaped[0],
+            2 => std.unicode.utf8Decode2(unescaped[0..2].*),
+            3 => std.unicode.utf8Decode3(unescaped[0..3].*),
+            4 => std.unicode.utf8Decode4(unescaped[0..4].*),
             else => error.TooMuchCodes,
         } catch {
-            self.error_info = .{ .message = "invalid character literal", .source_loc = location };
+            self.error_info = .{ .message = "invalid character literal", .source_loc = source_loc };
 
             return error.InvalidChar;
         };
@@ -623,7 +650,7 @@ pub const Parser = struct {
         return Node.Expr{
             .int = .{
                 .value = decoded,
-                .source_loc = self.tokenSourceLoc(token),
+                .source_loc = source_loc,
             },
         };
     }
