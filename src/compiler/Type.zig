@@ -95,6 +95,24 @@ pub fn makeInt(signedness: bool, bits: u16) Type {
     }
 }
 
+pub fn bitSize(self: Type, env: Compilation.Environment) u16 {
+    return switch (self.tag) {
+        .pointer => env.target.ptrBitWidth(),
+        .function => env.target.ptrBitWidth(),
+        .i8, .u8 => 8,
+        .i16, .u16 => 16,
+        .f32, .i32, .u32 => 32,
+        .f64, .i64, .u64 => 64,
+        .bool => 1,
+
+        else => 0,
+    };
+}
+
+pub fn byteSize(self: Type, env: Compilation.Environment) u16 {
+    return std.math.divCeil(u16, self.bitSize(env), 8);
+}
+
 pub fn isLocalPointer(self: Type) bool {
     return self.data == .pointer and self.data == .pointer and self.data.pointer.is_local;
 }

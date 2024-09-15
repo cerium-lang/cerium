@@ -73,9 +73,11 @@ pub const Block = struct {
         read: Ast.SourceLoc,
         /// Override the data that the pointer is pointing to
         write: Ast.SourceLoc,
-        /// Add two integers or floats on the top of the stack
+        /// Offset a pointer using byte alignment and type size as a factor
+        offset: Ast.SourceLoc,
+        /// Add two integers or floats or pointers on the top of the stack
         add: Ast.SourceLoc,
-        /// Subtract two integers or floats on the top of the stack
+        /// Subtract two integers or floats or pointers on the top of the stack
         sub: Ast.SourceLoc,
         /// Multiply two integers or floats on the top of the stack
         mul: Ast.SourceLoc,
@@ -283,6 +285,8 @@ pub const Generator = struct {
 
             .binary_operation => |binary_operation| try self.generateBinaryOperationExpr(binary_operation),
 
+            .subscript => |subscript| try self.generateSubscript(subscript),
+
             .call => |call| try self.generateCallExpr(call),
         }
     }
@@ -312,26 +316,37 @@ pub const Generator = struct {
     }
 
     fn generateUnaryOperationExpr(self: *Generator, unary_operation: Ast.Node.Expr.UnaryOperation) Error!void {
-        try self.generateExpr(unary_operation.rhs.*);
-
         switch (unary_operation.operator) {
             .minus => {
+                try self.generateExpr(unary_operation.rhs.*);
                 try self.maybe_hir_block.?.instructions.append(self.allocator, .{ .negate = unary_operation.source_loc });
             },
 
             .bang => {
+                try self.generateExpr(unary_operation.rhs.*);
                 try self.maybe_hir_block.?.instructions.append(self.allocator, .{ .bool_not = unary_operation.source_loc });
             },
 
             .tilde => {
+                try self.generateExpr(unary_operation.rhs.*);
                 try self.maybe_hir_block.?.instructions.append(self.allocator, .{ .bit_not = unary_operation.source_loc });
             },
 
             .ampersand => {
-                try self.maybe_hir_block.?.instructions.append(self.allocator, .{ .reference = unary_operation.source_loc });
+                if (unary_operation.rhs.* == .subscript) {
+                    try self.generateExpr(unary_operation.rhs.subscript.target.*);
+                    try self.generateExpr(unary_operation.rhs.subscript.index.*);
+
+                    try self.maybe_hir_block.?.instructions.append(self.allocator, .{ .offset = unary_operation.rhs.subscript.source_loc });
+                } else {
+                    try self.generateExpr(unary_operation.rhs.*);
+
+                    try self.maybe_hir_block.?.instructions.append(self.allocator, .{ .reference = unary_operation.source_loc });
+                }
             },
 
             .star => {
+                try self.generateExpr(unary_operation.rhs.*);
                 try self.maybe_hir_block.?.instructions.append(self.allocator, .{ .read = unary_operation.source_loc });
             },
         }
@@ -446,6 +461,14 @@ pub const Generator = struct {
                 }
             },
         }
+    }
+
+    fn generateSubscript(self: *Generator, subscript: Ast.Node.Expr.Subscript) Error!void {
+        try self.generateExpr(subscript.target.*);
+        try self.generateExpr(subscript.index.*);
+
+        try self.maybe_hir_block.?.instructions.append(self.allocator, .{ .offset = subscript.source_loc });
+        try self.maybe_hir_block.?.instructions.append(self.allocator, .{ .read = subscript.source_loc });
     }
 
     fn generateCallExpr(self: *Generator, call: Ast.Node.Expr.Call) Error!void {

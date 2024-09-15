@@ -272,6 +272,16 @@ fn reportNotPointer(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc)
     return error.MismatchedTypes;
 }
 
+fn reportNotIndexable(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {
+    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+    try error_message_buf.writer(self.allocator).print("'{}' does not support indexing", .{provided_type});
+
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+
+    return error.UnexpectedType;
+}
+
 pub fn analyze(self: *Sema, hir: Hir) Error!void {
     const global_scope = try self.scope_stack.addOne(self.allocator);
     global_scope.* = .{};
@@ -384,6 +394,7 @@ fn hirInstruction(self: *Sema, instruction: Hir.Block.Instruction) Error!void {
 
         .read => |source_loc| try self.hirRead(source_loc),
         .write => |source_loc| try self.hirWrite(source_loc),
+        .offset => |source_loc| try self.hirOffset(source_loc),
 
         .add => |source_loc| try self.hirArithmetic(.add, source_loc),
         .sub => |source_loc| try self.hirArithmetic(.sub, source_loc),
@@ -734,6 +745,25 @@ fn hirWrite(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
     try self.checkRepresentability(rhs, lhs_pointer.child_type.*, source_loc);
 
     try self.lir_block.instructions.append(self.allocator, .write);
+}
+
+fn hirOffset(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
+    const rhs = self.stack.pop();
+
+    const lhs = self.stack.pop();
+    const lhs_type = lhs.getType();
+
+    const lhs_pointer = lhs_type.getPointer() orelse return self.reportNotIndexable(lhs_type, source_loc);
+
+    if (lhs_pointer.size != .many) return try self.reportNotIndexable(lhs_type, source_loc);
+
+    const usize_type = Type.makeInt(false, self.env.target.ptrBitWidth());
+
+    try self.checkRepresentability(rhs, usize_type, source_loc);
+
+    try self.lir_block.instructions.append(self.allocator, .add);
+
+    try self.stack.append(self.allocator, .{ .runtime = .{ .type = lhs_type } });
 }
 
 const ComparisonOperation = enum {
