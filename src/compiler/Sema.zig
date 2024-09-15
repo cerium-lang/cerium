@@ -493,8 +493,12 @@ fn hirConstant(self: *Sema, infer: bool, symbol: Symbol) Error!void {
         return error.ExpectedCompiletimeConstant;
     }
 
-    var initializer_block = self.lir.blocks.pop();
-    initializer_block.instructions.deinit(self.allocator);
+    if (variable.symbol.linkage == .global) {
+        var initializer_block = self.lir.blocks.pop();
+        initializer_block.instructions.deinit(self.allocator);
+    } else {
+        _ = self.lir_block.instructions.pop();
+    }
 
     try self.scope.put(self.allocator, variable.symbol.name.buffer, variable);
 }
