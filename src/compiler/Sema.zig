@@ -355,78 +355,78 @@ pub fn analyze(self: *Sema, hir: Hir) Error!void {
         }
 
         for (hir_block.instructions.items) |hir_instruction| {
-            try self.hirInstruction(hir_instruction);
+            try self.analyzeInstruction(hir_instruction);
         }
     }
 }
 
-fn hirInstruction(self: *Sema, instruction: Hir.Block.Instruction) Error!void {
+fn analyzeInstruction(self: *Sema, instruction: Hir.Block.Instruction) Error!void {
     switch (instruction) {
-        .function_proluge => try self.hirFunctionProluge(),
-        .function_epilogue => try self.hirFunctionEpilogue(),
-        .function_parameter => try self.hirFunctionParameter(),
+        .function_proluge => try self.analyzeFunctionProluge(),
+        .function_epilogue => try self.analyzeFunctionEpilogue(),
+        .function_parameter => try self.analyzeFunctionParameter(),
 
-        .call => |info| try self.hirCall(info),
+        .call => |info| try self.analyzeCall(info),
 
-        .constant => |symbol| try self.hirConstant(false, symbol),
-        .constant_infer => |symbol| try self.hirConstant(true, symbol),
+        .constant => |symbol| try self.analyzeConstant(false, symbol),
+        .constant_infer => |symbol| try self.analyzeConstant(true, symbol),
 
-        .variable => |symbol| try self.hirVariable(false, symbol),
-        .variable_infer => |symbol| try self.hirVariable(true, symbol),
+        .variable => |symbol| try self.analyzeVariable(false, symbol),
+        .variable_infer => |symbol| try self.analyzeVariable(true, symbol),
 
-        .set => |name| try self.hirSet(name),
-        .get => |name| try self.hirGet(name),
+        .set => |name| try self.analyzeSet(name),
+        .get => |name| try self.analyzeGet(name),
 
-        .string => |string| try self.hirString(string),
-        .int => |int| try self.hirInt(int),
-        .float => |float| try self.hirFloat(float),
+        .string => |string| try self.analyzeString(string),
+        .int => |int| try self.analyzeInt(int),
+        .float => |float| try self.analyzeFloat(float),
 
-        .negate => |source_loc| try self.hirNegate(source_loc),
+        .negate => |source_loc| try self.analyzeNegate(source_loc),
 
-        .bool_not => |source_loc| try self.hirNot(.bool, source_loc),
-        .bit_not => |source_loc| try self.hirNot(.bit, source_loc),
+        .bool_not => |source_loc| try self.analyzeNot(.bool, source_loc),
+        .bit_not => |source_loc| try self.analyzeNot(.bit, source_loc),
 
-        .bit_and => |source_loc| try self.hirBitwiseArithmetic(.bit_and, source_loc),
-        .bit_or => |source_loc| try self.hirBitwiseArithmetic(.bit_or, source_loc),
-        .bit_xor => |source_loc| try self.hirBitwiseArithmetic(.bit_xor, source_loc),
+        .bit_and => |source_loc| try self.analyzeBitwiseArithmetic(.bit_and, source_loc),
+        .bit_or => |source_loc| try self.analyzeBitwiseArithmetic(.bit_or, source_loc),
+        .bit_xor => |source_loc| try self.analyzeBitwiseArithmetic(.bit_xor, source_loc),
 
-        .reference => |source_loc| try self.hirReference(source_loc),
+        .reference => |source_loc| try self.analyzeReference(source_loc),
 
-        .read => |source_loc| try self.hirRead(source_loc),
-        .write => |source_loc| try self.hirWrite(source_loc),
-        .offset => |source_loc| try self.hirOffset(source_loc),
+        .read => |source_loc| try self.analyzeRead(source_loc),
+        .write => |source_loc| try self.analyzeWrite(source_loc),
+        .offset => |source_loc| try self.analyzeOffset(source_loc),
 
-        .add => |source_loc| try self.hirArithmetic(.add, source_loc),
-        .sub => |source_loc| try self.hirArithmetic(.sub, source_loc),
-        .mul => |source_loc| try self.hirArithmetic(.mul, source_loc),
-        .div => |source_loc| try self.hirArithmetic(.div, source_loc),
+        .add => |source_loc| try self.analyzeArithmetic(.add, source_loc),
+        .sub => |source_loc| try self.analyzeArithmetic(.sub, source_loc),
+        .mul => |source_loc| try self.analyzeArithmetic(.mul, source_loc),
+        .div => |source_loc| try self.analyzeArithmetic(.div, source_loc),
 
-        .lt => |source_loc| try self.hirComparison(.lt, source_loc),
-        .gt => |source_loc| try self.hirComparison(.gt, source_loc),
-        .eql => |source_loc| try self.hirComparison(.eql, source_loc),
+        .lt => |source_loc| try self.analyzeComparison(.lt, source_loc),
+        .gt => |source_loc| try self.analyzeComparison(.gt, source_loc),
+        .eql => |source_loc| try self.analyzeComparison(.eql, source_loc),
 
-        .shl => |source_loc| try self.hirBitwiseShift(.left, source_loc),
-        .shr => |source_loc| try self.hirBitwiseShift(.right, source_loc),
+        .shl => |source_loc| try self.analyzeBitwiseShift(.left, source_loc),
+        .shr => |source_loc| try self.analyzeBitwiseShift(.right, source_loc),
 
-        .pop => try self.hirPop(),
+        .pop => try self.analyzePop(),
 
-        .assembly => |assembly| try self.hirAssembly(assembly),
+        .assembly => |assembly| try self.analyzeAssembly(assembly),
 
-        .@"return" => try self.hirReturn(),
+        .@"return" => try self.analyzeReturn(),
     }
 }
 
-fn hirFunctionProluge(self: *Sema) Error!void {
+fn analyzeFunctionProluge(self: *Sema) Error!void {
     try self.lir_block.instructions.append(self.allocator, .function_proluge);
 }
 
-fn hirFunctionEpilogue(self: *Sema) Error!void {
+fn analyzeFunctionEpilogue(self: *Sema) Error!void {
     if (self.maybe_function == null) return;
 
     try self.lir_block.instructions.append(self.allocator, .function_epilogue);
 }
 
-fn hirFunctionParameter(self: *Sema) Error!void {
+fn analyzeFunctionParameter(self: *Sema) Error!void {
     const function_parameter = self.maybe_function.?.prototype.parameters[self.function_parameter_index];
 
     const function_parameter_symbol: Symbol = .{
@@ -442,7 +442,7 @@ fn hirFunctionParameter(self: *Sema) Error!void {
     self.function_parameter_index += 1;
 }
 
-fn hirCall(self: *Sema, info: struct { usize, Ast.SourceLoc }) Error!void {
+fn analyzeCall(self: *Sema, info: struct { usize, Ast.SourceLoc }) Error!void {
     const arguments_count, const source_loc = info;
 
     const callable = self.stack.pop();
@@ -483,7 +483,7 @@ fn hirCall(self: *Sema, info: struct { usize, Ast.SourceLoc }) Error!void {
     }
 }
 
-fn hirConstant(self: *Sema, infer: bool, symbol: Symbol) Error!void {
+fn analyzeConstant(self: *Sema, infer: bool, symbol: Symbol) Error!void {
     var variable: Variable = .{ .is_const = true, .is_comptime = true, .symbol = symbol };
 
     const value = self.stack.getLast();
@@ -514,7 +514,7 @@ fn hirConstant(self: *Sema, infer: bool, symbol: Symbol) Error!void {
     try self.scope.put(self.allocator, variable.symbol.name.buffer, variable);
 }
 
-fn hirVariable(self: *Sema, infer: bool, symbol: Symbol) Error!void {
+fn analyzeVariable(self: *Sema, infer: bool, symbol: Symbol) Error!void {
     var variable: Variable = .{ .symbol = symbol };
 
     if (infer) {
@@ -538,7 +538,7 @@ fn hirVariable(self: *Sema, infer: bool, symbol: Symbol) Error!void {
     try self.lir_block.instructions.append(self.allocator, .{ .variable = variable.symbol });
 }
 
-fn hirSet(self: *Sema, name: Ast.Name) Error!void {
+fn analyzeSet(self: *Sema, name: Ast.Name) Error!void {
     const variable = self.scope.getPtr(name.buffer) orelse return self.reportNotDeclared(name);
 
     const value = self.stack.pop();
@@ -562,7 +562,7 @@ fn hirSet(self: *Sema, name: Ast.Name) Error!void {
     }
 }
 
-fn hirGet(self: *Sema, name: Ast.Name) Error!void {
+fn analyzeGet(self: *Sema, name: Ast.Name) Error!void {
     const variable = self.scope.get(name.buffer) orelse return self.reportNotDeclared(name);
 
     if (variable.maybe_value) |value| {
@@ -582,25 +582,25 @@ fn hirGet(self: *Sema, name: Ast.Name) Error!void {
     }
 }
 
-fn hirString(self: *Sema, string: []const u8) Error!void {
+fn analyzeString(self: *Sema, string: []const u8) Error!void {
     try self.stack.append(self.allocator, .{ .string = string });
 
     try self.lir_block.instructions.append(self.allocator, .{ .string = string });
 }
 
-fn hirInt(self: *Sema, int: i128) Error!void {
+fn analyzeInt(self: *Sema, int: i128) Error!void {
     try self.stack.append(self.allocator, .{ .int = int });
 
     try self.lir_block.instructions.append(self.allocator, .{ .int = int });
 }
 
-fn hirFloat(self: *Sema, float: f64) Error!void {
+fn analyzeFloat(self: *Sema, float: f64) Error!void {
     try self.stack.append(self.allocator, .{ .float = float });
 
     try self.lir_block.instructions.append(self.allocator, .{ .float = float });
 }
 
-fn hirNegate(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
+fn analyzeNegate(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
     const rhs = self.stack.pop();
 
     if (!rhs.getType().canBeNegative()) {
@@ -641,7 +641,7 @@ const NotOperation = enum {
     bit,
 };
 
-fn hirNot(self: *Sema, comptime operand: NotOperation, source_loc: Ast.SourceLoc) Error!void {
+fn analyzeNot(self: *Sema, comptime operand: NotOperation, source_loc: Ast.SourceLoc) Error!void {
     const rhs = self.stack.pop();
     const rhs_type = rhs.getType();
 
@@ -674,7 +674,7 @@ fn hirNot(self: *Sema, comptime operand: NotOperation, source_loc: Ast.SourceLoc
     }
 }
 
-fn hirReference(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
+fn analyzeReference(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
     const rhs = self.stack.pop();
 
     if (!(rhs == .runtime and rhs.runtime.data == .name)) {
@@ -715,7 +715,7 @@ fn hirReference(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
     });
 }
 
-fn hirRead(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
+fn analyzeRead(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
     const rhs = self.stack.pop();
     const rhs_type = rhs.getType();
 
@@ -728,7 +728,7 @@ fn hirRead(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
     try self.stack.append(self.allocator, .{ .runtime = .{ .type = result_type } });
 }
 
-fn hirWrite(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
+fn analyzeWrite(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
     const rhs = self.stack.pop();
 
     const lhs = self.stack.pop();
@@ -747,7 +747,7 @@ fn hirWrite(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
     try self.lir_block.instructions.append(self.allocator, .write);
 }
 
-fn hirOffset(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
+fn analyzeOffset(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
     const rhs = self.stack.pop();
 
     const lhs = self.stack.pop();
@@ -772,7 +772,7 @@ const ComparisonOperation = enum {
     eql,
 };
 
-fn hirComparison(self: *Sema, comptime operation: ComparisonOperation, source_loc: Ast.SourceLoc) Error!void {
+fn analyzeComparison(self: *Sema, comptime operation: ComparisonOperation, source_loc: Ast.SourceLoc) Error!void {
     const rhs = self.stack.pop();
     const lhs = self.stack.pop();
 
@@ -868,7 +868,7 @@ const BitwiseShiftDirection = enum {
     right,
 };
 
-fn hirBitwiseShift(self: *Sema, comptime direction: BitwiseShiftDirection, source_loc: Ast.SourceLoc) Error!void {
+fn analyzeBitwiseShift(self: *Sema, comptime direction: BitwiseShiftDirection, source_loc: Ast.SourceLoc) Error!void {
     const rhs = self.stack.pop();
     const lhs = self.stack.pop();
 
@@ -916,7 +916,7 @@ const BitwiseArithmeticOperation = enum {
     bit_xor,
 };
 
-fn hirBitwiseArithmetic(self: *Sema, comptime operation: BitwiseArithmeticOperation, source_loc: Ast.SourceLoc) Error!void {
+fn analyzeBitwiseArithmetic(self: *Sema, comptime operation: BitwiseArithmeticOperation, source_loc: Ast.SourceLoc) Error!void {
     const rhs = self.stack.pop();
     const lhs = self.stack.pop();
 
@@ -984,7 +984,7 @@ const ArithmeticOperation = enum {
     div,
 };
 
-fn hirArithmetic(self: *Sema, comptime operation: ArithmeticOperation, source_loc: Ast.SourceLoc) Error!void {
+fn analyzeArithmetic(self: *Sema, comptime operation: ArithmeticOperation, source_loc: Ast.SourceLoc) Error!void {
     const rhs = self.stack.pop();
     const lhs = self.stack.pop();
 
@@ -1091,7 +1091,7 @@ fn hirArithmetic(self: *Sema, comptime operation: ArithmeticOperation, source_lo
     }
 }
 
-fn hirPop(self: *Sema) Error!void {
+fn analyzePop(self: *Sema) Error!void {
     if (self.stack.popOrNull()) |unused_value| {
         if (unused_value.getType().tag != .void) {
             try self.lir_block.instructions.append(self.allocator, .pop);
@@ -1099,7 +1099,7 @@ fn hirPop(self: *Sema) Error!void {
     }
 }
 
-fn hirAssembly(self: *Sema, assembly: Ast.Node.Expr.Assembly) Error!void {
+fn analyzeAssembly(self: *Sema, assembly: Ast.Node.Expr.Assembly) Error!void {
     if (self.maybe_function == null and (assembly.input_constraints.len > 0 or assembly.output_constraint != null)) {
         self.error_info = .{ .message = "global assembly should not contain any input or output constraints", .source_loc = assembly.source_loc };
 
@@ -1129,7 +1129,7 @@ fn hirAssembly(self: *Sema, assembly: Ast.Node.Expr.Assembly) Error!void {
     }
 }
 
-fn hirReturn(self: *Sema) Error!void {
+fn analyzeReturn(self: *Sema) Error!void {
     if (self.maybe_function == null) return;
 
     if (self.stack.popOrNull()) |return_value| {
