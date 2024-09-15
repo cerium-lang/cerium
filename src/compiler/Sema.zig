@@ -19,9 +19,11 @@ env: Compilation.Environment,
 
 lir: Lir = .{},
 
+lir_block: *Lir.Block = undefined,
+
 stack: std.ArrayListUnmanaged(Value) = .{},
 
-function: ?Ast.Node.Stmt.FunctionDeclaration = null,
+maybe_function: ?Ast.Node.Stmt.FunctionDeclaration = null,
 function_parameter_index: usize = 0,
 
 scope_stack: std.ArrayListUnmanaged(Symbol.Scope(Variable)) = .{},
@@ -290,20 +292,67 @@ pub fn analyze(self: *Sema, hir: Hir) Error!void {
         .maybe_value = .{ .boolean = false },
     });
 
-    try self.hirInstructions(hir.instructions.items);
-}
+    for (hir.blocks.items) |hir_block| {
+        if (self.scope.get(hir_block.label.buffer) != null) {
+            return self.reportRedeclaration(hir_block.label);
+        }
 
-fn hirInstructions(self: *Sema, instructions: []const Hir.Instruction) Error!void {
-    for (instructions) |instruction| {
-        try self.hirInstruction(instruction);
+        self.lir_block = try self.lir.blocks.addOne(self.allocator);
+        self.lir_block.* = .{ .tag = @enumFromInt(@intFromEnum(hir_block.tag)), .label = hir_block.label.buffer };
+
+        if (hir_block.tag == .basic) {
+            if (hir_block.maybe_function) |ast_function| {
+                var function_parameter_types: std.ArrayListUnmanaged(Type) = .{};
+                for (ast_function.prototype.parameters) |ast_function_parameter| {
+                    try function_parameter_types.append(self.allocator, ast_function_parameter.expected_type);
+                }
+
+                const function_return_type_on_heap = try self.allocator.create(Type);
+                function_return_type_on_heap.* = ast_function.prototype.return_type;
+
+                const function: Type.Data.Function = .{
+                    .parameter_types = try function_parameter_types.toOwnedSlice(self.allocator),
+                    .return_type = function_return_type_on_heap,
+                };
+
+                self.lir_block.maybe_function = function;
+
+                self.maybe_function = ast_function;
+                self.function_parameter_index = 0;
+
+                try self.scope.put(
+                    self.allocator,
+                    hir_block.label.buffer,
+                    .{
+                        .symbol = .{
+                            .name = hir_block.label,
+                            .type = .{
+                                .tag = .function,
+                                .data = .{
+                                    .function = function,
+                                },
+                            },
+                            .linkage = .global,
+                        },
+                        .is_const = true,
+                    },
+                );
+            }
+
+            const local_scope = try self.scope_stack.addOne(self.allocator);
+            local_scope.* = .{ .maybe_parent = self.scope };
+            self.scope = local_scope;
+        }
+
+        for (hir_block.instructions.items) |hir_instruction| {
+            try self.hirInstruction(hir_instruction);
+        }
     }
 }
 
-fn hirInstruction(self: *Sema, instruction: Hir.Instruction) Error!void {
+fn hirInstruction(self: *Sema, instruction: Hir.Block.Instruction) Error!void {
     switch (instruction) {
-        .label => |info| try self.hirLabel(info),
-
-        .function_proluge => |function| try self.hirFunctionProluge(function),
+        .function_proluge => try self.hirFunctionProluge(),
         .function_epilogue => try self.hirFunctionEpilogue(),
         .function_parameter => try self.hirFunctionParameter(),
 
@@ -356,35 +405,18 @@ fn hirInstruction(self: *Sema, instruction: Hir.Instruction) Error!void {
     }
 }
 
-fn hirLabel(self: *Sema, info: struct { bool, Ast.Name }) Error!void {
-    const is_function, const name = info;
-
-    if (self.scope.get(name.buffer) != null) {
-        return self.reportRedeclaration(name);
-    }
-
-    try self.lir.instructions.append(self.allocator, .{ .label = .{ is_function, name.buffer } });
-}
-
-fn hirFunctionProluge(self: *Sema, function: Ast.Node.Stmt.FunctionDeclaration) Error!void {
-    try self.lir.instructions.append(self.allocator, .function_proluge);
-
-    self.function = function;
-    self.function_parameter_index = 0;
-
-    const new_scope = try self.scope_stack.addOne(self.allocator);
-    new_scope.* = .{ .maybe_parent = self.scope };
-    self.scope = new_scope;
+fn hirFunctionProluge(self: *Sema) Error!void {
+    try self.lir_block.instructions.append(self.allocator, .function_proluge);
 }
 
 fn hirFunctionEpilogue(self: *Sema) Error!void {
-    if (self.function == null) return;
+    if (self.maybe_function == null) return;
 
-    try self.lir.instructions.append(self.allocator, .function_epilogue);
+    try self.lir_block.instructions.append(self.allocator, .function_epilogue);
 }
 
 fn hirFunctionParameter(self: *Sema) Error!void {
-    const function_parameter = self.function.?.prototype.parameters[self.function_parameter_index];
+    const function_parameter = self.maybe_function.?.prototype.parameters[self.function_parameter_index];
 
     const function_parameter_symbol: Symbol = .{
         .name = function_parameter.name,
@@ -394,7 +426,7 @@ fn hirFunctionParameter(self: *Sema) Error!void {
 
     try self.scope.put(self.allocator, function_parameter_symbol.name.buffer, .{ .is_const = true, .symbol = function_parameter_symbol });
 
-    try self.lir.instructions.append(self.allocator, .{ .function_parameter = .{ self.function_parameter_index, function_parameter_symbol } });
+    try self.lir_block.instructions.append(self.allocator, .{ .function_parameter = .{ self.function_parameter_index, function_parameter_symbol } });
 
     self.function_parameter_index += 1;
 }
@@ -428,7 +460,7 @@ fn hirCall(self: *Sema, info: struct { usize, Ast.SourceLoc }) Error!void {
             try self.checkRepresentability(argument, parameter_type, source_loc);
         }
 
-        try self.lir.instructions.append(self.allocator, .{ .call = function });
+        try self.lir_block.instructions.append(self.allocator, .{ .call = function });
 
         try self.stack.append(self.allocator, .{ .runtime = .{ .type = function.return_type.*, .data = .none } });
     } else {
@@ -450,7 +482,7 @@ fn hirConstant(self: *Sema, infer: bool, symbol: Symbol) Error!void {
     }
 
     if (variable.symbol.type.tag == .void) {
-        self.error_info = .{ .message = "you cannot declare a constant with type 'void'", .source_loc = variable.symbol.name.source_loc };
+        self.error_info = .{ .message = "cannot declare a constant with type 'void'", .source_loc = variable.symbol.name.source_loc };
 
         return error.UnexpectedType;
     }
@@ -461,14 +493,8 @@ fn hirConstant(self: *Sema, infer: bool, symbol: Symbol) Error!void {
         return error.ExpectedCompiletimeConstant;
     }
 
-    // Remove the label and initializer
-    {
-        _ = self.lir.instructions.pop();
-
-        if (variable.symbol.linkage == .global) {
-            _ = self.lir.instructions.pop();
-        }
-    }
+    var initializer_block = self.lir.blocks.pop();
+    initializer_block.instructions.deinit(self.allocator);
 
     try self.scope.put(self.allocator, variable.symbol.name.buffer, variable);
 }
@@ -481,20 +507,20 @@ fn hirVariable(self: *Sema, infer: bool, symbol: Symbol) Error!void {
     }
 
     if (variable.symbol.type.tag == .void) {
-        self.error_info = .{ .message = "you cannot declare a variable with type 'void'", .source_loc = variable.symbol.name.source_loc };
+        self.error_info = .{ .message = "cannot declare a variable with type 'void'", .source_loc = variable.symbol.name.source_loc };
 
         return error.UnexpectedType;
     }
 
     if (variable.symbol.type.isAmbigiuous()) {
-        self.error_info = .{ .message = "you cannot declare a variable with an ambigiuous type", .source_loc = variable.symbol.name.source_loc };
+        self.error_info = .{ .message = "cannot declare a variable with an ambigiuous type", .source_loc = variable.symbol.name.source_loc };
 
         return error.UnexpectedType;
     }
 
     try self.scope.put(self.allocator, variable.symbol.name.buffer, variable);
 
-    try self.lir.instructions.append(self.allocator, .{ .variable = variable.symbol });
+    try self.lir_block.instructions.append(self.allocator, .{ .variable = variable.symbol });
 }
 
 fn hirSet(self: *Sema, name: Ast.Name) Error!void {
@@ -505,18 +531,18 @@ fn hirSet(self: *Sema, name: Ast.Name) Error!void {
     if (variable.is_comptime and variable.maybe_value == null) {
         variable.maybe_value = value;
     } else if (variable.is_const) {
-        self.error_info = .{ .message = "you cannot mutate the value of a constant", .source_loc = name.source_loc };
+        self.error_info = .{ .message = "cannot mutate the value of a constant", .source_loc = name.source_loc };
 
         return error.UnexpectedMutation;
-    } else if (variable.symbol.linkage == .global and value == .runtime and self.function == null) {
+    } else if (variable.symbol.linkage == .global and value == .runtime and self.maybe_function == null) {
         self.error_info = .{ .message = "expected global variable initializer to be compile time known", .source_loc = name.source_loc };
 
         return error.ExpectedCompiletimeConstant;
     } else {
         try self.checkRepresentability(value, variable.symbol.type, name.source_loc);
 
-        if (self.function != null) {
-            try self.lir.instructions.append(self.allocator, .{ .set = name.buffer });
+        if (self.maybe_function != null) {
+            try self.lir_block.instructions.append(self.allocator, .{ .set = name.buffer });
         }
     }
 }
@@ -526,16 +552,16 @@ fn hirGet(self: *Sema, name: Ast.Name) Error!void {
 
     if (variable.maybe_value) |value| {
         switch (value) {
-            .string => |value_string| try self.lir.instructions.append(self.allocator, .{ .string = value_string }),
-            .int => |value_int| try self.lir.instructions.append(self.allocator, .{ .int = value_int }),
-            .float => |value_float| try self.lir.instructions.append(self.allocator, .{ .float = value_float }),
-            .boolean => |value_boolean| try self.lir.instructions.append(self.allocator, .{ .boolean = value_boolean }),
+            .string => |value_string| try self.lir_block.instructions.append(self.allocator, .{ .string = value_string }),
+            .int => |value_int| try self.lir_block.instructions.append(self.allocator, .{ .int = value_int }),
+            .float => |value_float| try self.lir_block.instructions.append(self.allocator, .{ .float = value_float }),
+            .boolean => |value_boolean| try self.lir_block.instructions.append(self.allocator, .{ .boolean = value_boolean }),
             .runtime => unreachable,
         }
 
         try self.stack.append(self.allocator, value);
     } else {
-        try self.lir.instructions.append(self.allocator, .{ .get = name.buffer });
+        try self.lir_block.instructions.append(self.allocator, .{ .get = name.buffer });
 
         try self.stack.append(self.allocator, .{ .runtime = .{ .type = variable.symbol.type, .data = .{ .name = variable.symbol.name } } });
     }
@@ -544,19 +570,19 @@ fn hirGet(self: *Sema, name: Ast.Name) Error!void {
 fn hirString(self: *Sema, string: []const u8) Error!void {
     try self.stack.append(self.allocator, .{ .string = string });
 
-    try self.lir.instructions.append(self.allocator, .{ .string = string });
+    try self.lir_block.instructions.append(self.allocator, .{ .string = string });
 }
 
 fn hirInt(self: *Sema, int: i128) Error!void {
     try self.stack.append(self.allocator, .{ .int = int });
 
-    try self.lir.instructions.append(self.allocator, .{ .int = int });
+    try self.lir_block.instructions.append(self.allocator, .{ .int = int });
 }
 
 fn hirFloat(self: *Sema, float: f64) Error!void {
     try self.stack.append(self.allocator, .{ .float = float });
 
-    try self.lir.instructions.append(self.allocator, .{ .float = float });
+    try self.lir_block.instructions.append(self.allocator, .{ .float = float });
 }
 
 fn hirNegate(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
@@ -574,19 +600,19 @@ fn hirNegate(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
 
     switch (rhs) {
         .int => |rhs_int| {
-            self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .int = -rhs_int };
+            self.lir_block.instructions.items[self.lir_block.instructions.items.len - 1] = .{ .int = -rhs_int };
 
             try self.stack.append(self.allocator, .{ .int = -rhs_int });
         },
 
         .float => |rhs_float| {
-            self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .float = -rhs_float };
+            self.lir_block.instructions.items[self.lir_block.instructions.items.len - 1] = .{ .float = -rhs_float };
 
             try self.stack.append(self.allocator, .{ .float = -rhs_float });
         },
 
         .runtime => |rhs_runtime| {
-            try self.lir.instructions.append(self.allocator, .negate);
+            try self.lir_block.instructions.append(self.allocator, .negate);
 
             try self.stack.append(self.allocator, .{ .runtime = .{ .type = rhs_runtime.type } });
         },
@@ -612,19 +638,19 @@ fn hirNot(self: *Sema, comptime operand: NotOperation, source_loc: Ast.SourceLoc
 
     switch (rhs) {
         .int => |rhs_int| {
-            self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .int = ~rhs_int };
+            self.lir_block.instructions.items[self.lir_block.instructions.items.len - 1] = .{ .int = ~rhs_int };
 
             try self.stack.append(self.allocator, .{ .int = ~rhs_int });
         },
 
         .boolean => |rhs_boolean| {
-            self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .boolean = !rhs_boolean };
+            self.lir_block.instructions.items[self.lir_block.instructions.items.len - 1] = .{ .boolean = !rhs_boolean };
 
             try self.stack.append(self.allocator, .{ .boolean = !rhs_boolean });
         },
 
         .runtime => |rhs_runtime| {
-            try self.lir.instructions.append(self.allocator, if (operand == .bool) .bool_not else .bit_not);
+            try self.lir_block.instructions.append(self.allocator, if (operand == .bool) .bool_not else .bit_not);
 
             try self.stack.append(self.allocator, .{ .runtime = .{ .type = rhs_runtime.type } });
         },
@@ -655,7 +681,7 @@ fn hirReference(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
     const child_on_heap = try self.allocator.create(Type);
     child_on_heap.* = rhs_runtime_type;
 
-    self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .get_ptr = rhs_runtime_name.buffer };
+    self.lir_block.instructions.items[self.lir_block.instructions.items.len - 1] = .{ .get_ptr = rhs_runtime_name.buffer };
 
     try self.stack.append(self.allocator, .{
         .runtime = .{
@@ -682,7 +708,7 @@ fn hirRead(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
 
     const result_type = rhs_pointer.child_type.*;
 
-    try self.lir.instructions.append(self.allocator, .{ .read = result_type });
+    try self.lir_block.instructions.append(self.allocator, .{ .read = result_type });
 
     try self.stack.append(self.allocator, .{ .runtime = .{ .type = result_type } });
 }
@@ -696,14 +722,14 @@ fn hirWrite(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
     const lhs_pointer = lhs_type.getPointer() orelse return self.reportNotPointer(lhs_type, source_loc);
 
     if (lhs_pointer.is_const) {
-        self.error_info = .{ .message = "you cannot mutate data pointed by this pointer, it points to read-only data", .source_loc = source_loc };
+        self.error_info = .{ .message = "cannot mutate data pointed by this pointer, it points to read-only data", .source_loc = source_loc };
 
         return error.UnexpectedMutation;
     }
 
     try self.checkRepresentability(rhs, lhs_pointer.child_type.*, source_loc);
 
-    try self.lir.instructions.append(self.allocator, .write);
+    try self.lir_block.instructions.append(self.allocator, .write);
 }
 
 const ComparisonOperation = enum {
@@ -739,9 +765,9 @@ fn hirComparison(self: *Sema, comptime operation: ComparisonOperation, source_lo
                     .eql => lhs_int == rhs_int,
                 };
 
-                _ = self.lir.instructions.pop();
+                _ = self.lir_block.instructions.pop();
 
-                self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .boolean = result };
+                self.lir_block.instructions.items[self.lir_block.instructions.items.len - 1] = .{ .boolean = result };
 
                 try self.stack.append(self.allocator, .{ .boolean = result });
 
@@ -759,9 +785,9 @@ fn hirComparison(self: *Sema, comptime operation: ComparisonOperation, source_lo
                     .eql => lhs_float == rhs_float,
                 };
 
-                _ = self.lir.instructions.pop();
+                _ = self.lir_block.instructions.pop();
 
-                self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .boolean = result };
+                self.lir_block.instructions.items[self.lir_block.instructions.items.len - 1] = .{ .boolean = result };
 
                 try self.stack.append(self.allocator, .{ .boolean = result });
 
@@ -779,9 +805,9 @@ fn hirComparison(self: *Sema, comptime operation: ComparisonOperation, source_lo
                     else => unreachable,
                 };
 
-                _ = self.lir.instructions.pop();
+                _ = self.lir_block.instructions.pop();
 
-                self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .boolean = result };
+                self.lir_block.instructions.items[self.lir_block.instructions.items.len - 1] = .{ .boolean = result };
 
                 try self.stack.append(self.allocator, .{ .boolean = result });
 
@@ -795,9 +821,9 @@ fn hirComparison(self: *Sema, comptime operation: ComparisonOperation, source_lo
     }
 
     switch (operation) {
-        .lt => try self.lir.instructions.append(self.allocator, .lt),
-        .gt => try self.lir.instructions.append(self.allocator, .gt),
-        .eql => try self.lir.instructions.append(self.allocator, .eql),
+        .lt => try self.lir_block.instructions.append(self.allocator, .lt),
+        .gt => try self.lir_block.instructions.append(self.allocator, .gt),
+        .eql => try self.lir_block.instructions.append(self.allocator, .eql),
     }
 
     try self.stack.append(self.allocator, .{ .runtime = .{ .type = .{ .tag = .bool } } });
@@ -837,13 +863,13 @@ fn hirBitwiseShift(self: *Sema, comptime direction: BitwiseShiftDirection, sourc
 
         try self.stack.append(self.allocator, .{ .int = result });
 
-        _ = self.lir.instructions.pop();
+        _ = self.lir_block.instructions.pop();
 
-        self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .int = result };
+        self.lir_block.instructions.items[self.lir_block.instructions.items.len - 1] = .{ .int = result };
     } else {
         switch (direction) {
-            .left => try self.lir.instructions.append(self.allocator, .shl),
-            .right => try self.lir.instructions.append(self.allocator, .shr),
+            .left => try self.lir_block.instructions.append(self.allocator, .shl),
+            .right => try self.lir_block.instructions.append(self.allocator, .shr),
         }
 
         try self.stack.append(self.allocator, .{ .runtime = .{ .type = lhs_type } });
@@ -871,9 +897,9 @@ fn hirBitwiseArithmetic(self: *Sema, comptime operation: BitwiseArithmeticOperat
     }
 
     switch (operation) {
-        .bit_and => try self.lir.instructions.append(self.allocator, .bit_and),
-        .bit_or => try self.lir.instructions.append(self.allocator, .bit_or),
-        .bit_xor => try self.lir.instructions.append(self.allocator, .bit_xor),
+        .bit_and => try self.lir_block.instructions.append(self.allocator, .bit_and),
+        .bit_or => try self.lir_block.instructions.append(self.allocator, .bit_or),
+        .bit_xor => try self.lir_block.instructions.append(self.allocator, .bit_xor),
     }
 
     switch (lhs) {
@@ -887,9 +913,9 @@ fn hirBitwiseArithmetic(self: *Sema, comptime operation: BitwiseArithmeticOperat
 
                 try self.stack.append(self.allocator, .{ .int = result });
 
-                _ = self.lir.instructions.pop();
+                _ = self.lir_block.instructions.pop();
 
-                self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .int = result };
+                self.lir_block.instructions.items[self.lir_block.instructions.items.len - 1] = .{ .int = result };
 
                 return;
             },
@@ -969,9 +995,9 @@ fn hirArithmetic(self: *Sema, comptime operation: ArithmeticOperation, source_lo
 
                 try self.stack.append(self.allocator, .{ .int = result });
 
-                _ = self.lir.instructions.pop();
+                _ = self.lir_block.instructions.pop();
 
-                self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .int = result };
+                self.lir_block.instructions.items[self.lir_block.instructions.items.len - 1] = .{ .int = result };
 
                 return;
             },
@@ -990,9 +1016,9 @@ fn hirArithmetic(self: *Sema, comptime operation: ArithmeticOperation, source_lo
 
                 try self.stack.append(self.allocator, .{ .float = result });
 
-                _ = self.lir.instructions.pop();
+                _ = self.lir_block.instructions.pop();
 
-                self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .float = result };
+                self.lir_block.instructions.items[self.lir_block.instructions.items.len - 1] = .{ .float = result };
 
                 return;
             },
@@ -1004,10 +1030,10 @@ fn hirArithmetic(self: *Sema, comptime operation: ArithmeticOperation, source_lo
     }
 
     switch (operation) {
-        .add => try self.lir.instructions.append(self.allocator, .add),
-        .sub => try self.lir.instructions.append(self.allocator, .sub),
-        .mul => try self.lir.instructions.append(self.allocator, .mul),
-        .div => try self.lir.instructions.append(self.allocator, .div),
+        .add => try self.lir_block.instructions.append(self.allocator, .add),
+        .sub => try self.lir_block.instructions.append(self.allocator, .sub),
+        .mul => try self.lir_block.instructions.append(self.allocator, .mul),
+        .div => try self.lir_block.instructions.append(self.allocator, .div),
     }
 
     if (lhs_type.tag == .pointer) {
@@ -1034,13 +1060,13 @@ fn hirArithmetic(self: *Sema, comptime operation: ArithmeticOperation, source_lo
 fn hirPop(self: *Sema) Error!void {
     if (self.stack.popOrNull()) |unused_value| {
         if (unused_value.getType().tag != .void) {
-            try self.lir.instructions.append(self.allocator, .pop);
+            try self.lir_block.instructions.append(self.allocator, .pop);
         }
     }
 }
 
 fn hirAssembly(self: *Sema, assembly: Ast.Node.Expr.Assembly) Error!void {
-    if (self.function == null and (assembly.input_constraints.len > 0 or assembly.output_constraint != null)) {
+    if (self.maybe_function == null and (assembly.input_constraints.len > 0 or assembly.output_constraint != null)) {
         self.error_info = .{ .message = "global assembly should not contain any input or output constraints", .source_loc = assembly.source_loc };
 
         return error.UnexpectedAssemblyConstraints;
@@ -1055,13 +1081,13 @@ fn hirAssembly(self: *Sema, assembly: Ast.Node.Expr.Assembly) Error!void {
 
         const input_constraint = assembly.input_constraints[i];
 
-        try self.lir.instructions.append(self.allocator, .{ .assembly_input = input_constraint.register });
+        try self.lir_block.instructions.append(self.allocator, .{ .assembly_input = input_constraint.register });
     }
 
-    try self.lir.instructions.append(self.allocator, .{ .assembly = assembly.content });
+    try self.lir_block.instructions.append(self.allocator, .{ .assembly = assembly.content });
 
     if (assembly.output_constraint) |output_constraint| {
-        try self.lir.instructions.append(self.allocator, .{ .assembly_output = output_constraint.register });
+        try self.lir_block.instructions.append(self.allocator, .{ .assembly_output = output_constraint.register });
 
         try self.stack.append(self.allocator, .{ .runtime = .{ .type = output_constraint.type } });
     } else {
@@ -1070,24 +1096,24 @@ fn hirAssembly(self: *Sema, assembly: Ast.Node.Expr.Assembly) Error!void {
 }
 
 fn hirReturn(self: *Sema) Error!void {
-    if (self.function == null) return;
+    if (self.maybe_function == null) return;
 
     if (self.stack.popOrNull()) |return_value| {
-        try self.checkRepresentability(return_value, self.function.?.prototype.return_type, self.function.?.prototype.name.source_loc);
+        try self.checkRepresentability(return_value, self.maybe_function.?.prototype.return_type, self.maybe_function.?.prototype.name.source_loc);
     } else {
-        if (self.function.?.prototype.return_type.tag != .void) {
-            self.error_info = .{ .message = "function with non void return type implicitly returns", .source_loc = self.function.?.prototype.name.source_loc };
+        if (self.maybe_function.?.prototype.return_type.tag != .void) {
+            self.error_info = .{ .message = "function with non void return type implicitly returns", .source_loc = self.maybe_function.?.prototype.name.source_loc };
 
             return error.ExpectedExplicitReturn;
         }
     }
 
-    self.function = null;
+    self.maybe_function = null;
     self.stack.clearRetainingCapacity();
 
     self.scope.clearAndFree(self.allocator);
     self.scope = self.scope.maybe_parent.?;
     _ = self.scope_stack.pop();
 
-    try self.lir.instructions.append(self.allocator, .@"return");
+    try self.lir_block.instructions.append(self.allocator, .@"return");
 }

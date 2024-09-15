@@ -58,382 +58,446 @@ pub fn render(self: *x86_64) Error!void {
 
     self.scope = global_scope;
 
-    for (self.lir.instructions.items) |instruction| {
-        switch (instruction) {
-            .label => |info| {
-                const is_function, const name = info;
-
-                const section_writer = if (!is_function) data_section_writer else text_section_writer;
-
-                try section_writer.print(".global {s}\n", .{name});
-                try section_writer.print("{s}:\n", .{name});
-            },
-
-            .function_proluge => {
-                try text_section_writer.writeAll("\tpushq %rbp\n");
-                try text_section_writer.writeAll("\tmovq %rsp, %rbp\n");
-
-                try self.stack_offsets.append(self.allocator, 0);
-
-                const new_scope = try self.scope_stack.addOne(self.allocator);
-                new_scope.* = .{ .maybe_parent = self.scope };
-                self.scope = new_scope;
-            },
-
-            .function_epilogue => {
-                if (self.stack.items.len != 0) {
-                    try self.popRegister(text_section_writer, "ax");
-                }
-
-                try text_section_writer.writeAll("\tpopq %rbp\n");
-            },
-
-            .function_parameter => |function_parameter| {
-                const function_parameter_index, const function_parameter_symbol = function_parameter;
-
-                const is_floating_point = function_parameter_symbol.type.isFloat();
-
-                if (is_floating_point) {
-                    try text_section_writer.print("\tmovq {}(%rbp), %xmm8\n", .{(function_parameter_index + 1) * self.stack_alignment});
-                } else {
-                    try text_section_writer.print("\tmovq {}(%rbp), %r8\n", .{(function_parameter_index + 1) * self.stack_alignment});
-                }
-
-                try self.pushRegister(text_section_writer, "8", .{ .is_floating_point = is_floating_point });
-
-                try self.scope.put(
+    for (self.lir.blocks.items) |lir_block| {
+        if (lir_block.tag == .basic) {
+            if (lir_block.maybe_function) |function| {
+                try global_scope.put(
                     self.allocator,
-                    function_parameter_symbol.name.buffer,
-                    .{
-                        .stack_index = self.stack.items.len - 1,
-                        .type = function_parameter_symbol.type,
-                        .linkage = function_parameter_symbol.linkage,
-                    },
-                );
-            },
-
-            .call => |function| {
-                try self.popRegister(text_section_writer, "8");
-
-                var i: usize = function.parameter_types.len;
-
-                const stack_top_offset = (i + self.stack.items.len) * self.stack_alignment;
-
-                try text_section_writer.print("\tsubq ${}, %rsp\n", .{stack_top_offset});
-
-                while (i > 0) {
-                    i -= 1;
-
-                    const parameter_type = function.parameter_types[i];
-
-                    try self.popRegister(text_section_writer, "9");
-
-                    if (parameter_type.isFloat()) {
-                        try text_section_writer.print("\tmovq %xmm9, {}(%rsp)\n", .{i * self.stack_alignment});
-                    } else {
-                        try text_section_writer.print("\tmovq %r9, {}(%rsp)\n", .{i * self.stack_alignment});
-                    }
-                }
-
-                try text_section_writer.writeAll("\tcallq *%r8\n");
-
-                try text_section_writer.print("\taddq ${}, %rsp\n", .{stack_top_offset});
-
-                try self.pushRegister(text_section_writer, "ax", .{ .is_floating_point = function.return_type.isFloat() });
-            },
-
-            .variable => |symbol| {
-                try self.scope.put(
-                    self.allocator,
-                    symbol.name.buffer,
+                    lir_block.label,
                     .{
                         .stack_index = 0,
-                        .type = symbol.type,
-                        .linkage = symbol.linkage,
+                        .type = .{
+                            .tag = .function,
+                            .data = .{
+                                .function = function,
+                            },
+                        },
+                        .linkage = .global,
                     },
                 );
-            },
-
-            .set => |name| {
-                const variable = self.scope.getPtr(name).?;
-
-                if (variable.linkage == .global) {
-                    const stack_allocation = self.stack.items[variable.stack_index];
-
-                    try self.popRegister(text_section_writer, "8");
-
-                    try copyToData(text_section_writer, "8", stack_allocation, name);
-                } else if (variable.stack_index == 0) {
-                    variable.stack_index = self.stack.items.len - 1;
-                } else {
-                    const stack_allocation = self.stack.items[variable.stack_index];
-
-                    try self.popRegister(text_section_writer, "8");
-
-                    try copyToStack(text_section_writer, "8", stack_allocation, self.stack_offsets.items[variable.stack_index + 1]);
-                }
-            },
-
-            .get => |name| {
-                const variable = self.scope.get(name).?;
-
-                switch (variable.linkage) {
-                    .local => {
-                        const stack_allocation = self.stack.items[variable.stack_index];
-
-                        try copyFromStack(text_section_writer, "8", stack_allocation, self.stack_offsets.items[variable.stack_index + 1]);
-
-                        try self.pushRegister(text_section_writer, "8", stack_allocation);
-                    },
-
-                    .global => {
-                        const stack_allocation: StackAllocation = .{ .is_floating_point = variable.type.isFloat() };
-
-                        if (variable.type.getFunction() != null) {
-                            try pointerToData(text_section_writer, "8", name);
-
-                            try self.pushRegister(text_section_writer, "8", stack_allocation);
-                        } else {
-                            try copyFromData(text_section_writer, "8", stack_allocation, name);
-
-                            try self.pushRegister(text_section_writer, "8", stack_allocation);
-                        }
-                    },
-                }
-            },
-
-            .get_ptr => |name| {
-                const variable = self.scope.get(name).?;
-
-                switch (variable.linkage) {
-                    .local => {
-                        try pointerToStack(text_section_writer, "8", self.stack_offsets.items[variable.stack_index + 1]);
-
-                        try self.pushRegister(text_section_writer, "8", .{ .is_floating_point = false });
-                    },
-
-                    .global => {
-                        try pointerToData(text_section_writer, "8", name);
-
-                        try self.pushRegister(text_section_writer, "8", .{ .is_floating_point = false });
-                    },
-                }
-            },
-
-            .string => |string| {
-                if (self.stack_offsets.items.len == 0) {
-                    try rodata_section_writer.print("\t.asciz \"{s}\"\n", .{string});
-                } else {
-                    try rodata_section_writer.print("\tstr{}: .asciz \"{s}\"\n", .{ self.string_literals_index, string });
-                    try text_section_writer.print("\tleaq str{}(%rip), %r8\n", .{self.string_literals_index});
-
-                    self.string_literals_index += 1;
-
-                    try self.pushRegister(text_section_writer, "8", .{ .is_floating_point = false });
-                }
-            },
-
-            .int => |int| {
-                if (self.stack_offsets.items.len == 0) {
-                    try data_section_writer.print("\t.quad {}\n", .{int});
-                } else {
-                    try text_section_writer.print("\tmovq ${}, %r8\n", .{int});
-
-                    try self.pushRegister(text_section_writer, "8", .{ .is_floating_point = false });
-                }
-            },
-
-            .float => |float| {
-                if (self.stack_offsets.items.len == 0) {
-                    try data_section_writer.print("\t.quad {}\n", .{@as(u64, @bitCast(float))});
-                } else {
-                    try rodata_section_writer.print("flt{}: .quad {}\n", .{ self.floating_points_index, @as(u64, @bitCast(float)) });
-                    try text_section_writer.print("\tmovsd flt{}(%rip), %xmm8\n", .{self.floating_points_index});
-
-                    self.floating_points_index += 1;
-
-                    try self.pushRegister(text_section_writer, "8", .{ .is_floating_point = true });
-                }
-            },
-
-            .boolean => |boolean| {
-                if (self.stack_offsets.items.len == 0) {
-                    try data_section_writer.print("\t.quad {}\n", .{@intFromBool(boolean)});
-                } else {
-                    try text_section_writer.print("\tmovq ${}, %r8\n", .{@intFromBool(boolean)});
-
-                    try self.pushRegister(text_section_writer, "8", .{ .is_floating_point = false });
-                }
-            },
-
-            .negate => {
-                const stack_allocation = self.stack.getLast();
-
-                try self.popRegister(text_section_writer, "bx");
-
-                if (stack_allocation.is_floating_point) {
-                    try text_section_writer.writeAll("\tmovq %xmm1, %rbx\n");
-                    try text_section_writer.writeAll("\tmovabsq $0x8000000000000000, %rax\n");
-                    try text_section_writer.writeAll("\txorq %rax, %rbx\n");
-                    try text_section_writer.writeAll("\tmovsd %rbx, %xmm1\n");
-                } else {
-                    try text_section_writer.writeAll("\txorq %rax, %rax\n");
-                    try text_section_writer.writeAll("\tsubq %rax, %rbx\n");
-                }
-
-                try self.pushRegister(text_section_writer, "bx", stack_allocation);
-            },
-
-            .bool_not => {
-                try self.popRegister(text_section_writer, "ax");
-
-                try text_section_writer.writeAll("\txorq $1, %rax\n");
-
-                try self.pushRegister(text_section_writer, "ax", .{ .is_floating_point = false });
-            },
-
-            .bit_not => {
-                try self.popRegister(text_section_writer, "ax");
-
-                try text_section_writer.writeAll("\txorq $-1, %rax\n");
-
-                try self.pushRegister(text_section_writer, "ax", .{ .is_floating_point = false });
-            },
-
-            .read => |result_type| {
-                const stack_allocation: StackAllocation = .{ .is_floating_point = result_type.isFloat() };
-
-                try self.popRegister(text_section_writer, "ax");
-
-                if (stack_allocation.is_floating_point) {
-                    try text_section_writer.writeAll("\tmovq 0(%rax), %xmm1\n");
-                } else {
-                    try text_section_writer.writeAll("\tmovq 0(%rax), %rbx\n");
-                }
-
-                try self.pushRegister(text_section_writer, "bx", stack_allocation);
-            },
-
-            .write => {
-                const stack_allocation = self.stack.pop();
-
-                try self.popRegister(text_section_writer, "ax");
-                try self.popRegister(text_section_writer, "bx");
-
-                if (stack_allocation.is_floating_point) {
-                    try text_section_writer.writeAll("\tmovq %xmm0, 0(%rbx)\n");
-                } else {
-                    try text_section_writer.writeAll("\tmovq %rax, 0(%rbx)\n");
-                }
-            },
-
-            .add, .sub, .mul, .div, .bit_and, .bit_or, .bit_xor, .shl, .shr => {
-                const stack_allocation = self.stack.getLast();
-
-                try self.popRegister(text_section_writer, "cx");
-                try self.popRegister(text_section_writer, "ax");
-
-                const binary_operation_str = switch (instruction) {
-                    .add => "add",
-                    .sub => "sub",
-                    .mul => "mul",
-                    .div => "div",
-                    .bit_and => "and",
-                    .bit_or => "or",
-                    .bit_xor => "xor",
-                    .shl => "shl",
-                    .shr => "shr",
-
-                    else => unreachable,
-                };
-
-                if (stack_allocation.is_floating_point) {
-                    try text_section_writer.print("\t{s}sd %xmm2, %xmm0\n", .{binary_operation_str});
-                } else {
-                    if (instruction == .mul) {
-                        try text_section_writer.print("\t{s}q %rcx\n", .{binary_operation_str});
-                    } else if (instruction == .div) {
-                        try text_section_writer.writeAll("\tcqto\n");
-
-                        try text_section_writer.print("\t{s}q %rcx\n", .{binary_operation_str});
-                    } else if (instruction == .shl or instruction == .shr) {
-                        try text_section_writer.print("\t{s}q %cl, %rax\n", .{binary_operation_str});
-                    } else {
-                        try text_section_writer.print("\t{s}q %rcx, %rax\n", .{binary_operation_str});
-                    }
-                }
-
-                try self.pushRegister(text_section_writer, "ax", stack_allocation);
-            },
-
-            .lt, .gt, .eql => {
-                const stack_allocation = self.stack.getLast();
-
-                try self.popRegister(text_section_writer, "cx");
-                try self.popRegister(text_section_writer, "ax");
-
-                const set_str = switch (instruction) {
-                    .lt => "setl",
-                    .gt => "setg",
-                    .eql => "sete",
-
-                    else => unreachable,
-                };
-
-                if (stack_allocation.is_floating_point) {
-                    try text_section_writer.writeAll("\tucomisd %xmm2, %xmm0\n");
-                    try text_section_writer.print("\t{s} %al\n", .{set_str});
-                    try text_section_writer.writeAll("\tsetnp %cl\n");
-                    try text_section_writer.writeAll("\tandb %cl, %al\n");
-                    try text_section_writer.writeAll("\tmovzbq %al, %rax\n");
-                } else {
-                    try text_section_writer.writeAll("\tcmpq %rcx, %rax\n");
-                    try text_section_writer.print("\t{s} %al\n", .{set_str});
-                    try text_section_writer.writeAll("\tandb $1, %al\n");
-                    try text_section_writer.writeAll("\tmovzbq %al, %rax\n");
-                }
-
-                try self.pushRegister(text_section_writer, "ax", .{ .is_floating_point = false });
-            },
-
-            .assembly => |content| {
-                try text_section_writer.print("{s}\n", .{content});
-            },
-
-            .assembly_input => |register| {
-                _ = self.stack.pop();
-
-                const stack_offset = self.stack_offsets.pop();
-
-                try text_section_writer.print("\tmovq -{}(%rbp), %{s}\n", .{ stack_offset, register });
-            },
-
-            .assembly_output => |register| {
-                try self.stack.append(self.allocator, .{ .is_floating_point = if (register.len > 0) register[0] == 'x' else false });
-
-                const stack_offset = self.stack_offsets.getLast() + self.stack_alignment;
-
-                try self.stack_offsets.append(self.allocator, stack_offset);
-
-                try text_section_writer.print("\tmovq %{s}, -{}(%rbp)\n", .{ register, stack_offset });
-            },
-
-            .pop => {
-                try self.popRegister(text_section_writer, "8");
-            },
-
-            .@"return" => {
-                self.stack.clearRetainingCapacity();
-                self.stack_offsets.clearRetainingCapacity();
-
-                self.scope.clearAndFree(self.allocator);
-                self.scope = self.scope.maybe_parent.?;
-                _ = self.scope_stack.pop();
-
-                try text_section_writer.writeAll("\tretq\n");
-            },
+            }
+
+            const local_scope = try self.scope_stack.addOne(self.allocator);
+            local_scope.* = .{ .maybe_parent = self.scope };
+            self.scope = local_scope;
+        }
+
+        {
+            const section_writer = if (lir_block.tag == .basic) text_section_writer else data_section_writer;
+
+            try section_writer.print(".global {s}\n", .{lir_block.label});
+            try section_writer.print("{s}:\n", .{lir_block.label});
+        }
+
+        for (lir_block.instructions.items) |instruction| {
+            try self.renderInstruction(
+                text_section_writer,
+                data_section_writer,
+                rodata_section_writer,
+                instruction,
+            );
         }
     }
+}
+
+fn renderInstruction(
+    self: *x86_64,
+    text_section_writer: anytype,
+    data_section_writer: anytype,
+    rodata_section_writer: anytype,
+    instruction: Lir.Block.Instruction,
+) Error!void {
+    switch (instruction) {
+        .function_proluge => try self.renderFunctionProluge(text_section_writer),
+
+        .function_epilogue => try self.renderFunctionEpilogue(text_section_writer),
+
+        .function_parameter => |function_parameter| try self.renderFunctionParameter(text_section_writer, function_parameter),
+
+        .call => |function| try self.renderCall(text_section_writer, function),
+
+        .variable => |symbol| try self.renderVariable(symbol),
+
+        .set => |name| try self.renderSet(text_section_writer, name),
+        .get => |name| try self.renderGet(text_section_writer, name),
+        .get_ptr => |name| try self.renderGetPtr(text_section_writer, name),
+
+        .string => |content| try self.renderString(text_section_writer, rodata_section_writer, content),
+        .int => |value| try self.renderInt(text_section_writer, data_section_writer, value),
+        .float => |value| try self.renderFloat(text_section_writer, data_section_writer, rodata_section_writer, value),
+        .boolean => |value| try self.renderBoolean(text_section_writer, data_section_writer, value),
+
+        .negate => try self.renderNegate(text_section_writer),
+
+        .bool_not, .bit_not => try self.renderNot(text_section_writer, instruction),
+
+        .read => |result_type| try self.renderRead(text_section_writer, result_type),
+        .write => try self.renderWrite(text_section_writer),
+
+        .add, .sub, .mul, .div, .bit_and, .bit_or, .bit_xor, .shl, .shr => try self.renderBinaryOperation(text_section_writer, instruction),
+        .lt, .gt, .eql => try self.renderComparisonOperation(text_section_writer, instruction),
+
+        .assembly => |content| try text_section_writer.print("{s}\n", .{content}),
+        .assembly_input => |register| try self.renderAssemblyInput(text_section_writer, register),
+        .assembly_output => |register| try self.renderAssemblyOutput(text_section_writer, register),
+
+        .pop => try self.popRegister(text_section_writer, "8"),
+
+        .@"return" => try self.renderReturn(text_section_writer),
+    }
+}
+
+fn renderFunctionProluge(self: *x86_64, text_section_writer: anytype) Error!void {
+    try text_section_writer.writeAll("\tpushq %rbp\n");
+    try text_section_writer.writeAll("\tmovq %rsp, %rbp\n");
+
+    try self.stack_offsets.append(self.allocator, 0);
+}
+
+fn renderFunctionEpilogue(self: *x86_64, text_section_writer: anytype) Error!void {
+    if (self.stack.items.len != 0) {
+        try self.popRegister(text_section_writer, "ax");
+    }
+
+    self.stack.clearRetainingCapacity();
+    self.stack_offsets.clearRetainingCapacity();
+
+    try text_section_writer.writeAll("\tpopq %rbp\n");
+}
+
+fn renderFunctionParameter(self: *x86_64, text_section_writer: anytype, function_parameter: struct { usize, Symbol }) Error!void {
+    const function_parameter_index, const function_parameter_symbol = function_parameter;
+
+    const is_floating_point = function_parameter_symbol.type.isFloat();
+
+    if (is_floating_point) {
+        try text_section_writer.print("\tmovq {}(%rbp), %xmm8\n", .{(function_parameter_index + 1) * self.stack_alignment});
+    } else {
+        try text_section_writer.print("\tmovq {}(%rbp), %r8\n", .{(function_parameter_index + 1) * self.stack_alignment});
+    }
+
+    try self.pushRegister(text_section_writer, "8", .{ .is_floating_point = is_floating_point });
+
+    try self.scope.put(
+        self.allocator,
+        function_parameter_symbol.name.buffer,
+        .{
+            .stack_index = self.stack.items.len - 1,
+            .type = function_parameter_symbol.type,
+            .linkage = function_parameter_symbol.linkage,
+        },
+    );
+}
+
+fn renderCall(self: *x86_64, text_section_writer: anytype, function: Type.Data.Function) Error!void {
+    try self.popRegister(text_section_writer, "8");
+
+    var i: usize = function.parameter_types.len;
+
+    const stack_top_offset = (i + self.stack.items.len) * self.stack_alignment;
+
+    try text_section_writer.print("\tsubq ${}, %rsp\n", .{stack_top_offset});
+
+    while (i > 0) {
+        i -= 1;
+
+        const parameter_type = function.parameter_types[i];
+
+        try self.popRegister(text_section_writer, "9");
+
+        if (parameter_type.isFloat()) {
+            try text_section_writer.print("\tmovq %xmm9, {}(%rsp)\n", .{i * self.stack_alignment});
+        } else {
+            try text_section_writer.print("\tmovq %r9, {}(%rsp)\n", .{i * self.stack_alignment});
+        }
+    }
+
+    try text_section_writer.writeAll("\tcallq *%r8\n");
+
+    try text_section_writer.print("\taddq ${}, %rsp\n", .{stack_top_offset});
+
+    try self.pushRegister(text_section_writer, "ax", .{ .is_floating_point = function.return_type.isFloat() });
+}
+
+fn renderVariable(self: *x86_64, symbol: Symbol) Error!void {
+    try self.scope.put(
+        self.allocator,
+        symbol.name.buffer,
+        .{
+            .stack_index = 0,
+            .type = symbol.type,
+            .linkage = symbol.linkage,
+        },
+    );
+}
+
+fn renderSet(self: *x86_64, text_section_writer: anytype, name: []const u8) Error!void {
+    const variable = self.scope.getPtr(name).?;
+
+    if (variable.linkage == .global) {
+        const stack_allocation = self.stack.items[variable.stack_index];
+
+        try self.popRegister(text_section_writer, "8");
+
+        try copyToData(text_section_writer, "8", stack_allocation, name);
+    } else if (variable.stack_index == 0) {
+        variable.stack_index = self.stack.items.len - 1;
+    } else {
+        const stack_allocation = self.stack.items[variable.stack_index];
+
+        try self.popRegister(text_section_writer, "8");
+
+        try copyToStack(text_section_writer, "8", stack_allocation, self.stack_offsets.items[variable.stack_index + 1]);
+    }
+}
+
+fn renderGet(self: *x86_64, text_section_writer: anytype, name: []const u8) Error!void {
+    const variable = self.scope.get(name).?;
+
+    switch (variable.linkage) {
+        .local => {
+            const stack_allocation = self.stack.items[variable.stack_index];
+
+            try copyFromStack(text_section_writer, "8", stack_allocation, self.stack_offsets.items[variable.stack_index + 1]);
+
+            try self.pushRegister(text_section_writer, "8", stack_allocation);
+        },
+
+        .global => {
+            const stack_allocation: StackAllocation = .{ .is_floating_point = variable.type.isFloat() };
+
+            if (variable.type.getFunction() != null) {
+                try pointerToData(text_section_writer, "8", name);
+
+                try self.pushRegister(text_section_writer, "8", stack_allocation);
+            } else {
+                try copyFromData(text_section_writer, "8", stack_allocation, name);
+
+                try self.pushRegister(text_section_writer, "8", stack_allocation);
+            }
+        },
+    }
+}
+
+fn renderGetPtr(self: *x86_64, text_section_writer: anytype, name: []const u8) Error!void {
+    const variable = self.scope.get(name).?;
+
+    switch (variable.linkage) {
+        .local => {
+            try pointerToStack(text_section_writer, "8", self.stack_offsets.items[variable.stack_index + 1]);
+
+            try self.pushRegister(text_section_writer, "8", .{ .is_floating_point = false });
+        },
+
+        .global => {
+            try pointerToData(text_section_writer, "8", name);
+
+            try self.pushRegister(text_section_writer, "8", .{ .is_floating_point = false });
+        },
+    }
+}
+
+fn renderString(self: *x86_64, text_section_writer: anytype, rodata_section_writer: anytype, content: []const u8) Error!void {
+    if (self.stack_offsets.items.len == 0) {
+        try rodata_section_writer.print("\t.asciz \"{s}\"\n", .{content});
+    } else {
+        try rodata_section_writer.print("\tstr{}: .asciz \"{s}\"\n", .{ self.string_literals_index, content });
+        try text_section_writer.print("\tleaq str{}(%rip), %r8\n", .{self.string_literals_index});
+
+        self.string_literals_index += 1;
+
+        try self.pushRegister(text_section_writer, "8", .{ .is_floating_point = false });
+    }
+}
+
+fn renderInt(self: *x86_64, text_section_writer: anytype, data_section_writer: anytype, value: i128) Error!void {
+    if (self.stack_offsets.items.len == 0) {
+        try data_section_writer.print("\t.quad {}\n", .{value});
+    } else {
+        try text_section_writer.print("\tmovq ${}, %r8\n", .{value});
+
+        try self.pushRegister(text_section_writer, "8", .{ .is_floating_point = false });
+    }
+}
+
+fn renderFloat(
+    self: *x86_64,
+    text_section_writer: anytype,
+    data_section_writer: anytype,
+    rodata_section_writer: anytype,
+    value: f64,
+) Error!void {
+    if (self.stack_offsets.items.len == 0) {
+        try data_section_writer.print("\t.quad {}\n", .{@as(u64, @bitCast(value))});
+    } else {
+        try rodata_section_writer.print("flt{}: .quad {}\n", .{ self.floating_points_index, @as(u64, @bitCast(value)) });
+        try text_section_writer.print("\tmovsd flt{}(%rip), %xmm8\n", .{self.floating_points_index});
+
+        self.floating_points_index += 1;
+
+        try self.pushRegister(text_section_writer, "8", .{ .is_floating_point = true });
+    }
+}
+
+fn renderBoolean(self: *x86_64, text_section_writer: anytype, data_section_writer: anytype, value: bool) Error!void {
+    if (self.stack_offsets.items.len == 0) {
+        try data_section_writer.print("\t.quad {}\n", .{@intFromBool(value)});
+    } else {
+        try text_section_writer.print("\tmovq ${}, %r8\n", .{@intFromBool(value)});
+
+        try self.pushRegister(text_section_writer, "8", .{ .is_floating_point = false });
+    }
+}
+
+fn renderNegate(self: *x86_64, text_section_writer: anytype) Error!void {
+    const stack_allocation = self.stack.getLast();
+
+    try self.popRegister(text_section_writer, "bx");
+
+    if (stack_allocation.is_floating_point) {
+        try text_section_writer.writeAll("\tmovq %xmm1, %rbx\n");
+        try text_section_writer.writeAll("\tmovabsq $0x8000000000000000, %rax\n");
+        try text_section_writer.writeAll("\txorq %rax, %rbx\n");
+        try text_section_writer.writeAll("\tmovsd %rbx, %xmm1\n");
+    } else {
+        try text_section_writer.writeAll("\txorq %rax, %rax\n");
+        try text_section_writer.writeAll("\tsubq %rax, %rbx\n");
+    }
+
+    try self.pushRegister(text_section_writer, "bx", stack_allocation);
+}
+
+fn renderNot(self: *x86_64, text_section_writer: anytype, instruction: Lir.Block.Instruction) Error!void {
+    try self.popRegister(text_section_writer, "ax");
+    if (instruction == .bool_not) {
+        try text_section_writer.writeAll("\txorq $1, %rax\n");
+    } else {
+        try text_section_writer.writeAll("\txorq $-1, %rax\n");
+    }
+
+    try self.pushRegister(text_section_writer, "ax", .{ .is_floating_point = false });
+}
+
+fn renderRead(self: *x86_64, text_section_writer: anytype, result_type: Type) Error!void {
+    const stack_allocation: StackAllocation = .{ .is_floating_point = result_type.isFloat() };
+
+    try self.popRegister(text_section_writer, "ax");
+
+    if (stack_allocation.is_floating_point) {
+        try text_section_writer.writeAll("\tmovq 0(%rax), %xmm1\n");
+    } else {
+        try text_section_writer.writeAll("\tmovq 0(%rax), %rbx\n");
+    }
+
+    try self.pushRegister(text_section_writer, "bx", stack_allocation);
+}
+
+fn renderWrite(self: *x86_64, text_section_writer: anytype) Error!void {
+    const stack_allocation = self.stack.pop();
+
+    try self.popRegister(text_section_writer, "ax");
+    try self.popRegister(text_section_writer, "bx");
+
+    if (stack_allocation.is_floating_point) {
+        try text_section_writer.writeAll("\tmovq %xmm0, 0(%rbx)\n");
+    } else {
+        try text_section_writer.writeAll("\tmovq %rax, 0(%rbx)\n");
+    }
+}
+
+fn renderBinaryOperation(self: *x86_64, text_section_writer: anytype, instruction: Lir.Block.Instruction) Error!void {
+    const stack_allocation = self.stack.getLast();
+
+    try self.popRegister(text_section_writer, "cx");
+    try self.popRegister(text_section_writer, "ax");
+
+    const binary_operation_str = switch (instruction) {
+        .add => "add",
+        .sub => "sub",
+        .mul => "mul",
+        .div => "div",
+        .bit_and => "and",
+        .bit_or => "or",
+        .bit_xor => "xor",
+        .shl => "shl",
+        .shr => "shr",
+
+        else => unreachable,
+    };
+
+    if (stack_allocation.is_floating_point) {
+        try text_section_writer.print("\t{s}sd %xmm2, %xmm0\n", .{binary_operation_str});
+    } else {
+        if (instruction == .mul) {
+            try text_section_writer.print("\t{s}q %rcx\n", .{binary_operation_str});
+        } else if (instruction == .div) {
+            try text_section_writer.writeAll("\tcqto\n");
+
+            try text_section_writer.print("\t{s}q %rcx\n", .{binary_operation_str});
+        } else if (instruction == .shl or instruction == .shr) {
+            try text_section_writer.print("\t{s}q %cl, %rax\n", .{binary_operation_str});
+        } else {
+            try text_section_writer.print("\t{s}q %rcx, %rax\n", .{binary_operation_str});
+        }
+    }
+
+    try self.pushRegister(text_section_writer, "ax", stack_allocation);
+}
+
+fn renderComparisonOperation(self: *x86_64, text_section_writer: anytype, instruction: Lir.Block.Instruction) Error!void {
+    const stack_allocation = self.stack.getLast();
+
+    try self.popRegister(text_section_writer, "cx");
+    try self.popRegister(text_section_writer, "ax");
+
+    const set_str = switch (instruction) {
+        .lt => "setl",
+        .gt => "setg",
+        .eql => "sete",
+
+        else => unreachable,
+    };
+
+    if (stack_allocation.is_floating_point) {
+        try text_section_writer.writeAll("\tucomisd %xmm2, %xmm0\n");
+        try text_section_writer.print("\t{s} %al\n", .{set_str});
+        try text_section_writer.writeAll("\tsetnp %cl\n");
+        try text_section_writer.writeAll("\tandb %cl, %al\n");
+        try text_section_writer.writeAll("\tmovzbq %al, %rax\n");
+    } else {
+        try text_section_writer.writeAll("\tcmpq %rcx, %rax\n");
+        try text_section_writer.print("\t{s} %al\n", .{set_str});
+        try text_section_writer.writeAll("\tandb $1, %al\n");
+        try text_section_writer.writeAll("\tmovzbq %al, %rax\n");
+    }
+
+    try self.pushRegister(text_section_writer, "ax", .{ .is_floating_point = false });
+}
+
+fn renderAssemblyInput(self: *x86_64, text_section_writer: anytype, register: []const u8) Error!void {
+    _ = self.stack.pop();
+
+    const stack_offset = self.stack_offsets.pop();
+
+    try text_section_writer.print("\tmovq -{}(%rbp), %{s}\n", .{ stack_offset, register });
+}
+
+fn renderAssemblyOutput(self: *x86_64, text_section_writer: anytype, register: []const u8) Error!void {
+    try self.stack.append(self.allocator, .{ .is_floating_point = if (register.len > 0) register[0] == 'x' else false });
+
+    const stack_offset = self.stack_offsets.getLast() + self.stack_alignment;
+
+    try self.stack_offsets.append(self.allocator, stack_offset);
+
+    try text_section_writer.print("\tmovq %{s}, -{}(%rbp)\n", .{ register, stack_offset });
+}
+
+fn renderReturn(self: *x86_64, text_section_writer: anytype) Error!void {
+    self.scope.clearAndFree(self.allocator);
+    self.scope = self.scope.maybe_parent.?;
+    _ = self.scope_stack.pop();
+
+    try text_section_writer.writeAll("\tretq\n");
 }
 
 fn suffixToNumber(register_suffix: []const u8) u8 {
