@@ -110,7 +110,7 @@ pub fn bitSize(self: Type, env: Compilation.Environment) u16 {
 }
 
 pub fn byteSize(self: Type, env: Compilation.Environment) u16 {
-    return std.math.divCeil(u16, self.bitSize(env), 8);
+    return std.math.divCeil(u16, self.bitSize(env), 8) catch unreachable;
 }
 
 pub fn isLocalPointer(self: Type) bool {

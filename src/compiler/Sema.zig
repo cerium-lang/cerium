@@ -761,6 +761,9 @@ fn analyzeOffset(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
 
     try self.checkRepresentability(rhs, usize_type, source_loc);
 
+    try self.lir_block.instructions.append(self.allocator, .{ .int = lhs_pointer.child_type.byteSize(self.env) });
+    try self.lir_block.instructions.append(self.allocator, .mul);
+
     try self.lir_block.instructions.append(self.allocator, .add);
 
     try self.stack.append(self.allocator, .{ .runtime = .{ .type = lhs_type } });
