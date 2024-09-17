@@ -159,6 +159,10 @@ pub const Generator = struct {
 
             .conditional => |conditional| try self.generateConditionalStmt(conditional),
 
+            .while_loop => |while_loop| try self.generateWhileLoopStmt(while_loop),
+            .@"continue" => |@"continue"| try self.generateContinueStmt(@"continue"),
+            .@"break" => |@"break"| try self.generateBreakStmt(@"break"),
+
             .@"return" => |@"return"| try self.generateReturnStmt(@"return"),
         }
     }
@@ -356,6 +360,92 @@ pub const Generator = struct {
 
             return error.UnexpectedStatement;
         }
+    }
+
+    var loop_parts_emitted: usize = 0;
+
+    var loop_begin_block_name: ?std.ArrayListUnmanaged(u8) = null;
+    var loop_end_block_name: ?std.ArrayListUnmanaged(u8) = .{};
+
+    fn generateWhileLoopStmt(self: *Generator, while_loop: Ast.Node.Stmt.WhileLoop) Error!void {
+        if (self.maybe_hir_function) |hir_function| {
+            loop_begin_block_name = .{};
+            loop_end_block_name = .{};
+            defer loop_begin_block_name = null;
+            defer loop_end_block_name = null;
+
+            const begin_block_name = &loop_begin_block_name.?;
+            const end_block_name = &loop_end_block_name.?;
+
+            try begin_block_name.writer(self.allocator).print("loop.begin{}", .{loop_parts_emitted});
+            try end_block_name.writer(self.allocator).print("loop.end{}", .{loop_parts_emitted});
+
+            {
+                const begin_block_entry = try hir_function.blocks.getOrPutValue(
+                    self.allocator,
+                    begin_block_name.items,
+                    .{ .is_control_flow = true },
+                );
+
+                const begin_block = begin_block_entry.value_ptr;
+
+                self.maybe_hir_block = begin_block;
+
+                try self.generateExpr(while_loop.condition);
+
+                try begin_block.instructions.append(
+                    self.allocator,
+                    .{
+                        .jmp_if_false = .{
+                            .buffer = end_block_name.items,
+                            .source_loc = while_loop.condition.getSourceLoc(),
+                        },
+                    },
+                );
+
+                for (while_loop.body) |node| {
+                    try self.generateNode(node);
+                }
+
+                try begin_block.instructions.append(self.allocator, .{ .jmp = begin_block_name.items });
+
+                loop_parts_emitted += 1;
+            }
+
+            {
+                const end_block_entry = try hir_function.blocks.getOrPutValue(self.allocator, end_block_name.items, .{});
+
+                self.maybe_hir_block = end_block_entry.value_ptr;
+            }
+        } else {
+            self.error_info = .{ .message = "expected the while loop statement to be inside a function", .source_loc = while_loop.condition.getSourceLoc() };
+
+            return error.UnexpectedStatement;
+        }
+    }
+
+    fn generateContinueStmt(self: *Generator, @"continue": Ast.Node.Stmt.Continue) Error!void {
+        if (self.maybe_hir_block) |hir_block| {
+            if (loop_begin_block_name) |begin_block_name| {
+                return hir_block.instructions.append(self.allocator, .{ .jmp = begin_block_name.items });
+            }
+        }
+
+        self.error_info = .{ .message = "expected the continue statement to be inside a loop", .source_loc = @"continue".source_loc };
+
+        return error.UnexpectedStatement;
+    }
+
+    fn generateBreakStmt(self: *Generator, @"break": Ast.Node.Stmt.Break) Error!void {
+        if (self.maybe_hir_block) |hir_block| {
+            if (loop_end_block_name) |end_block_name| {
+                return hir_block.instructions.append(self.allocator, .{ .jmp = end_block_name.items });
+            }
+        }
+
+        self.error_info = .{ .message = "expected the break statement to be inside a loop", .source_loc = @"break".source_loc };
+
+        return error.UnexpectedStatement;
     }
 
     fn generateReturnStmt(self: *Generator, @"return": Ast.Node.Stmt.Return) Error!void {

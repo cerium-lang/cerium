@@ -24,7 +24,7 @@ string_literals_index: usize = 0,
 floating_points_index: usize = 0,
 
 pub const Variable = struct {
-    stack_index: usize,
+    maybe_stack_index: ?usize = null,
     type: Type,
     linkage: Symbol.Linkage,
 };
@@ -87,7 +87,6 @@ pub fn render(self: *x86_64) Error!void {
             self.allocator,
             lir_function.name,
             .{
-                .stack_index = 0,
                 .type = lir_function.type,
                 .linkage = .global,
             },
@@ -198,7 +197,7 @@ fn renderParameter(self: *x86_64, text_section_writer: anytype, parameter: struc
         self.allocator,
         function_parameter_symbol.name.buffer,
         .{
-            .stack_index = self.stack.items.len - 1,
+            .maybe_stack_index = self.stack.items.len - 1,
             .type = function_parameter_symbol.type,
             .linkage = function_parameter_symbol.linkage,
         },
@@ -240,7 +239,6 @@ fn renderVariable(self: *x86_64, symbol: Symbol) Error!void {
         self.allocator,
         symbol.name.buffer,
         .{
-            .stack_index = 0,
             .type = symbol.type,
             .linkage = symbol.linkage,
         },
@@ -251,19 +249,19 @@ fn renderSet(self: *x86_64, text_section_writer: anytype, name: []const u8) Erro
     const variable = self.scope.getPtr(name).?;
 
     if (variable.linkage == .global) {
-        const stack_allocation = self.stack.items[variable.stack_index];
+        const stack_allocation = self.stack.pop();
 
         try self.popRegister(text_section_writer, "8");
 
         try copyToData(text_section_writer, "8", stack_allocation, name);
-    } else if (variable.stack_index == 0) {
-        variable.stack_index = self.stack.items.len - 1;
-    } else {
-        const stack_allocation = self.stack.items[variable.stack_index];
+    } else if (variable.maybe_stack_index) |stack_index| {
+        const stack_allocation = self.stack.items[stack_index];
 
         try self.popRegister(text_section_writer, "8");
 
-        try copyToStack(text_section_writer, "8", stack_allocation, self.stack_offsets.items[variable.stack_index + 1]);
+        try copyToStack(text_section_writer, "8", stack_allocation, self.stack_offsets.items[stack_index + 1]);
+    } else {
+        variable.maybe_stack_index = self.stack.items.len - 1;
     }
 }
 
@@ -272,9 +270,11 @@ fn renderGet(self: *x86_64, text_section_writer: anytype, name: []const u8) Erro
 
     switch (variable.linkage) {
         .local => {
-            const stack_allocation = self.stack.items[variable.stack_index];
+            const stack_index = variable.maybe_stack_index.?;
 
-            try copyFromStack(text_section_writer, "8", stack_allocation, self.stack_offsets.items[variable.stack_index + 1]);
+            const stack_allocation = self.stack.items[stack_index];
+
+            try copyFromStack(text_section_writer, "8", stack_allocation, self.stack_offsets.items[stack_index + 1]);
 
             try self.pushRegister(text_section_writer, "8", stack_allocation);
         },
@@ -300,7 +300,9 @@ fn renderGetPtr(self: *x86_64, text_section_writer: anytype, name: []const u8) E
 
     switch (variable.linkage) {
         .local => {
-            try pointerToStack(text_section_writer, "8", self.stack_offsets.items[variable.stack_index + 1]);
+            const stack_index = variable.maybe_stack_index.?;
+
+            try pointerToStack(text_section_writer, "8", self.stack_offsets.items[stack_index + 1]);
 
             try self.pushRegister(text_section_writer, "8", .{ .is_floating_point = false });
         },

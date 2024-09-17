@@ -31,6 +31,9 @@ pub const Node = union(enum) {
         function_declaration: FunctionDeclaration,
         variable_declaration: VariableDeclaration,
         conditional: Conditional,
+        while_loop: WhileLoop,
+        @"break": Break,
+        @"continue": Continue,
         @"return": Return,
 
         pub const FunctionDeclaration = struct {
@@ -60,6 +63,19 @@ pub const Node = union(enum) {
             conditions: []const Expr,
             possiblities: []const []const Node,
             fallback: []const Node,
+        };
+
+        pub const WhileLoop = struct {
+            condition: Expr,
+            body: []Node,
+        };
+
+        pub const Break = struct {
+            source_loc: SourceLoc,
+        };
+
+        pub const Continue = struct {
+            source_loc: SourceLoc,
         };
 
         pub const Return = struct {
@@ -307,6 +323,12 @@ pub const Parser = struct {
 
             .keyword_if => return self.parseConditionalStmt(),
 
+            .keyword_while => return self.parseWhileLoopStmt(),
+
+            .keyword_break => self.parseBreakStmt(),
+
+            .keyword_continue => self.parseContinueStmt(),
+
             .keyword_return => try self.parseReturnStmt(),
 
             else => try self.parseExpr(.lowest),
@@ -476,6 +498,27 @@ pub const Parser = struct {
         }
 
         return Node{ .stmt = .{ .conditional = .{ .conditions = conditions.items, .possiblities = possiblities.items, .fallback = &.{} } } };
+    }
+
+    fn parseWhileLoopStmt(self: *Parser) Error!Node {
+        _ = self.nextToken();
+
+        const condition = (try self.parseExpr(.lowest)).expr;
+        const body = try self.parseBody();
+
+        return Node{ .stmt = .{ .while_loop = .{ .condition = condition, .body = body } } };
+    }
+
+    fn parseBreakStmt(self: *Parser) Error!Node {
+        const break_token = self.nextToken();
+
+        return Node{ .stmt = .{ .@"break" = .{ .source_loc = self.tokenSourceLoc(break_token) } } };
+    }
+
+    fn parseContinueStmt(self: *Parser) Error!Node {
+        const continue_token = self.nextToken();
+
+        return Node{ .stmt = .{ .@"continue" = .{ .source_loc = self.tokenSourceLoc(continue_token) } } };
     }
 
     fn parseReturnStmt(self: *Parser) Error!Node {
