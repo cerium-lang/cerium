@@ -10,29 +10,24 @@ const Type = @import("Type.zig");
 
 const Lir = @This();
 
-blocks: std.ArrayListUnmanaged(Block) = .{},
+data_blocks: std.StringArrayHashMapUnmanaged(Block) = .{},
+
+functions: std.StringArrayHashMapUnmanaged(Function) = .{},
+
+pub const Function = struct {
+    name: []const u8,
+    type: Type,
+    blocks: std.StringArrayHashMapUnmanaged(Block) = .{},
+};
 
 pub const Block = struct {
-    tag: Tag,
-
-    label: []const u8,
-
-    maybe_function: ?Type.Data.Function = null,
+    is_control_flow: bool = false,
 
     instructions: std.ArrayListUnmanaged(Instruction) = .{},
 
-    pub const Tag = enum {
-        basic,
-        data,
-    };
-
     pub const Instruction = union(enum) {
-        /// Start a function, pass the function declaration node to enable more checks
-        function_proluge,
-        /// End a function
-        function_epilogue,
-        /// Declare a function parameter, contains the symbol so the backend knows how to store it on the stack
-        function_parameter: struct { usize, Symbol },
+        /// Declare a parameter, contains the type and name so the backend knows how to store it on the stack
+        parameter: struct { usize, Symbol },
         /// Call a specific function pointer on the stack with the specified type
         call: Type.Data.Function,
         /// Declare a variable using the specified name and type
@@ -85,6 +80,10 @@ pub const Block = struct {
         shl,
         /// Shift to right the bits of lhs using rhs offset
         shr,
+        /// Jump to block if the value on stack is false
+        jmp_if_false: []const u8,
+        /// Jump to block
+        jmp: []const u8,
         /// Place a machine-specific assembly in the output
         assembly: []const u8,
         // Pop a value from the stack into a machine-specific register
@@ -93,7 +92,7 @@ pub const Block = struct {
         assembly_output: []const u8,
         /// Pop a value from the stack
         pop,
-        /// Return to the parent block
+        /// Return out of the function
         @"return",
     };
 };

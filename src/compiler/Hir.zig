@@ -12,29 +12,23 @@ const Type = @import("Type.zig");
 
 const Hir = @This();
 
-blocks: std.ArrayListUnmanaged(Block) = .{},
+data_blocks: std.StringArrayHashMapUnmanaged(Block) = .{},
+
+functions: std.StringArrayHashMapUnmanaged(Function) = .{},
+
+pub const Function = struct {
+    prototype: Ast.Node.Stmt.FunctionDeclaration.Prototype,
+    blocks: std.StringArrayHashMapUnmanaged(Block) = .{},
+};
 
 pub const Block = struct {
-    tag: Tag,
-
-    label: Ast.Name,
-
-    maybe_function: ?Ast.Node.Stmt.FunctionDeclaration = null,
+    is_control_flow: bool = false,
 
     instructions: std.ArrayListUnmanaged(Instruction) = .{},
 
-    pub const Tag = enum {
-        basic,
-        data,
-    };
-
     pub const Instruction = union(enum) {
-        /// Start a function, pass the function declaration node to enable more checks
-        function_proluge,
-        /// End a function
-        function_epilogue,
-        /// Declare a function parameter
-        function_parameter,
+        /// Declare a parameter
+        parameter: usize,
         /// Call a specific function pointer on the stack with the specified argument count
         call: struct { usize, Ast.SourceLoc },
         /// Declare a constant using the specified name and type
@@ -93,11 +87,15 @@ pub const Block = struct {
         shl: Ast.SourceLoc,
         /// Shift to right the bits of lhs using rhs offset
         shr: Ast.SourceLoc,
+        /// Jump to block if the value on stack is false
+        jmp_if_false: Ast.Name,
+        /// Jump to block
+        jmp: []const u8,
         /// Place a machine-specific assembly in the output
         assembly: Ast.Node.Expr.Assembly,
         /// Pop a value from the stack
         pop,
-        /// Return to the parent block
+        /// Return out of the function
         @"return",
     };
 };
@@ -107,6 +105,7 @@ pub const Generator = struct {
 
     hir: Hir = .{},
 
+    maybe_hir_function: ?*Hir.Function = null,
     maybe_hir_block: ?*Hir.Block = null,
 
     error_info: ?ErrorInfo = null,
@@ -120,6 +119,7 @@ pub const Generator = struct {
         UnexpectedStatement,
         UnexpectedExpression,
         UnsupportedFeature,
+        Redeclared,
     } || std.mem.Allocator.Error;
 
     pub fn init(allocator: std.mem.Allocator) Generator {
@@ -153,45 +153,64 @@ pub const Generator = struct {
 
     fn generateStmt(self: *Generator, stmt: Ast.Node.Stmt) Error!void {
         switch (stmt) {
-            .function_declaration => try self.generateFunctionDeclarationStmt(stmt.function_declaration),
+            .function_declaration => |function_declaration| try self.generateFunctionDeclarationStmt(function_declaration),
 
-            .variable_declaration => try self.generateVariableDeclarationStmt(stmt.variable_declaration),
+            .variable_declaration => |variable_declaration| try self.generateVariableDeclarationStmt(variable_declaration),
 
-            .@"return" => try self.generateReturnStmt(stmt.@"return"),
+            .conditional => |conditional| try self.generateConditionalStmt(conditional),
+
+            .@"return" => |@"return"| try self.generateReturnStmt(@"return"),
         }
     }
 
-    fn generateFunctionDeclarationStmt(self: *Generator, function: Ast.Node.Stmt.FunctionDeclaration) Error!void {
+    fn reportRedeclaration(self: *Generator, name: Ast.Name) Error!void {
+        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+        try error_message_buf.writer(self.allocator).print("redeclaration of '{s}'", .{name.buffer});
+
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = name.source_loc };
+
+        return error.Redeclared;
+    }
+
+    fn generateFunctionDeclarationStmt(self: *Generator, ast_function: Ast.Node.Stmt.FunctionDeclaration) Error!void {
         if (self.maybe_hir_block != null) {
-            self.error_info = .{ .message = "cannot declare functions inside other functions", .source_loc = function.prototype.name.source_loc };
+            self.error_info = .{ .message = "cannot declare functions inside other functions", .source_loc = ast_function.prototype.name.source_loc };
 
             return error.UnexpectedStatement;
         }
 
-        const new_hir_block = try self.hir.blocks.addOne(self.allocator);
+        const new_hir_function_entry = try self.hir.functions.getOrPutValue(
+            self.allocator,
+            ast_function.prototype.name.buffer,
+            .{ .prototype = ast_function.prototype },
+        );
 
-        new_hir_block.* = .{
-            .tag = .basic,
-            .label = function.prototype.name,
-            .maybe_function = function,
-        };
-
-        try new_hir_block.instructions.append(self.allocator, .function_proluge);
-
-        for (0..function.prototype.parameters.len) |_| {
-            try new_hir_block.instructions.append(self.allocator, .function_parameter);
+        if (new_hir_function_entry.found_existing) {
+            return self.reportRedeclaration(ast_function.prototype.name);
         }
+
+        const new_hir_function = new_hir_function_entry.value_ptr;
+
+        const new_hir_block_entry = try new_hir_function.blocks.getOrPutValue(self.allocator, "entry", .{});
+
+        const new_hir_block = new_hir_block_entry.value_ptr;
+
+        for (0..ast_function.prototype.parameters.len) |i| {
+            try new_hir_block.instructions.append(self.allocator, .{ .parameter = i });
+        }
+
+        self.maybe_hir_function = new_hir_function;
+        defer self.maybe_hir_function = null;
 
         self.maybe_hir_block = new_hir_block;
         defer self.maybe_hir_block = null;
 
-        for (function.body) |node| {
+        for (ast_function.body) |node| {
             try self.generateNode(node);
         }
 
-        try new_hir_block.instructions.append(self.allocator, .function_epilogue);
-
-        try new_hir_block.instructions.append(self.allocator, .@"return");
+        try self.maybe_hir_block.?.instructions.append(self.allocator, .@"return");
     }
 
     fn emitVariable(allocator: std.mem.Allocator, hir_block: *Hir.Block, variable: Ast.Node.Stmt.VariableDeclaration, linkage: Symbol.Linkage) Error!void {
@@ -241,25 +260,107 @@ pub const Generator = struct {
 
             try hir_block.instructions.append(self.allocator, .{ .set = variable.name });
         } else {
-            const new_hir_block = try self.hir.blocks.addOne(self.allocator);
-            new_hir_block.* = .{ .tag = .data, .label = variable.name };
+            const new_hir_data_block_entry = try self.hir.data_blocks.getOrPutValue(self.allocator, variable.name.buffer, .{});
 
-            self.maybe_hir_block = new_hir_block;
+            if (new_hir_data_block_entry.found_existing) {
+                return self.reportRedeclaration(variable.name);
+            }
+
+            const new_hir_data_block = new_hir_data_block_entry.value_ptr;
+
+            self.maybe_hir_block = new_hir_data_block;
             defer self.maybe_hir_block = null;
 
             try self.generateExpr(variable.value);
 
-            try emitVariable(self.allocator, new_hir_block, variable, .global);
+            try emitVariable(self.allocator, new_hir_data_block, variable, .global);
 
-            try new_hir_block.instructions.append(self.allocator, .{ .set = variable.name });
+            try new_hir_data_block.instructions.append(self.allocator, .{ .set = variable.name });
+        }
+    }
+
+    var conditional_parts_emitted: usize = 0;
+
+    fn generateConditionalStmt(self: *Generator, conditional: Ast.Node.Stmt.Conditional) Error!void {
+        if (self.maybe_hir_function) |hir_function| {
+            std.debug.assert(conditional.conditions.len >= 1);
+            std.debug.assert(conditional.possiblities.len >= 1);
+
+            var fallback_block_name: std.ArrayListUnmanaged(u8) = .{};
+            try fallback_block_name.writer(self.allocator).print("conditional.fallback{}", .{conditional_parts_emitted});
+
+            var end_block_name: std.ArrayListUnmanaged(u8) = .{};
+            try end_block_name.writer(self.allocator).print("conditional.end{}", .{conditional_parts_emitted});
+
+            var next_possiblity_block_name: std.ArrayListUnmanaged(u8) = .{};
+            try next_possiblity_block_name.writer(self.allocator).print("conditional.possiblity{}", .{conditional_parts_emitted});
+
+            for (conditional.conditions, conditional.possiblities, 0..) |condition, possiblity, i| {
+                const possiblity_block_name = next_possiblity_block_name;
+
+                conditional_parts_emitted += 1;
+
+                next_possiblity_block_name = .{};
+                try next_possiblity_block_name.writer(self.allocator).print("conditional.possiblity{}", .{conditional_parts_emitted});
+
+                const possiblity_block_entry = try hir_function.blocks.getOrPutValue(
+                    self.allocator,
+                    possiblity_block_name.items,
+                    .{ .is_control_flow = true },
+                );
+
+                const possiblity_block = possiblity_block_entry.value_ptr;
+
+                self.maybe_hir_block = possiblity_block;
+
+                try self.generateExpr(condition);
+
+                try possiblity_block.instructions.append(
+                    self.allocator,
+                    .{
+                        .jmp_if_false = .{
+                            .buffer = if (i == conditional.possiblities.len - 1) fallback_block_name.items else next_possiblity_block_name.items,
+                            .source_loc = condition.getSourceLoc(),
+                        },
+                    },
+                );
+
+                for (possiblity) |possibility_node| {
+                    try self.generateNode(possibility_node);
+                }
+
+                try possiblity_block.instructions.append(self.allocator, .{ .jmp = end_block_name.items });
+            }
+
+            {
+                const fallback_block_entry = try hir_function.blocks.getOrPutValue(
+                    self.allocator,
+                    fallback_block_name.items,
+                    .{ .is_control_flow = true },
+                );
+
+                self.maybe_hir_block = fallback_block_entry.value_ptr;
+
+                for (conditional.fallback) |fallback_node| {
+                    try self.generateNode(fallback_node);
+                }
+            }
+
+            {
+                const end_block_entry = try hir_function.blocks.getOrPutValue(self.allocator, end_block_name.items, .{});
+
+                self.maybe_hir_block = end_block_entry.value_ptr;
+            }
+        } else {
+            self.error_info = .{ .message = "expected the conditional statement to be inside a function", .source_loc = conditional.conditions[0].getSourceLoc() };
+
+            return error.UnexpectedStatement;
         }
     }
 
     fn generateReturnStmt(self: *Generator, @"return": Ast.Node.Stmt.Return) Error!void {
         if (self.maybe_hir_block) |hir_block| {
             try self.generateExpr(@"return".value);
-
-            try hir_block.instructions.append(self.allocator, .function_epilogue);
 
             try hir_block.instructions.append(self.allocator, .@"return");
         } else {

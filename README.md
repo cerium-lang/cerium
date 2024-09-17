@@ -6,7 +6,7 @@ A general-purpose programming language that aims to be the most sane
 
 - Language
     - Control
-        - [ ] Add support for Conditionals
+        - [x] Add support for Conditionals
         - [ ] Add support for Loops
         - [ ] Add support for Switch
 

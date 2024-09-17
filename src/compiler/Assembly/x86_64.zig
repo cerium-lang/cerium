@@ -58,44 +58,78 @@ pub fn render(self: *x86_64) Error!void {
 
     self.scope = global_scope;
 
-    for (self.lir.blocks.items) |lir_block| {
-        if (lir_block.tag == .basic) {
-            if (lir_block.maybe_function) |function| {
-                try global_scope.put(
-                    self.allocator,
-                    lir_block.label,
-                    .{
-                        .stack_index = 0,
-                        .type = .{
-                            .tag = .function,
-                            .data = .{
-                                .function = function,
-                            },
-                        },
-                        .linkage = .global,
-                    },
-                );
-            }
+    var lir_data_block_iterator = self.lir.data_blocks.iterator();
 
-            const local_scope = try self.scope_stack.addOne(self.allocator);
-            local_scope.* = .{ .maybe_parent = self.scope };
-            self.scope = local_scope;
-        }
+    while (lir_data_block_iterator.next()) |lir_block_entry| {
+        const lir_block_name = lir_block_entry.key_ptr.*;
+        const lir_block = lir_block_entry.value_ptr;
 
-        {
-            const section_writer = if (lir_block.tag == .basic) text_section_writer else data_section_writer;
+        try data_section_writer.print(".global {s}\n", .{lir_block_name});
+        try data_section_writer.print("{s}:\n", .{lir_block_name});
 
-            try section_writer.print(".global {s}\n", .{lir_block.label});
-            try section_writer.print("{s}:\n", .{lir_block.label});
-        }
-
-        for (lir_block.instructions.items) |instruction| {
+        for (lir_block.instructions.items) |lir_instruction| {
             try self.renderInstruction(
                 text_section_writer,
                 data_section_writer,
                 rodata_section_writer,
-                instruction,
+                lir_block,
+                lir_instruction,
             );
+        }
+    }
+
+    var lir_function_iterator = self.lir.functions.iterator();
+
+    while (lir_function_iterator.next()) |lir_function_entry| {
+        const lir_function = lir_function_entry.value_ptr.*;
+
+        try self.scope.put(
+            self.allocator,
+            lir_function.name,
+            .{
+                .stack_index = 0,
+                .type = lir_function.type,
+                .linkage = .global,
+            },
+        );
+
+        try text_section_writer.print(".global {s}\n", .{lir_function.name});
+        try text_section_writer.print("{s}:\n", .{lir_function.name});
+
+        try text_section_writer.writeAll("\tpushq %rbp\n");
+        try text_section_writer.writeAll("\tmovq %rsp, %rbp\n");
+
+        try self.stack_offsets.append(self.allocator, 0);
+
+        var lir_block_iterator = lir_function.blocks.iterator();
+
+        while (lir_block_iterator.next()) |lir_block_entry| {
+            const lir_block_name = lir_block_entry.key_ptr.*;
+            const lir_block = lir_block_entry.value_ptr;
+
+            if (!std.mem.eql(u8, lir_block_name, "entry")) {
+                try text_section_writer.print("{s}:\n", .{lir_block_name});
+            }
+
+            const previous_stack_len = self.stack.items.len;
+
+            const local_scope = try self.scope_stack.addOne(self.allocator);
+            local_scope.* = .{ .maybe_parent = self.scope };
+            self.scope = local_scope;
+
+            for (lir_block.instructions.items) |lir_instruction| {
+                try self.renderInstruction(
+                    text_section_writer,
+                    data_section_writer,
+                    rodata_section_writer,
+                    lir_block,
+                    lir_instruction,
+                );
+            }
+
+            if (lir_block.is_control_flow) {
+                self.stack.shrinkRetainingCapacity(previous_stack_len);
+            }
         }
     }
 }
@@ -105,14 +139,11 @@ fn renderInstruction(
     text_section_writer: anytype,
     data_section_writer: anytype,
     rodata_section_writer: anytype,
-    instruction: Lir.Block.Instruction,
+    lir_block: *Lir.Block,
+    lir_instruction: Lir.Block.Instruction,
 ) Error!void {
-    switch (instruction) {
-        .function_proluge => try self.renderFunctionProluge(text_section_writer),
-
-        .function_epilogue => try self.renderFunctionEpilogue(text_section_writer),
-
-        .function_parameter => |function_parameter| try self.renderFunctionParameter(text_section_writer, function_parameter),
+    switch (lir_instruction) {
+        .parameter => |parameter| try self.renderParameter(text_section_writer, parameter),
 
         .call => |function| try self.renderCall(text_section_writer, function),
 
@@ -129,13 +160,16 @@ fn renderInstruction(
 
         .negate => try self.renderNegate(text_section_writer),
 
-        .bool_not, .bit_not => try self.renderNot(text_section_writer, instruction),
+        .bool_not, .bit_not => try self.renderNot(text_section_writer, lir_instruction),
 
         .read => |result_type| try self.renderRead(text_section_writer, result_type),
         .write => try self.renderWrite(text_section_writer),
 
-        .add, .sub, .mul, .div, .bit_and, .bit_or, .bit_xor, .shl, .shr => try self.renderBinaryOperation(text_section_writer, instruction),
-        .lt, .gt, .eql => try self.renderComparisonOperation(text_section_writer, instruction),
+        .add, .sub, .mul, .div, .bit_and, .bit_or, .bit_xor, .shl, .shr => try self.renderBinaryOperation(text_section_writer, lir_instruction),
+        .lt, .gt, .eql => try self.renderComparisonOperation(text_section_writer, lir_instruction),
+
+        .jmp_if_false => |block_name| try self.renderJmpIfFalse(text_section_writer, block_name),
+        .jmp => |block_name| try text_section_writer.print("\tjmp {s}\n", .{block_name}),
 
         .assembly => |content| try text_section_writer.print("{s}\n", .{content}),
         .assembly_input => |register| try self.renderAssemblyInput(text_section_writer, register),
@@ -143,30 +177,12 @@ fn renderInstruction(
 
         .pop => try self.popRegister(text_section_writer, "8"),
 
-        .@"return" => try self.renderReturn(text_section_writer),
+        .@"return" => try self.renderReturn(text_section_writer, lir_block.is_control_flow),
     }
 }
 
-fn renderFunctionProluge(self: *x86_64, text_section_writer: anytype) Error!void {
-    try text_section_writer.writeAll("\tpushq %rbp\n");
-    try text_section_writer.writeAll("\tmovq %rsp, %rbp\n");
-
-    try self.stack_offsets.append(self.allocator, 0);
-}
-
-fn renderFunctionEpilogue(self: *x86_64, text_section_writer: anytype) Error!void {
-    if (self.stack.items.len != 0) {
-        try self.popRegister(text_section_writer, "ax");
-    }
-
-    self.stack.clearRetainingCapacity();
-    self.stack_offsets.clearRetainingCapacity();
-
-    try text_section_writer.writeAll("\tpopq %rbp\n");
-}
-
-fn renderFunctionParameter(self: *x86_64, text_section_writer: anytype, function_parameter: struct { usize, Symbol }) Error!void {
-    const function_parameter_index, const function_parameter_symbol = function_parameter;
+fn renderParameter(self: *x86_64, text_section_writer: anytype, parameter: struct { usize, Symbol }) Error!void {
+    const function_parameter_index, const function_parameter_symbol = parameter;
 
     const is_floating_point = function_parameter_symbol.type.isFloat();
 
@@ -474,6 +490,13 @@ fn renderComparisonOperation(self: *x86_64, text_section_writer: anytype, instru
     try self.pushRegister(text_section_writer, "ax", .{ .is_floating_point = false });
 }
 
+fn renderJmpIfFalse(self: *x86_64, text_section_writer: anytype, block_name: []const u8) Error!void {
+    try self.popRegister(text_section_writer, "8");
+
+    try text_section_writer.writeAll("\tcmpq $0, %r8\n");
+    try text_section_writer.print("\tje {s}\n", .{block_name});
+}
+
 fn renderAssemblyInput(self: *x86_64, text_section_writer: anytype, register: []const u8) Error!void {
     _ = self.stack.pop();
 
@@ -492,11 +515,21 @@ fn renderAssemblyOutput(self: *x86_64, text_section_writer: anytype, register: [
     try text_section_writer.print("\tmovq %{s}, -{}(%rbp)\n", .{ register, stack_offset });
 }
 
-fn renderReturn(self: *x86_64, text_section_writer: anytype) Error!void {
+fn renderReturn(self: *x86_64, text_section_writer: anytype, is_control_flow: bool) Error!void {
+    if (self.stack.items.len != 0) {
+        try self.popRegister(text_section_writer, "ax");
+    }
+
+    if (!is_control_flow) {
+        self.stack.clearRetainingCapacity();
+        self.stack_offsets.clearRetainingCapacity();
+    }
+
     self.scope.clearAndFree(self.allocator);
     self.scope = self.scope.maybe_parent.?;
     _ = self.scope_stack.pop();
 
+    try text_section_writer.writeAll("\tpopq %rbp\n");
     try text_section_writer.writeAll("\tretq\n");
 }
 

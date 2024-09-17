@@ -14,8 +14,8 @@ const Ast = @This();
 body: []const Node,
 
 pub const SourceLoc = struct {
-    line: usize,
-    column: usize,
+    line: usize = 1,
+    column: usize = 1,
 };
 
 pub const Name = struct {
@@ -30,6 +30,7 @@ pub const Node = union(enum) {
     pub const Stmt = union(enum) {
         function_declaration: FunctionDeclaration,
         variable_declaration: VariableDeclaration,
+        conditional: Conditional,
         @"return": Return,
 
         pub const FunctionDeclaration = struct {
@@ -53,6 +54,12 @@ pub const Node = union(enum) {
             name: Name,
             type: ?Type,
             value: Node.Expr,
+        };
+
+        pub const Conditional = struct {
+            conditions: []const Expr,
+            possiblities: []const []const Node,
+            fallback: []const Node,
         };
 
         pub const Return = struct {
@@ -147,8 +154,8 @@ pub const Node = union(enum) {
         };
 
         pub const Subscript = struct {
-            target: *Expr,
-            index: *Expr,
+            target: *const Expr,
+            index: *const Expr,
             source_loc: SourceLoc,
         };
 
@@ -272,7 +279,7 @@ pub const Parser = struct {
     }
 
     fn tokenSourceLoc(self: Parser, token: Token) SourceLoc {
-        var source_loc = SourceLoc{ .line = 1, .column = 0 };
+        var source_loc: SourceLoc = .{};
 
         for (0..self.buffer.len) |i| {
             switch (self.buffer[i]) {
@@ -297,6 +304,8 @@ pub const Parser = struct {
             .keyword_fn => return self.parseFunctionDeclarationStmt(),
 
             .keyword_const, .keyword_var => try self.parseVariableDeclarationStmt(),
+
+            .keyword_if => return self.parseConditionalStmt(),
 
             .keyword_return => try self.parseReturnStmt(),
 
@@ -441,6 +450,32 @@ pub const Parser = struct {
                 },
             },
         };
+    }
+
+    fn parseConditionalStmt(self: *Parser) Error!Node {
+        var conditions = std.ArrayList(Node.Expr).init(self.allocator);
+        var possiblities = std.ArrayList([]Node).init(self.allocator);
+
+        while (self.peekToken().tag == .keyword_if) {
+            _ = self.nextToken();
+
+            const condition = (try self.parseExpr(.lowest)).expr;
+            const possibility = try self.parseBody();
+            try conditions.append(condition);
+            try possiblities.append(possibility);
+
+            if (self.eatToken(.keyword_else)) {
+                if (self.peekToken().tag == .keyword_if) continue;
+
+                const fallback = try self.parseBody();
+
+                return Node{ .stmt = .{ .conditional = .{ .conditions = conditions.items, .possiblities = possiblities.items, .fallback = fallback } } };
+            }
+
+            break;
+        }
+
+        return Node{ .stmt = .{ .conditional = .{ .conditions = conditions.items, .possiblities = possiblities.items, .fallback = &.{} } } };
     }
 
     fn parseReturnStmt(self: *Parser) Error!Node {

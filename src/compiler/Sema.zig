@@ -19,12 +19,12 @@ env: Compilation.Environment,
 
 lir: Lir = .{},
 
+maybe_lir_function: ?*Lir.Function = null,
+maybe_hir_function: ?*Hir.Function = null,
+
 lir_block: *Lir.Block = undefined,
 
 stack: std.ArrayListUnmanaged(Value) = .{},
-
-maybe_function: ?Ast.Node.Stmt.FunctionDeclaration = null,
-function_parameter_index: usize = 0,
 
 scope_stack: std.ArrayListUnmanaged(Symbol.Scope(Variable)) = .{},
 scope: *Symbol.Scope(Variable) = undefined,
@@ -46,7 +46,6 @@ pub const Error = error{
     UnexpectedType,
     MismatchedTypes,
     Undeclared,
-    Redeclared,
 } || std.mem.Allocator.Error;
 
 const Value = union(enum) {
@@ -175,7 +174,6 @@ fn checkIntOrFloat(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) 
         var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
         try error_message_buf.writer(self.allocator).print("'{}' is provided while expected an integer or float", .{provided_type});
-
         self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
 
         return error.MismatchedTypes;
@@ -199,18 +197,6 @@ fn checkInt(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!v
         var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
         try error_message_buf.writer(self.allocator).print("'{}' is provided while expected an integer", .{provided_type});
-
-        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
-
-        return error.MismatchedTypes;
-    }
-}
-
-fn checkBool(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {
-    if (provided_type.tag != .bool) {
-        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-        try error_message_buf.writer(self.allocator).print("'{}' is provided while expected 'bool'", .{provided_type});
 
         self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
 
@@ -250,16 +236,6 @@ fn reportNotDeclared(self: *Sema, name: Ast.Name) Error!void {
     self.error_info = .{ .message = error_message_buf.items, .source_loc = name.source_loc };
 
     return error.Undeclared;
-}
-
-fn reportRedeclaration(self: *Sema, name: Ast.Name) Error!void {
-    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-    try error_message_buf.writer(self.allocator).print("redeclaration of '{s}'", .{name.buffer});
-
-    self.error_info = .{ .message = error_message_buf.items, .source_loc = name.source_loc };
-
-    return error.Redeclared;
 }
 
 fn reportNotPointer(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {
@@ -302,69 +278,99 @@ pub fn analyze(self: *Sema, hir: Hir) Error!void {
         .maybe_value = .{ .boolean = false },
     });
 
-    for (hir.blocks.items) |hir_block| {
-        if (self.scope.get(hir_block.label.buffer) != null) {
-            return self.reportRedeclaration(hir_block.label);
-        }
+    var hir_data_block_iterator = hir.data_blocks.iterator();
 
-        self.lir_block = try self.lir.blocks.addOne(self.allocator);
-        self.lir_block.* = .{ .tag = @enumFromInt(@intFromEnum(hir_block.tag)), .label = hir_block.label.buffer };
+    while (hir_data_block_iterator.next()) |hir_block_entry| {
+        const hir_block_name = hir_block_entry.key_ptr.*;
+        const hir_block = hir_block_entry.value_ptr;
 
-        if (hir_block.tag == .basic) {
-            if (hir_block.maybe_function) |ast_function| {
-                var function_parameter_types: std.ArrayListUnmanaged(Type) = .{};
-                for (ast_function.prototype.parameters) |ast_function_parameter| {
-                    try function_parameter_types.append(self.allocator, ast_function_parameter.expected_type);
-                }
+        const lir_block_entry = try self.lir.data_blocks.getOrPutValue(self.allocator, hir_block_name, .{});
 
-                const function_return_type_on_heap = try self.allocator.create(Type);
-                function_return_type_on_heap.* = ast_function.prototype.return_type;
-
-                const function: Type.Data.Function = .{
-                    .parameter_types = try function_parameter_types.toOwnedSlice(self.allocator),
-                    .return_type = function_return_type_on_heap,
-                };
-
-                self.lir_block.maybe_function = function;
-
-                self.maybe_function = ast_function;
-                self.function_parameter_index = 0;
-
-                try self.scope.put(
-                    self.allocator,
-                    hir_block.label.buffer,
-                    .{
-                        .symbol = .{
-                            .name = hir_block.label,
-                            .type = .{
-                                .tag = .function,
-                                .data = .{
-                                    .function = function,
-                                },
-                            },
-                            .linkage = .global,
-                        },
-                        .is_const = true,
-                    },
-                );
-            }
-
-            const local_scope = try self.scope_stack.addOne(self.allocator);
-            local_scope.* = .{ .maybe_parent = self.scope };
-            self.scope = local_scope;
-        }
+        self.lir_block = lir_block_entry.value_ptr;
 
         for (hir_block.instructions.items) |hir_instruction| {
             try self.analyzeInstruction(hir_instruction);
         }
     }
+
+    var hir_function_iterator = hir.functions.iterator();
+
+    while (hir_function_iterator.next()) |hir_function_entry| {
+        const hir_function = hir_function_entry.value_ptr;
+
+        var function_parameter_types: std.ArrayListUnmanaged(Type) = .{};
+
+        for (hir_function.prototype.parameters) |ast_function_parameter| {
+            try function_parameter_types.append(self.allocator, ast_function_parameter.expected_type);
+        }
+
+        const function_return_type_on_heap = try self.allocator.create(Type);
+        function_return_type_on_heap.* = hir_function.prototype.return_type;
+
+        const function_type: Type = .{
+            .tag = .function,
+            .data = .{
+                .function = .{
+                    .parameter_types = try function_parameter_types.toOwnedSlice(self.allocator),
+                    .return_type = function_return_type_on_heap,
+                },
+            },
+        };
+
+        const lir_function_entry = try self.lir.functions.getOrPutValue(
+            self.allocator,
+            hir_function_entry.key_ptr.*,
+            .{
+                .name = hir_function.prototype.name.buffer,
+                .type = function_type,
+            },
+        );
+
+        const lir_function = lir_function_entry.value_ptr;
+
+        self.maybe_hir_function = hir_function;
+
+        try self.scope.put(
+            self.allocator,
+            hir_function.prototype.name.buffer,
+            .{
+                .symbol = .{
+                    .name = hir_function.prototype.name,
+                    .type = function_type,
+                    .linkage = .global,
+                },
+                .is_const = true,
+            },
+        );
+
+        var hir_block_iterator = hir_function.blocks.iterator();
+
+        while (hir_block_iterator.next()) |hir_block_entry| {
+            const hir_block_name = hir_block_entry.key_ptr.*;
+            const hir_block = hir_block_entry.value_ptr;
+
+            const lir_block_entry = try lir_function.blocks.getOrPutValue(
+                self.allocator,
+                hir_block_name,
+                .{ .is_control_flow = hir_block.is_control_flow },
+            );
+
+            self.lir_block = lir_block_entry.value_ptr;
+
+            const local_scope = try self.scope_stack.addOne(self.allocator);
+            local_scope.* = .{ .maybe_parent = self.scope };
+            self.scope = local_scope;
+
+            for (hir_block.instructions.items) |hir_instruction| {
+                try self.analyzeInstruction(hir_instruction);
+            }
+        }
+    }
 }
 
-fn analyzeInstruction(self: *Sema, instruction: Hir.Block.Instruction) Error!void {
-    switch (instruction) {
-        .function_proluge => try self.analyzeFunctionProluge(),
-        .function_epilogue => try self.analyzeFunctionEpilogue(),
-        .function_parameter => try self.analyzeFunctionParameter(),
+fn analyzeInstruction(self: *Sema, hir_instruction: Hir.Block.Instruction) Error!void {
+    switch (hir_instruction) {
+        .parameter => |index| try self.analyzeParameter(index),
 
         .call => |info| try self.analyzeCall(info),
 
@@ -408,38 +414,29 @@ fn analyzeInstruction(self: *Sema, instruction: Hir.Block.Instruction) Error!voi
         .shl => |source_loc| try self.analyzeBitwiseShift(.left, source_loc),
         .shr => |source_loc| try self.analyzeBitwiseShift(.right, source_loc),
 
-        .pop => try self.analyzePop(),
+        .jmp_if_false => |block_name| try self.analyzeJmpIfFalse(block_name),
+        .jmp => |block_name| try self.analyzeJmp(block_name),
 
         .assembly => |assembly| try self.analyzeAssembly(assembly),
+
+        .pop => try self.analyzePop(),
 
         .@"return" => try self.analyzeReturn(),
     }
 }
 
-fn analyzeFunctionProluge(self: *Sema) Error!void {
-    try self.lir_block.instructions.append(self.allocator, .function_proluge);
-}
+fn analyzeParameter(self: *Sema, index: usize) Error!void {
+    const parameter = self.maybe_hir_function.?.prototype.parameters[index];
 
-fn analyzeFunctionEpilogue(self: *Sema) Error!void {
-    if (self.maybe_function == null) return;
-
-    try self.lir_block.instructions.append(self.allocator, .function_epilogue);
-}
-
-fn analyzeFunctionParameter(self: *Sema) Error!void {
-    const function_parameter = self.maybe_function.?.prototype.parameters[self.function_parameter_index];
-
-    const function_parameter_symbol: Symbol = .{
-        .name = function_parameter.name,
-        .type = function_parameter.expected_type,
+    const parameter_symbol: Symbol = .{
+        .name = parameter.name,
+        .type = parameter.expected_type,
         .linkage = .local,
     };
 
-    try self.scope.put(self.allocator, function_parameter_symbol.name.buffer, .{ .is_const = true, .symbol = function_parameter_symbol });
+    try self.scope.put(self.allocator, parameter_symbol.name.buffer, .{ .is_const = true, .symbol = parameter_symbol });
 
-    try self.lir_block.instructions.append(self.allocator, .{ .function_parameter = .{ self.function_parameter_index, function_parameter_symbol } });
-
-    self.function_parameter_index += 1;
+    try self.lir_block.instructions.append(self.allocator, .{ .parameter = .{ index, parameter_symbol } });
 }
 
 fn analyzeCall(self: *Sema, info: struct { usize, Ast.SourceLoc }) Error!void {
@@ -505,8 +502,8 @@ fn analyzeConstant(self: *Sema, infer: bool, symbol: Symbol) Error!void {
     }
 
     if (variable.symbol.linkage == .global) {
-        var initializer_block = self.lir.blocks.pop();
-        initializer_block.instructions.deinit(self.allocator);
+        var initializer_block_entry = self.lir.data_blocks.pop();
+        initializer_block_entry.value.instructions.deinit(self.allocator);
     } else {
         _ = self.lir_block.instructions.pop();
     }
@@ -549,14 +546,14 @@ fn analyzeSet(self: *Sema, name: Ast.Name) Error!void {
         self.error_info = .{ .message = "cannot mutate the value of a constant", .source_loc = name.source_loc };
 
         return error.UnexpectedMutation;
-    } else if (variable.symbol.linkage == .global and value == .runtime and self.maybe_function == null) {
+    } else if (variable.symbol.linkage == .global and value == .runtime and self.maybe_hir_function == null) {
         self.error_info = .{ .message = "expected global variable initializer to be compile time known", .source_loc = name.source_loc };
 
         return error.ExpectedCompiletimeConstant;
     } else {
         try self.checkRepresentability(value, variable.symbol.type, name.source_loc);
 
-        if (self.maybe_function != null) {
+        if (self.maybe_hir_function != null) {
             try self.lir_block.instructions.append(self.allocator, .{ .set = name.buffer });
         }
     }
@@ -646,7 +643,7 @@ fn analyzeNot(self: *Sema, comptime operand: NotOperation, source_loc: Ast.Sourc
     const rhs_type = rhs.getType();
 
     if (operand == .bool) {
-        try self.checkBool(rhs_type, source_loc);
+        try self.checkRepresentability(rhs, .{ .tag = .bool }, source_loc);
     } else if (operand == .bit) {
         try self.checkInt(rhs_type, source_loc);
     }
@@ -1094,16 +1091,20 @@ fn analyzeArithmetic(self: *Sema, comptime operation: ArithmeticOperation, sourc
     }
 }
 
-fn analyzePop(self: *Sema) Error!void {
-    if (self.stack.popOrNull()) |unused_value| {
-        if (unused_value.getType().tag != .void) {
-            try self.lir_block.instructions.append(self.allocator, .pop);
-        }
-    }
+fn analyzeJmpIfFalse(self: *Sema, block_name: Ast.Name) Error!void {
+    const condition = self.stack.pop();
+
+    try self.checkRepresentability(condition, .{ .tag = .bool }, block_name.source_loc);
+
+    try self.lir_block.instructions.append(self.allocator, .{ .jmp_if_false = block_name.buffer });
+}
+
+fn analyzeJmp(self: *Sema, block_name: []const u8) Error!void {
+    try self.lir_block.instructions.append(self.allocator, .{ .jmp = block_name });
 }
 
 fn analyzeAssembly(self: *Sema, assembly: Ast.Node.Expr.Assembly) Error!void {
-    if (self.maybe_function == null and (assembly.input_constraints.len > 0 or assembly.output_constraint != null)) {
+    if (self.maybe_hir_function == null and (assembly.input_constraints.len > 0 or assembly.output_constraint != null)) {
         self.error_info = .{ .message = "global assembly should not contain any input or output constraints", .source_loc = assembly.source_loc };
 
         return error.UnexpectedAssemblyConstraints;
@@ -1132,21 +1133,30 @@ fn analyzeAssembly(self: *Sema, assembly: Ast.Node.Expr.Assembly) Error!void {
     }
 }
 
+fn analyzePop(self: *Sema) Error!void {
+    if (self.stack.popOrNull()) |unused_value| {
+        if (unused_value.getType().tag != .void) {
+            try self.lir_block.instructions.append(self.allocator, .pop);
+        }
+    }
+}
+
 fn analyzeReturn(self: *Sema) Error!void {
-    if (self.maybe_function == null) return;
+    if (self.maybe_hir_function == null) return;
 
     if (self.stack.popOrNull()) |return_value| {
-        try self.checkRepresentability(return_value, self.maybe_function.?.prototype.return_type, self.maybe_function.?.prototype.name.source_loc);
+        try self.checkRepresentability(return_value, self.maybe_hir_function.?.prototype.return_type, self.maybe_hir_function.?.prototype.name.source_loc);
     } else {
-        if (self.maybe_function.?.prototype.return_type.tag != .void) {
-            self.error_info = .{ .message = "function with non void return type implicitly returns", .source_loc = self.maybe_function.?.prototype.name.source_loc };
+        if (self.maybe_hir_function.?.prototype.return_type.tag != .void) {
+            self.error_info = .{ .message = "function with non void return type implicitly returns", .source_loc = self.maybe_hir_function.?.prototype.name.source_loc };
 
             return error.ExpectedExplicitReturn;
         }
     }
 
-    self.maybe_function = null;
-    self.stack.clearRetainingCapacity();
+    if (!self.lir_block.is_control_flow) {
+        self.maybe_hir_function = null;
+    }
 
     self.scope.clearAndFree(self.allocator);
     self.scope = self.scope.maybe_parent.?;

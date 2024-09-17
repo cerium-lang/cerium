@@ -39,6 +39,8 @@ pub const Tag = enum {
     keyword_fn,
     keyword_var,
     keyword_const,
+    keyword_if,
+    keyword_else,
     keyword_asm,
     keyword_return,
 };
@@ -52,6 +54,8 @@ pub const keywords = std.StaticStringMap(Tag).initComptime(.{
     .{ "fn", .keyword_fn },
     .{ "var", .keyword_var },
     .{ "const", .keyword_const },
+    .{ "if", .keyword_if },
+    .{ "else", .keyword_else },
     .{ "asm", .keyword_asm },
     .{ "return", .keyword_return },
 });
