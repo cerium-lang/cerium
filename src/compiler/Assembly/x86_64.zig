@@ -107,7 +107,7 @@ pub fn render(self: *x86_64) Error!void {
             const lir_block = lir_block_entry.value_ptr;
 
             if (!std.mem.eql(u8, lir_block_name, "entry")) {
-                try text_section_writer.print("{s}:\n", .{lir_block_name});
+                try text_section_writer.print(".L{s}:\n", .{lir_block_name});
             }
 
             const previous_stack_len = self.stack.items.len;
@@ -168,7 +168,7 @@ fn renderInstruction(
         .lt, .gt, .eql => try self.renderComparisonOperation(text_section_writer, lir_instruction),
 
         .jmp_if_false => |block_name| try self.renderJmpIfFalse(text_section_writer, block_name),
-        .jmp => |block_name| try text_section_writer.print("\tjmp {s}\n", .{block_name}),
+        .jmp => |block_name| try text_section_writer.print("\tjmp .L{s}\n", .{block_name}),
 
         .assembly => |content| try text_section_writer.print("{s}\n", .{content}),
         .assembly_input => |register| try self.renderAssemblyInput(text_section_writer, register),
@@ -496,7 +496,7 @@ fn renderJmpIfFalse(self: *x86_64, text_section_writer: anytype, block_name: []c
     try self.popRegister(text_section_writer, "8");
 
     try text_section_writer.writeAll("\tcmpq $0, %r8\n");
-    try text_section_writer.print("\tje {s}\n", .{block_name});
+    try text_section_writer.print("\tje .L{s}\n", .{block_name});
 }
 
 fn renderAssemblyInput(self: *x86_64, text_section_writer: anytype, register: []const u8) Error!void {
