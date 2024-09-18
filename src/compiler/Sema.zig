@@ -317,7 +317,7 @@ pub fn analyze(self: *Sema, hir: Hir) Error!void {
             },
         };
 
-        const lir_function_entry = try self.lir.functions.getOrPutValue(
+        try self.lir.functions.put(
             self.allocator,
             hir_function_entry.key_ptr.*,
             .{
@@ -325,10 +325,6 @@ pub fn analyze(self: *Sema, hir: Hir) Error!void {
                 .type = function_type,
             },
         );
-
-        const lir_function = lir_function_entry.value_ptr;
-
-        self.maybe_hir_function = hir_function;
 
         try self.scope.put(
             self.allocator,
@@ -342,6 +338,16 @@ pub fn analyze(self: *Sema, hir: Hir) Error!void {
                 .is_const = true,
             },
         );
+    }
+
+    hir_function_iterator.reset();
+
+    while (hir_function_iterator.next()) |hir_function_entry| {
+        const hir_function = hir_function_entry.value_ptr;
+
+        const lir_function = self.lir.functions.getPtr(hir_function.prototype.name.buffer).?;
+
+        self.maybe_hir_function = hir_function;
 
         var hir_block_iterator = hir_function.blocks.iterator();
 

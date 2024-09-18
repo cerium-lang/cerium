@@ -91,6 +91,12 @@ pub fn render(self: *x86_64) Error!void {
                 .linkage = .global,
             },
         );
+    }
+
+    lir_function_iterator.reset();
+
+    while (lir_function_iterator.next()) |lir_function_entry| {
+        const lir_function = lir_function_entry.value_ptr.*;
 
         try text_section_writer.print(".global {s}\n", .{lir_function.name});
         try text_section_writer.print("{s}:\n", .{lir_function.name});
