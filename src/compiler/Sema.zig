@@ -1096,7 +1096,11 @@ fn analyzeJmpIfFalse(self: *Sema, block_name: Ast.Name) Error!void {
 
     try self.checkRepresentability(condition, .{ .tag = .bool }, block_name.source_loc);
 
-    try self.lir_block.instructions.append(self.allocator, .{ .jmp_if_false = block_name.buffer });
+    if (condition == .boolean and condition.boolean) {
+        _ = self.lir_block.instructions.pop();
+    } else {
+        try self.lir_block.instructions.append(self.allocator, .{ .jmp_if_false = block_name.buffer });
+    }
 }
 
 fn analyzeJmp(self: *Sema, block_name: []const u8) Error!void {
