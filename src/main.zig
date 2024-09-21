@@ -70,7 +70,7 @@ const Cli = struct {
                 if (maybe_file_path == null) {
                     std.debug.print(Command.Compile.usage, .{self.program});
 
-                    std.debug.print("Error: expected a file_path\n", .{});
+                    std.debug.print("Error: expected a file path\n", .{});
 
                     return null;
                 }
