@@ -1102,10 +1102,18 @@ fn analyzeJmpIfFalse(self: *Sema, block_name: Ast.Name) Error!void {
 
     try self.checkRepresentability(condition, .{ .tag = .bool }, block_name.source_loc);
 
-    if (condition == .boolean and condition.boolean) {
-        _ = self.lir_block.instructions.pop();
-    } else {
-        try self.lir_block.instructions.append(self.allocator, .{ .jmp_if_false = block_name.buffer });
+    switch (condition) {
+        .boolean => |condition_boolean| {
+            _ = self.lir_block.instructions.pop();
+
+            if (condition_boolean == false) {
+                try self.lir_block.instructions.append(self.allocator, .{ .jmp = block_name.buffer });
+            }
+        },
+
+        else => {
+            try self.lir_block.instructions.append(self.allocator, .{ .jmp_if_false = block_name.buffer });
+        },
     }
 }
 
