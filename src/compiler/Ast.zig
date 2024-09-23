@@ -1051,6 +1051,49 @@ pub const Parser = struct {
                 }
             },
 
+            .keyword_fn => {
+                _ = self.nextToken();
+
+                if (!self.eatToken(.open_paren)) {
+                    self.error_info = .{ .message = "expected a '('", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                    return error.UnexpectedToken;
+                }
+
+                var parameter_types = std.ArrayList(Type).init(self.allocator);
+
+                while (self.peekToken().tag != .eof and self.peekToken().tag != .close_paren) {
+                    try parameter_types.append(try self.parseType());
+
+                    if (!self.eatToken(.comma) and self.peekToken().tag != .close_paren) {
+                        self.error_info = .{ .message = "expected a ','", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                        return error.UnexpectedToken;
+                    }
+                }
+
+                if (!self.eatToken(.close_paren)) {
+                    self.error_info = .{ .message = "expected a ')'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                    return error.UnexpectedToken;
+                }
+
+                const return_type = try self.parseType();
+
+                const return_type_on_heap = try self.allocator.create(Type);
+                return_type_on_heap.* = return_type;
+
+                return .{
+                    .tag = .function,
+                    .data = .{
+                        .function = .{
+                            .parameter_types = parameter_types.items,
+                            .return_type = return_type_on_heap,
+                        },
+                    },
+                };
+            },
+
             .star => {
                 _ = self.nextToken();
 
