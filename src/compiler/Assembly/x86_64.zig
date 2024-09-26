@@ -3,6 +3,7 @@ const std = @import("std");
 const Assembly = @import("../Assembly.zig");
 const Lir = @import("../Lir.zig");
 const Symbol = @import("../Symbol.zig");
+const Scope = Symbol.Scope;
 const Type = Symbol.Type;
 
 const x86_64 = @This();
@@ -17,8 +18,8 @@ stack: std.ArrayListUnmanaged(StackAllocation) = .{},
 stack_offsets: std.ArrayListUnmanaged(usize) = .{},
 stack_alignment: usize = 16,
 
-scope_stack: std.ArrayListUnmanaged(Symbol.Scope(Variable)) = .{},
-scope: *Symbol.Scope(Variable) = undefined,
+scope_stack: std.ArrayListUnmanaged(Scope(Variable)) = .{},
+scope: *Scope(Variable) = undefined,
 
 string_literals_index: usize = 0,
 floating_points_index: usize = 0,

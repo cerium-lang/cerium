@@ -9,6 +9,7 @@ const Hir = @import("Hir.zig");
 const Compilation = @import("Compilation.zig");
 const Lir = @import("Lir.zig");
 const Symbol = @import("Symbol.zig");
+const Scope = Symbol.Scope;
 const Type = Symbol.Type;
 
 const Sema = @This();
@@ -26,8 +27,8 @@ lir_block: *Lir.Block = undefined,
 
 stack: std.ArrayListUnmanaged(Value) = .{},
 
-scope_stack: std.ArrayListUnmanaged(Symbol.Scope(Variable)) = .{},
-scope: *Symbol.Scope(Variable) = undefined,
+scope_stack: std.ArrayListUnmanaged(Scope(Variable)) = .{},
+scope: *Scope(Variable) = undefined,
 
 error_info: ?ErrorInfo = null,
 
