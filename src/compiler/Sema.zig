@@ -9,7 +9,7 @@ const Hir = @import("Hir.zig");
 const Compilation = @import("Compilation.zig");
 const Lir = @import("Lir.zig");
 const Symbol = @import("Symbol.zig");
-const Type = @import("Type.zig");
+const Type = Symbol.Type;
 
 const Sema = @This();
 
@@ -70,8 +70,8 @@ const Value = union(enum) {
 
         return (self == .int and to.isInt()) or
             (self == .float and to.isFloat()) or
-            (to.tag == .ambigiuous_int and self_type.isInt()) or
-            (to.tag == .ambigiuous_float and self_type.isFloat()) or
+            (to == .ambigiuous_int and self_type.isInt()) or
+            (to == .ambigiuous_float and self_type.isFloat()) or
             (self_type.isInt() and to.isInt() and
             self_type.maxInt() <= to.maxInt() and self_type.minInt() >= to.minInt() and
             self_type.canBeNegative() == to.canBeNegative()) or
@@ -92,18 +92,15 @@ const Value = union(enum) {
 
     fn getType(self: Value) Type {
         return switch (self) {
-            .int => Type{ .tag = .ambigiuous_int },
-            .float => Type{ .tag = .ambigiuous_float },
-            .boolean => Type{ .tag = .bool },
+            .int => .ambigiuous_int,
+            .float => .ambigiuous_float,
+            .boolean => .bool,
             .string => Type{
-                .tag = .pointer,
-                .data = .{
-                    .pointer = .{
-                        .size = .many,
-                        .is_const = true,
-                        .is_local = false,
-                        .child_type = &.{ .tag = .u8 },
-                    },
+                .pointer = .{
+                    .size = .many,
+                    .is_const = true,
+                    .is_local = false,
+                    .child_type = &.{ .int = .{ .signedness = .unsigned, .bits = 8 } },
                 },
             },
             .runtime => |runtime| runtime.type,
@@ -308,12 +305,9 @@ pub fn analyze(self: *Sema, hir: Hir) Error!void {
         function_return_type_on_heap.* = hir_function.prototype.return_type;
 
         const function_type: Type = .{
-            .tag = .function,
-            .data = .{
-                .function = .{
-                    .parameter_types = try function_parameter_types.toOwnedSlice(self.allocator),
-                    .return_type = function_return_type_on_heap,
-                },
+            .function = .{
+                .parameter_types = try function_parameter_types.toOwnedSlice(self.allocator),
+                .return_type = function_return_type_on_heap,
             },
         };
 
@@ -495,7 +489,7 @@ fn analyzeConstant(self: *Sema, infer: bool, symbol: Symbol) Error!void {
         variable.symbol.type = value.getType();
     }
 
-    if (variable.symbol.type.tag == .void) {
+    if (variable.symbol.type == .void) {
         self.error_info = .{ .message = "cannot declare a constant with type 'void'", .source_loc = variable.symbol.name.source_loc };
 
         return error.UnexpectedType;
@@ -524,7 +518,7 @@ fn analyzeVariable(self: *Sema, infer: bool, symbol: Symbol) Error!void {
         variable.symbol.type = self.stack.getLast().getType();
     }
 
-    if (variable.symbol.type.tag == .void) {
+    if (variable.symbol.type == .void) {
         self.error_info = .{ .message = "cannot declare a variable with type 'void'", .source_loc = variable.symbol.name.source_loc };
 
         return error.UnexpectedType;
@@ -649,7 +643,7 @@ fn analyzeNot(self: *Sema, comptime operand: NotOperation, source_loc: Ast.Sourc
     const rhs_type = rhs.getType();
 
     if (operand == .bool) {
-        try self.checkRepresentability(rhs, .{ .tag = .bool }, source_loc);
+        try self.checkRepresentability(rhs, .bool, source_loc);
     } else if (operand == .bit) {
         try self.checkInt(rhs_type, source_loc);
     }
@@ -704,14 +698,11 @@ fn analyzeReference(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
     try self.stack.append(self.allocator, .{
         .runtime = .{
             .type = .{
-                .tag = .pointer,
-                .data = .{
-                    .pointer = .{
-                        .size = .one,
-                        .is_const = rhs_variable.is_const,
-                        .is_local = rhs_symbol.linkage == .local,
-                        .child_type = child_on_heap,
-                    },
+                .pointer = .{
+                    .size = .one,
+                    .is_const = rhs_variable.is_const,
+                    .is_local = rhs_symbol.linkage == .local,
+                    .child_type = child_on_heap,
                 },
             },
         },
@@ -760,7 +751,7 @@ fn analyzeOffset(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
 
     if (lhs_pointer.size != .many) return try self.reportNotIndexable(lhs_type, source_loc);
 
-    const usize_type = Type.makeInt(false, self.env.target.ptrBitWidth());
+    const usize_type: Type = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.ptrBitWidth() } };
 
     try self.checkRepresentability(rhs, usize_type, source_loc);
 
@@ -866,7 +857,7 @@ fn analyzeComparison(self: *Sema, comptime operation: ComparisonOperation, sourc
         .eql => try self.lir_block.instructions.append(self.allocator, .eql),
     }
 
-    try self.stack.append(self.allocator, .{ .runtime = .{ .type = .{ .tag = .bool } } });
+    try self.stack.append(self.allocator, .{ .runtime = .{ .type = .bool } });
 }
 
 const BitwiseShiftDirection = enum {
@@ -881,7 +872,7 @@ fn analyzeBitwiseShift(self: *Sema, comptime direction: BitwiseShiftDirection, s
     const lhs_type = lhs.getType();
 
     try self.checkInt(lhs_type, source_loc);
-    try self.checkRepresentability(rhs, .{ .tag = .u8 }, source_loc);
+    try self.checkRepresentability(rhs, .{ .int = .{ .signedness = .unsigned, .bits = 8 } }, source_loc);
 
     if (lhs != .runtime and rhs != .runtime) {
         const lhs_int = lhs.int;
@@ -932,7 +923,7 @@ fn analyzeBitwiseArithmetic(self: *Sema, comptime operation: BitwiseArithmeticOp
     try self.checkInt(lhs_type, source_loc);
     try self.checkInt(rhs_type, source_loc);
 
-    if (lhs_type.tag != rhs_type.tag and !lhs_type.isAmbigiuous() and !rhs_type.isAmbigiuous()) {
+    if (!lhs_type.eql(rhs_type) and !lhs_type.isAmbigiuous() and !rhs_type.isAmbigiuous()) {
         return self.reportIncompatibleTypes(lhs_type, rhs_type, source_loc);
     }
 
@@ -1001,14 +992,14 @@ fn analyzeArithmetic(self: *Sema, comptime operation: ArithmeticOperation, sourc
         try self.checkIntOrFloatOrPointer(lhs_type, source_loc);
         try self.checkIntOrFloatOrPointer(rhs_type, source_loc);
 
-        const usize_type = Type.makeInt(false, self.env.target.ptrBitWidth());
+        const usize_type: Type = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.ptrBitWidth() } };
 
-        if (lhs_type.tag == .pointer) {
+        if (lhs_type == .pointer) {
             try self.checkRepresentability(rhs, usize_type, source_loc);
-        } else if (rhs_type.tag == .pointer) {
+        } else if (rhs_type == .pointer) {
             try self.checkRepresentability(lhs, usize_type, source_loc);
         } else if ((lhs_type.isInt() != rhs_type.isInt()) or
-            (lhs_type.tag != rhs_type.tag and !lhs_type.isAmbigiuous() and !rhs_type.isAmbigiuous()))
+            (!lhs_type.eql(rhs_type) and !lhs_type.isAmbigiuous() and !rhs_type.isAmbigiuous()))
         {
             return self.reportIncompatibleTypes(lhs_type, rhs_type, source_loc);
         }
@@ -1017,7 +1008,7 @@ fn analyzeArithmetic(self: *Sema, comptime operation: ArithmeticOperation, sourc
         try self.checkIntOrFloat(rhs_type, source_loc);
 
         if ((lhs_type.isInt() != rhs_type.isInt()) or
-            (lhs_type.tag != rhs_type.tag and !lhs_type.isAmbigiuous() and !rhs_type.isAmbigiuous()))
+            (!lhs_type.eql(rhs_type) and !lhs_type.isAmbigiuous() and !rhs_type.isAmbigiuous()))
         {
             return self.reportIncompatibleTypes(lhs_type, rhs_type, source_loc);
         }
@@ -1076,9 +1067,9 @@ fn analyzeArithmetic(self: *Sema, comptime operation: ArithmeticOperation, sourc
         .div => try self.lir_block.instructions.append(self.allocator, .div),
     }
 
-    if (lhs_type.tag == .pointer) {
+    if (lhs_type == .pointer) {
         try self.stack.append(self.allocator, .{ .runtime = .{ .type = lhs_type } });
-    } else if (rhs_type.tag == .pointer) {
+    } else if (rhs_type == .pointer) {
         try self.stack.append(self.allocator, .{ .runtime = .{ .type = rhs_type } });
     } else if (!lhs_type.isAmbigiuous()) {
         // Check if we can represent the rhs ambigiuous value as lhs type (e.g. x + 4)
@@ -1100,7 +1091,7 @@ fn analyzeArithmetic(self: *Sema, comptime operation: ArithmeticOperation, sourc
 fn analyzeJmpIfFalse(self: *Sema, block_name: Ast.Name) Error!void {
     const condition = self.stack.pop();
 
-    try self.checkRepresentability(condition, .{ .tag = .bool }, block_name.source_loc);
+    try self.checkRepresentability(condition, .bool, block_name.source_loc);
 
     switch (condition) {
         .boolean => |condition_boolean| {
@@ -1147,13 +1138,13 @@ fn analyzeAssembly(self: *Sema, assembly: Ast.Node.Expr.Assembly) Error!void {
 
         try self.stack.append(self.allocator, .{ .runtime = .{ .type = output_constraint.type } });
     } else {
-        try self.stack.append(self.allocator, .{ .runtime = .{ .type = .{ .tag = .void } } });
+        try self.stack.append(self.allocator, .{ .runtime = .{ .type = .void } });
     }
 }
 
 fn analyzePop(self: *Sema) Error!void {
     if (self.stack.popOrNull()) |unused_value| {
-        if (unused_value.getType().tag != .void) {
+        if (unused_value.getType() != .void) {
             try self.lir_block.instructions.append(self.allocator, .pop);
         }
     }
@@ -1165,7 +1156,7 @@ fn analyzeReturn(self: *Sema) Error!void {
     if (self.stack.popOrNull()) |return_value| {
         try self.checkRepresentability(return_value, self.maybe_hir_function.?.prototype.return_type, self.maybe_hir_function.?.prototype.name.source_loc);
     } else {
-        if (self.maybe_hir_function.?.prototype.return_type.tag != .void) {
+        if (self.maybe_hir_function.?.prototype.return_type != .void) {
             self.error_info = .{ .message = "function with non void return type implicitly returns", .source_loc = self.maybe_hir_function.?.prototype.name.source_loc };
 
             return error.ExpectedExplicitReturn;

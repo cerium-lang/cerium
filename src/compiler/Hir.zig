@@ -8,7 +8,6 @@ const std = @import("std");
 
 const Ast = @import("Ast.zig");
 const Symbol = @import("Symbol.zig");
-const Type = @import("Type.zig");
 
 const Hir = @This();
 
@@ -241,7 +240,7 @@ pub const Generator = struct {
                 .{
                     .constant_infer = .{
                         .name = variable.name,
-                        .type = .{ .tag = .void },
+                        .type = .void,
                         .linkage = linkage,
                     },
                 }
@@ -249,7 +248,7 @@ pub const Generator = struct {
                 .{
                     .variable_infer = .{
                         .name = variable.name,
-                        .type = .{ .tag = .void },
+                        .type = .void,
                         .linkage = linkage,
                     },
                 },

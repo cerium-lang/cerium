@@ -7,7 +7,7 @@ const std = @import("std");
 const Compilation = @import("Compilation.zig");
 const Token = @import("Token.zig");
 const Lexer = @import("Lexer.zig");
-const Type = @import("Type.zig");
+const Type = @import("Symbol.zig").Type;
 
 const Ast = @This();
 
@@ -236,20 +236,22 @@ pub const Parser = struct {
 
         try builtin_types.ensureTotalCapacity(allocator, 14);
 
-        builtin_types.putAssumeCapacity("void", .{ .tag = .void });
-        builtin_types.putAssumeCapacity("u8", .{ .tag = .u8 });
-        builtin_types.putAssumeCapacity("u16", .{ .tag = .u16 });
-        builtin_types.putAssumeCapacity("u32", .{ .tag = .u32 });
-        builtin_types.putAssumeCapacity("u64", .{ .tag = .u64 });
-        builtin_types.putAssumeCapacity("usize", Type.makeInt(false, env.target.ptrBitWidth()));
-        builtin_types.putAssumeCapacity("i8", .{ .tag = .i8 });
-        builtin_types.putAssumeCapacity("i16", .{ .tag = .i16 });
-        builtin_types.putAssumeCapacity("i32", .{ .tag = .i32 });
-        builtin_types.putAssumeCapacity("i64", .{ .tag = .i64 });
-        builtin_types.putAssumeCapacity("isize", Type.makeInt(true, env.target.ptrBitWidth()));
-        builtin_types.putAssumeCapacity("f32", .{ .tag = .f32 });
-        builtin_types.putAssumeCapacity("f64", .{ .tag = .f64 });
-        builtin_types.putAssumeCapacity("bool", .{ .tag = .bool });
+        builtin_types.putAssumeCapacity("void", .void);
+        builtin_types.putAssumeCapacity("bool", .bool);
+
+        builtin_types.putAssumeCapacity("usize", .{ .int = .{ .signedness = .unsigned, .bits = env.target.ptrBitWidth() } });
+        builtin_types.putAssumeCapacity("isize", .{ .int = .{ .signedness = .signed, .bits = env.target.ptrBitWidth() } });
+        builtin_types.putAssumeCapacity("u8", .{ .int = .{ .signedness = .unsigned, .bits = 8 } });
+        builtin_types.putAssumeCapacity("u16", .{ .int = .{ .signedness = .unsigned, .bits = 16 } });
+        builtin_types.putAssumeCapacity("u32", .{ .int = .{ .signedness = .unsigned, .bits = 32 } });
+        builtin_types.putAssumeCapacity("u64", .{ .int = .{ .signedness = .unsigned, .bits = 64 } });
+        builtin_types.putAssumeCapacity("i8", .{ .int = .{ .signedness = .signed, .bits = 8 } });
+        builtin_types.putAssumeCapacity("i16", .{ .int = .{ .signedness = .signed, .bits = 16 } });
+        builtin_types.putAssumeCapacity("i32", .{ .int = .{ .signedness = .signed, .bits = 32 } });
+        builtin_types.putAssumeCapacity("i64", .{ .int = .{ .signedness = .signed, .bits = 64 } });
+
+        builtin_types.putAssumeCapacity("f32", .{ .float = .{ .bits = 32 } });
+        builtin_types.putAssumeCapacity("f64", .{ .float = .{ .bits = 64 } });
 
         return Parser{
             .allocator = allocator,
@@ -1084,12 +1086,9 @@ pub const Parser = struct {
                 return_type_on_heap.* = return_type;
 
                 return .{
-                    .tag = .function,
-                    .data = .{
-                        .function = .{
-                            .parameter_types = parameter_types.items,
-                            .return_type = return_type_on_heap,
-                        },
+                    .function = .{
+                        .parameter_types = parameter_types.items,
+                        .return_type = return_type_on_heap,
                     },
                 };
             },
@@ -1105,14 +1104,11 @@ pub const Parser = struct {
                 child_on_heap.* = child;
 
                 return .{
-                    .tag = .pointer,
-                    .data = .{
-                        .pointer = .{
-                            .size = .one,
-                            .is_const = is_const,
-                            .is_local = self.in_function,
-                            .child_type = child_on_heap,
-                        },
+                    .pointer = .{
+                        .size = .one,
+                        .is_const = is_const,
+                        .is_local = self.in_function,
+                        .child_type = child_on_heap,
                     },
                 };
             },
@@ -1140,14 +1136,11 @@ pub const Parser = struct {
                 child_on_heap.* = child;
 
                 return .{
-                    .tag = .pointer,
-                    .data = .{
-                        .pointer = .{
-                            .size = .many,
-                            .is_const = is_const,
-                            .is_local = self.in_function,
-                            .child_type = child_on_heap,
-                        },
+                    .pointer = .{
+                        .size = .many,
+                        .is_const = is_const,
+                        .is_local = self.in_function,
+                        .child_type = child_on_heap,
                     },
                 };
             },

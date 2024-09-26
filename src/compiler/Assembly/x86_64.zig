@@ -3,7 +3,7 @@ const std = @import("std");
 const Assembly = @import("../Assembly.zig");
 const Lir = @import("../Lir.zig");
 const Symbol = @import("../Symbol.zig");
-const Type = @import("../Type.zig");
+const Type = Symbol.Type;
 
 const x86_64 = @This();
 
@@ -210,7 +210,7 @@ fn renderParameter(self: *x86_64, text_section_writer: anytype, parameter: struc
     );
 }
 
-fn renderCall(self: *x86_64, text_section_writer: anytype, function: Type.Data.Function) Error!void {
+fn renderCall(self: *x86_64, text_section_writer: anytype, function: Type.Function) Error!void {
     try self.popRegister(text_section_writer, "8");
 
     var i: usize = function.parameter_types.len;

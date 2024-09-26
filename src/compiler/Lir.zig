@@ -6,7 +6,7 @@
 const std = @import("std");
 
 const Symbol = @import("Symbol.zig");
-const Type = @import("Type.zig");
+const Type = Symbol.Type;
 
 const Lir = @This();
 
@@ -29,7 +29,7 @@ pub const Block = struct {
         /// Declare a parameter, contains the type and name so the backend knows how to store it on the stack
         parameter: struct { usize, Symbol },
         /// Call a specific function pointer on the stack with the specified type
-        call: Type.Data.Function,
+        call: Type.Function,
         /// Declare a variable using the specified name and type
         variable: Symbol,
         /// Set a value using the specified name
