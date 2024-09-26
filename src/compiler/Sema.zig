@@ -531,6 +531,12 @@ fn analyzeVariable(self: *Sema, infer: bool, symbol: Symbol) Error!void {
         return error.UnexpectedType;
     }
 
+    if (variable.symbol.type == .pointer) {
+        if (self.stack.getLast().getType().getPointer()) |value_pointer| {
+            variable.symbol.type.pointer.is_local = value_pointer.is_local;
+        }
+    }
+
     try self.scope.put(self.allocator, variable.symbol.name.buffer, variable);
 
     try self.lir_block.instructions.append(self.allocator, .{ .variable = variable.symbol });
