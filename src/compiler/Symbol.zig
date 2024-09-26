@@ -255,7 +255,7 @@ pub const Type = union(enum) {
 
             return true;
         } else {
-            return std.meta.activeTag(self) == std.meta.activeTag(other);
+            return std.meta.eql(self, other);
         }
     }
 };
