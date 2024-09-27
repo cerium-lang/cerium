@@ -1,10 +1,12 @@
 const std = @import("std");
+const root = @import("root");
 
 const Ast = @import("Ast.zig");
 const Assembly = @import("Assembly.zig");
 const Hir = @import("Hir.zig");
 const Lir = @import("Lir.zig");
 const Sema = @import("Sema.zig");
+const Cli = root.Cli;
 
 const Compilation = @This();
 
@@ -24,37 +26,16 @@ pub fn init(allocator: std.mem.Allocator, env: Environment) Compilation {
     };
 }
 
-fn errorDescription(e: anyerror) []const u8 {
-    return switch (e) {
-        error.OutOfMemory => "ran out of memory",
-        error.FileNotFound => "no such file or directory",
-        error.IsDir => "is a directory",
-        error.NotDir => "is not a directory",
-        error.NotOpenForReading => "is not open for reading",
-        error.NotOpenForWriting => "is not open for writing",
-        error.InvalidUtf8 => "invalid UTF-8",
-        error.FileBusy => "file is busy",
-        error.NameTooLong => "name is too long",
-        error.AccessDenied => "access denied",
-        error.FileTooBig, error.StreamTooLong => "file is too big",
-        error.ProcessFdQuotaExceeded, error.SystemFdQuotaExceeded => "ran out of file descriptors",
-        error.SystemResources => "ran out of system resources",
-        error.FatalError => "a fatal error occurred",
-        error.Unexpected => "an unexpected error occurred",
-        else => @errorName(e),
-    };
-}
-
 pub fn parse(self: Compilation, input: [:0]const u8) ?Ast {
     var ast_parser = Ast.Parser.init(self.allocator, self.env, input) catch |err| {
-        std.debug.print("{s}\n", .{errorDescription(err)});
+        std.debug.print("{s}\n", .{Cli.errorDescription(err)});
 
         return null;
     };
 
     const ast = ast_parser.parse() catch |err| switch (err) {
         error.OutOfMemory => {
-            std.debug.print("{s}\n", .{errorDescription(err)});
+            std.debug.print("{s}\n", .{Cli.errorDescription(err)});
 
             return null;
         },
@@ -74,7 +55,7 @@ pub fn generateHir(self: Compilation, ast: Ast) ?Hir {
 
     hir_generator.generate(ast) catch |err| switch (err) {
         error.OutOfMemory => {
-            std.debug.print("{s}\n", .{errorDescription(err)});
+            std.debug.print("{s}\n", .{Cli.errorDescription(err)});
 
             return null;
         },
@@ -94,7 +75,7 @@ pub fn analyzeSemantics(self: Compilation, hir: Hir) ?Lir {
 
     sema.analyze(hir) catch |err| switch (err) {
         error.OutOfMemory => {
-            std.debug.print("{s}\n", .{errorDescription(err)});
+            std.debug.print("{s}\n", .{Cli.errorDescription(err)});
 
             return null;
         },
@@ -116,7 +97,7 @@ pub fn renderAssembly(self: Compilation, lir: Lir) ?[]const u8 {
             defer backend.deinit();
 
             backend.render() catch |err| {
-                std.debug.print("{s}\n", .{errorDescription(err)});
+                std.debug.print("{s}\n", .{Cli.errorDescription(err)});
 
                 return null;
             };

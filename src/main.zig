@@ -3,7 +3,7 @@ const builtin = @import("builtin");
 
 const Compilation = @import("compiler/Compilation.zig");
 
-const Cli = struct {
+pub const Cli = struct {
     allocator: std.mem.Allocator,
 
     program: []const u8,
@@ -36,7 +36,7 @@ const Cli = struct {
         \\
     ;
 
-    fn errorDescription(e: anyerror) []const u8 {
+    pub fn errorDescription(e: anyerror) []const u8 {
         return switch (e) {
             error.OutOfMemory => "ran out of memory",
             error.FileNotFound => "no such file or directory",
