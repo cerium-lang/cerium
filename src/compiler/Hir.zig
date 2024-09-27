@@ -11,9 +11,8 @@ const Symbol = @import("Symbol.zig");
 
 const Hir = @This();
 
-data_blocks: std.StringArrayHashMapUnmanaged(Block) = .{},
-
 functions: std.StringArrayHashMapUnmanaged(Function) = .{},
+data: std.StringArrayHashMapUnmanaged(Block) = .{},
 
 pub const Function = struct {
     prototype: Ast.Node.Stmt.FunctionDeclaration.Prototype,
@@ -21,9 +20,13 @@ pub const Function = struct {
 };
 
 pub const Block = struct {
-    is_control_flow: bool = false,
-
+    tag: Tag = .basic,
     instructions: std.ArrayListUnmanaged(Instruction) = .{},
+
+    pub const Tag = enum {
+        basic,
+        control_flow,
+    };
 
     pub const Instruction = union(enum) {
         /// Declare a parameter
@@ -263,22 +266,22 @@ pub const Generator = struct {
 
             try hir_block.instructions.append(self.allocator, .{ .set = variable.name });
         } else {
-            const new_hir_data_block_entry = try self.hir.data_blocks.getOrPutValue(self.allocator, variable.name.buffer, .{});
+            const new_hir_block_entry = try self.hir.data.getOrPutValue(self.allocator, variable.name.buffer, .{});
 
-            if (new_hir_data_block_entry.found_existing) {
+            if (new_hir_block_entry.found_existing) {
                 return self.reportRedeclaration(variable.name);
             }
 
-            const new_hir_data_block = new_hir_data_block_entry.value_ptr;
+            const new_hir_block = new_hir_block_entry.value_ptr;
 
-            self.maybe_hir_block = new_hir_data_block;
+            self.maybe_hir_block = new_hir_block;
             defer self.maybe_hir_block = null;
 
             try self.generateExpr(variable.value);
 
-            try emitVariable(self.allocator, new_hir_data_block, variable, .global);
+            try emitVariable(self.allocator, new_hir_block, variable, .global);
 
-            try new_hir_data_block.instructions.append(self.allocator, .{ .set = variable.name });
+            try new_hir_block.instructions.append(self.allocator, .{ .set = variable.name });
         }
     }
 
@@ -306,11 +309,9 @@ pub const Generator = struct {
                 next_possiblity_block_name = .{};
                 try next_possiblity_block_name.writer(self.allocator).print("conditional.possiblity{}", .{conditional_parts_emitted});
 
-                const possiblity_block_entry = try hir_function.blocks.getOrPutValue(
-                    self.allocator,
-                    possiblity_block_name.items,
-                    .{ .is_control_flow = true },
-                );
+                const possiblity_block_entry = try hir_function.blocks.getOrPutValue(self.allocator, possiblity_block_name.items, .{
+                    .tag = .control_flow,
+                });
 
                 const possiblity_block = possiblity_block_entry.value_ptr;
 
@@ -336,11 +337,9 @@ pub const Generator = struct {
             }
 
             {
-                const fallback_block_entry = try hir_function.blocks.getOrPutValue(
-                    self.allocator,
-                    fallback_block_name.items,
-                    .{ .is_control_flow = true },
-                );
+                const fallback_block_entry = try hir_function.blocks.getOrPutValue(self.allocator, fallback_block_name.items, .{
+                    .tag = .control_flow,
+                });
 
                 self.maybe_hir_block = fallback_block_entry.value_ptr;
 
@@ -380,11 +379,9 @@ pub const Generator = struct {
             try end_block_name.writer(self.allocator).print("loop.end{}", .{loop_parts_emitted});
 
             {
-                const begin_block_entry = try hir_function.blocks.getOrPutValue(
-                    self.allocator,
-                    begin_block_name.items,
-                    .{ .is_control_flow = true },
-                );
+                const begin_block_entry = try hir_function.blocks.getOrPutValue(self.allocator, begin_block_name.items, .{
+                    .tag = .control_flow,
+                });
 
                 const begin_block = begin_block_entry.value_ptr;
 

@@ -10,9 +10,8 @@ const Type = Symbol.Type;
 
 const Lir = @This();
 
-data_blocks: std.StringArrayHashMapUnmanaged(Block) = .{},
-
 functions: std.StringArrayHashMapUnmanaged(Function) = .{},
+data: std.StringArrayHashMapUnmanaged(Block) = .{},
 
 pub const Function = struct {
     name: []const u8,
@@ -21,9 +20,13 @@ pub const Function = struct {
 };
 
 pub const Block = struct {
-    is_control_flow: bool = false,
-
+    tag: Tag = .basic,
     instructions: std.ArrayListUnmanaged(Instruction) = .{},
+
+    pub const Tag = enum {
+        basic,
+        control_flow,
+    };
 
     pub const Instruction = union(enum) {
         /// Declare a parameter, contains the type and name so the backend knows how to store it on the stack

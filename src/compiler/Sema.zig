@@ -276,13 +276,19 @@ pub fn analyze(self: *Sema, hir: Hir) Error!void {
         .maybe_value = .{ .boolean = false },
     });
 
-    var hir_data_block_iterator = hir.data_blocks.iterator();
+    try self.analyzeFunctionTypes(hir);
+    try self.analyzeData(hir);
+    try self.analyzeFunctionBlocks(hir);
+}
 
-    while (hir_data_block_iterator.next()) |hir_block_entry| {
+fn analyzeData(self: *Sema, hir: Hir) Error!void {
+    var hir_block_iterator = hir.data.iterator();
+
+    while (hir_block_iterator.next()) |hir_block_entry| {
         const hir_block_name = hir_block_entry.key_ptr.*;
         const hir_block = hir_block_entry.value_ptr;
 
-        const lir_block_entry = try self.lir.data_blocks.getOrPutValue(self.allocator, hir_block_name, .{});
+        const lir_block_entry = try self.lir.data.getOrPutValue(self.allocator, hir_block_name, .{});
 
         self.lir_block = lir_block_entry.value_ptr;
 
@@ -290,7 +296,9 @@ pub fn analyze(self: *Sema, hir: Hir) Error!void {
             try self.analyzeInstruction(hir_instruction);
         }
     }
+}
 
+fn analyzeFunctionTypes(self: *Sema, hir: Hir) Error!void {
     var hir_function_iterator = hir.functions.iterator();
 
     while (hir_function_iterator.next()) |hir_function_entry| {
@@ -334,8 +342,10 @@ pub fn analyze(self: *Sema, hir: Hir) Error!void {
             },
         );
     }
+}
 
-    hir_function_iterator.reset();
+fn analyzeFunctionBlocks(self: *Sema, hir: Hir) Error!void {
+    var hir_function_iterator = hir.functions.iterator();
 
     while (hir_function_iterator.next()) |hir_function_entry| {
         const hir_function = hir_function_entry.value_ptr;
@@ -350,11 +360,9 @@ pub fn analyze(self: *Sema, hir: Hir) Error!void {
             const hir_block_name = hir_block_entry.key_ptr.*;
             const hir_block = hir_block_entry.value_ptr;
 
-            const lir_block_entry = try lir_function.blocks.getOrPutValue(
-                self.allocator,
-                hir_block_name,
-                .{ .is_control_flow = hir_block.is_control_flow },
-            );
+            const lir_block_entry = try lir_function.blocks.getOrPutValue(self.allocator, hir_block_name, .{
+                .tag = @enumFromInt(@intFromEnum(hir_block.tag)),
+            });
 
             self.lir_block = lir_block_entry.value_ptr;
 
@@ -503,7 +511,7 @@ fn analyzeConstant(self: *Sema, infer: bool, symbol: Symbol) Error!void {
     }
 
     if (variable.symbol.linkage == .global) {
-        var initializer_block_entry = self.lir.data_blocks.pop();
+        var initializer_block_entry = self.lir.data.pop();
         initializer_block_entry.value.instructions.deinit(self.allocator);
     } else {
         _ = self.lir_block.instructions.pop();
@@ -1170,7 +1178,7 @@ fn analyzeReturn(self: *Sema) Error!void {
         }
     }
 
-    if (!self.lir_block.is_control_flow) {
+    if (self.lir_block.tag != .control_flow) {
         self.maybe_hir_function = null;
     }
 

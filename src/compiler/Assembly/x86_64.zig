@@ -59,9 +59,20 @@ pub fn render(self: *x86_64) Error!void {
 
     self.scope = global_scope;
 
-    var lir_data_block_iterator = self.lir.data_blocks.iterator();
+    try self.renderFunctionTypes();
+    try self.renderData(text_section_writer, data_section_writer, rodata_section_writer);
+    try self.renderFunctionBlocks(text_section_writer, data_section_writer, rodata_section_writer);
+}
 
-    while (lir_data_block_iterator.next()) |lir_block_entry| {
+fn renderData(
+    self: *x86_64,
+    text_section_writer: anytype,
+    data_section_writer: anytype,
+    rodata_section_writer: anytype,
+) Error!void {
+    var lir_block_iterator = self.lir.data.iterator();
+
+    while (lir_block_iterator.next()) |lir_block_entry| {
         const lir_block_name = lir_block_entry.key_ptr.*;
         const lir_block = lir_block_entry.value_ptr;
 
@@ -78,7 +89,9 @@ pub fn render(self: *x86_64) Error!void {
             );
         }
     }
+}
 
+fn renderFunctionTypes(self: *x86_64) Error!void {
     var lir_function_iterator = self.lir.functions.iterator();
 
     while (lir_function_iterator.next()) |lir_function_entry| {
@@ -93,8 +106,15 @@ pub fn render(self: *x86_64) Error!void {
             },
         );
     }
+}
 
-    lir_function_iterator.reset();
+fn renderFunctionBlocks(
+    self: *x86_64,
+    text_section_writer: anytype,
+    data_section_writer: anytype,
+    rodata_section_writer: anytype,
+) Error!void {
+    var lir_function_iterator = self.lir.functions.iterator();
 
     while (lir_function_iterator.next()) |lir_function_entry| {
         const lir_function = lir_function_entry.value_ptr.*;
@@ -133,7 +153,7 @@ pub fn render(self: *x86_64) Error!void {
                 );
             }
 
-            if (lir_block.is_control_flow) {
+            if (lir_block.tag == .control_flow) {
                 self.stack.shrinkRetainingCapacity(previous_stack_len);
             }
         }
@@ -183,7 +203,7 @@ fn renderInstruction(
 
         .pop => try self.popRegister(text_section_writer, "8"),
 
-        .@"return" => try self.renderReturn(text_section_writer, lir_block.is_control_flow),
+        .@"return" => try self.renderReturn(text_section_writer, lir_block.tag == .control_flow),
     }
 }
 
