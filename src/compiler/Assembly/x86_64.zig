@@ -213,10 +213,12 @@ fn renderParameter(self: *x86_64, text_section_writer: anytype, parameter: struc
     const is_floating_point = parameter_symbol.type.isFloat();
 
     if (parameter_index > 5) {
+        const parameter_index_modified = parameter_index - 4;
+
         if (is_floating_point) {
-            try text_section_writer.print("\tmovq {}(%rbp), %xmm8\n", .{(parameter_index + 1) * self.stack_alignment});
+            try text_section_writer.print("\tmovq {}(%rbp), %xmm8\n", .{(parameter_index_modified) * self.stack_alignment});
         } else {
-            try text_section_writer.print("\tmovq {}(%rbp), %r8\n", .{(parameter_index + 1) * self.stack_alignment});
+            try text_section_writer.print("\tmovq {}(%rbp), %r8\n", .{(parameter_index_modified) * self.stack_alignment});
         }
 
         try self.pushRegister(text_section_writer, "8", .{ .is_floating_point = is_floating_point });
@@ -254,12 +256,14 @@ fn renderCall(self: *x86_64, text_section_writer: anytype, function: Type.Functi
         const is_floating_point = parameter_type.isFloat();
 
         if (i > 5) {
+            const j = i - 5;
+
             try self.popRegister(text_section_writer, "9");
 
             if (is_floating_point) {
-                try text_section_writer.print("\tmovq %xmm9, {}(%rsp)\n", .{i * self.stack_alignment});
+                try text_section_writer.print("\tmovq %xmm9, {}(%rsp)\n", .{j * self.stack_alignment});
             } else {
-                try text_section_writer.print("\tmovq %r9, {}(%rsp)\n", .{i * self.stack_alignment});
+                try text_section_writer.print("\tmovq %r9, {}(%rsp)\n", .{j * self.stack_alignment});
             }
         } else {
             try self.popRegister(text_section_writer, abiParameterNumberToSuffix(i));
