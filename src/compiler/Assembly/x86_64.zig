@@ -208,25 +208,29 @@ fn renderInstruction(
 }
 
 fn renderParameter(self: *x86_64, text_section_writer: anytype, parameter: struct { usize, Symbol }) Error!void {
-    const function_parameter_index, const function_parameter_symbol = parameter;
+    const parameter_index, const parameter_symbol = parameter;
 
-    const is_floating_point = function_parameter_symbol.type.isFloat();
+    const is_floating_point = parameter_symbol.type.isFloat();
 
-    if (is_floating_point) {
-        try text_section_writer.print("\tmovq {}(%rbp), %xmm8\n", .{(function_parameter_index + 1) * self.stack_alignment});
+    if (parameter_index > 5) {
+        if (is_floating_point) {
+            try text_section_writer.print("\tmovq {}(%rbp), %xmm8\n", .{(parameter_index + 1) * self.stack_alignment});
+        } else {
+            try text_section_writer.print("\tmovq {}(%rbp), %r8\n", .{(parameter_index + 1) * self.stack_alignment});
+        }
+
+        try self.pushRegister(text_section_writer, "8", .{ .is_floating_point = is_floating_point });
     } else {
-        try text_section_writer.print("\tmovq {}(%rbp), %r8\n", .{(function_parameter_index + 1) * self.stack_alignment});
+        try self.pushRegister(text_section_writer, abiParameterNumberToSuffix(parameter_index), .{ .is_floating_point = is_floating_point });
     }
-
-    try self.pushRegister(text_section_writer, "8", .{ .is_floating_point = is_floating_point });
 
     try self.scope.put(
         self.allocator,
-        function_parameter_symbol.name.buffer,
+        parameter_symbol.name.buffer,
         .{
             .maybe_stack_index = self.stack.items.len - 1,
-            .type = function_parameter_symbol.type,
-            .linkage = function_parameter_symbol.linkage,
+            .type = parameter_symbol.type,
+            .linkage = parameter_symbol.linkage,
         },
     );
 }
@@ -236,7 +240,9 @@ fn renderCall(self: *x86_64, text_section_writer: anytype, function: Type.Functi
 
     var i: usize = function.parameter_types.len;
 
-    const stack_top_offset = (i + self.stack.items.len) * self.stack_alignment;
+    const parameters_on_stack: usize = if (i < 6) 0 else i - 6;
+
+    const stack_top_offset = (parameters_on_stack + self.stack.items.len) * self.stack_alignment;
 
     try text_section_writer.print("\tsubq ${}, %rsp\n", .{stack_top_offset});
 
@@ -245,12 +251,18 @@ fn renderCall(self: *x86_64, text_section_writer: anytype, function: Type.Functi
 
         const parameter_type = function.parameter_types[i];
 
-        try self.popRegister(text_section_writer, "9");
+        const is_floating_point = parameter_type.isFloat();
 
-        if (parameter_type.isFloat()) {
-            try text_section_writer.print("\tmovq %xmm9, {}(%rsp)\n", .{i * self.stack_alignment});
+        if (i > 5) {
+            try self.popRegister(text_section_writer, "9");
+
+            if (is_floating_point) {
+                try text_section_writer.print("\tmovq %xmm9, {}(%rsp)\n", .{i * self.stack_alignment});
+            } else {
+                try text_section_writer.print("\tmovq %r9, {}(%rsp)\n", .{i * self.stack_alignment});
+            }
         } else {
-            try text_section_writer.print("\tmovq %r9, {}(%rsp)\n", .{i * self.stack_alignment});
+            try self.popRegister(text_section_writer, abiParameterNumberToSuffix(i));
         }
     }
 
@@ -259,6 +271,18 @@ fn renderCall(self: *x86_64, text_section_writer: anytype, function: Type.Functi
     try text_section_writer.print("\taddq ${}, %rsp\n", .{stack_top_offset});
 
     try self.pushRegister(text_section_writer, "ax", .{ .is_floating_point = function.return_type.isFloat() });
+}
+
+fn abiParameterNumberToSuffix(parameter_number: usize) []const u8 {
+    return switch (parameter_number) {
+        0 => "di",
+        1 => "si",
+        2 => "dx",
+        3 => "cx",
+        4 => "8",
+        5 => "9",
+        else => unreachable,
+    };
 }
 
 fn renderVariable(self: *x86_64, symbol: Symbol) Error!void {
