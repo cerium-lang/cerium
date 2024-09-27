@@ -60,17 +60,17 @@ pub fn render(self: *x86_64) Error!void {
     self.scope = global_scope;
 
     try self.renderFunctionTypes();
-    try self.renderData(text_section_writer, data_section_writer, rodata_section_writer);
+    try self.renderGlobalBlocks(text_section_writer, data_section_writer, rodata_section_writer);
     try self.renderFunctionBlocks(text_section_writer, data_section_writer, rodata_section_writer);
 }
 
-fn renderData(
+fn renderGlobalBlocks(
     self: *x86_64,
     text_section_writer: anytype,
     data_section_writer: anytype,
     rodata_section_writer: anytype,
 ) Error!void {
-    var lir_block_iterator = self.lir.data.iterator();
+    var lir_block_iterator = self.lir.global.iterator();
 
     while (lir_block_iterator.next()) |lir_block_entry| {
         const lir_block_name = lir_block_entry.key_ptr.*;

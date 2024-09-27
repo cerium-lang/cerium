@@ -277,18 +277,18 @@ pub fn analyze(self: *Sema, hir: Hir) Error!void {
     });
 
     try self.analyzeFunctionTypes(hir);
-    try self.analyzeData(hir);
+    try self.analyzeGlobalBlocks(hir);
     try self.analyzeFunctionBlocks(hir);
 }
 
-fn analyzeData(self: *Sema, hir: Hir) Error!void {
-    var hir_block_iterator = hir.data.iterator();
+fn analyzeGlobalBlocks(self: *Sema, hir: Hir) Error!void {
+    var hir_block_iterator = hir.global.iterator();
 
     while (hir_block_iterator.next()) |hir_block_entry| {
         const hir_block_name = hir_block_entry.key_ptr.*;
         const hir_block = hir_block_entry.value_ptr;
 
-        const lir_block_entry = try self.lir.data.getOrPutValue(self.allocator, hir_block_name, .{});
+        const lir_block_entry = try self.lir.global.getOrPutValue(self.allocator, hir_block_name, .{});
 
         self.lir_block = lir_block_entry.value_ptr;
 
@@ -511,7 +511,7 @@ fn analyzeConstant(self: *Sema, infer: bool, symbol: Symbol) Error!void {
     }
 
     if (variable.symbol.linkage == .global) {
-        var initializer_block_entry = self.lir.data.pop();
+        var initializer_block_entry = self.lir.global.pop();
         initializer_block_entry.value.instructions.deinit(self.allocator);
     } else {
         _ = self.lir_block.instructions.pop();

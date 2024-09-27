@@ -11,7 +11,7 @@ const Type = Symbol.Type;
 const Lir = @This();
 
 functions: std.StringArrayHashMapUnmanaged(Function) = .{},
-data: std.StringArrayHashMapUnmanaged(Block) = .{},
+global: std.StringArrayHashMapUnmanaged(Block) = .{},
 
 pub const Function = struct {
     name: []const u8,

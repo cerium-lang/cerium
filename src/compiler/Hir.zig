@@ -11,8 +11,8 @@ const Symbol = @import("Symbol.zig");
 
 const Hir = @This();
 
+global: std.StringArrayHashMapUnmanaged(Block) = .{},
 functions: std.StringArrayHashMapUnmanaged(Function) = .{},
-data: std.StringArrayHashMapUnmanaged(Block) = .{},
 
 pub const Function = struct {
     prototype: Ast.Node.Stmt.FunctionDeclaration.Prototype,
@@ -266,7 +266,7 @@ pub const Generator = struct {
 
             try hir_block.instructions.append(self.allocator, .{ .set = variable.name });
         } else {
-            const new_hir_block_entry = try self.hir.data.getOrPutValue(self.allocator, variable.name.buffer, .{});
+            const new_hir_block_entry = try self.hir.global.getOrPutValue(self.allocator, variable.name.buffer, .{});
 
             if (new_hir_block_entry.found_existing) {
                 return self.reportRedeclaration(variable.name);
