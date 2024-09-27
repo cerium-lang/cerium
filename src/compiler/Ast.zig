@@ -384,7 +384,7 @@ pub const Parser = struct {
 
         const parameters = try self.parseFunctionParameters();
 
-        const return_type = try self.parseType();
+        const return_type = if (self.peekToken().tag == .open_brace) .void else try self.parseType();
 
         return Node.Stmt.FunctionDeclaration.Prototype{ .name = name, .parameters = parameters, .return_type = return_type };
     }

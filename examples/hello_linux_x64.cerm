@@ -14,7 +14,7 @@ fn write(fd u32, buf [*]const u8, count u64) u64 {
     };
 }
 
-fn exit_group(status_code u8) void {
+fn exit_group(status_code u8) {
     asm {
         "syscall"
         : "rax" (SYS_exit_group),
@@ -22,7 +22,7 @@ fn exit_group(status_code u8) void {
     };
 }
 
-fn _start() void {
+fn _start() {
     write(STDOUT, "Hello, World!\n", 14);
 
     exit_group(0);
