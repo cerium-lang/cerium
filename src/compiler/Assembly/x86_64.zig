@@ -201,7 +201,7 @@ fn renderInstruction(
 
         .negate => try self.renderNegate(text_section_writer),
 
-        .bool_not, .bit_not => try self.renderNot(text_section_writer, lir_instruction),
+        .bool_not, .bit_not => try self.renderNot(text_section_writer),
 
         .read => |result_type| try self.renderRead(text_section_writer, result_type),
         .write => try self.renderWrite(text_section_writer),
@@ -463,13 +463,10 @@ fn renderNegate(self: *x86_64, text_section_writer: anytype) Error!void {
     try self.pushRegister(text_section_writer, "bx", stack_allocation);
 }
 
-fn renderNot(self: *x86_64, text_section_writer: anytype, instruction: Lir.Block.Instruction) Error!void {
+fn renderNot(self: *x86_64, text_section_writer: anytype) Error!void {
     try self.popRegister(text_section_writer, "ax");
-    if (instruction == .bool_not) {
-        try text_section_writer.writeAll("\txorq $1, %rax\n");
-    } else {
-        try text_section_writer.writeAll("\txorq $-1, %rax\n");
-    }
+
+    try text_section_writer.writeAll("\txorq $-1, %rax\n");
 
     try self.pushRegister(text_section_writer, "ax", .{ .is_floating_point = false });
 }
