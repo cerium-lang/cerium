@@ -30,8 +30,8 @@ pub const Block = struct {
     };
 
     pub const Instruction = union(enum) {
-        /// Declare a parameter, contains the type and name so the backend knows how to store it on the stack
-        parameter: struct { usize, Symbol },
+        /// Declare function parameters
+        parameters: []const Symbol,
         /// Call a specific function pointer on the stack with the specified type
         call: Type.Function,
         /// Declare a variable using the specified name and type

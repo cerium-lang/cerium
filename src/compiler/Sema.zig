@@ -383,7 +383,7 @@ fn analyzeFunctionBlocks(self: *Sema, hir: Hir) Error!void {
 
 fn analyzeInstruction(self: *Sema, hir_instruction: Hir.Block.Instruction) Error!void {
     switch (hir_instruction) {
-        .parameter => |index| try self.analyzeParameter(index),
+        .parameters => try self.analyzeParameters(),
 
         .call => |info| try self.analyzeCall(info),
 
@@ -438,18 +438,27 @@ fn analyzeInstruction(self: *Sema, hir_instruction: Hir.Block.Instruction) Error
     }
 }
 
-fn analyzeParameter(self: *Sema, index: usize) Error!void {
-    const parameter = self.maybe_hir_function.?.prototype.parameters[index];
+fn analyzeParameters(self: *Sema) Error!void {
+    var parameter_symbols: std.ArrayListUnmanaged(Symbol) = .{};
 
-    const parameter_symbol: Symbol = .{
-        .name = parameter.name,
-        .type = parameter.expected_type,
-        .linkage = .local,
-    };
+    try parameter_symbols.ensureTotalCapacity(self.allocator, self.maybe_hir_function.?.prototype.parameters.len);
 
-    try self.scope.put(self.allocator, parameter_symbol.name.buffer, .{ .is_const = true, .symbol = parameter_symbol });
+    for (self.maybe_hir_function.?.prototype.parameters) |parameter| {
+        const parameter_symbol: Symbol = .{
+            .name = parameter.name,
+            .type = parameter.expected_type,
+            .linkage = .local,
+        };
 
-    try self.lir_block.instructions.append(self.allocator, .{ .parameter = .{ index, parameter_symbol } });
+        parameter_symbols.appendAssumeCapacity(parameter_symbol);
+
+        try self.scope.put(self.allocator, parameter_symbol.name.buffer, .{
+            .is_const = true,
+            .symbol = parameter_symbol,
+        });
+    }
+
+    try self.lir_block.instructions.append(self.allocator, .{ .parameters = parameter_symbols.items });
 }
 
 fn analyzeCall(self: *Sema, info: struct { usize, Ast.SourceLoc }) Error!void {
@@ -469,13 +478,7 @@ fn analyzeCall(self: *Sema, info: struct { usize, Ast.SourceLoc }) Error!void {
             return error.UnexpectedArgumentsCount;
         }
 
-        var i: usize = function.parameter_types.len;
-
-        while (i > 0) {
-            i -= 1;
-
-            const parameter_type = function.parameter_types[i];
-
+        for (function.parameter_types) |parameter_type| {
             const argument = self.stack.pop();
 
             try self.checkRepresentability(argument, parameter_type, source_loc);

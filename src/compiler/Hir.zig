@@ -32,8 +32,8 @@ pub const Block = struct {
     };
 
     pub const Instruction = union(enum) {
-        /// Declare a parameter
-        parameter: usize,
+        /// Declare function parameters
+        parameters,
         /// Call a specific function pointer on the stack with the specified argument count
         call: struct { usize, Ast.SourceLoc },
         /// Declare a constant using the specified name and type
@@ -230,9 +230,7 @@ pub const Generator = struct {
 
         const new_hir_block = new_hir_block_entry.value_ptr;
 
-        for (0..ast_function.prototype.parameters.len) |i| {
-            try new_hir_block.instructions.append(self.allocator, .{ .parameter = i });
-        }
+        try new_hir_block.instructions.append(self.allocator, .parameters);
 
         self.maybe_hir_function = new_hir_function;
         defer self.maybe_hir_function = null;
@@ -692,7 +690,13 @@ pub const Generator = struct {
     }
 
     fn generateCallExpr(self: *Generator, call: Ast.Node.Expr.Call) Error!void {
-        for (call.arguments) |argument| {
+        var i: usize = call.arguments.len;
+
+        while (i > 0) {
+            i -= 1;
+
+            const argument = call.arguments[i];
+
             try self.generateExpr(argument);
         }
 
