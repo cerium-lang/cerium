@@ -60,6 +60,7 @@ pub fn render(self: *x86_64) Error!void {
     self.scope = global_scope;
 
     try self.renderFunctionTypes();
+    try self.analyzeExternalTypes();
     try self.renderGlobalBlocks(text_section_writer, data_section_writer, rodata_section_writer);
     try self.renderFunctionBlocks(text_section_writer, data_section_writer, rodata_section_writer);
 }
@@ -88,6 +89,20 @@ fn renderGlobalBlocks(
                 lir_instruction,
             );
         }
+    }
+}
+
+fn analyzeExternalTypes(self: *x86_64) Error!void {
+    var lir_type_iterator = self.lir.external.iterator();
+
+    while (lir_type_iterator.next()) |lir_type_entry| {
+        const lir_type_name = lir_type_entry.key_ptr.*;
+        const lir_type = lir_type_entry.value_ptr.*;
+
+        try self.scope.put(self.allocator, lir_type_name, .{
+            .type = lir_type,
+            .linkage = .external,
+        });
     }
 }
 
@@ -334,11 +349,15 @@ fn renderGet(self: *x86_64, text_section_writer: anytype, name: []const u8) Erro
             try self.pushRegister(text_section_writer, "8", stack_allocation);
         },
 
-        .global => {
+        .global, .external => {
             const stack_allocation: StackAllocation = .{ .is_floating_point = variable.type.isFloat() };
 
             if (variable.type.getFunction() != null) {
-                try pointerToData(text_section_writer, "8", name);
+                if (variable.linkage == .external) {
+                    try pointerToDataPlt(text_section_writer, "8", name);
+                } else {
+                    try pointerToData(text_section_writer, "8", name);
+                }
 
                 try self.pushRegister(text_section_writer, "8", stack_allocation);
             } else {
@@ -362,8 +381,12 @@ fn renderGetPtr(self: *x86_64, text_section_writer: anytype, name: []const u8) E
             try self.pushRegister(text_section_writer, "8", .{ .is_floating_point = false });
         },
 
-        .global => {
-            try pointerToData(text_section_writer, "8", name);
+        .global, .external => {
+            if (variable.linkage == .external and variable.type.getFunction() != null) {
+                try pointerToDataPlt(text_section_writer, "8", name);
+            } else {
+                try pointerToData(text_section_writer, "8", name);
+            }
 
             try self.pushRegister(text_section_writer, "8", .{ .is_floating_point = false });
         },
@@ -645,6 +668,14 @@ fn pointerToData(
     data_name: []const u8,
 ) Error!void {
     try text_section_writer.print("\tleaq {s}(%rip), %r{s}\n", .{ data_name, register_suffix });
+}
+
+fn pointerToDataPlt(
+    text_section_writer: anytype,
+    register_suffix: []const u8,
+    data_name: []const u8,
+) Error!void {
+    try text_section_writer.print("\tleaq {s}@PLT(%rip), %r{s}\n", .{ data_name, register_suffix });
 }
 
 fn copyToStack(

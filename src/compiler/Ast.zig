@@ -41,6 +41,7 @@ pub const Node = union(enum) {
             body: []const Node,
 
             pub const Prototype = struct {
+                is_external: bool,
                 name: Name,
                 parameters: []const Parameter,
                 return_type: Type,
@@ -53,6 +54,7 @@ pub const Node = union(enum) {
         };
 
         pub const VariableDeclaration = struct {
+            is_external: bool,
             is_const: bool,
             name: Name,
             type: ?Type,
@@ -319,9 +321,11 @@ pub const Parser = struct {
 
     fn parseStmt(self: *Parser) Error!Node {
         const node = switch (self.peekToken().tag) {
-            .keyword_fn => return self.parseFunctionDeclarationStmt(),
+            .keyword_extern => try self.parseExternStmt(),
 
-            .keyword_const, .keyword_var => try self.parseVariableDeclarationStmt(),
+            .keyword_fn => return self.parseFunctionDeclarationStmt(false),
+
+            .keyword_const, .keyword_var => try self.parseVariableDeclarationStmt(false),
 
             .keyword_if => return self.parseConditionalStmt(),
 
@@ -357,10 +361,39 @@ pub const Parser = struct {
         return Name{ .buffer = self.tokenValue(token), .source_loc = self.tokenSourceLoc(token) };
     }
 
-    fn parseFunctionDeclarationStmt(self: *Parser) Error!Node {
+    fn parseExternStmt(self: *Parser) Error!Node {
+        const source_loc = self.tokenSourceLoc(self.nextToken());
+
+        if (self.peekToken().tag == .keyword_fn) {
+            return self.parseFunctionDeclarationStmt(true);
+        } else if (self.peekToken().tag == .keyword_var) {
+            return self.parseVariableDeclarationStmt(true);
+        } else if (self.peekToken().tag == .keyword_const) {
+            self.error_info = .{ .message = "'const' is declaring a compile time constant and cannot be used with 'extern'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+            return error.UnexpectedToken;
+        } else {
+            self.error_info = .{ .message = "expected a function or variable declaration", .source_loc = source_loc };
+
+            return error.UnexpectedToken;
+        }
+    }
+
+    fn parseFunctionDeclarationStmt(self: *Parser, is_external: bool) Error!Node {
         _ = self.nextToken();
 
-        const prototype = try self.parseFunctionPrototype();
+        const prototype = try self.parseFunctionPrototype(is_external);
+
+        if (is_external) {
+            return Node{
+                .stmt = .{
+                    .function_declaration = .{
+                        .prototype = prototype,
+                        .body = &.{},
+                    },
+                },
+            };
+        }
 
         const was_in_function = self.in_function;
         self.in_function = true;
@@ -379,14 +412,22 @@ pub const Parser = struct {
         };
     }
 
-    fn parseFunctionPrototype(self: *Parser) Error!Node.Stmt.FunctionDeclaration.Prototype {
+    fn parseFunctionPrototype(self: *Parser, is_external: bool) Error!Node.Stmt.FunctionDeclaration.Prototype {
         const name = try self.parseName();
 
         const parameters = try self.parseFunctionParameters();
 
-        const return_type = if (self.peekToken().tag == .open_brace) .void else try self.parseType();
+        const return_type = if (self.peekToken().tag == .open_brace or (self.peekToken().tag == .semicolon and is_external))
+            .void
+        else
+            try self.parseType();
 
-        return Node.Stmt.FunctionDeclaration.Prototype{ .name = name, .parameters = parameters, .return_type = return_type };
+        return Node.Stmt.FunctionDeclaration.Prototype{
+            .is_external = is_external,
+            .name = name,
+            .parameters = parameters,
+            .return_type = return_type,
+        };
     }
 
     fn parseFunctionParameters(self: *Parser) Error![]Node.Stmt.FunctionDeclaration.Prototype.Parameter {
@@ -446,31 +487,38 @@ pub const Parser = struct {
         return body.toOwnedSlice(self.allocator);
     }
 
-    fn parseVariableDeclarationStmt(self: *Parser) Error!Node {
-        const is_const = self.nextToken().tag == .keyword_const;
+    fn parseVariableDeclarationStmt(self: *Parser, is_external: bool) Error!Node {
+        const init_token = self.nextToken();
+
+        const is_const = init_token.tag == .keyword_const;
 
         const name = try self.parseName();
 
-        const @"type" = if (self.eatToken(.equal_sign))
+        const @"type" = if (self.peekToken().tag == .equal_sign)
             null
         else
             try self.parseType();
 
-        if (@"type" != null and !self.eatToken(.equal_sign)) {
+        if (@"type" != null and !is_external and !self.eatToken(.equal_sign)) {
             self.error_info = .{ .message = "expected '='", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+            return error.UnexpectedToken;
+        } else if (self.eatToken(.equal_sign) and is_external) {
+            self.error_info = .{ .message = "'extern' variables cannot have an initializer", .source_loc = self.tokenSourceLoc(self.peekToken()) };
 
             return error.UnexpectedToken;
         }
 
-        const value = try self.parseExpr(.lowest);
+        const value = if (is_external) undefined else try self.parseExpr(.lowest);
 
         return Node{
             .stmt = .{
                 .variable_declaration = .{
+                    .is_external = is_external,
                     .is_const = is_const,
                     .name = name,
                     .type = @"type",
-                    .value = value.expr,
+                    .value = if (is_external) undefined else value.expr,
                 },
             },
         };
@@ -1148,7 +1196,7 @@ pub const Parser = struct {
             else => {},
         }
 
-        self.error_info = .{ .message = "invalid type", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+        self.error_info = .{ .message = "expected a type", .source_loc = self.tokenSourceLoc(self.peekToken()) };
 
         return error.InvalidType;
     }

@@ -36,6 +36,7 @@ pub const Tag = enum {
     double_equal_sign,
     bang_equal_sign,
     forward_slash,
+    keyword_extern,
     keyword_fn,
     keyword_var,
     keyword_const,
@@ -54,6 +55,7 @@ pub const BufferLoc = struct {
 };
 
 pub const keywords = std.StaticStringMap(Tag).initComptime(.{
+    .{ "extern", .keyword_extern },
     .{ "fn", .keyword_fn },
     .{ "var", .keyword_var },
     .{ "const", .keyword_const },

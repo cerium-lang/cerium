@@ -277,6 +277,7 @@ pub fn analyze(self: *Sema, hir: Hir) Error!void {
     });
 
     try self.analyzeFunctionTypes(hir);
+    try self.analyzeExternalTypes(hir);
     try self.analyzeGlobalBlocks(hir);
     try self.analyzeFunctionBlocks(hir);
 }
@@ -298,34 +299,37 @@ fn analyzeGlobalBlocks(self: *Sema, hir: Hir) Error!void {
     }
 }
 
+fn analyzeExternalTypes(self: *Sema, hir: Hir) Error!void {
+    var hir_type_iterator = hir.external.iterator();
+
+    while (hir_type_iterator.next()) |hir_type_entry| {
+        const hir_type_name = hir_type_entry.key_ptr.*;
+        const hir_type = hir_type_entry.value_ptr.*;
+
+        try self.scope.put(self.allocator, hir_type_name, .{
+            .symbol = .{
+                .name = .{ .buffer = hir_type_name, .source_loc = .{} },
+                .type = hir_type,
+                .linkage = .external,
+            },
+        });
+    }
+
+    self.lir.external = hir.external;
+}
+
 fn analyzeFunctionTypes(self: *Sema, hir: Hir) Error!void {
     var hir_function_iterator = hir.functions.iterator();
 
     while (hir_function_iterator.next()) |hir_function_entry| {
         const hir_function = hir_function_entry.value_ptr;
 
-        var function_parameter_types: std.ArrayListUnmanaged(Type) = .{};
-
-        for (hir_function.prototype.parameters) |ast_function_parameter| {
-            try function_parameter_types.append(self.allocator, ast_function_parameter.expected_type);
-        }
-
-        const function_return_type_on_heap = try self.allocator.create(Type);
-        function_return_type_on_heap.* = hir_function.prototype.return_type;
-
-        const function_type: Type = .{
-            .function = .{
-                .parameter_types = try function_parameter_types.toOwnedSlice(self.allocator),
-                .return_type = function_return_type_on_heap,
-            },
-        };
-
         try self.lir.functions.put(
             self.allocator,
             hir_function_entry.key_ptr.*,
             .{
                 .name = hir_function.prototype.name.buffer,
-                .type = function_type,
+                .type = hir_function.type,
             },
         );
 
@@ -335,7 +339,7 @@ fn analyzeFunctionTypes(self: *Sema, hir: Hir) Error!void {
             .{
                 .symbol = .{
                     .name = hir_function.prototype.name,
-                    .type = function_type,
+                    .type = hir_function.type,
                     .linkage = .global,
                 },
                 .is_const = true,

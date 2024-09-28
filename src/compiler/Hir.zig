@@ -8,14 +8,17 @@ const std = @import("std");
 
 const Ast = @import("Ast.zig");
 const Symbol = @import("Symbol.zig");
+const Type = Symbol.Type;
 
 const Hir = @This();
 
 global: std.StringArrayHashMapUnmanaged(Block) = .{},
+external: std.StringArrayHashMapUnmanaged(Type) = .{},
 functions: std.StringArrayHashMapUnmanaged(Function) = .{},
 
 pub const Function = struct {
     prototype: Ast.Node.Stmt.FunctionDeclaration.Prototype,
+    type: Type,
     blocks: std.StringArrayHashMapUnmanaged(Block) = .{},
 };
 
@@ -156,7 +159,6 @@ pub const Generator = struct {
     fn generateStmt(self: *Generator, stmt: Ast.Node.Stmt) Error!void {
         switch (stmt) {
             .function_declaration => |function_declaration| try self.generateFunctionDeclarationStmt(function_declaration),
-
             .variable_declaration => |variable_declaration| try self.generateVariableDeclarationStmt(variable_declaration),
 
             .conditional => |conditional| try self.generateConditionalStmt(conditional),
@@ -180,6 +182,33 @@ pub const Generator = struct {
     }
 
     fn generateFunctionDeclarationStmt(self: *Generator, ast_function: Ast.Node.Stmt.FunctionDeclaration) Error!void {
+        if (self.hir.external.get(ast_function.prototype.name.buffer) != null or
+            self.hir.global.get(ast_function.prototype.name.buffer) != null or
+            self.hir.functions.get(ast_function.prototype.name.buffer) != null)
+        {
+            return self.reportRedeclaration(ast_function.prototype.name);
+        }
+
+        var function_parameter_types: std.ArrayListUnmanaged(Type) = .{};
+
+        for (ast_function.prototype.parameters) |ast_function_parameter| {
+            try function_parameter_types.append(self.allocator, ast_function_parameter.expected_type);
+        }
+
+        const function_return_type_on_heap = try self.allocator.create(Type);
+        function_return_type_on_heap.* = ast_function.prototype.return_type;
+
+        const function_type: Type = .{
+            .function = .{
+                .parameter_types = try function_parameter_types.toOwnedSlice(self.allocator),
+                .return_type = function_return_type_on_heap,
+            },
+        };
+
+        if (ast_function.prototype.is_external) {
+            return self.hir.external.put(self.allocator, ast_function.prototype.name.buffer, function_type);
+        }
+
         if (self.maybe_hir_block != null) {
             self.error_info = .{ .message = "cannot declare functions inside other functions", .source_loc = ast_function.prototype.name.source_loc };
 
@@ -189,12 +218,11 @@ pub const Generator = struct {
         const new_hir_function_entry = try self.hir.functions.getOrPutValue(
             self.allocator,
             ast_function.prototype.name.buffer,
-            .{ .prototype = ast_function.prototype },
+            .{
+                .prototype = ast_function.prototype,
+                .type = function_type,
+            },
         );
-
-        if (new_hir_function_entry.found_existing) {
-            return self.reportRedeclaration(ast_function.prototype.name);
-        }
 
         const new_hir_function = new_hir_function_entry.value_ptr;
 
@@ -259,7 +287,16 @@ pub const Generator = struct {
     }
 
     fn generateVariableDeclarationStmt(self: *Generator, variable: Ast.Node.Stmt.VariableDeclaration) Error!void {
-        if (self.maybe_hir_block) |hir_block| {
+        if (self.hir.external.get(variable.name.buffer) != null or
+            self.hir.global.get(variable.name.buffer) != null or
+            self.hir.functions.get(variable.name.buffer) != null)
+        {
+            return self.reportRedeclaration(variable.name);
+        }
+
+        if (variable.is_external) {
+            try self.hir.external.put(self.allocator, variable.name.buffer, variable.type.?);
+        } else if (self.maybe_hir_block) |hir_block| {
             try self.generateExpr(variable.value);
 
             try emitVariable(self.allocator, hir_block, variable, .local);
@@ -267,10 +304,6 @@ pub const Generator = struct {
             try hir_block.instructions.append(self.allocator, .{ .set = variable.name });
         } else {
             const new_hir_block_entry = try self.hir.global.getOrPutValue(self.allocator, variable.name.buffer, .{});
-
-            if (new_hir_block_entry.found_existing) {
-                return self.reportRedeclaration(variable.name);
-            }
 
             const new_hir_block = new_hir_block_entry.value_ptr;
 
