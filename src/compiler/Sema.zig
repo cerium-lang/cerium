@@ -77,14 +77,14 @@ const Value = union(enum) {
             self_type.maxInt() <= to.maxInt() and self_type.minInt() >= to.minInt() and
             self_type.canBeNegative() == to.canBeNegative()) or
             (self_type.isFloat() and to.isFloat() and
-            self_type.maxFloat() <= to.maxFloat() and self_type.minFloat() >= to.minFloat()) or
+            self_type.maxFloat() <= to.maxFloat()) or
             self_type.eql(to);
     }
 
     fn canBeRepresented(self: Value, as: Type) bool {
         return (self == .int and self.int >= as.minInt() and
             self == .int and self.int <= as.maxInt()) or
-            (self == .float and self.float >= as.minFloat() and
+            (self == .float and self.float >= -as.maxFloat() and
             self == .float and self.float <= as.maxFloat()) or
             (self == .boolean) or
             (self == .string) or

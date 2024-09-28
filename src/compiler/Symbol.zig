@@ -128,15 +128,6 @@ pub const Type = union(enum) {
         };
     }
 
-    pub fn minFloat(self: Type) f64 {
-        return switch (self) {
-            .ambigiuous_float => std.math.floatMin(f64),
-            .float => |float| if (float.bits == 32) std.math.floatMin(f32) else if (float.bits == 64) std.math.floatMin(f64) else unreachable,
-
-            else => unreachable,
-        };
-    }
-
     pub fn maxFloat(self: Type) f64 {
         return switch (self) {
             .ambigiuous_float => std.math.floatMax(f64),
