@@ -27,8 +27,8 @@ lir_block: *Lir.Block = undefined,
 
 stack: std.ArrayListUnmanaged(Value) = .{},
 
-scope_stack: std.ArrayListUnmanaged(Scope(Variable)) = .{},
 scope: *Scope(Variable) = undefined,
+scope_stack: std.ArrayListUnmanaged(Scope(Variable)) = .{},
 
 error_info: ?ErrorInfo = null,
 
@@ -131,6 +131,11 @@ pub fn init(allocator: std.mem.Allocator, env: Compilation.Environment) Sema {
         .allocator = allocator,
         .env = env,
     };
+}
+
+pub fn deinit(self: *Sema) void {
+    self.stack.deinit(self.allocator);
+    self.scope_stack.deinit(self.allocator);
 }
 
 fn checkRepresentability(self: *Sema, source_value: Value, destination_type: Type, source_loc: Ast.SourceLoc) Error!void {

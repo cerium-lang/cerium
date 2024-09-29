@@ -196,12 +196,12 @@ pub const Node = union(enum) {
 pub const Parser = struct {
     allocator: std.mem.Allocator,
 
-    builtin_types: std.StringHashMapUnmanaged(Type),
-
     buffer: [:0]const u8,
 
-    tokens: []const Token,
+    tokens: []Token,
     current_token_index: usize,
+
+    builtin_types: std.StringHashMapUnmanaged(Type),
 
     in_function: bool = false,
 
@@ -262,6 +262,11 @@ pub const Parser = struct {
             .tokens = try tokens.toOwnedSlice(allocator),
             .current_token_index = 0,
         };
+    }
+
+    pub fn deinit(self: *Parser) void {
+        self.builtin_types.deinit(self.allocator);
+        self.allocator.free(self.tokens);
     }
 
     pub fn parse(self: *Parser) Error!Ast {

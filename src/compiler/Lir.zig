@@ -100,3 +100,23 @@ pub const Block = struct {
         @"return",
     };
 };
+
+pub fn deinit(self: *Lir, allocator: std.mem.Allocator) void {
+    for (self.global.values()) |*block| {
+        block.instructions.deinit(allocator);
+    }
+
+    self.global.deinit(allocator);
+
+    self.external.deinit(allocator);
+
+    for (self.functions.values()) |*function| {
+        for (function.blocks.values()) |*block| {
+            block.instructions.deinit(allocator);
+        }
+
+        function.blocks.deinit(allocator);
+    }
+
+    self.functions.deinit(allocator);
+}

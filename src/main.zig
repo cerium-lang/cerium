@@ -135,9 +135,17 @@ pub const Cli = struct {
 
         const ast = compilation.parse(input_file_content) orelse return 1;
 
-        const hir = compilation.generateHir(ast) orelse return 1;
+        var hir = compilation.generateHir(ast) orelse return 1;
 
-        const lir = compilation.analyzeSemantics(hir) orelse return 1;
+        var lir = compilation.analyzeSemantics(hir) orelse return 1;
+
+        hir.deinit(self.allocator);
+
+        const output = compilation.renderAssembly(lir) orelse return 1;
+
+        defer self.allocator.free(output);
+
+        lir.deinit(self.allocator);
 
         const input_file_path_stem = std.fs.path.stem(options.file_path);
 
@@ -147,18 +155,12 @@ pub const Cli = struct {
             return 1;
         };
 
+        defer output_file_path.deinit(self.allocator);
+
         output_file_path.appendSliceAssumeCapacity(input_file_path_stem);
         output_file_path.appendSliceAssumeCapacity(".s");
 
-        const owned_output_file_path = output_file_path.toOwnedSlice(self.allocator) catch |err| {
-            std.debug.print("{s}\n", .{errorDescription(err)});
-
-            return 1;
-        };
-
-        defer self.allocator.free(owned_output_file_path);
-
-        const output_file = std.fs.cwd().createFile(owned_output_file_path, .{}) catch |err| {
+        const output_file = std.fs.cwd().createFile(output_file_path.items, .{}) catch |err| {
             std.debug.print("couldn't create output file: {s}\n", .{errorDescription(err)});
 
             return 1;
@@ -166,10 +168,8 @@ pub const Cli = struct {
 
         defer output_file.close();
 
-        const output_assembly = compilation.renderAssembly(lir) orelse return 1;
-
-        output_file.writer().writeAll(output_assembly) catch |err| {
-            std.debug.print("couldn't write the output assembly: {s}\n", .{errorDescription(err)});
+        output_file.writeAll(output) catch |err| {
+            std.debug.print("couldn't write the output: {s}\n", .{errorDescription(err)});
 
             return 1;
         };

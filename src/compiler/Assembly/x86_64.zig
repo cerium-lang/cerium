@@ -18,11 +18,13 @@ stack: std.ArrayListUnmanaged(StackAllocation) = .{},
 stack_offsets: std.ArrayListUnmanaged(usize) = .{},
 stack_alignment: usize = 8,
 
-scope_stack: std.ArrayListUnmanaged(Scope(Variable)) = .{},
 scope: *Scope(Variable) = undefined,
+scope_stack: std.ArrayListUnmanaged(Scope(Variable)) = .{},
 
-string_literals_index: usize = 0,
-floating_points_index: usize = 0,
+strings: std.StringHashMapUnmanaged(usize) = .{},
+floats: std.AutoHashMapUnmanaged(u64, usize) = .{},
+
+pub const Error = std.mem.Allocator.Error;
 
 pub const Variable = struct {
     maybe_stack_index: ?usize = null,
@@ -43,11 +45,35 @@ pub fn init(allocator: std.mem.Allocator, lir: Lir) x86_64 {
 
 pub fn deinit(self: *x86_64) void {
     self.assembly.deinit(self.allocator);
-    self.stack.clearAndFree(self.allocator);
-    self.stack_offsets.clearAndFree(self.allocator);
+    self.stack.deinit(self.allocator);
+    self.stack_offsets.deinit(self.allocator);
+    self.strings.deinit(self.allocator);
+    self.floats.deinit(self.allocator);
+    self.scope_stack.deinit(self.allocator);
 }
 
-pub const Error = std.mem.Allocator.Error;
+pub fn finalize(self: *x86_64) Error![]u8 {
+    var output: std.ArrayListUnmanaged(u8) = .{};
+
+    const output_writer = output.writer(self.allocator);
+
+    if (self.assembly.text_section.items.len > 0) {
+        try output_writer.writeAll(".section \".text\"\n");
+        try output_writer.writeAll(self.assembly.text_section.items);
+    }
+
+    if (self.assembly.data_section.items.len > 0) {
+        try output_writer.writeAll(".section \".data\"\n");
+        try output_writer.writeAll(self.assembly.data_section.items);
+    }
+
+    if (self.assembly.rodata_section.items.len > 0) {
+        try output_writer.writeAll(".section \".rodata\"\n");
+        try output_writer.writeAll(self.assembly.rodata_section.items);
+    }
+
+    return output.toOwnedSlice(self.allocator);
+}
 
 pub fn render(self: *x86_64) Error!void {
     const text_section_writer = self.assembly.text_section.writer(self.allocator);
@@ -415,10 +441,17 @@ fn renderString(self: *x86_64, text_section_writer: anytype, rodata_section_writ
     if (self.stack_offsets.items.len == 0) {
         try rodata_section_writer.print("\t.asciz \"{s}\"\n", .{content});
     } else {
-        try rodata_section_writer.print("\tstr{}: .asciz \"{s}\"\n", .{ self.string_literals_index, content });
-        try text_section_writer.print("\tleaq str{}(%rip), %r8\n", .{self.string_literals_index});
+        const index = self.strings.get(content) orelse blk: {
+            const new_index = self.strings.count();
 
-        self.string_literals_index += 1;
+            try self.strings.put(self.allocator, content, new_index);
+
+            try rodata_section_writer.print("\tstr{}: .asciz \"{s}\"\n", .{ new_index, content });
+
+            break :blk new_index;
+        };
+
+        try text_section_writer.print("\tleaq str{}(%rip), %r8\n", .{index});
 
         try self.pushRegister(text_section_writer, "r8", undefined, .{ .is_floating_point = false });
     }
@@ -441,13 +474,22 @@ fn renderFloat(
     rodata_section_writer: anytype,
     value: f64,
 ) Error!void {
-    if (self.stack_offsets.items.len == 0) {
-        try data_section_writer.print("\t.quad {}\n", .{@as(u64, @bitCast(value))});
-    } else {
-        try rodata_section_writer.print("flt{}: .quad {}\n", .{ self.floating_points_index, @as(u64, @bitCast(value)) });
-        try text_section_writer.print("\tmovsd flt{}(%rip), %xmm8\n", .{self.floating_points_index});
+    const value_representation: u64 = @bitCast(value);
 
-        self.floating_points_index += 1;
+    if (self.stack_offsets.items.len == 0) {
+        try data_section_writer.print("\t.quad {}\n", .{value_representation});
+    } else {
+        const index = self.floats.get(value_representation) orelse blk: {
+            const new_index = self.floats.count();
+
+            try self.floats.put(self.allocator, value_representation, new_index);
+
+            try rodata_section_writer.print("flt{}: .quad {}\n", .{ new_index, value_representation });
+
+            break :blk new_index;
+        };
+
+        try text_section_writer.print("\tmovsd flt{}(%rip), %xmm8\n", .{index});
 
         try self.pushRegister(text_section_writer, undefined, "xmm8", .{ .is_floating_point = true });
     }
@@ -735,27 +777,4 @@ fn copyFromData(
     } else {
         try text_section_writer.print("\tmovq {s}(%rip), %{s}\n", .{ data_name, integer_register });
     }
-}
-
-pub fn dump(self: *x86_64) Error![]const u8 {
-    var result: std.ArrayListUnmanaged(u8) = .{};
-
-    const result_writer = result.writer(self.allocator);
-
-    if (self.assembly.text_section.items.len > 0) {
-        try result_writer.writeAll(".section \".text\"\n");
-        try result_writer.writeAll(self.assembly.text_section.items);
-    }
-
-    if (self.assembly.data_section.items.len > 0) {
-        try result_writer.writeAll(".section \".data\"\n");
-        try result_writer.writeAll(self.assembly.data_section.items);
-    }
-
-    if (self.assembly.rodata_section.items.len > 0) {
-        try result_writer.writeAll(".section \".rodata\"\n");
-        try result_writer.writeAll(self.assembly.rodata_section.items);
-    }
-
-    return result.toOwnedSlice(self.allocator);
 }
