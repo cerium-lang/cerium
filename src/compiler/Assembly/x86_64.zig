@@ -97,12 +97,7 @@ fn renderGlobalBlocks(
     data_section_writer: anytype,
     rodata_section_writer: anytype,
 ) Error!void {
-    var lir_block_iterator = self.lir.global.iterator();
-
-    while (lir_block_iterator.next()) |lir_block_entry| {
-        const lir_block_name = lir_block_entry.key_ptr.*;
-        const lir_block = lir_block_entry.value_ptr;
-
+    for (self.lir.global.keys(), self.lir.global.values()) |lir_block_name, lir_block| {
         try data_section_writer.print(".global {s}\n", .{lir_block_name});
         try data_section_writer.print("{s}:\n", .{lir_block_name});
 
@@ -119,12 +114,7 @@ fn renderGlobalBlocks(
 }
 
 fn analyzeExternalTypes(self: *x86_64) Error!void {
-    var lir_type_iterator = self.lir.external.iterator();
-
-    while (lir_type_iterator.next()) |lir_type_entry| {
-        const lir_type_name = lir_type_entry.key_ptr.*;
-        const lir_type = lir_type_entry.value_ptr.*;
-
+    for (self.lir.external.keys(), self.lir.external.values()) |lir_type_name, lir_type| {
         try self.scope.put(self.allocator, lir_type_name, .{
             .type = lir_type,
             .linkage = .external,
@@ -133,14 +123,10 @@ fn analyzeExternalTypes(self: *x86_64) Error!void {
 }
 
 fn renderFunctionTypes(self: *x86_64) Error!void {
-    var lir_function_iterator = self.lir.functions.iterator();
-
-    while (lir_function_iterator.next()) |lir_function_entry| {
-        const lir_function = lir_function_entry.value_ptr.*;
-
+    for (self.lir.functions.keys(), self.lir.functions.values()) |lir_function_name, lir_function| {
         try self.scope.put(
             self.allocator,
-            lir_function.name,
+            lir_function_name,
             .{
                 .type = lir_function.type,
                 .linkage = .global,
@@ -155,25 +141,16 @@ fn renderFunctionBlocks(
     data_section_writer: anytype,
     rodata_section_writer: anytype,
 ) Error!void {
-    var lir_function_iterator = self.lir.functions.iterator();
-
-    while (lir_function_iterator.next()) |lir_function_entry| {
-        const lir_function = lir_function_entry.value_ptr.*;
-
-        try text_section_writer.print(".global {s}\n", .{lir_function.name});
-        try text_section_writer.print("{s}:\n", .{lir_function.name});
+    for (self.lir.functions.keys(), self.lir.functions.values()) |lir_function_name, lir_function| {
+        try text_section_writer.print(".global {s}\n", .{lir_function_name});
+        try text_section_writer.print("{s}:\n", .{lir_function_name});
 
         try text_section_writer.writeAll("\tpushq %rbp\n");
         try text_section_writer.writeAll("\tmovq %rsp, %rbp\n");
 
         try self.stack_offsets.append(self.allocator, 0);
 
-        var lir_block_iterator = lir_function.blocks.iterator();
-
-        while (lir_block_iterator.next()) |lir_block_entry| {
-            const lir_block_name = lir_block_entry.key_ptr.*;
-            const lir_block = lir_block_entry.value_ptr;
-
+        for (lir_function.blocks.keys(), lir_function.blocks.values()) |lir_block_name, lir_block| {
             if (!std.mem.eql(u8, lir_block_name, "entry")) {
                 try text_section_writer.print(".L{s}:\n", .{lir_block_name});
             }
@@ -206,7 +183,7 @@ fn renderInstruction(
     text_section_writer: anytype,
     data_section_writer: anytype,
     rodata_section_writer: anytype,
-    lir_block: *Lir.Block,
+    lir_block: Lir.Block,
     lir_instruction: Lir.Block.Instruction,
 ) Error!void {
     switch (lir_instruction) {

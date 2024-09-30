@@ -46,20 +46,24 @@ A general-purpose programming language that aims to be the most sane
                     - [x] Xor
 
 - Standard Library
-    - [ ] Make a robust startup code
-    - [ ] Let the startup code be compiled automatically with any provided code
-    - [ ] Add support for accessing the Standard Library
-    - [ ] Make a System Call API for various operating systems
-        - [ ] Make a System Call API for Linux
-        - [ ] Make a System Call API for Windows
+    - Runners
+        - [x] Make an Executable Runner for various operating systems
+            - [x] Make an Executable Runner for Linux
+            - [ ] Make an Executable Runner for Windows
+    - System Calls
+        - [ ] Make a System Call API for various operating systems
+            - [ ] Make a System Call API for Linux
+            - [ ] Make a System Call API for Windows
 
 - Cross Compilation
     - [ ] Allow passing a Triple Target via Command Line Arguments
-    - [ ] Add support for compiling to various Assembly Outputs
-        - [ ] Add support for compiling to Aarch64 Assembly
-        - [x] Add support for compiling to x86_64 Assembly
+    - [ ] Compile to various targets
+        - [ ] Add support for compiling to various Assembly outputs
+            - [ ] Add support for compiling to Aarch64 Assembly
+            - [x] Add support for compiling to x86_64 Assembly
+        - [ ] Make an Assembler for those Assembly outputs
 
 - Inline Assembly
-    - [x] Add support for outputing Assembly
     - [x] Add support for input constraints
     - [x] Add support for output constraints
+    - [ ] Add support for clobbers

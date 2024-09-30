@@ -15,7 +15,6 @@ external: std.StringArrayHashMapUnmanaged(Type) = .{},
 functions: std.StringArrayHashMapUnmanaged(Function) = .{},
 
 pub const Function = struct {
-    name: []const u8,
     type: Type,
     blocks: std.StringArrayHashMapUnmanaged(Block) = .{},
 };

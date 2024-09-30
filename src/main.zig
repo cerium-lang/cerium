@@ -103,16 +103,60 @@ pub const Cli = struct {
     fn executeCompileCommand(self: Cli) u8 {
         const options = self.command.?.compile;
 
-        const input_file_content = blk: {
-            const input_file = std.fs.cwd().openFile(options.file_path, .{}) catch |err| {
+        const cerium_lib_dir = Compilation.Environment.openCeriumLibrary() catch {
+            std.debug.print("Error: could not open the cerium library directory\n", .{});
+
+            return 1;
+        };
+
+        var runner_file_path_buf: [std.fs.max_path_bytes]u8 = undefined;
+
+        const runner_file_path = cerium_lib_dir.realpath("std/runners/exe.cerm", &runner_file_path_buf) catch {
+            std.debug.print("Error: could not find the standard library executable runner file path\n", .{});
+
+            return 1;
+        };
+
+        const runner_file_content = blk: {
+            const file = cerium_lib_dir.openFile("std/runners/exe.cerm", .{}) catch |err| {
                 std.debug.print("{s}: {s}\n", .{ options.file_path, errorDescription(err) });
 
                 return 1;
             };
 
-            defer input_file.close();
+            defer file.close();
 
-            break :blk input_file.readToEndAllocOptions(self.allocator, std.math.maxInt(u32), null, @alignOf(u8), 0) catch |err| switch (err) {
+            break :blk file.readToEndAllocOptions(self.allocator, std.math.maxInt(u32), null, @alignOf(u8), 0) catch |err| switch (err) {
+                error.OutOfMemory => {
+                    std.debug.print("{s}\n", .{errorDescription(err)});
+
+                    return 1;
+                },
+
+                else => {
+                    std.debug.print("{s}: {s}\n", .{ options.file_path, errorDescription(err) });
+
+                    return 1;
+                },
+            };
+        };
+
+        if (runner_file_content.len == 0) {
+            return 0;
+        }
+
+        defer self.allocator.free(runner_file_content);
+
+        const input_file_content = blk: {
+            const file = std.fs.cwd().openFile(options.file_path, .{}) catch |err| {
+                std.debug.print("{s}: {s}\n", .{ options.file_path, errorDescription(err) });
+
+                return 1;
+            };
+
+            defer file.close();
+
+            break :blk file.readToEndAllocOptions(self.allocator, std.math.maxInt(u32), null, @alignOf(u8), 0) catch |err| switch (err) {
                 error.OutOfMemory => {
                     std.debug.print("{s}\n", .{errorDescription(err)});
 
@@ -131,11 +175,7 @@ pub const Cli = struct {
             return 0;
         }
 
-        const cerium_lib_dir = Compilation.Environment.openCeriumLibrary() catch {
-            std.debug.print("Error: could not open the cerium library directory\n", .{});
-
-            return 1;
-        };
+        defer self.allocator.free(input_file_content);
 
         const env: Compilation.Environment = .{
             .cerium_lib_dir = cerium_lib_dir,
@@ -145,19 +185,20 @@ pub const Cli = struct {
 
         var compilation = Compilation.init(self.allocator, env);
 
-        const ast = compilation.parse(input_file_content) orelse return 1;
+        const input_lir = compilation.compileLir(input_file_content) orelse return 1;
 
-        var hir = compilation.generateHir(ast) orelse return 1;
+        compilation.env.source_file_path = runner_file_path;
+        const runner_lir = compilation.compileLir(runner_file_content) orelse return 1;
 
-        var lir = compilation.analyzeSemantics(hir) orelse return 1;
+        const lir = compilation.concatLir(&.{ runner_lir, input_lir }) catch |err| {
+            std.debug.print("{s}\n", .{errorDescription(err)});
 
-        hir.deinit(self.allocator);
+            return 1;
+        };
 
         const output = compilation.renderAssembly(lir) orelse return 1;
 
         defer self.allocator.free(output);
-
-        lir.deinit(self.allocator);
 
         const input_file_path_stem = std.fs.path.stem(options.file_path);
 
@@ -173,7 +214,7 @@ pub const Cli = struct {
         output_file_path.appendSliceAssumeCapacity(".s");
 
         const output_file = std.fs.cwd().createFile(output_file_path.items, .{}) catch |err| {
-            std.debug.print("couldn't create output file: {s}\n", .{errorDescription(err)});
+            std.debug.print("could not create output file: {s}\n", .{errorDescription(err)});
 
             return 1;
         };
@@ -181,7 +222,7 @@ pub const Cli = struct {
         defer output_file.close();
 
         output_file.writeAll(output) catch |err| {
-            std.debug.print("couldn't write the output: {s}\n", .{errorDescription(err)});
+            std.debug.print("could not write the output: {s}\n", .{errorDescription(err)});
 
             return 1;
         };

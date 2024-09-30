@@ -288,12 +288,7 @@ pub fn analyze(self: *Sema, hir: Hir) Error!void {
 }
 
 fn analyzeGlobalBlocks(self: *Sema, hir: Hir) Error!void {
-    var hir_block_iterator = hir.global.iterator();
-
-    while (hir_block_iterator.next()) |hir_block_entry| {
-        const hir_block_name = hir_block_entry.key_ptr.*;
-        const hir_block = hir_block_entry.value_ptr;
-
+    for (hir.global.keys(), hir.global.values()) |hir_block_name, hir_block| {
         const lir_block_entry = try self.lir.global.getOrPutValue(self.allocator, hir_block_name, .{});
 
         self.lir_block = lir_block_entry.value_ptr;
@@ -305,12 +300,7 @@ fn analyzeGlobalBlocks(self: *Sema, hir: Hir) Error!void {
 }
 
 fn analyzeExternalTypes(self: *Sema, hir: Hir) Error!void {
-    var hir_type_iterator = hir.external.iterator();
-
-    while (hir_type_iterator.next()) |hir_type_entry| {
-        const hir_type_name = hir_type_entry.key_ptr.*;
-        const hir_type = hir_type_entry.value_ptr.*;
-
+    for (hir.external.keys(), hir.external.values()) |hir_type_name, hir_type| {
         try self.scope.put(self.allocator, hir_type_name, .{
             .symbol = .{
                 .name = .{ .buffer = hir_type_name, .source_loc = .{} },
@@ -324,18 +314,11 @@ fn analyzeExternalTypes(self: *Sema, hir: Hir) Error!void {
 }
 
 fn analyzeFunctionTypes(self: *Sema, hir: Hir) Error!void {
-    var hir_function_iterator = hir.functions.iterator();
-
-    while (hir_function_iterator.next()) |hir_function_entry| {
-        const hir_function = hir_function_entry.value_ptr;
-
+    for (hir.functions.values()) |hir_function| {
         try self.lir.functions.put(
             self.allocator,
-            hir_function_entry.key_ptr.*,
-            .{
-                .name = hir_function.prototype.name.buffer,
-                .type = hir_function.type,
-            },
+            hir_function.prototype.name.buffer,
+            .{ .type = hir_function.type },
         );
 
         try self.scope.put(
@@ -354,21 +337,12 @@ fn analyzeFunctionTypes(self: *Sema, hir: Hir) Error!void {
 }
 
 fn analyzeFunctionBlocks(self: *Sema, hir: Hir) Error!void {
-    var hir_function_iterator = hir.functions.iterator();
-
-    while (hir_function_iterator.next()) |hir_function_entry| {
-        const hir_function = hir_function_entry.value_ptr;
-
+    for (hir.functions.values()) |*hir_function| {
         const lir_function = self.lir.functions.getPtr(hir_function.prototype.name.buffer).?;
 
         self.maybe_hir_function = hir_function;
 
-        var hir_block_iterator = hir_function.blocks.iterator();
-
-        while (hir_block_iterator.next()) |hir_block_entry| {
-            const hir_block_name = hir_block_entry.key_ptr.*;
-            const hir_block = hir_block_entry.value_ptr;
-
+        for (hir_function.blocks.keys(), hir_function.blocks.values()) |hir_block_name, hir_block| {
             const lir_block_entry = try lir_function.blocks.getOrPutValue(self.allocator, hir_block_name, .{
                 .tag = @enumFromInt(@intFromEnum(hir_block.tag)),
             });

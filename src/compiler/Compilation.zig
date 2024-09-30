@@ -19,7 +19,7 @@ pub const Environment = struct {
     source_file_path: []const u8,
     target: std.Target,
 
-    pub fn openCeriumLibrary() !std.fs.Dir {
+    pub inline fn openCeriumLibrary() !std.fs.Dir {
         var self_exe_dir_path_buf: [std.fs.max_path_bytes]u8 = undefined;
 
         const self_exe_dir_path = try std.fs.selfExeDirPath(&self_exe_dir_path_buf);
@@ -27,7 +27,6 @@ pub const Environment = struct {
         const self_exe_dir = try std.fs.openDirAbsolute(self_exe_dir_path, .{});
 
         var dir = self_exe_dir;
-        defer dir.close();
 
         var opened = false;
 
@@ -127,6 +126,46 @@ pub fn analyzeSemantics(self: Compilation, hir: Hir) ?Lir {
     };
 
     return sema.lir;
+}
+
+pub fn compileLir(self: Compilation, input: [:0]const u8) ?Lir {
+    // TODO: Ast is leaking memory..
+    const ast = self.parse(input) orelse return null;
+
+    // TODO: Hir is leaking memory..
+    const hir = self.generateHir(ast) orelse return null;
+
+    // TODO: Some of the strucures in Lir depend on Hir memory allocated data, we can not free Hir memory here.
+    // find a way to free Hir memory when we are done with it or do not depend on it anymore.
+    const lir = self.analyzeSemantics(hir) orelse return null;
+
+    return lir;
+}
+
+pub fn concatLir(self: Compilation, lirs: []const Lir) std.mem.Allocator.Error!Lir {
+    var concatenated_lir: Lir = .{};
+
+    for (lirs) |lir| {
+        try concatenated_lir.global.ensureUnusedCapacity(self.allocator, lir.global.count());
+
+        for (lir.global.keys(), lir.global.values()) |lir_block_name, lir_block| {
+            concatenated_lir.global.putAssumeCapacity(lir_block_name, lir_block);
+        }
+
+        try concatenated_lir.external.ensureUnusedCapacity(self.allocator, lir.external.count());
+
+        for (lir.external.keys(), lir.external.values()) |lir_type_name, lir_type| {
+            concatenated_lir.external.putAssumeCapacity(lir_type_name, lir_type);
+        }
+
+        try concatenated_lir.functions.ensureUnusedCapacity(self.allocator, lir.functions.count());
+
+        for (lir.functions.keys(), lir.functions.values()) |lir_function_name, lir_function| {
+            concatenated_lir.functions.putAssumeCapacity(lir_function_name, lir_function);
+        }
+    }
+
+    return concatenated_lir;
 }
 
 pub fn renderAssembly(self: Compilation, lir: Lir) ?[]u8 {

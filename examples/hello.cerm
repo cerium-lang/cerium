@@ -1,5 +1,4 @@
 const SYS_write = 1;
-const SYS_exit_group = 231;
 
 const STDOUT = 1;
 
@@ -14,16 +13,6 @@ fn write(fd u32, buf [*]const u8, count u64) u64 {
     };
 }
 
-fn exit_group(status_code u8) {
-    asm {
-        "syscall"
-        : "rax" (SYS_exit_group),
-          "rdi" (status_code),
-    };
-}
-
-fn _start() {
+fn main() {
     write(STDOUT, "Hello, World!\n", 14);
-
-    exit_group(0);
 }

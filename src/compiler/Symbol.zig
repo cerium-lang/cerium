@@ -180,32 +180,32 @@ pub const Type = union(enum) {
             .void => try writer.writeAll("void"),
             .bool => try writer.writeAll("bool"),
 
-            .pointer => {
-                if (self.pointer.size == .one) {
+            .pointer => |pointer| {
+                if (pointer.size == .one) {
                     try writer.writeAll("*");
-                } else if (self.pointer.size == .many) {
+                } else if (pointer.size == .many) {
                     try writer.writeAll("[*]");
                 }
 
-                if (self.pointer.is_const) {
+                if (pointer.is_const) {
                     try writer.writeAll("const ");
                 }
 
-                try writer.print("{}", .{self.pointer.child_type});
+                try writer.print("{}", .{pointer.child_type});
             },
 
-            .function => {
+            .function => |function| {
                 try writer.writeAll("fn (");
 
-                for (self.function.parameter_types, 0..) |parameter, i| {
+                for (function.parameter_types, 0..) |parameter, i| {
                     try writer.print("{}", .{parameter});
 
-                    if (i < self.function.parameter_types.len - 1) {
+                    if (i < function.parameter_types.len - 1) {
                         try writer.writeAll(", ");
                     }
                 }
 
-                try writer.print(") {}", .{self.function.return_type});
+                try writer.print(") {}", .{function.return_type});
             },
 
             .ambigiuous_int => try writer.writeAll("ambigiuous_int"),
