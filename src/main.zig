@@ -131,15 +131,15 @@ pub const Cli = struct {
             return 0;
         }
 
-        const lib_dir = Compilation.Environment.openLibrary() catch {
-            std.debug.print("Error: could not open the library directory\n", .{});
+        const cerium_lib_dir = Compilation.Environment.openCeriumLibrary() catch {
+            std.debug.print("Error: could not open the cerium library directory\n", .{});
 
             return 1;
         };
 
         const env: Compilation.Environment = .{
+            .cerium_lib_dir = cerium_lib_dir,
             .source_file_path = options.file_path,
-            .lib_dir = lib_dir,
             .target = builtin.target,
         };
 

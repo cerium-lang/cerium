@@ -15,32 +15,32 @@ allocator: std.mem.Allocator,
 env: Environment,
 
 pub const Environment = struct {
+    cerium_lib_dir: std.fs.Dir,
     source_file_path: []const u8,
-    lib_dir: std.fs.Dir,
     target: std.Target,
 
-    pub fn openLibrary() !std.fs.Dir {
+    pub fn openCeriumLibrary() !std.fs.Dir {
         var self_exe_dir_path_buf: [std.fs.max_path_bytes]u8 = undefined;
 
         const self_exe_dir_path = try std.fs.selfExeDirPath(&self_exe_dir_path_buf);
 
         const self_exe_dir = try std.fs.openDirAbsolute(self_exe_dir_path, .{});
 
-        var lib_dir = self_exe_dir;
-        defer lib_dir.close();
+        var dir = self_exe_dir;
+        defer dir.close();
 
-        var found_lib_dir = false;
+        var opened = false;
 
-        while (!found_lib_dir) {
-            found_lib_dir = true;
+        while (!opened) {
+            opened = true;
 
-            lib_dir = lib_dir.openDir("lib/cerium", .{}) catch |err| switch (err) {
+            dir = dir.openDir("lib/cerium", .{}) catch |err| switch (err) {
                 error.FileNotFound => blk: {
-                    break :blk lib_dir.openDir("lib", .{}) catch |another_err| switch (another_err) {
+                    break :blk dir.openDir("lib", .{}) catch |another_err| switch (another_err) {
                         error.FileNotFound => {
-                            found_lib_dir = false;
+                            opened = false;
 
-                            break :blk try lib_dir.openDir("..", .{});
+                            break :blk try dir.openDir("..", .{});
                         },
 
                         else => return err,
@@ -51,7 +51,7 @@ pub const Environment = struct {
             };
         }
 
-        return lib_dir;
+        return dir;
     }
 };
 
