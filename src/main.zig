@@ -131,7 +131,19 @@ pub const Cli = struct {
             return 0;
         }
 
-        var compilation = Compilation.init(self.allocator, .{ .source_file_path = options.file_path, .target = builtin.target });
+        const lib_dir = Compilation.Environment.openLibrary() catch {
+            std.debug.print("Error: could not open the library directory\n", .{});
+
+            return 1;
+        };
+
+        const env: Compilation.Environment = .{
+            .source_file_path = options.file_path,
+            .lib_dir = lib_dir,
+            .target = builtin.target,
+        };
+
+        var compilation = Compilation.init(self.allocator, env);
 
         const ast = compilation.parse(input_file_content) orelse return 1;
 
