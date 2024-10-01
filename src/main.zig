@@ -50,6 +50,8 @@ pub const Cli = struct {
             error.AccessDenied => "access denied",
             error.FileTooBig, error.StreamTooLong => "file is too big",
             error.ProcessFdQuotaExceeded, error.SystemFdQuotaExceeded => "ran out of file descriptors",
+            error.ThreadQuotaExceeded => "ran out of threads",
+            error.LockedMemoryLimitExceeded => "ran out of locked memory",
             error.SystemResources => "ran out of system resources",
             error.FatalError => "a fatal error occurred",
             error.Unexpected => "an unexpected error occurred",
@@ -117,86 +119,30 @@ pub const Cli = struct {
             return 1;
         };
 
-        const runner_file_content = blk: {
-            const file = cerium_lib_dir.openFile("std/runners/exe.cerm", .{}) catch |err| {
-                std.debug.print("{s}: {s}\n", .{ options.file_path, errorDescription(err) });
-
-                return 1;
-            };
-
-            defer file.close();
-
-            break :blk file.readToEndAllocOptions(self.allocator, std.math.maxInt(u32), null, @alignOf(u8), 0) catch |err| switch (err) {
-                error.OutOfMemory => {
-                    std.debug.print("{s}\n", .{errorDescription(err)});
-
-                    return 1;
-                },
-
-                else => {
-                    std.debug.print("{s}: {s}\n", .{ options.file_path, errorDescription(err) });
-
-                    return 1;
-                },
-            };
-        };
-
-        if (runner_file_content.len == 0) {
-            return 0;
-        }
-
-        defer self.allocator.free(runner_file_content);
-
-        const input_file_content = blk: {
-            const file = std.fs.cwd().openFile(options.file_path, .{}) catch |err| {
-                std.debug.print("{s}: {s}\n", .{ options.file_path, errorDescription(err) });
-
-                return 1;
-            };
-
-            defer file.close();
-
-            break :blk file.readToEndAllocOptions(self.allocator, std.math.maxInt(u32), null, @alignOf(u8), 0) catch |err| switch (err) {
-                error.OutOfMemory => {
-                    std.debug.print("{s}\n", .{errorDescription(err)});
-
-                    return 1;
-                },
-
-                else => {
-                    std.debug.print("{s}: {s}\n", .{ options.file_path, errorDescription(err) });
-
-                    return 1;
-                },
-            };
-        };
-
-        if (input_file_content.len == 0) {
-            return 0;
-        }
-
-        defer self.allocator.free(input_file_content);
-
         const env: Compilation.Environment = .{
             .cerium_lib_dir = cerium_lib_dir,
-            .source_file_path = options.file_path,
             .target = builtin.target,
         };
 
         var compilation = Compilation.init(self.allocator, env);
+        defer compilation.deinit();
 
-        const input_lir = compilation.compileLir(input_file_content) orelse return 1;
+        const lir = blk: {
+            compilation.push(runner_file_path) catch |err| break :blk err;
+            compilation.push(options.file_path) catch |err| break :blk err;
 
-        compilation.env.source_file_path = runner_file_path;
-        const runner_lir = compilation.compileLir(runner_file_content) orelse return 1;
+            compilation.start() catch |err| break :blk err;
 
-        const lir = compilation.concatLir(&.{ runner_lir, input_lir }) catch |err| {
+            if (compilation.pipeline.failed) return 1;
+
+            break :blk compilation.finalize();
+        } catch |err| {
             std.debug.print("{s}\n", .{errorDescription(err)});
 
             return 1;
         };
 
-        const output = compilation.renderAssembly(lir) orelse return 1;
+        const output = compilation.render(lir) orelse return 1;
 
         defer self.allocator.free(output);
 
@@ -240,10 +186,7 @@ pub const Cli = struct {
 pub fn main() u8 {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 
-    var arena_instance = std.heap.ArenaAllocator.init(gpa.allocator());
-    defer arena_instance.deinit();
-
-    const allocator = arena_instance.allocator();
+    const allocator = gpa.allocator();
 
     var argument_iterator = std.process.ArgIterator.initWithAllocator(allocator) catch {
         std.debug.print("ran out of memory\n", .{});

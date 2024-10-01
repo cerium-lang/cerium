@@ -13,10 +13,10 @@ const Compilation = @This();
 allocator: std.mem.Allocator,
 
 env: Environment,
+pipeline: Pipeline = .{},
 
 pub const Environment = struct {
     cerium_lib_dir: std.fs.Dir,
-    source_file_path: []const u8,
     target: std.Target,
 
     pub inline fn openCeriumLibrary() !std.fs.Dir {
@@ -54,6 +54,13 @@ pub const Environment = struct {
     }
 };
 
+pub const Pipeline = struct {
+    mutex: std.Thread.Mutex = .{},
+    failed: bool = false,
+    files: std.StringArrayHashMapUnmanaged([:0]const u8) = .{},
+    lirs: std.ArrayListUnmanaged(Lir) = .{},
+};
+
 pub fn init(allocator: std.mem.Allocator, env: Environment) Compilation {
     return Compilation{
         .allocator = allocator,
@@ -61,91 +68,68 @@ pub fn init(allocator: std.mem.Allocator, env: Environment) Compilation {
     };
 }
 
-pub fn parse(self: Compilation, input: [:0]const u8) ?Ast {
-    var ast_parser = Ast.Parser.init(self.allocator, self.env, input) catch |err| {
-        std.debug.print("{s}\n", .{Cli.errorDescription(err)});
+pub fn deinit(self: *Compilation) void {
+    self.pipeline.files.deinit(self.allocator);
+    self.pipeline.lirs.deinit(self.allocator);
+}
 
-        return null;
-    };
+pub fn push(self: *Compilation, file_path: []const u8) !void {
+    const file = try std.fs.cwd().openFile(file_path, .{});
+    defer file.close();
 
-    defer ast_parser.deinit();
+    const input = try file.readToEndAllocOptions(self.allocator, std.math.maxInt(u32), null, @alignOf(u8), 0);
 
-    const ast = ast_parser.parse() catch |err| switch (err) {
-        error.OutOfMemory => {
+    if (input.len == 0) return;
+
+    try self.pipeline.files.put(self.allocator, file_path, input);
+}
+
+pub fn start(self: *Compilation) !void {
+    var thread_pool: std.Thread.Pool = undefined;
+    try thread_pool.init(.{ .allocator = self.allocator });
+    defer thread_pool.deinit();
+
+    var wait_group: std.Thread.WaitGroup = .{};
+
+    for (self.pipeline.files.keys(), self.pipeline.files.values()) |file_path, input| {
+        thread_pool.spawnWg(&wait_group, compile, .{ self, file_path, input });
+    }
+
+    thread_pool.waitAndWork(&wait_group);
+}
+
+pub fn compile(self: *Compilation, file_path: []const u8, input: [:0]const u8) void {
+    _ = blk: {
+        // TODO: Ast is leaking memory..
+        const ast = self.parse(file_path, input) orelse break :blk null;
+
+        // TODO: Hir is leaking memory..
+        const hir = self.generate(file_path, ast) orelse break :blk null;
+
+        // TODO: Some of the strucures in Lir depend on Hir memory allocated data, we can not free Hir memory here.
+        // find a way to free Hir memory when we are done with it or do not depend on it anymore.
+        const lir = self.analyze(file_path, hir) orelse break :blk null;
+
+        self.pipeline.mutex.lock();
+        defer self.pipeline.mutex.unlock();
+
+        self.pipeline.lirs.append(self.allocator, lir) catch |err| {
             std.debug.print("{s}\n", .{Cli.errorDescription(err)});
 
-            return null;
-        },
+            break :blk null;
+        };
+    } orelse {
+        self.pipeline.mutex.lock();
+        defer self.pipeline.mutex.unlock();
 
-        else => {
-            std.debug.print("{s}:{}:{}: {s}\n", .{ self.env.source_file_path, ast_parser.error_info.?.source_loc.line, ast_parser.error_info.?.source_loc.column, ast_parser.error_info.?.message });
-
-            return null;
-        },
+        self.pipeline.failed = true;
     };
-
-    return ast;
 }
 
-pub fn generateHir(self: Compilation, ast: Ast) ?Hir {
-    var hir_generator = Hir.Generator.init(self.allocator);
-
-    hir_generator.generate(ast) catch |err| switch (err) {
-        error.OutOfMemory => {
-            std.debug.print("{s}\n", .{Cli.errorDescription(err)});
-
-            return null;
-        },
-
-        else => {
-            std.debug.print("{s}:{}:{}: {s}\n", .{ self.env.source_file_path, hir_generator.error_info.?.source_loc.line, hir_generator.error_info.?.source_loc.column, hir_generator.error_info.?.message });
-
-            return null;
-        },
-    };
-
-    return hir_generator.hir;
-}
-
-pub fn analyzeSemantics(self: Compilation, hir: Hir) ?Lir {
-    var sema = Sema.init(self.allocator, self.env);
-    defer sema.deinit();
-
-    sema.analyze(hir) catch |err| switch (err) {
-        error.OutOfMemory => {
-            std.debug.print("{s}\n", .{Cli.errorDescription(err)});
-
-            return null;
-        },
-
-        else => {
-            std.debug.print("{s}:{}:{}: {s}\n", .{ self.env.source_file_path, sema.error_info.?.source_loc.line, sema.error_info.?.source_loc.column, sema.error_info.?.message });
-
-            return null;
-        },
-    };
-
-    return sema.lir;
-}
-
-pub fn compileLir(self: Compilation, input: [:0]const u8) ?Lir {
-    // TODO: Ast is leaking memory..
-    const ast = self.parse(input) orelse return null;
-
-    // TODO: Hir is leaking memory..
-    const hir = self.generateHir(ast) orelse return null;
-
-    // TODO: Some of the strucures in Lir depend on Hir memory allocated data, we can not free Hir memory here.
-    // find a way to free Hir memory when we are done with it or do not depend on it anymore.
-    const lir = self.analyzeSemantics(hir) orelse return null;
-
-    return lir;
-}
-
-pub fn concatLir(self: Compilation, lirs: []const Lir) std.mem.Allocator.Error!Lir {
+pub fn finalize(self: Compilation) std.mem.Allocator.Error!Lir {
     var concatenated_lir: Lir = .{};
 
-    for (lirs) |lir| {
+    for (self.pipeline.lirs.items) |lir| {
         try concatenated_lir.global.ensureUnusedCapacity(self.allocator, lir.global.count());
 
         for (lir.global.keys(), lir.global.values()) |lir_block_name, lir_block| {
@@ -168,7 +152,74 @@ pub fn concatLir(self: Compilation, lirs: []const Lir) std.mem.Allocator.Error!L
     return concatenated_lir;
 }
 
-pub fn renderAssembly(self: Compilation, lir: Lir) ?[]u8 {
+pub fn parse(self: Compilation, file_path: []const u8, input: [:0]const u8) ?Ast {
+    var ast_parser = Ast.Parser.init(self.allocator, self.env, input) catch |err| {
+        std.debug.print("{s}\n", .{Cli.errorDescription(err)});
+
+        return null;
+    };
+
+    defer ast_parser.deinit();
+
+    const ast = ast_parser.parse() catch |err| switch (err) {
+        error.OutOfMemory => {
+            std.debug.print("{s}\n", .{Cli.errorDescription(err)});
+
+            return null;
+        },
+
+        else => {
+            std.debug.print("{s}:{}:{}: {s}\n", .{ file_path, ast_parser.error_info.?.source_loc.line, ast_parser.error_info.?.source_loc.column, ast_parser.error_info.?.message });
+
+            return null;
+        },
+    };
+
+    return ast;
+}
+
+pub fn generate(self: Compilation, file_path: []const u8, ast: Ast) ?Hir {
+    var hir_generator = Hir.Generator.init(self.allocator);
+
+    hir_generator.generate(ast) catch |err| switch (err) {
+        error.OutOfMemory => {
+            std.debug.print("{s}\n", .{Cli.errorDescription(err)});
+
+            return null;
+        },
+
+        else => {
+            std.debug.print("{s}:{}:{}: {s}\n", .{ file_path, hir_generator.error_info.?.source_loc.line, hir_generator.error_info.?.source_loc.column, hir_generator.error_info.?.message });
+
+            return null;
+        },
+    };
+
+    return hir_generator.hir;
+}
+
+pub fn analyze(self: Compilation, file_path: []const u8, hir: Hir) ?Lir {
+    var sema = Sema.init(self.allocator, self.env);
+    defer sema.deinit();
+
+    sema.analyze(hir) catch |err| switch (err) {
+        error.OutOfMemory => {
+            std.debug.print("{s}\n", .{Cli.errorDescription(err)});
+
+            return null;
+        },
+
+        else => {
+            std.debug.print("{s}:{}:{}: {s}\n", .{ file_path, sema.error_info.?.source_loc.line, sema.error_info.?.source_loc.column, sema.error_info.?.message });
+
+            return null;
+        },
+    };
+
+    return sema.lir;
+}
+
+pub fn render(self: Compilation, lir: Lir) ?[]u8 {
     return switch (self.env.target.cpu.arch) {
         .x86_64 => blk: {
             var backend = Assembly.x86_64.init(self.allocator, lir);
