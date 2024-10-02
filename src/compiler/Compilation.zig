@@ -73,12 +73,13 @@ pub fn deinit(self: *Compilation) void {
     self.pipeline.lirs.deinit(self.allocator);
 }
 
-pub fn push(self: *Compilation, file_path: []const u8) !void {
+pub fn put(self: *Compilation, file_path: []const u8) !void {
+    if (self.pipeline.files.get(file_path) != null) return;
+
     const file = try std.fs.cwd().openFile(file_path, .{});
     defer file.close();
 
     const input = try file.readToEndAllocOptions(self.allocator, std.math.maxInt(u32), null, @alignOf(u8), 0);
-
     if (input.len == 0) return;
 
     try self.pipeline.files.put(self.allocator, file_path, input);

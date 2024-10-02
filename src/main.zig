@@ -119,17 +119,12 @@ pub const Cli = struct {
             return 1;
         };
 
-        const env: Compilation.Environment = .{
-            .cerium_lib_dir = cerium_lib_dir,
-            .target = builtin.target,
-        };
-
-        var compilation = Compilation.init(self.allocator, env);
+        var compilation = Compilation.init(self.allocator, .{ .cerium_lib_dir = cerium_lib_dir, .target = builtin.target });
         defer compilation.deinit();
 
         const lir = blk: {
-            compilation.push(runner_file_path) catch |err| break :blk err;
-            compilation.push(options.file_path) catch |err| break :blk err;
+            compilation.put(runner_file_path) catch |err| break :blk err;
+            compilation.put(options.file_path) catch |err| break :blk err;
 
             compilation.start() catch |err| break :blk err;
 
