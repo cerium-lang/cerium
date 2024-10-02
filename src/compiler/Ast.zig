@@ -23,6 +23,25 @@ pub const Name = struct {
     source_loc: SourceLoc,
 };
 
+pub const SubType = union(enum) {
+    name: Name,
+    function: Function,
+    pointer: Pointer,
+    pure: Type,
+
+    pub const Function = struct {
+        parameter_subtypes: []const SubType,
+        return_subtype: *const SubType,
+    };
+
+    pub const Pointer = struct {
+        size: Type.Pointer.Size,
+        is_const: bool,
+        is_local: bool,
+        child_subtype: *const SubType,
+    };
+};
+
 pub const Node = union(enum) {
     stmt: Stmt,
     expr: Expr,
@@ -44,11 +63,11 @@ pub const Node = union(enum) {
                 is_external: bool,
                 name: Name,
                 parameters: []const Parameter,
-                return_type: Type,
+                return_subtype: SubType,
 
                 pub const Parameter = struct {
                     name: Name,
-                    expected_type: Type,
+                    expected_subtype: SubType,
                 };
             };
         };
@@ -57,7 +76,7 @@ pub const Node = union(enum) {
             is_external: bool,
             is_const: bool,
             name: Name,
-            type: ?Type,
+            subtype: ?SubType,
             value: Node.Expr,
         };
 
@@ -129,7 +148,7 @@ pub const Node = union(enum) {
 
             const OutputConstraint = struct {
                 register: []const u8,
-                type: Type,
+                subtype: SubType,
             };
         };
 
@@ -201,18 +220,16 @@ pub const Parser = struct {
     tokens: []Token,
     current_token_index: usize,
 
-    builtin_types: std.StringHashMapUnmanaged(Type),
-
     in_function: bool = false,
 
     error_info: ?ErrorInfo = null,
 
     pub const Error = error{
         UnexpectedToken,
+        InvalidType,
         InvalidString,
         InvalidChar,
         InvalidNumber,
-        InvalidType,
         ExpectedTopLevelDeclaration,
     } || std.mem.Allocator.Error;
 
@@ -221,7 +238,7 @@ pub const Parser = struct {
         source_loc: SourceLoc,
     };
 
-    pub fn init(allocator: std.mem.Allocator, env: Compilation.Environment, buffer: [:0]const u8) std.mem.Allocator.Error!Parser {
+    pub fn init(allocator: std.mem.Allocator, buffer: [:0]const u8) std.mem.Allocator.Error!Parser {
         var tokens: std.ArrayListUnmanaged(Token) = .{};
 
         var lexer = Lexer.init(buffer);
@@ -234,30 +251,8 @@ pub const Parser = struct {
             if (token.tag == .eof) break;
         }
 
-        var builtin_types: std.StringHashMapUnmanaged(Type) = .{};
-
-        try builtin_types.ensureTotalCapacity(allocator, 14);
-
-        builtin_types.putAssumeCapacity("void", .void);
-        builtin_types.putAssumeCapacity("bool", .bool);
-
-        builtin_types.putAssumeCapacity("usize", .{ .int = .{ .signedness = .unsigned, .bits = env.target.ptrBitWidth() } });
-        builtin_types.putAssumeCapacity("isize", .{ .int = .{ .signedness = .signed, .bits = env.target.ptrBitWidth() } });
-        builtin_types.putAssumeCapacity("u8", .{ .int = .{ .signedness = .unsigned, .bits = 8 } });
-        builtin_types.putAssumeCapacity("u16", .{ .int = .{ .signedness = .unsigned, .bits = 16 } });
-        builtin_types.putAssumeCapacity("u32", .{ .int = .{ .signedness = .unsigned, .bits = 32 } });
-        builtin_types.putAssumeCapacity("u64", .{ .int = .{ .signedness = .unsigned, .bits = 64 } });
-        builtin_types.putAssumeCapacity("i8", .{ .int = .{ .signedness = .signed, .bits = 8 } });
-        builtin_types.putAssumeCapacity("i16", .{ .int = .{ .signedness = .signed, .bits = 16 } });
-        builtin_types.putAssumeCapacity("i32", .{ .int = .{ .signedness = .signed, .bits = 32 } });
-        builtin_types.putAssumeCapacity("i64", .{ .int = .{ .signedness = .signed, .bits = 64 } });
-
-        builtin_types.putAssumeCapacity("f32", .{ .float = .{ .bits = 32 } });
-        builtin_types.putAssumeCapacity("f64", .{ .float = .{ .bits = 64 } });
-
         return Parser{
             .allocator = allocator,
-            .builtin_types = builtin_types,
             .buffer = buffer,
             .tokens = try tokens.toOwnedSlice(allocator),
             .current_token_index = 0,
@@ -265,7 +260,6 @@ pub const Parser = struct {
     }
 
     pub fn deinit(self: *Parser) void {
-        self.builtin_types.deinit(self.allocator);
         self.allocator.free(self.tokens);
     }
 
@@ -422,16 +416,16 @@ pub const Parser = struct {
 
         const parameters = try self.parseFunctionParameters();
 
-        const return_type = if (self.peekToken().tag == .open_brace or (self.peekToken().tag == .semicolon and is_external))
-            .void
+        const return_subtype = if (self.peekToken().tag == .open_brace or (self.peekToken().tag == .semicolon and is_external))
+            SubType{ .pure = .void }
         else
-            try self.parseType();
+            try self.parseSubType();
 
         return Node.Stmt.FunctionDeclaration.Prototype{
             .is_external = is_external,
             .name = name,
             .parameters = parameters,
-            .return_type = return_type,
+            .return_subtype = return_subtype,
         };
     }
 
@@ -466,7 +460,7 @@ pub const Parser = struct {
     fn parseFunctionParameter(self: *Parser) Error!Node.Stmt.FunctionDeclaration.Prototype.Parameter {
         return Node.Stmt.FunctionDeclaration.Prototype.Parameter{
             .name = try self.parseName(),
-            .expected_type = try self.parseType(),
+            .expected_subtype = try self.parseSubType(),
         };
     }
 
@@ -499,12 +493,12 @@ pub const Parser = struct {
 
         const name = try self.parseName();
 
-        const @"type" = if (self.peekToken().tag == .equal_sign)
+        const subtype = if (self.peekToken().tag == .equal_sign)
             null
         else
-            try self.parseType();
+            try self.parseSubType();
 
-        if (@"type" != null and !is_external and !self.eatToken(.equal_sign)) {
+        if (subtype != null and !is_external and !self.eatToken(.equal_sign)) {
             self.error_info = .{ .message = "expected '='", .source_loc = self.tokenSourceLoc(self.peekToken()) };
 
             return error.UnexpectedToken;
@@ -522,7 +516,7 @@ pub const Parser = struct {
                     .is_external = is_external,
                     .is_const = is_const,
                     .name = name,
-                    .type = @"type",
+                    .subtype = subtype,
                     .value = if (is_external) undefined else value.expr,
                 },
             },
@@ -951,7 +945,7 @@ pub const Parser = struct {
             return error.UnexpectedToken;
         }
 
-        const @"type" = try self.parseType();
+        const subtype = try self.parseSubType();
 
         if (!self.eatToken(.close_paren)) {
             self.error_info = .{ .message = "expected a ')'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
@@ -961,7 +955,7 @@ pub const Parser = struct {
 
         return Node.Expr.Assembly.OutputConstraint{
             .register = register,
-            .type = @"type",
+            .subtype = subtype,
         };
     }
 
@@ -1096,14 +1090,10 @@ pub const Parser = struct {
         return arguments.items;
     }
 
-    fn parseType(self: *Parser) Error!Type {
+    fn parseSubType(self: *Parser) Error!SubType {
         switch (self.peekToken().tag) {
             .identifier => {
-                if (self.builtin_types.get(self.tokenValue(self.peekToken()))) |builtin_type| {
-                    _ = self.nextToken();
-
-                    return builtin_type;
-                }
+                return .{ .name = try self.parseName() };
             },
 
             .keyword_fn => {
@@ -1115,10 +1105,10 @@ pub const Parser = struct {
                     return error.UnexpectedToken;
                 }
 
-                var parameter_types = std.ArrayList(Type).init(self.allocator);
+                var parameter_subtypes: std.ArrayListUnmanaged(SubType) = .{};
 
                 while (self.peekToken().tag != .eof and self.peekToken().tag != .close_paren) {
-                    try parameter_types.append(try self.parseType());
+                    try parameter_subtypes.append(self.allocator, try self.parseSubType());
 
                     if (!self.eatToken(.comma) and self.peekToken().tag != .close_paren) {
                         self.error_info = .{ .message = "expected a ','", .source_loc = self.tokenSourceLoc(self.peekToken()) };
@@ -1133,15 +1123,15 @@ pub const Parser = struct {
                     return error.UnexpectedToken;
                 }
 
-                const return_type = try self.parseType();
+                const return_subtype = try self.parseSubType();
 
-                const return_type_on_heap = try self.allocator.create(Type);
-                return_type_on_heap.* = return_type;
+                const return_subtype_on_heap = try self.allocator.create(SubType);
+                return_subtype_on_heap.* = return_subtype;
 
                 return .{
                     .function = .{
-                        .parameter_types = parameter_types.items,
-                        .return_type = return_type_on_heap,
+                        .parameter_subtypes = parameter_subtypes.items,
+                        .return_subtype = return_subtype_on_heap,
                     },
                 };
             },
@@ -1151,9 +1141,9 @@ pub const Parser = struct {
 
                 const is_const = self.eatToken(.keyword_const);
 
-                const child = try self.parseType();
+                const child = try self.parseSubType();
 
-                const child_on_heap = try self.allocator.create(Type);
+                const child_on_heap = try self.allocator.create(SubType);
                 child_on_heap.* = child;
 
                 return .{
@@ -1161,7 +1151,7 @@ pub const Parser = struct {
                         .size = .one,
                         .is_const = is_const,
                         .is_local = self.in_function,
-                        .child_type = child_on_heap,
+                        .child_subtype = child_on_heap,
                     },
                 };
             },
@@ -1183,9 +1173,9 @@ pub const Parser = struct {
 
                 const is_const = self.eatToken(.keyword_const);
 
-                const child = try self.parseType();
+                const child = try self.parseSubType();
 
-                const child_on_heap = try self.allocator.create(Type);
+                const child_on_heap = try self.allocator.create(SubType);
                 child_on_heap.* = child;
 
                 return .{
@@ -1193,7 +1183,7 @@ pub const Parser = struct {
                         .size = .many,
                         .is_const = is_const,
                         .is_local = self.in_function,
-                        .child_type = child_on_heap,
+                        .child_subtype = child_on_heap,
                     },
                 };
             },

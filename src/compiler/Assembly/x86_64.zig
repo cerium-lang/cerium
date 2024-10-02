@@ -97,7 +97,7 @@ fn renderGlobalBlocks(
     data_section_writer: anytype,
     rodata_section_writer: anytype,
 ) Error!void {
-    for (self.lir.global.keys(), self.lir.global.values()) |lir_block_name, lir_block| {
+    for (self.lir.global_blocks.keys(), self.lir.global_blocks.values()) |lir_block_name, lir_block| {
         try data_section_writer.print(".global {s}\n", .{lir_block_name});
         try data_section_writer.print("{s}:\n", .{lir_block_name});
 
@@ -114,7 +114,7 @@ fn renderGlobalBlocks(
 }
 
 fn analyzeExternalTypes(self: *x86_64) Error!void {
-    for (self.lir.external.keys(), self.lir.external.values()) |lir_type_name, lir_type| {
+    for (self.lir.external_types.keys(), self.lir.external_types.values()) |lir_type_name, lir_type| {
         try self.scope.put(self.allocator, lir_type_name, .{
             .type = lir_type,
             .linkage = .external,

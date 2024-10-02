@@ -131,16 +131,16 @@ pub fn finalize(self: Compilation) std.mem.Allocator.Error!Lir {
     var concatenated_lir: Lir = .{};
 
     for (self.pipeline.lirs.items) |lir| {
-        try concatenated_lir.global.ensureUnusedCapacity(self.allocator, lir.global.count());
+        try concatenated_lir.global_blocks.ensureUnusedCapacity(self.allocator, lir.global_blocks.count());
 
-        for (lir.global.keys(), lir.global.values()) |lir_block_name, lir_block| {
-            concatenated_lir.global.putAssumeCapacity(lir_block_name, lir_block);
+        for (lir.global_blocks.keys(), lir.global_blocks.values()) |lir_block_name, lir_block| {
+            concatenated_lir.global_blocks.putAssumeCapacity(lir_block_name, lir_block);
         }
 
-        try concatenated_lir.external.ensureUnusedCapacity(self.allocator, lir.external.count());
+        try concatenated_lir.external_types.ensureUnusedCapacity(self.allocator, lir.external_types.count());
 
-        for (lir.external.keys(), lir.external.values()) |lir_type_name, lir_type| {
-            concatenated_lir.external.putAssumeCapacity(lir_type_name, lir_type);
+        for (lir.external_types.keys(), lir.external_types.values()) |lir_type_name, lir_type| {
+            concatenated_lir.external_types.putAssumeCapacity(lir_type_name, lir_type);
         }
 
         try concatenated_lir.functions.ensureUnusedCapacity(self.allocator, lir.functions.count());
@@ -154,7 +154,7 @@ pub fn finalize(self: Compilation) std.mem.Allocator.Error!Lir {
 }
 
 pub fn parse(self: Compilation, file_path: []const u8, input: [:0]const u8) ?Ast {
-    var ast_parser = Ast.Parser.init(self.allocator, self.env, input) catch |err| {
+    var ast_parser = Ast.Parser.init(self.allocator, input) catch |err| {
         std.debug.print("{s}\n", .{Cli.errorDescription(err)});
 
         return null;
@@ -180,7 +180,7 @@ pub fn parse(self: Compilation, file_path: []const u8, input: [:0]const u8) ?Ast
 }
 
 pub fn generate(self: Compilation, file_path: []const u8, ast: Ast) ?Hir {
-    var hir_generator = Hir.Generator.init(self.allocator);
+    var hir_generator = Hir.Generator.init(self.allocator, self.env);
 
     hir_generator.generate(ast) catch |err| switch (err) {
         error.OutOfMemory => {
@@ -200,10 +200,10 @@ pub fn generate(self: Compilation, file_path: []const u8, ast: Ast) ?Hir {
 }
 
 pub fn analyze(self: Compilation, file_path: []const u8, hir: Hir) ?Lir {
-    var sema = Sema.init(self.allocator, self.env);
+    var sema = Sema.init(self.allocator, self.env, hir);
     defer sema.deinit();
 
-    sema.analyze(hir) catch |err| switch (err) {
+    sema.analyze() catch |err| switch (err) {
         error.OutOfMemory => {
             std.debug.print("{s}\n", .{Cli.errorDescription(err)});
 

@@ -18,6 +18,8 @@ allocator: std.mem.Allocator,
 
 env: Compilation.Environment,
 
+hir: Hir,
+
 lir: Lir = .{},
 
 maybe_lir_function: ?*Lir.Function = null,
@@ -126,18 +128,6 @@ const Variable = struct {
     maybe_value: ?Value = null,
 };
 
-pub fn init(allocator: std.mem.Allocator, env: Compilation.Environment) Sema {
-    return Sema{
-        .allocator = allocator,
-        .env = env,
-    };
-}
-
-pub fn deinit(self: *Sema) void {
-    self.stack.deinit(self.allocator);
-    self.scope_stack.deinit(self.allocator);
-}
-
 fn checkRepresentability(self: *Sema, source_value: Value, destination_type: Type, source_loc: Ast.SourceLoc) Error!void {
     const source_type = source_value.getType();
 
@@ -241,6 +231,16 @@ fn reportNotDeclared(self: *Sema, name: Ast.Name) Error!void {
     return error.Undeclared;
 }
 
+fn reportTypeNotDeclared(self: *Sema, name: Ast.Name) Error!void {
+    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+    try error_message_buf.writer(self.allocator).print("type '{s}' is not declared", .{name.buffer});
+
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = name.source_loc };
+
+    return error.Undeclared;
+}
+
 fn reportNotPointer(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {
     var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
@@ -261,7 +261,20 @@ fn reportNotIndexable(self: *Sema, provided_type: Type, source_loc: Ast.SourceLo
     return error.UnexpectedType;
 }
 
-pub fn analyze(self: *Sema, hir: Hir) Error!void {
+pub fn init(allocator: std.mem.Allocator, env: Compilation.Environment, hir: Hir) Sema {
+    return Sema{
+        .allocator = allocator,
+        .env = env,
+        .hir = hir,
+    };
+}
+
+pub fn deinit(self: *Sema) void {
+    self.stack.deinit(self.allocator);
+    self.scope_stack.deinit(self.allocator);
+}
+
+pub fn analyze(self: *Sema) Error!void {
     const global_scope = try self.scope_stack.addOne(self.allocator);
     global_scope.* = .{};
 
@@ -281,15 +294,75 @@ pub fn analyze(self: *Sema, hir: Hir) Error!void {
         .maybe_value = .{ .boolean = false },
     });
 
-    try self.analyzeFunctionTypes(hir);
-    try self.analyzeExternalTypes(hir);
-    try self.analyzeGlobalBlocks(hir);
-    try self.analyzeFunctionBlocks(hir);
+    try self.analyzeFunctionTypes();
+    try self.analyzeExternalTypes();
+    try self.analyzeGlobalBlocks();
+    try self.analyzeFunctionBlocks();
 }
 
-fn analyzeGlobalBlocks(self: *Sema, hir: Hir) Error!void {
-    for (hir.global.keys(), hir.global.values()) |hir_block_name, hir_block| {
-        const lir_block_entry = try self.lir.global.getOrPutValue(self.allocator, hir_block_name, .{});
+fn analyzeSubType(self: *Sema, hir_subtype: Ast.SubType) Error!Type {
+    switch (hir_subtype) {
+        .name => |name| {
+            if (self.hir.internal_subtypes.get(name.buffer)) |deep_hir_subtype| {
+                return self.analyzeSubType(deep_hir_subtype);
+            }
+
+            try self.reportTypeNotDeclared(name);
+
+            unreachable;
+        },
+
+        .function => |function| {
+            const parameter_types = try self.allocator.alloc(Type, function.parameter_subtypes.len);
+
+            for (function.parameter_subtypes, 0..) |parameter_subtype, i| {
+                parameter_types[i] = try self.analyzeSubType(parameter_subtype);
+            }
+
+            const return_type = try self.analyzeSubType(function.return_subtype.*);
+
+            const return_type_on_heap = try self.allocator.create(Type);
+            return_type_on_heap.* = return_type;
+
+            return .{
+                .function = .{
+                    .parameter_types = parameter_types,
+                    .return_type = return_type_on_heap,
+                },
+            };
+        },
+
+        .pointer => |pointer| {
+            const child_type = try self.analyzeSubType(pointer.child_subtype.*);
+
+            const child_type_on_heap = try self.allocator.create(Type);
+            child_type_on_heap.* = child_type;
+
+            return .{
+                .pointer = .{
+                    .size = pointer.size,
+                    .is_const = pointer.is_const,
+                    .is_local = pointer.is_local,
+                    .child_type = child_type_on_heap,
+                },
+            };
+        },
+
+        .pure => |pure_type| return pure_type,
+    }
+}
+
+fn analyzeSubSymbol(self: *Sema, subsymbol: Hir.SubSymbol) Error!Symbol {
+    return Symbol{
+        .name = subsymbol.name,
+        .type = try self.analyzeSubType(subsymbol.subtype),
+        .linkage = subsymbol.linkage,
+    };
+}
+
+fn analyzeGlobalBlocks(self: *Sema) Error!void {
+    for (self.hir.global_blocks.keys(), self.hir.global_blocks.values()) |hir_block_name, hir_block| {
+        const lir_block_entry = try self.lir.global_blocks.getOrPutValue(self.allocator, hir_block_name, .{});
 
         self.lir_block = lir_block_entry.value_ptr;
 
@@ -299,26 +372,32 @@ fn analyzeGlobalBlocks(self: *Sema, hir: Hir) Error!void {
     }
 }
 
-fn analyzeExternalTypes(self: *Sema, hir: Hir) Error!void {
-    for (hir.external.keys(), hir.external.values()) |hir_type_name, hir_type| {
-        try self.scope.put(self.allocator, hir_type_name, .{
+fn analyzeExternalTypes(self: *Sema) Error!void {
+    try self.lir.external_types.ensureTotalCapacity(self.allocator, self.hir.external_subtypes.count());
+
+    for (self.hir.external_subtypes.keys(), self.hir.external_subtypes.values()) |hir_subtype_name, hir_subtype| {
+        const analyzed_type = try self.analyzeSubType(hir_subtype);
+
+        try self.scope.put(self.allocator, hir_subtype_name, .{
             .symbol = .{
-                .name = .{ .buffer = hir_type_name, .source_loc = .{} },
-                .type = hir_type,
+                .name = .{ .buffer = hir_subtype_name, .source_loc = .{} },
+                .type = analyzed_type,
                 .linkage = .external,
             },
         });
-    }
 
-    self.lir.external = hir.external;
+        self.lir.external_types.putAssumeCapacity(hir_subtype_name, analyzed_type);
+    }
 }
 
-fn analyzeFunctionTypes(self: *Sema, hir: Hir) Error!void {
-    for (hir.functions.values()) |hir_function| {
+fn analyzeFunctionTypes(self: *Sema) Error!void {
+    for (self.hir.functions.values()) |hir_function| {
+        const function_type = try self.analyzeSubType(hir_function.subtype);
+
         try self.lir.functions.put(
             self.allocator,
             hir_function.prototype.name.buffer,
-            .{ .type = hir_function.type },
+            .{ .type = function_type },
         );
 
         try self.scope.put(
@@ -327,7 +406,7 @@ fn analyzeFunctionTypes(self: *Sema, hir: Hir) Error!void {
             .{
                 .symbol = .{
                     .name = hir_function.prototype.name,
-                    .type = hir_function.type,
+                    .type = function_type,
                     .linkage = .global,
                 },
                 .is_const = true,
@@ -336,8 +415,8 @@ fn analyzeFunctionTypes(self: *Sema, hir: Hir) Error!void {
     }
 }
 
-fn analyzeFunctionBlocks(self: *Sema, hir: Hir) Error!void {
-    for (hir.functions.values()) |*hir_function| {
+fn analyzeFunctionBlocks(self: *Sema) Error!void {
+    for (self.hir.functions.values()) |*hir_function| {
         const lir_function = self.lir.functions.getPtr(hir_function.prototype.name.buffer).?;
 
         self.maybe_hir_function = hir_function;
@@ -366,11 +445,11 @@ fn analyzeInstruction(self: *Sema, hir_instruction: Hir.Block.Instruction) Error
 
         .call => |info| try self.analyzeCall(info),
 
-        .constant => |symbol| try self.analyzeConstant(false, symbol),
-        .constant_infer => |symbol| try self.analyzeConstant(true, symbol),
+        .constant => |subsymbol| try self.analyzeConstant(false, subsymbol),
+        .constant_infer => |subsymbol| try self.analyzeConstant(true, subsymbol),
 
-        .variable => |symbol| try self.analyzeVariable(false, symbol),
-        .variable_infer => |symbol| try self.analyzeVariable(true, symbol),
+        .variable => |subsymbol| try self.analyzeVariable(false, subsymbol),
+        .variable_infer => |subsymbol| try self.analyzeVariable(true, subsymbol),
 
         .set => |name| try self.analyzeSet(name),
         .get => |name| try self.analyzeGet(name),
@@ -425,7 +504,7 @@ fn analyzeParameters(self: *Sema) Error!void {
     for (self.maybe_hir_function.?.prototype.parameters) |parameter| {
         const parameter_symbol: Symbol = .{
             .name = parameter.name,
-            .type = parameter.expected_type,
+            .type = try self.analyzeSubType(parameter.expected_subtype),
             .linkage = .local,
         };
 
@@ -475,7 +554,9 @@ fn analyzeCall(self: *Sema, info: struct { usize, Ast.SourceLoc }) Error!void {
     }
 }
 
-fn analyzeConstant(self: *Sema, infer: bool, symbol: Symbol) Error!void {
+fn analyzeConstant(self: *Sema, infer: bool, subsymbol: Hir.SubSymbol) Error!void {
+    const symbol = try self.analyzeSubSymbol(subsymbol);
+
     var variable: Variable = .{ .is_const = true, .is_comptime = true, .symbol = symbol };
 
     const value = self.stack.getLast();
@@ -497,7 +578,7 @@ fn analyzeConstant(self: *Sema, infer: bool, symbol: Symbol) Error!void {
     }
 
     if (variable.symbol.linkage == .global) {
-        var initializer_block_entry = self.lir.global.pop();
+        var initializer_block_entry = self.lir.global_blocks.pop();
         initializer_block_entry.value.instructions.deinit(self.allocator);
     } else {
         _ = self.lir_block.instructions.pop();
@@ -506,7 +587,9 @@ fn analyzeConstant(self: *Sema, infer: bool, symbol: Symbol) Error!void {
     try self.scope.put(self.allocator, variable.symbol.name.buffer, variable);
 }
 
-fn analyzeVariable(self: *Sema, infer: bool, symbol: Symbol) Error!void {
+fn analyzeVariable(self: *Sema, infer: bool, subsymbol: Hir.SubSymbol) Error!void {
+    const symbol = try self.analyzeSubSymbol(subsymbol);
+
     var variable: Variable = .{ .symbol = symbol };
 
     if (infer) {
@@ -1137,7 +1220,7 @@ fn analyzeAssembly(self: *Sema, assembly: Ast.Node.Expr.Assembly) Error!void {
     if (assembly.output_constraint) |output_constraint| {
         try self.lir_block.instructions.append(self.allocator, .{ .assembly_output = output_constraint.register });
 
-        try self.stack.append(self.allocator, .{ .runtime = .{ .type = output_constraint.type } });
+        try self.stack.append(self.allocator, .{ .runtime = .{ .type = try self.analyzeSubType(output_constraint.subtype) } });
     } else {
         try self.stack.append(self.allocator, .{ .runtime = .{ .type = .void } });
     }
@@ -1154,10 +1237,12 @@ fn analyzePop(self: *Sema) Error!void {
 fn analyzeReturn(self: *Sema) Error!void {
     if (self.maybe_hir_function == null) return;
 
+    const return_type = try self.analyzeSubType(self.maybe_hir_function.?.prototype.return_subtype);
+
     if (self.stack.popOrNull()) |return_value| {
-        try self.checkRepresentability(return_value, self.maybe_hir_function.?.prototype.return_type, self.maybe_hir_function.?.prototype.name.source_loc);
+        try self.checkRepresentability(return_value, return_type, self.maybe_hir_function.?.prototype.name.source_loc);
     } else {
-        if (self.maybe_hir_function.?.prototype.return_type != .void) {
+        if (return_type != .void) {
             self.error_info = .{ .message = "function with non void return type implicitly returns", .source_loc = self.maybe_hir_function.?.prototype.name.source_loc };
 
             return error.ExpectedExplicitReturn;

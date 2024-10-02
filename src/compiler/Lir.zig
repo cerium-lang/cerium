@@ -10,8 +10,8 @@ const Type = Symbol.Type;
 
 const Lir = @This();
 
-global: std.StringArrayHashMapUnmanaged(Block) = .{},
-external: std.StringArrayHashMapUnmanaged(Type) = .{},
+external_types: std.StringArrayHashMapUnmanaged(Type) = .{},
+global_blocks: std.StringArrayHashMapUnmanaged(Block) = .{},
 functions: std.StringArrayHashMapUnmanaged(Function) = .{},
 
 pub const Function = struct {

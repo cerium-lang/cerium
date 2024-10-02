@@ -7,19 +7,27 @@
 const std = @import("std");
 
 const Ast = @import("Ast.zig");
+const Compilation = @import("Compilation.zig");
 const Symbol = @import("Symbol.zig");
-const Type = Symbol.Type;
+const SubType = Ast.SubType;
 
 const Hir = @This();
 
-global: std.StringArrayHashMapUnmanaged(Block) = .{},
-external: std.StringArrayHashMapUnmanaged(Type) = .{},
+external_subtypes: std.StringArrayHashMapUnmanaged(SubType) = .{},
+internal_subtypes: std.StringArrayHashMapUnmanaged(SubType) = .{},
+global_blocks: std.StringArrayHashMapUnmanaged(Block) = .{},
 functions: std.StringArrayHashMapUnmanaged(Function) = .{},
 
 pub const Function = struct {
     prototype: Ast.Node.Stmt.FunctionDeclaration.Prototype,
-    type: Type,
+    subtype: SubType,
     blocks: std.StringArrayHashMapUnmanaged(Block) = .{},
+};
+
+pub const SubSymbol = struct {
+    name: Ast.Name,
+    subtype: SubType,
+    linkage: Symbol.Linkage,
 };
 
 pub const Block = struct {
@@ -36,14 +44,14 @@ pub const Block = struct {
         parameters,
         /// Call a specific function pointer on the stack with the specified argument count
         call: struct { usize, Ast.SourceLoc },
-        /// Declare a constant using the specified name and type
-        constant: Symbol,
+        /// Declare a constant that is only known at compile time and acts as a placeholder for a value
+        constant: SubSymbol,
         /// Same as `constant` but the type is unknown at the point of declaration
-        constant_infer: Symbol,
-        /// Declare a variable using the specified name and type
-        variable: Symbol,
+        constant_infer: SubSymbol,
+        /// Declare a variable that is only known at runtime and doesn't get replaced by the compiler
+        variable: SubSymbol,
         /// Same as `variable` but the type is unknown at the point of declaration
-        variable_infer: Symbol,
+        variable_infer: SubSymbol,
         /// Set a value using the specified name
         set: Ast.Name,
         /// Get a value using the specified name
@@ -106,13 +114,13 @@ pub const Block = struct {
 };
 
 pub fn deinit(self: *Hir, allocator: std.mem.Allocator) void {
-    for (self.global.values()) |*block| {
+    for (self.global_blocks.values()) |*block| {
         block.instructions.deinit(allocator);
     }
 
-    self.global.deinit(allocator);
+    self.global_blocks.deinit(allocator);
 
-    self.external.deinit(allocator);
+    self.external_subtypes.deinit(allocator);
 
     for (self.functions.values()) |*function| {
         for (function.blocks.values()) |*block| {
@@ -127,6 +135,8 @@ pub fn deinit(self: *Hir, allocator: std.mem.Allocator) void {
 
 pub const Generator = struct {
     allocator: std.mem.Allocator,
+
+    env: Compilation.Environment,
 
     hir: Hir = .{},
 
@@ -147,16 +157,40 @@ pub const Generator = struct {
         Redeclared,
     } || std.mem.Allocator.Error;
 
-    pub fn init(allocator: std.mem.Allocator) Generator {
+    pub fn init(allocator: std.mem.Allocator, env: Compilation.Environment) Generator {
         return Generator{
             .allocator = allocator,
+            .env = env,
         };
     }
 
     pub fn generate(self: *Generator, ast: Ast) Error!void {
+        try self.generateBuiltinTypes();
+
         for (ast.body) |node| {
             try self.generateNode(node);
         }
+    }
+
+    fn generateBuiltinTypes(self: *Generator) Error!void {
+        try self.hir.internal_subtypes.ensureTotalCapacity(self.allocator, 14);
+
+        self.hir.internal_subtypes.putAssumeCapacity("void", .{ .pure = .void });
+        self.hir.internal_subtypes.putAssumeCapacity("bool", .{ .pure = .bool });
+
+        self.hir.internal_subtypes.putAssumeCapacity("usize", .{ .pure = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.ptrBitWidth() } } });
+        self.hir.internal_subtypes.putAssumeCapacity("isize", .{ .pure = .{ .int = .{ .signedness = .signed, .bits = self.env.target.ptrBitWidth() } } });
+        self.hir.internal_subtypes.putAssumeCapacity("u8", .{ .pure = .{ .int = .{ .signedness = .unsigned, .bits = 8 } } });
+        self.hir.internal_subtypes.putAssumeCapacity("u16", .{ .pure = .{ .int = .{ .signedness = .unsigned, .bits = 16 } } });
+        self.hir.internal_subtypes.putAssumeCapacity("u32", .{ .pure = .{ .int = .{ .signedness = .unsigned, .bits = 32 } } });
+        self.hir.internal_subtypes.putAssumeCapacity("u64", .{ .pure = .{ .int = .{ .signedness = .unsigned, .bits = 64 } } });
+        self.hir.internal_subtypes.putAssumeCapacity("i8", .{ .pure = .{ .int = .{ .signedness = .signed, .bits = 8 } } });
+        self.hir.internal_subtypes.putAssumeCapacity("i16", .{ .pure = .{ .int = .{ .signedness = .signed, .bits = 16 } } });
+        self.hir.internal_subtypes.putAssumeCapacity("i32", .{ .pure = .{ .int = .{ .signedness = .signed, .bits = 32 } } });
+        self.hir.internal_subtypes.putAssumeCapacity("i64", .{ .pure = .{ .int = .{ .signedness = .signed, .bits = 64 } } });
+
+        self.hir.internal_subtypes.putAssumeCapacity("f32", .{ .pure = .{ .float = .{ .bits = 32 } } });
+        self.hir.internal_subtypes.putAssumeCapacity("f64", .{ .pure = .{ .float = .{ .bits = 64 } } });
     }
 
     fn generateNode(self: *Generator, node: Ast.Node) Error!void {
@@ -202,31 +236,31 @@ pub const Generator = struct {
     }
 
     fn generateFunctionDeclarationStmt(self: *Generator, ast_function: Ast.Node.Stmt.FunctionDeclaration) Error!void {
-        if (self.hir.external.get(ast_function.prototype.name.buffer) != null or
-            self.hir.global.get(ast_function.prototype.name.buffer) != null or
+        if (self.hir.external_subtypes.get(ast_function.prototype.name.buffer) != null or
+            self.hir.global_blocks.get(ast_function.prototype.name.buffer) != null or
             self.hir.functions.get(ast_function.prototype.name.buffer) != null)
         {
             return self.reportRedeclaration(ast_function.prototype.name);
         }
 
-        var function_parameter_types: std.ArrayListUnmanaged(Type) = .{};
+        var parameter_subtypes = try self.allocator.alloc(SubType, ast_function.prototype.parameters.len);
 
-        for (ast_function.prototype.parameters) |ast_function_parameter| {
-            try function_parameter_types.append(self.allocator, ast_function_parameter.expected_type);
+        for (ast_function.prototype.parameters, 0..) |ast_function_parameter, i| {
+            parameter_subtypes[i] = ast_function_parameter.expected_subtype;
         }
 
-        const function_return_type_on_heap = try self.allocator.create(Type);
-        function_return_type_on_heap.* = ast_function.prototype.return_type;
+        const return_subtype_on_heap = try self.allocator.create(SubType);
+        return_subtype_on_heap.* = ast_function.prototype.return_subtype;
 
-        const function_type: Type = .{
+        const function_subtype: SubType = .{
             .function = .{
-                .parameter_types = try function_parameter_types.toOwnedSlice(self.allocator),
-                .return_type = function_return_type_on_heap,
+                .parameter_subtypes = parameter_subtypes,
+                .return_subtype = return_subtype_on_heap,
             },
         };
 
         if (ast_function.prototype.is_external) {
-            return self.hir.external.put(self.allocator, ast_function.prototype.name.buffer, function_type);
+            return self.hir.external_subtypes.put(self.allocator, ast_function.prototype.name.buffer, function_subtype);
         }
 
         if (self.maybe_hir_block != null) {
@@ -240,7 +274,7 @@ pub const Generator = struct {
             ast_function.prototype.name.buffer,
             .{
                 .prototype = ast_function.prototype,
-                .type = function_type,
+                .subtype = function_subtype,
             },
         );
 
@@ -268,12 +302,12 @@ pub const Generator = struct {
     fn emitVariable(allocator: std.mem.Allocator, hir_block: *Hir.Block, variable: Ast.Node.Stmt.VariableDeclaration, linkage: Symbol.Linkage) Error!void {
         try hir_block.instructions.append(
             allocator,
-            if (variable.type) |@"type"|
+            if (variable.subtype) |@"type"|
                 if (variable.is_const)
                     .{
                         .constant = .{
                             .name = variable.name,
-                            .type = @"type",
+                            .subtype = @"type",
                             .linkage = linkage,
                         },
                     }
@@ -281,7 +315,7 @@ pub const Generator = struct {
                     .{
                         .variable = .{
                             .name = variable.name,
-                            .type = @"type",
+                            .subtype = @"type",
                             .linkage = linkage,
                         },
                     }
@@ -289,7 +323,7 @@ pub const Generator = struct {
                 .{
                     .constant_infer = .{
                         .name = variable.name,
-                        .type = .void,
+                        .subtype = .{ .pure = .void },
                         .linkage = linkage,
                     },
                 }
@@ -297,7 +331,7 @@ pub const Generator = struct {
                 .{
                     .variable_infer = .{
                         .name = variable.name,
-                        .type = .void,
+                        .subtype = .{ .pure = .void },
                         .linkage = linkage,
                     },
                 },
@@ -305,15 +339,15 @@ pub const Generator = struct {
     }
 
     fn generateVariableDeclarationStmt(self: *Generator, variable: Ast.Node.Stmt.VariableDeclaration) Error!void {
-        if (self.hir.external.get(variable.name.buffer) != null or
-            self.hir.global.get(variable.name.buffer) != null or
+        if (self.hir.external_subtypes.get(variable.name.buffer) != null or
+            self.hir.global_blocks.get(variable.name.buffer) != null or
             self.hir.functions.get(variable.name.buffer) != null)
         {
             return self.reportRedeclaration(variable.name);
         }
 
         if (variable.is_external) {
-            try self.hir.external.put(self.allocator, variable.name.buffer, variable.type.?);
+            try self.hir.external_subtypes.put(self.allocator, variable.name.buffer, variable.subtype.?);
         } else if (self.maybe_hir_block) |hir_block| {
             try self.generateExpr(variable.value);
 
@@ -321,7 +355,7 @@ pub const Generator = struct {
 
             try hir_block.instructions.append(self.allocator, .{ .set = variable.name });
         } else {
-            const new_hir_block_entry = try self.hir.global.getOrPutValue(self.allocator, variable.name.buffer, .{});
+            const new_hir_block_entry = try self.hir.global_blocks.getOrPutValue(self.allocator, variable.name.buffer, .{});
 
             const new_hir_block = new_hir_block_entry.value_ptr;
 
