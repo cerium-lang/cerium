@@ -173,13 +173,55 @@ pub const Generator = struct {
     }
 
     fn generateBuiltinTypes(self: *Generator) Error!void {
-        try self.hir.internal_subtypes.ensureTotalCapacity(self.allocator, 14);
+        try self.hir.internal_subtypes.ensureTotalCapacity(self.allocator, 52);
 
         self.hir.internal_subtypes.putAssumeCapacity("void", .{ .pure = .void });
         self.hir.internal_subtypes.putAssumeCapacity("bool", .{ .pure = .bool });
 
         self.hir.internal_subtypes.putAssumeCapacity("usize", .{ .pure = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.ptrBitWidth() } } });
         self.hir.internal_subtypes.putAssumeCapacity("isize", .{ .pure = .{ .int = .{ .signedness = .signed, .bits = self.env.target.ptrBitWidth() } } });
+
+        self.hir.internal_subtypes.putAssumeCapacity("c_char", .{ .pure = .{ .int = .{
+            .signedness = .signed,
+            .bits = self.env.target.cTypeBitSize(.char),
+        } } });
+        self.hir.internal_subtypes.putAssumeCapacity("c_short", .{ .pure = .{ .int = .{
+            .signedness = .signed,
+            .bits = self.env.target.cTypeBitSize(.short),
+        } } });
+        self.hir.internal_subtypes.putAssumeCapacity("c_ushort", .{ .pure = .{ .int = .{
+            .signedness = .unsigned,
+            .bits = self.env.target.cTypeBitSize(.ushort),
+        } } });
+        self.hir.internal_subtypes.putAssumeCapacity("c_int", .{ .pure = .{ .int = .{
+            .signedness = .signed,
+            .bits = self.env.target.cTypeBitSize(.int),
+        } } });
+        self.hir.internal_subtypes.putAssumeCapacity("c_uint", .{ .pure = .{ .int = .{
+            .signedness = .unsigned,
+            .bits = self.env.target.cTypeBitSize(.uint),
+        } } });
+        self.hir.internal_subtypes.putAssumeCapacity("c_long", .{ .pure = .{ .int = .{
+            .signedness = .signed,
+            .bits = self.env.target.cTypeBitSize(.long),
+        } } });
+        self.hir.internal_subtypes.putAssumeCapacity("c_ulong", .{ .pure = .{ .int = .{
+            .signedness = .unsigned,
+            .bits = self.env.target.cTypeBitSize(.ulong),
+        } } });
+        self.hir.internal_subtypes.putAssumeCapacity("c_longlong", .{ .pure = .{ .int = .{
+            .signedness = .signed,
+            .bits = self.env.target.cTypeBitSize(.longlong),
+        } } });
+        self.hir.internal_subtypes.putAssumeCapacity("c_ulonglong", .{ .pure = .{ .int = .{
+            .signedness = .unsigned,
+            .bits = self.env.target.cTypeBitSize(.ulonglong),
+        } } });
+
+        self.hir.internal_subtypes.putAssumeCapacity("c_float", .{ .pure = .{ .float = .{ .bits = self.env.target.cTypeBitSize(.float) } } });
+        self.hir.internal_subtypes.putAssumeCapacity("c_double", .{ .pure = .{ .float = .{ .bits = self.env.target.cTypeBitSize(.double) } } });
+        // TODO: Type `c_longdouble` requires `f80` and `f128` to be supported.
+
         self.hir.internal_subtypes.putAssumeCapacity("u8", .{ .pure = .{ .int = .{ .signedness = .unsigned, .bits = 8 } } });
         self.hir.internal_subtypes.putAssumeCapacity("u16", .{ .pure = .{ .int = .{ .signedness = .unsigned, .bits = 16 } } });
         self.hir.internal_subtypes.putAssumeCapacity("u32", .{ .pure = .{ .int = .{ .signedness = .unsigned, .bits = 32 } } });
