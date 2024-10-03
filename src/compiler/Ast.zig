@@ -881,25 +881,23 @@ pub const Parser = struct {
 
             try content.appendSlice(self.allocator, (try self.parseStringExpr()).string.value);
 
-            var parsed_constraints = false;
+            var parsed_input_constraints = false;
 
             if (self.eatToken(.colon)) {
                 input_constraints = try self.parseAssemblyInputConstraints();
-                parsed_constraints = true;
+                parsed_input_constraints = true;
             }
 
             if (self.eatToken(.colon)) {
                 output_constraint = try self.parseAssemblyOutputConstraint();
             }
 
-            if (self.peekToken().tag != .close_brace) {
-                if (parsed_constraints) {
-                    self.error_info = .{ .message = "expected a '}'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+            try content.append(self.allocator, '\n');
 
-                    return error.UnexpectedToken;
-                } else {
-                    try content.append(self.allocator, '\n');
-                }
+            if (self.peekToken().tag != .close_brace and parsed_input_constraints) {
+                self.error_info = .{ .message = "expected a '}'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                return error.UnexpectedToken;
             }
         }
 

@@ -88,15 +88,22 @@ pub const Block = struct {
         /// Jump to block
         jmp: []const u8,
         /// Place a machine-specific assembly in the output
-        assembly: []const u8,
-        // Pop a value from the stack into a machine-specific register
-        assembly_input: []const u8,
-        // Push a machine-specific register onto the stack
-        assembly_output: []const u8,
+        assembly: Assembly,
         /// Pop a value from the stack
         pop,
         /// Return out of the function
         @"return",
+
+        pub const Assembly = struct {
+            content: []const u8,
+            input_constraints: []const []const u8,
+            output_constraint: ?OutputConstraint,
+
+            pub const OutputConstraint = struct {
+                register: []const u8,
+                type: Type,
+            };
+        };
     };
 };
 

@@ -1,6 +1,5 @@
 const std = @import("std");
 
-const Assembly = @import("../Assembly.zig");
 const Lir = @import("../Lir.zig");
 const Symbol = @import("../Symbol.zig");
 const Scope = Symbol.Scope;
@@ -10,7 +9,9 @@ const x86_64 = @This();
 
 allocator: std.mem.Allocator,
 
-assembly: Assembly = .{},
+text_section: std.ArrayListUnmanaged(u8) = .{},
+data_section: std.ArrayListUnmanaged(u8) = .{},
+rodata_section: std.ArrayListUnmanaged(u8) = .{},
 
 lir: Lir,
 
@@ -44,7 +45,9 @@ pub fn init(allocator: std.mem.Allocator, lir: Lir) x86_64 {
 }
 
 pub fn deinit(self: *x86_64) void {
-    self.assembly.deinit(self.allocator);
+    self.text_section.deinit(self.allocator);
+    self.data_section.deinit(self.allocator);
+    self.rodata_section.deinit(self.allocator);
     self.stack.deinit(self.allocator);
     self.stack_offsets.deinit(self.allocator);
     self.strings.deinit(self.allocator);
@@ -57,28 +60,28 @@ pub fn finalize(self: *x86_64) Error![]u8 {
 
     const output_writer = output.writer(self.allocator);
 
-    if (self.assembly.text_section.items.len > 0) {
+    if (self.text_section.items.len > 0) {
         try output_writer.writeAll(".section \".text\"\n");
-        try output_writer.writeAll(self.assembly.text_section.items);
+        try output_writer.writeAll(self.text_section.items);
     }
 
-    if (self.assembly.data_section.items.len > 0) {
+    if (self.data_section.items.len > 0) {
         try output_writer.writeAll(".section \".data\"\n");
-        try output_writer.writeAll(self.assembly.data_section.items);
+        try output_writer.writeAll(self.data_section.items);
     }
 
-    if (self.assembly.rodata_section.items.len > 0) {
+    if (self.rodata_section.items.len > 0) {
         try output_writer.writeAll(".section \".rodata\"\n");
-        try output_writer.writeAll(self.assembly.rodata_section.items);
+        try output_writer.writeAll(self.rodata_section.items);
     }
 
     return output.toOwnedSlice(self.allocator);
 }
 
 pub fn render(self: *x86_64) Error!void {
-    const text_section_writer = self.assembly.text_section.writer(self.allocator);
-    const data_section_writer = self.assembly.data_section.writer(self.allocator);
-    const rodata_section_writer = self.assembly.rodata_section.writer(self.allocator);
+    const text_section_writer = self.text_section.writer(self.allocator);
+    const data_section_writer = self.data_section.writer(self.allocator);
+    const rodata_section_writer = self.rodata_section.writer(self.allocator);
 
     const global_scope = try self.scope_stack.addOne(self.allocator);
     global_scope.* = .{};
@@ -215,9 +218,7 @@ fn renderInstruction(
         .jmp_if_false => |block_name| try self.renderJmpIfFalse(text_section_writer, block_name),
         .jmp => |block_name| try text_section_writer.print("\tjmp .L{s}\n", .{block_name}),
 
-        .assembly => |content| try text_section_writer.print("{s}\n", .{content}),
-        .assembly_input => |register| try self.renderAssemblyInput(text_section_writer, register),
-        .assembly_output => |register| try self.renderAssemblyOutput(text_section_writer, register),
+        .assembly => |assembly| try self.renderAssembly(text_section_writer, assembly),
 
         .pop => try self.popRegister(text_section_writer, "r8", "xmm8"),
 
@@ -611,22 +612,21 @@ fn renderJmpIfFalse(self: *x86_64, text_section_writer: anytype, block_name: []c
     try text_section_writer.print("\tje .L{s}\n", .{block_name});
 }
 
-fn renderAssemblyInput(self: *x86_64, text_section_writer: anytype, register: []const u8) Error!void {
-    _ = self.stack.pop();
+fn renderAssembly(self: *x86_64, text_section_writer: anytype, assembly: Lir.Block.Instruction.Assembly) Error!void {
+    for (assembly.input_constraints) |register| {
+        try self.popRegister(text_section_writer, register, register);
+    }
 
-    const stack_offset = self.stack_offsets.pop();
+    try text_section_writer.writeAll(assembly.content);
 
-    try text_section_writer.print("\tmovq -{}(%rbp), %{s}\n", .{ stack_offset, register });
-}
-
-fn renderAssemblyOutput(self: *x86_64, text_section_writer: anytype, register: []const u8) Error!void {
-    try self.stack.append(self.allocator, .{ .is_floating_point = if (register.len > 0) register[0] == 'x' else false });
-
-    const stack_offset = self.stack_offsets.getLast() + self.stack_alignment;
-
-    try self.stack_offsets.append(self.allocator, stack_offset);
-
-    try text_section_writer.print("\tmovq %{s}, -{}(%rbp)\n", .{ register, stack_offset });
+    if (assembly.output_constraint) |output_constraint| {
+        try self.pushRegister(
+            text_section_writer,
+            output_constraint.register,
+            output_constraint.register,
+            .{ .is_floating_point = output_constraint.type.isFloat() },
+        );
+    }
 }
 
 fn renderReturn(self: *x86_64, text_section_writer: anytype, is_control_flow: bool) Error!void {

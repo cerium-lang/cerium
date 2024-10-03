@@ -600,7 +600,13 @@ pub const Generator = struct {
     }
 
     fn generateAssemblyExpr(self: *Generator, assembly: Ast.Node.Expr.Assembly) Error!void {
-        for (assembly.input_constraints) |input_constraint| {
+        var i: usize = assembly.input_constraints.len;
+
+        while (i > 0) {
+            i -= 1;
+
+            const input_constraint = assembly.input_constraints[i];
+
             try self.generateExpr(input_constraint.value.*);
         }
 

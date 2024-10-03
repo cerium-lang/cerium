@@ -2,11 +2,12 @@ const std = @import("std");
 const root = @import("root");
 
 const Ast = @import("Ast.zig");
-const Assembly = @import("Assembly.zig");
 const Hir = @import("Hir.zig");
 const Lir = @import("Lir.zig");
 const Sema = @import("Sema.zig");
 const Cli = root.Cli;
+
+const x86_64 = @import("arch/x86_64.zig");
 
 const Compilation = @This();
 
@@ -223,7 +224,7 @@ pub fn analyze(self: Compilation, file_path: []const u8, hir: Hir) ?Lir {
 pub fn render(self: Compilation, lir: Lir) ?[]u8 {
     return switch (self.env.target.cpu.arch) {
         .x86_64 => blk: {
-            var backend = Assembly.x86_64.init(self.allocator, lir);
+            var backend = x86_64.init(self.allocator, lir);
             defer backend.deinit();
 
             backend.render() catch |err| {

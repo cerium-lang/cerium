@@ -44,7 +44,6 @@ pub const Error = error{
     UnexpectedArgumentsCount,
     ExpectedExplicitReturn,
     UnexpectedMutation,
-    UnexpectedAssemblyConstraints,
     TypeCannotRepresentValue,
     UnexpectedType,
     MismatchedTypes,
@@ -1442,31 +1441,37 @@ fn analyzeJmp(self: *Sema, block_name: []const u8) Error!void {
 }
 
 fn analyzeAssembly(self: *Sema, assembly: Ast.Node.Expr.Assembly) Error!void {
-    if (self.maybe_hir_function == null and (assembly.input_constraints.len > 0 or assembly.output_constraint != null)) {
-        self.error_info = .{ .message = "global assembly should not contain any input or output constraints", .source_loc = assembly.source_loc };
+    const input_constraints = try self.allocator.alloc([]const u8, assembly.input_constraints.len);
 
-        return error.UnexpectedAssemblyConstraints;
-    }
-
-    var i: usize = assembly.input_constraints.len;
-
-    while (i > 0) {
-        i -= 1;
+    for (assembly.input_constraints, 0..) |input_constraint, i| {
+        input_constraints[i] = input_constraint.register;
 
         _ = self.stack.pop();
-
-        const input_constraint = assembly.input_constraints[i];
-
-        try self.lir_block.instructions.append(self.allocator, .{ .assembly_input = input_constraint.register });
     }
 
-    try self.lir_block.instructions.append(self.allocator, .{ .assembly = assembly.content });
-
     if (assembly.output_constraint) |output_constraint| {
-        try self.lir_block.instructions.append(self.allocator, .{ .assembly_output = output_constraint.register });
+        const output_constraint_type = try self.analyzeSubType(output_constraint.subtype);
+        try self.lir_block.instructions.append(self.allocator, .{
+            .assembly = .{
+                .content = assembly.content,
+                .input_constraints = input_constraints,
+                .output_constraint = .{
+                    .register = output_constraint.register,
+                    .type = output_constraint_type,
+                },
+            },
+        });
 
-        try self.stack.append(self.allocator, .{ .runtime = .{ .type = try self.analyzeSubType(output_constraint.subtype) } });
+        try self.stack.append(self.allocator, .{ .runtime = .{ .type = output_constraint_type } });
     } else {
+        try self.lir_block.instructions.append(self.allocator, .{
+            .assembly = .{
+                .content = assembly.content,
+                .input_constraints = input_constraints,
+                .output_constraint = null,
+            },
+        });
+
         try self.stack.append(self.allocator, .{ .runtime = .{ .type = .void } });
     }
 }
