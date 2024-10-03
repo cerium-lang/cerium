@@ -85,9 +85,9 @@ pub fn render(self: *x86_64) Error!void {
 
     self.scope = global_scope;
 
-    try self.renderFunctionTypes();
-    try self.analyzeExternalTypes();
+    try self.putExternalVariables();
     try self.renderGlobalBlocks(text_section_writer, data_section_writer, rodata_section_writer);
+    try self.renderFunctionTypes();
     try self.renderFunctionBlocks(text_section_writer, data_section_writer, rodata_section_writer);
 }
 
@@ -113,8 +113,8 @@ fn renderGlobalBlocks(
     }
 }
 
-fn analyzeExternalTypes(self: *x86_64) Error!void {
-    for (self.lir.external_types.keys(), self.lir.external_types.values()) |lir_type_name, lir_type| {
+fn putExternalVariables(self: *x86_64) Error!void {
+    for (self.lir.external_variables.keys(), self.lir.external_variables.values()) |lir_type_name, lir_type| {
         try self.scope.put(self.allocator, lir_type_name, .{
             .type = lir_type,
             .linkage = .external,

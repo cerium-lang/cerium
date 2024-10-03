@@ -137,10 +137,10 @@ pub fn finalize(self: Compilation) std.mem.Allocator.Error!Lir {
             concatenated_lir.global_blocks.putAssumeCapacity(lir_block_name, lir_block);
         }
 
-        try concatenated_lir.external_types.ensureUnusedCapacity(self.allocator, lir.external_types.count());
+        try concatenated_lir.external_variables.ensureUnusedCapacity(self.allocator, lir.external_variables.count());
 
-        for (lir.external_types.keys(), lir.external_types.values()) |lir_type_name, lir_type| {
-            concatenated_lir.external_types.putAssumeCapacity(lir_type_name, lir_type);
+        for (lir.external_variables.keys(), lir.external_variables.values()) |lir_type_name, lir_type| {
+            concatenated_lir.external_variables.putAssumeCapacity(lir_type_name, lir_type);
         }
 
         try concatenated_lir.functions.ensureUnusedCapacity(self.allocator, lir.functions.count());

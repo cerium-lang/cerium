@@ -242,6 +242,16 @@ fn reportTypeNotDeclared(self: *Sema, name: Ast.Name) Error!void {
     return error.Undeclared;
 }
 
+fn reportTypeNotExpression(self: *Sema, name: Ast.Name) Error!void {
+    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+    try error_message_buf.writer(self.allocator).print("'{s}' is a type not an expression", .{name.buffer});
+
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = name.source_loc };
+
+    return error.Undeclared;
+}
+
 fn reportNotPointer(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {
     var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
@@ -283,8 +293,8 @@ pub fn analyze(self: *Sema) Error!void {
 
     try self.putBuiltinVariables();
     try self.putExternalVariables();
-    try self.analyzeFunctionTypes();
     try self.analyzeGlobalBlocks();
+    try self.analyzeFunctionTypes();
     try self.analyzeFunctionBlocks();
 }
 
@@ -578,7 +588,7 @@ fn putBuiltinVariables(self: *Sema) Error!void {
 }
 
 fn putExternalVariables(self: *Sema) Error!void {
-    try self.lir.external_types.ensureTotalCapacity(self.allocator, self.hir.external_variables.count());
+    try self.lir.external_variables.ensureTotalCapacity(self.allocator, self.hir.external_variables.count());
 
     for (self.hir.external_variables.keys(), self.hir.external_variables.values()) |hir_subtype_name, hir_subtype| {
         const analyzed_type = try self.analyzeSubType(hir_subtype);
@@ -591,7 +601,7 @@ fn putExternalVariables(self: *Sema) Error!void {
             },
         });
 
-        self.lir.external_types.putAssumeCapacity(hir_subtype_name, analyzed_type);
+        self.lir.external_variables.putAssumeCapacity(hir_subtype_name, analyzed_type);
     }
 }
 
@@ -854,6 +864,7 @@ fn analyzeTypeAlias(self: *Sema, subsymbol: Hir.SubSymbol) Error!void {
 
 fn analyzeSet(self: *Sema, name: Ast.Name) Error!void {
     const variable = self.scope.getPtr(name.buffer) orelse return self.reportNotDeclared(name);
+    if (variable.is_type_alias) return self.reportTypeNotExpression(name);
 
     const value = self.stack.pop();
 
@@ -878,6 +889,7 @@ fn analyzeSet(self: *Sema, name: Ast.Name) Error!void {
 
 fn analyzeGet(self: *Sema, name: Ast.Name) Error!void {
     const variable = self.scope.get(name.buffer) orelse return self.reportNotDeclared(name);
+    if (variable.is_type_alias) return self.reportTypeNotExpression(name);
 
     if (variable.maybe_value) |value| {
         switch (value) {

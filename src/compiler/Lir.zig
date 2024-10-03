@@ -10,7 +10,7 @@ const Type = Symbol.Type;
 
 const Lir = @This();
 
-external_types: std.StringArrayHashMapUnmanaged(Type) = .{},
+external_variables: std.StringArrayHashMapUnmanaged(Type) = .{},
 global_blocks: std.StringArrayHashMapUnmanaged(Block) = .{},
 functions: std.StringArrayHashMapUnmanaged(Function) = .{},
 
