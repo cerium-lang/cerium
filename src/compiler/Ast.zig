@@ -49,6 +49,7 @@ pub const Node = union(enum) {
     pub const Stmt = union(enum) {
         function_declaration: FunctionDeclaration,
         variable_declaration: VariableDeclaration,
+        type_alias: TypeAlias,
         conditional: Conditional,
         while_loop: WhileLoop,
         @"break": Break,
@@ -78,6 +79,11 @@ pub const Node = union(enum) {
             name: Name,
             subtype: ?SubType,
             value: Node.Expr,
+        };
+
+        pub const TypeAlias = struct {
+            name: Name,
+            subtype: SubType,
         };
 
         pub const Conditional = struct {
@@ -326,6 +332,8 @@ pub const Parser = struct {
 
             .keyword_const, .keyword_var => try self.parseVariableDeclarationStmt(false),
 
+            .keyword_type => try self.parseTypeAliasStmt(),
+
             .keyword_if => return self.parseConditionalStmt(),
 
             .keyword_while => return self.parseWhileLoopStmt(),
@@ -518,6 +526,29 @@ pub const Parser = struct {
                     .name = name,
                     .subtype = subtype,
                     .value = if (is_external) undefined else value.expr,
+                },
+            },
+        };
+    }
+
+    fn parseTypeAliasStmt(self: *Parser) Error!Node {
+        _ = self.nextToken();
+
+        const name = try self.parseName();
+
+        if (!self.eatToken(.equal_sign)) {
+            self.error_info = .{ .message = "expected '='", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+            return error.UnexpectedToken;
+        }
+
+        const subtype = try self.parseSubType();
+
+        return Node{
+            .stmt = .{
+                .type_alias = .{
+                    .name = name,
+                    .subtype = subtype,
                 },
             },
         };

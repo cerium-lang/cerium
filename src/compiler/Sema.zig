@@ -123,9 +123,10 @@ const Value = union(enum) {
 
 const Variable = struct {
     symbol: Symbol,
+    maybe_value: ?Value = null,
     is_const: bool = false,
     is_comptime: bool = false,
-    maybe_value: ?Value = null,
+    is_type_alias: bool = false,
 };
 
 fn checkRepresentability(self: *Sema, source_value: Value, destination_type: Type, source_loc: Ast.SourceLoc) Error!void {
@@ -280,22 +281,9 @@ pub fn analyze(self: *Sema) Error!void {
 
     self.scope = global_scope;
 
-    try self.scope.put(self.allocator, "true", .{
-        .is_const = true,
-        .is_comptime = true,
-        .symbol = undefined,
-        .maybe_value = .{ .boolean = true },
-    });
-
-    try self.scope.put(self.allocator, "false", .{
-        .is_const = true,
-        .is_comptime = true,
-        .symbol = undefined,
-        .maybe_value = .{ .boolean = false },
-    });
-
+    try self.putBuiltinVariables();
+    try self.putExternalVariables();
     try self.analyzeFunctionTypes();
-    try self.analyzeExternalTypes();
     try self.analyzeGlobalBlocks();
     try self.analyzeFunctionBlocks();
 }
@@ -303,8 +291,10 @@ pub fn analyze(self: *Sema) Error!void {
 fn analyzeSubType(self: *Sema, hir_subtype: Ast.SubType) Error!Type {
     switch (hir_subtype) {
         .name => |name| {
-            if (self.hir.internal_subtypes.get(name.buffer)) |deep_hir_subtype| {
-                return self.analyzeSubType(deep_hir_subtype);
+            if (self.scope.get(name.buffer)) |variable| {
+                if (variable.is_type_alias) {
+                    return variable.symbol.type;
+                }
             }
 
             try self.reportTypeNotDeclared(name);
@@ -360,22 +350,237 @@ fn analyzeSubSymbol(self: *Sema, subsymbol: Hir.SubSymbol) Error!Symbol {
     };
 }
 
-fn analyzeGlobalBlocks(self: *Sema) Error!void {
-    for (self.hir.global_blocks.keys(), self.hir.global_blocks.values()) |hir_block_name, hir_block| {
-        const lir_block_entry = try self.lir.global_blocks.getOrPutValue(self.allocator, hir_block_name, .{});
+fn putBuiltinVariables(self: *Sema) Error!void {
+    try self.scope.ensureTotalCapacity(self.allocator, 64);
 
-        self.lir_block = lir_block_entry.value_ptr;
+    self.scope.putAssumeCapacity("true", .{
+        .is_const = true,
+        .is_comptime = true,
+        .symbol = undefined,
+        .maybe_value = .{ .boolean = true },
+    });
 
-        for (hir_block.instructions.items) |hir_instruction| {
-            try self.analyzeInstruction(hir_instruction);
-        }
-    }
+    self.scope.putAssumeCapacity("false", .{
+        .is_const = true,
+        .is_comptime = true,
+        .symbol = undefined,
+        .maybe_value = .{ .boolean = false },
+    });
+
+    self.scope.putAssumeCapacity("void", .{
+        .symbol = .{
+            .name = undefined,
+            .type = .void,
+            .linkage = .global,
+        },
+        .is_type_alias = true,
+    });
+
+    self.scope.putAssumeCapacity("bool", .{
+        .symbol = .{
+            .name = undefined,
+            .type = .bool,
+            .linkage = .global,
+        },
+        .is_type_alias = true,
+    });
+
+    self.scope.putAssumeCapacity("usize", .{
+        .symbol = .{
+            .name = undefined,
+            .type = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.ptrBitWidth() } },
+            .linkage = .global,
+        },
+        .is_type_alias = true,
+    });
+    self.scope.putAssumeCapacity("isize", .{
+        .symbol = .{
+            .name = undefined,
+            .type = .{ .int = .{ .signedness = .signed, .bits = self.env.target.ptrBitWidth() } },
+            .linkage = .global,
+        },
+        .is_type_alias = true,
+    });
+
+    self.scope.putAssumeCapacity("c_char", .{
+        .symbol = .{
+            .name = undefined,
+            .type = .{ .int = .{ .signedness = .signed, .bits = self.env.target.cTypeBitSize(.char) } },
+            .linkage = .global,
+        },
+        .is_type_alias = true,
+    });
+    self.scope.putAssumeCapacity("c_short", .{
+        .symbol = .{
+            .name = undefined,
+            .type = .{ .int = .{ .signedness = .signed, .bits = self.env.target.cTypeBitSize(.short) } },
+            .linkage = .global,
+        },
+        .is_type_alias = true,
+    });
+    self.scope.putAssumeCapacity("c_ushort", .{
+        .symbol = .{
+            .name = undefined,
+            .type = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.cTypeBitSize(.ushort) } },
+            .linkage = .global,
+        },
+        .is_type_alias = true,
+    });
+    self.scope.putAssumeCapacity("c_int", .{
+        .symbol = .{
+            .name = undefined,
+            .type = .{ .int = .{ .signedness = .signed, .bits = self.env.target.cTypeBitSize(.int) } },
+            .linkage = .global,
+        },
+        .is_type_alias = true,
+    });
+    self.scope.putAssumeCapacity("c_uint", .{
+        .symbol = .{
+            .name = undefined,
+            .type = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.cTypeBitSize(.uint) } },
+            .linkage = .global,
+        },
+        .is_type_alias = true,
+    });
+    self.scope.putAssumeCapacity("c_long", .{
+        .symbol = .{
+            .name = undefined,
+            .type = .{ .int = .{ .signedness = .signed, .bits = self.env.target.cTypeBitSize(.long) } },
+            .linkage = .global,
+        },
+        .is_type_alias = true,
+    });
+    self.scope.putAssumeCapacity("c_ulong", .{
+        .symbol = .{
+            .name = undefined,
+            .type = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.cTypeBitSize(.ulong) } },
+            .linkage = .global,
+        },
+        .is_type_alias = true,
+    });
+    self.scope.putAssumeCapacity("c_longlong", .{
+        .symbol = .{
+            .name = undefined,
+            .type = .{ .int = .{ .signedness = .signed, .bits = self.env.target.cTypeBitSize(.longlong) } },
+            .linkage = .global,
+        },
+        .is_type_alias = true,
+    });
+    self.scope.putAssumeCapacity("c_ulonglong", .{
+        .symbol = .{
+            .name = undefined,
+            .type = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.cTypeBitSize(.ulonglong) } },
+            .linkage = .global,
+        },
+        .is_type_alias = true,
+    });
+
+    self.scope.putAssumeCapacity("c_float", .{
+        .symbol = .{
+            .name = undefined,
+            .type = .{ .float = .{ .bits = self.env.target.cTypeBitSize(.float) } },
+            .linkage = .global,
+        },
+        .is_type_alias = true,
+    });
+    self.scope.putAssumeCapacity("c_double", .{
+        .symbol = .{
+            .name = undefined,
+            .type = .{ .float = .{ .bits = self.env.target.cTypeBitSize(.double) } },
+            .linkage = .global,
+        },
+        .is_type_alias = true,
+    });
+
+    // TODO: Type `c_longdouble` requires `f80` and `f128` to be supported.
+
+    self.scope.putAssumeCapacity("u8", .{
+        .symbol = .{
+            .name = undefined,
+            .type = .{ .int = .{ .signedness = .unsigned, .bits = 8 } },
+            .linkage = .global,
+        },
+        .is_type_alias = true,
+    });
+    self.scope.putAssumeCapacity("u16", .{
+        .symbol = .{
+            .name = undefined,
+            .type = .{ .int = .{ .signedness = .unsigned, .bits = 16 } },
+            .linkage = .global,
+        },
+        .is_type_alias = true,
+    });
+    self.scope.putAssumeCapacity("u32", .{
+        .symbol = .{
+            .name = undefined,
+            .type = .{ .int = .{ .signedness = .unsigned, .bits = 32 } },
+            .linkage = .global,
+        },
+        .is_type_alias = true,
+    });
+    self.scope.putAssumeCapacity("u64", .{
+        .symbol = .{
+            .name = undefined,
+            .type = .{ .int = .{ .signedness = .unsigned, .bits = 64 } },
+            .linkage = .global,
+        },
+        .is_type_alias = true,
+    });
+    self.scope.putAssumeCapacity("i8", .{
+        .symbol = .{
+            .name = undefined,
+            .type = .{ .int = .{ .signedness = .signed, .bits = 8 } },
+            .linkage = .global,
+        },
+        .is_type_alias = true,
+    });
+    self.scope.putAssumeCapacity("i16", .{
+        .symbol = .{
+            .name = undefined,
+            .type = .{ .int = .{ .signedness = .signed, .bits = 16 } },
+            .linkage = .global,
+        },
+        .is_type_alias = true,
+    });
+    self.scope.putAssumeCapacity("i32", .{
+        .symbol = .{
+            .name = undefined,
+            .type = .{ .int = .{ .signedness = .signed, .bits = 32 } },
+            .linkage = .global,
+        },
+        .is_type_alias = true,
+    });
+    self.scope.putAssumeCapacity("i64", .{
+        .symbol = .{
+            .name = undefined,
+            .type = .{ .int = .{ .signedness = .signed, .bits = 64 } },
+            .linkage = .global,
+        },
+        .is_type_alias = true,
+    });
+
+    self.scope.putAssumeCapacity("f32", .{
+        .symbol = .{
+            .name = undefined,
+            .type = .{ .float = .{ .bits = 32 } },
+            .linkage = .global,
+        },
+        .is_type_alias = true,
+    });
+    self.scope.putAssumeCapacity("f64", .{
+        .symbol = .{
+            .name = undefined,
+            .type = .{ .float = .{ .bits = 64 } },
+            .linkage = .global,
+        },
+        .is_type_alias = true,
+    });
 }
 
-fn analyzeExternalTypes(self: *Sema) Error!void {
-    try self.lir.external_types.ensureTotalCapacity(self.allocator, self.hir.external_subtypes.count());
+fn putExternalVariables(self: *Sema) Error!void {
+    try self.lir.external_types.ensureTotalCapacity(self.allocator, self.hir.external_variables.count());
 
-    for (self.hir.external_subtypes.keys(), self.hir.external_subtypes.values()) |hir_subtype_name, hir_subtype| {
+    for (self.hir.external_variables.keys(), self.hir.external_variables.values()) |hir_subtype_name, hir_subtype| {
         const analyzed_type = try self.analyzeSubType(hir_subtype);
 
         try self.scope.put(self.allocator, hir_subtype_name, .{
@@ -387,6 +592,18 @@ fn analyzeExternalTypes(self: *Sema) Error!void {
         });
 
         self.lir.external_types.putAssumeCapacity(hir_subtype_name, analyzed_type);
+    }
+}
+
+fn analyzeGlobalBlocks(self: *Sema) Error!void {
+    for (self.hir.global_blocks.keys(), self.hir.global_blocks.values()) |hir_block_name, hir_block| {
+        const lir_block_entry = try self.lir.global_blocks.getOrPutValue(self.allocator, hir_block_name, .{});
+
+        self.lir_block = lir_block_entry.value_ptr;
+
+        for (hir_block.instructions.items) |hir_instruction| {
+            try self.analyzeInstruction(hir_instruction);
+        }
     }
 }
 
@@ -450,6 +667,8 @@ fn analyzeInstruction(self: *Sema, hir_instruction: Hir.Block.Instruction) Error
 
         .variable => |subsymbol| try self.analyzeVariable(false, subsymbol),
         .variable_infer => |subsymbol| try self.analyzeVariable(true, subsymbol),
+
+        .type_alias => |subsymbol| try self.analyzeTypeAlias(subsymbol),
 
         .set => |name| try self.analyzeSet(name),
         .get => |name| try self.analyzeGet(name),
@@ -617,6 +836,20 @@ fn analyzeVariable(self: *Sema, infer: bool, subsymbol: Hir.SubSymbol) Error!voi
     try self.scope.put(self.allocator, variable.symbol.name.buffer, variable);
 
     try self.lir_block.instructions.append(self.allocator, .{ .variable = variable.symbol });
+}
+
+fn analyzeTypeAlias(self: *Sema, subsymbol: Hir.SubSymbol) Error!void {
+    if (subsymbol.linkage == .global) {
+        var initializer_block_entry = self.lir.global_blocks.pop();
+        initializer_block_entry.value.instructions.deinit(self.allocator);
+    }
+
+    const symbol = try self.analyzeSubSymbol(subsymbol);
+
+    try self.scope.put(self.allocator, symbol.name.buffer, .{
+        .symbol = symbol,
+        .is_type_alias = true,
+    });
 }
 
 fn analyzeSet(self: *Sema, name: Ast.Name) Error!void {

@@ -264,6 +264,10 @@ pub fn Scope(comptime V: type) type {
             try self.items.put(allocator, name, value);
         }
 
+        pub fn putAssumeCapacity(self: *Self, name: []const u8, value: V) void {
+            self.items.putAssumeCapacity(name, value);
+        }
+
         pub fn get(self: Self, name: []const u8) ?V {
             if (self.items.get(name)) |value| {
                 return value;
@@ -290,6 +294,10 @@ pub fn Scope(comptime V: type) type {
 
         pub fn clearAndFree(self: *Self, allocator: std.mem.Allocator) void {
             self.items.clearAndFree(allocator);
+        }
+
+        pub fn ensureTotalCapacity(self: *Self, allocator: std.mem.Allocator, new_capacity: u32) std.mem.Allocator.Error!void {
+            try self.items.ensureTotalCapacity(allocator, new_capacity);
         }
     };
 }

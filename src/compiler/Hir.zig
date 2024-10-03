@@ -13,8 +13,7 @@ const SubType = Ast.SubType;
 
 const Hir = @This();
 
-external_subtypes: std.StringArrayHashMapUnmanaged(SubType) = .{},
-internal_subtypes: std.StringArrayHashMapUnmanaged(SubType) = .{},
+external_variables: std.StringArrayHashMapUnmanaged(SubType) = .{},
 global_blocks: std.StringArrayHashMapUnmanaged(Block) = .{},
 functions: std.StringArrayHashMapUnmanaged(Function) = .{},
 
@@ -52,6 +51,8 @@ pub const Block = struct {
         variable: SubSymbol,
         /// Same as `variable` but the type is unknown at the point of declaration
         variable_infer: SubSymbol,
+        /// Set a type alias using a name and a subtype
+        type_alias: SubSymbol,
         /// Set a value using the specified name
         set: Ast.Name,
         /// Get a value using the specified name
@@ -120,7 +121,7 @@ pub fn deinit(self: *Hir, allocator: std.mem.Allocator) void {
 
     self.global_blocks.deinit(allocator);
 
-    self.external_subtypes.deinit(allocator);
+    self.external_variables.deinit(allocator);
 
     for (self.functions.values()) |*function| {
         for (function.blocks.values()) |*block| {
@@ -165,74 +166,9 @@ pub const Generator = struct {
     }
 
     pub fn generate(self: *Generator, ast: Ast) Error!void {
-        try self.generateBuiltinTypes();
-
         for (ast.body) |node| {
             try self.generateNode(node);
         }
-    }
-
-    fn generateBuiltinTypes(self: *Generator) Error!void {
-        try self.hir.internal_subtypes.ensureTotalCapacity(self.allocator, 52);
-
-        self.hir.internal_subtypes.putAssumeCapacity("void", .{ .pure = .void });
-        self.hir.internal_subtypes.putAssumeCapacity("bool", .{ .pure = .bool });
-
-        self.hir.internal_subtypes.putAssumeCapacity("usize", .{ .pure = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.ptrBitWidth() } } });
-        self.hir.internal_subtypes.putAssumeCapacity("isize", .{ .pure = .{ .int = .{ .signedness = .signed, .bits = self.env.target.ptrBitWidth() } } });
-
-        self.hir.internal_subtypes.putAssumeCapacity("c_char", .{ .pure = .{ .int = .{
-            .signedness = .signed,
-            .bits = self.env.target.cTypeBitSize(.char),
-        } } });
-        self.hir.internal_subtypes.putAssumeCapacity("c_short", .{ .pure = .{ .int = .{
-            .signedness = .signed,
-            .bits = self.env.target.cTypeBitSize(.short),
-        } } });
-        self.hir.internal_subtypes.putAssumeCapacity("c_ushort", .{ .pure = .{ .int = .{
-            .signedness = .unsigned,
-            .bits = self.env.target.cTypeBitSize(.ushort),
-        } } });
-        self.hir.internal_subtypes.putAssumeCapacity("c_int", .{ .pure = .{ .int = .{
-            .signedness = .signed,
-            .bits = self.env.target.cTypeBitSize(.int),
-        } } });
-        self.hir.internal_subtypes.putAssumeCapacity("c_uint", .{ .pure = .{ .int = .{
-            .signedness = .unsigned,
-            .bits = self.env.target.cTypeBitSize(.uint),
-        } } });
-        self.hir.internal_subtypes.putAssumeCapacity("c_long", .{ .pure = .{ .int = .{
-            .signedness = .signed,
-            .bits = self.env.target.cTypeBitSize(.long),
-        } } });
-        self.hir.internal_subtypes.putAssumeCapacity("c_ulong", .{ .pure = .{ .int = .{
-            .signedness = .unsigned,
-            .bits = self.env.target.cTypeBitSize(.ulong),
-        } } });
-        self.hir.internal_subtypes.putAssumeCapacity("c_longlong", .{ .pure = .{ .int = .{
-            .signedness = .signed,
-            .bits = self.env.target.cTypeBitSize(.longlong),
-        } } });
-        self.hir.internal_subtypes.putAssumeCapacity("c_ulonglong", .{ .pure = .{ .int = .{
-            .signedness = .unsigned,
-            .bits = self.env.target.cTypeBitSize(.ulonglong),
-        } } });
-
-        self.hir.internal_subtypes.putAssumeCapacity("c_float", .{ .pure = .{ .float = .{ .bits = self.env.target.cTypeBitSize(.float) } } });
-        self.hir.internal_subtypes.putAssumeCapacity("c_double", .{ .pure = .{ .float = .{ .bits = self.env.target.cTypeBitSize(.double) } } });
-        // TODO: Type `c_longdouble` requires `f80` and `f128` to be supported.
-
-        self.hir.internal_subtypes.putAssumeCapacity("u8", .{ .pure = .{ .int = .{ .signedness = .unsigned, .bits = 8 } } });
-        self.hir.internal_subtypes.putAssumeCapacity("u16", .{ .pure = .{ .int = .{ .signedness = .unsigned, .bits = 16 } } });
-        self.hir.internal_subtypes.putAssumeCapacity("u32", .{ .pure = .{ .int = .{ .signedness = .unsigned, .bits = 32 } } });
-        self.hir.internal_subtypes.putAssumeCapacity("u64", .{ .pure = .{ .int = .{ .signedness = .unsigned, .bits = 64 } } });
-        self.hir.internal_subtypes.putAssumeCapacity("i8", .{ .pure = .{ .int = .{ .signedness = .signed, .bits = 8 } } });
-        self.hir.internal_subtypes.putAssumeCapacity("i16", .{ .pure = .{ .int = .{ .signedness = .signed, .bits = 16 } } });
-        self.hir.internal_subtypes.putAssumeCapacity("i32", .{ .pure = .{ .int = .{ .signedness = .signed, .bits = 32 } } });
-        self.hir.internal_subtypes.putAssumeCapacity("i64", .{ .pure = .{ .int = .{ .signedness = .signed, .bits = 64 } } });
-
-        self.hir.internal_subtypes.putAssumeCapacity("f32", .{ .pure = .{ .float = .{ .bits = 32 } } });
-        self.hir.internal_subtypes.putAssumeCapacity("f64", .{ .pure = .{ .float = .{ .bits = 64 } } });
     }
 
     fn generateNode(self: *Generator, node: Ast.Node) Error!void {
@@ -257,6 +193,8 @@ pub const Generator = struct {
             .function_declaration => |function_declaration| try self.generateFunctionDeclarationStmt(function_declaration),
             .variable_declaration => |variable_declaration| try self.generateVariableDeclarationStmt(variable_declaration),
 
+            .type_alias => |type_alias| try self.generateTypeAliasStmt(type_alias),
+
             .conditional => |conditional| try self.generateConditionalStmt(conditional),
 
             .while_loop => |while_loop| try self.generateWhileLoopStmt(while_loop),
@@ -278,7 +216,7 @@ pub const Generator = struct {
     }
 
     fn generateFunctionDeclarationStmt(self: *Generator, ast_function: Ast.Node.Stmt.FunctionDeclaration) Error!void {
-        if (self.hir.external_subtypes.get(ast_function.prototype.name.buffer) != null or
+        if (self.hir.external_variables.get(ast_function.prototype.name.buffer) != null or
             self.hir.global_blocks.get(ast_function.prototype.name.buffer) != null or
             self.hir.functions.get(ast_function.prototype.name.buffer) != null)
         {
@@ -302,7 +240,7 @@ pub const Generator = struct {
         };
 
         if (ast_function.prototype.is_external) {
-            return self.hir.external_subtypes.put(self.allocator, ast_function.prototype.name.buffer, function_subtype);
+            return self.hir.external_variables.put(self.allocator, ast_function.prototype.name.buffer, function_subtype);
         }
 
         if (self.maybe_hir_block != null) {
@@ -381,7 +319,7 @@ pub const Generator = struct {
     }
 
     fn generateVariableDeclarationStmt(self: *Generator, variable: Ast.Node.Stmt.VariableDeclaration) Error!void {
-        if (self.hir.external_subtypes.get(variable.name.buffer) != null or
+        if (self.hir.external_variables.get(variable.name.buffer) != null or
             self.hir.global_blocks.get(variable.name.buffer) != null or
             self.hir.functions.get(variable.name.buffer) != null)
         {
@@ -389,7 +327,7 @@ pub const Generator = struct {
         }
 
         if (variable.is_external) {
-            try self.hir.external_subtypes.put(self.allocator, variable.name.buffer, variable.subtype.?);
+            try self.hir.external_variables.put(self.allocator, variable.name.buffer, variable.subtype.?);
         } else if (self.maybe_hir_block) |hir_block| {
             try self.generateExpr(variable.value);
 
@@ -409,6 +347,46 @@ pub const Generator = struct {
             try emitVariable(self.allocator, new_hir_block, variable, .global);
 
             try new_hir_block.instructions.append(self.allocator, .{ .set = variable.name });
+        }
+    }
+
+    fn generateTypeAliasStmt(self: *Generator, type_alias: Ast.Node.Stmt.TypeAlias) Error!void {
+        if (self.hir.external_variables.get(type_alias.name.buffer) != null or
+            self.hir.global_blocks.get(type_alias.name.buffer) != null or
+            self.hir.functions.get(type_alias.name.buffer) != null)
+        {
+            return self.reportRedeclaration(type_alias.name);
+        }
+
+        if (self.maybe_hir_block) |hir_block| {
+            try hir_block.instructions.append(
+                self.allocator,
+                .{
+                    .type_alias = .{
+                        .name = type_alias.name,
+                        .subtype = type_alias.subtype,
+                        .linkage = .local,
+                    },
+                },
+            );
+        } else {
+            const new_hir_block_entry = try self.hir.global_blocks.getOrPutValue(self.allocator, type_alias.name.buffer, .{});
+
+            const new_hir_block = new_hir_block_entry.value_ptr;
+
+            self.maybe_hir_block = new_hir_block;
+            defer self.maybe_hir_block = null;
+
+            try new_hir_block.instructions.append(
+                self.allocator,
+                .{
+                    .type_alias = .{
+                        .name = type_alias.name,
+                        .subtype = type_alias.subtype,
+                        .linkage = .global,
+                    },
+                },
+            );
         }
     }
 
