@@ -7,7 +7,7 @@ const Lir = @import("Lir.zig");
 const Sema = @import("Sema.zig");
 const Cli = root.Cli;
 
-const x86_64 = @import("arch/x86_64.zig");
+const LlvmBackend = @import("backend/LlvmBackend.zig");
 
 const Compilation = @This();
 
@@ -132,23 +132,7 @@ pub fn finalize(self: Compilation) std.mem.Allocator.Error!Lir {
     var concatenated_lir: Lir = .{};
 
     for (self.pipeline.lirs.items) |lir| {
-        try concatenated_lir.global_blocks.ensureUnusedCapacity(self.allocator, lir.global_blocks.count());
-
-        for (lir.global_blocks.keys(), lir.global_blocks.values()) |lir_block_name, lir_block| {
-            concatenated_lir.global_blocks.putAssumeCapacity(lir_block_name, lir_block);
-        }
-
-        try concatenated_lir.external_variables.ensureUnusedCapacity(self.allocator, lir.external_variables.count());
-
-        for (lir.external_variables.keys(), lir.external_variables.values()) |lir_type_name, lir_type| {
-            concatenated_lir.external_variables.putAssumeCapacity(lir_type_name, lir_type);
-        }
-
-        try concatenated_lir.functions.ensureUnusedCapacity(self.allocator, lir.functions.count());
-
-        for (lir.functions.keys(), lir.functions.values()) |lir_function_name, lir_function| {
-            concatenated_lir.functions.putAssumeCapacity(lir_function_name, lir_function);
-        }
+        try concatenated_lir.instructions.appendSlice(self.allocator, lir.instructions.items);
     }
 
     return concatenated_lir;
@@ -221,25 +205,16 @@ pub fn analyze(self: Compilation, file_path: []const u8, hir: Hir) ?Lir {
     return sema.lir;
 }
 
-pub fn render(self: Compilation, lir: Lir) ?[]u8 {
-    return switch (self.env.target.cpu.arch) {
-        .x86_64 => blk: {
-            var backend = x86_64.init(self.allocator, lir);
-            defer backend.deinit();
+pub const OutputKind = enum {
+    object,
+    assembly,
+};
 
-            backend.render() catch |err| {
-                std.debug.print("{s}\n", .{Cli.errorDescription(err)});
+pub fn emit(self: Compilation, lir: Lir, output_file_path: [:0]const u8, output_kind: OutputKind) std.mem.Allocator.Error!void {
+    var backend = LlvmBackend.init(self.allocator, self.env.target, lir);
+    defer backend.deinit();
 
-                return null;
-            };
+    try backend.render();
 
-            break :blk backend.finalize() catch null;
-        },
-
-        else => {
-            std.debug.print("{s} is not supported yet", .{self.env.target.cpu.arch.genericName()});
-
-            return null;
-        },
-    };
+    try backend.emit(output_file_path, output_kind);
 }

@@ -3,13 +3,12 @@ extern fn main();
 fn exit_group(code u8) {
     asm {
         "syscall"
-        : "rax" (231),
-          "rdi" (code),
+        : "{rax}" (231),
+          "{rdi}" (code),
     };
 }
 
 fn _start() {
     main();
-
     exit_group(0);
 }

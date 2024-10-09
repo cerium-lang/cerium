@@ -137,33 +137,14 @@ pub const Cli = struct {
             return 1;
         };
 
-        const output = compilation.render(lir) orelse return 1;
-
-        defer self.allocator.free(output);
-
-        const input_file_path_stem = std.fs.path.stem(options.file_path);
-
-        var output_file_path = std.ArrayListUnmanaged(u8).initCapacity(self.allocator, input_file_path_stem.len + 2) catch |err| {
+        const output_file_path = std.fmt.allocPrintZ(self.allocator, "{s}.o", .{std.fs.path.stem(options.file_path)}) catch |err| {
             std.debug.print("{s}\n", .{errorDescription(err)});
 
             return 1;
         };
 
-        defer output_file_path.deinit(self.allocator);
-
-        output_file_path.appendSliceAssumeCapacity(input_file_path_stem);
-        output_file_path.appendSliceAssumeCapacity(".s");
-
-        const output_file = std.fs.cwd().createFile(output_file_path.items, .{}) catch |err| {
-            std.debug.print("could not create output file: {s}\n", .{errorDescription(err)});
-
-            return 1;
-        };
-
-        defer output_file.close();
-
-        output_file.writeAll(output) catch |err| {
-            std.debug.print("could not write the output: {s}\n", .{errorDescription(err)});
+        compilation.emit(lir, output_file_path, .object) catch |err| {
+            std.debug.print("{s}\n", .{errorDescription(err)});
 
             return 1;
         };

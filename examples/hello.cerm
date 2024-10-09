@@ -5,11 +5,11 @@ const STDOUT = 1;
 fn write(fd u32, buf [*]const u8, count u64) u64 {
     return asm {
         "syscall"
-        : "rax" (SYS_write),
-          "rdi" (fd),
-          "rsi" (buf),
-          "rdx" (count),
-        : "rax" (u64)
+        : "{rax}" (SYS_write),
+          "{rdi}" (fd),
+          "{rsi}" (buf),
+          "{rdx}" (count),
+        : "={rax}" (u64)
     };
 }
 

@@ -11,6 +11,9 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    exe.linkLibC();
+    exe.linkSystemLibrary2("LLVM", .{ .use_pkg_config = .no });
+
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
@@ -30,6 +33,9 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+
+    exe_check.linkLibC();
+    exe_check.linkSystemLibrary2("LLVM", .{ .use_pkg_config = .no });
 
     const check_step = b.step("check", "Checks if the app can compile");
     check_step.dependOn(&exe_check.step);

@@ -106,7 +106,7 @@ pub const Node = union(enum) {
         };
 
         pub const Return = struct {
-            value: Expr,
+            maybe_value: ?Expr,
             source_loc: SourceLoc,
         };
     };
@@ -571,13 +571,13 @@ pub const Parser = struct {
 
                 const fallback = try self.parseBody();
 
-                return Node{ .stmt = .{ .conditional = .{ .conditions = conditions.items, .possiblities = possiblities.items, .fallback = fallback } } };
+                return Node{ .stmt = .{ .conditional = .{ .conditions = try conditions.toOwnedSlice(), .possiblities = try possiblities.toOwnedSlice(), .fallback = fallback } } };
             }
 
             break;
         }
 
-        return Node{ .stmt = .{ .conditional = .{ .conditions = conditions.items, .possiblities = possiblities.items, .fallback = &.{} } } };
+        return Node{ .stmt = .{ .conditional = .{ .conditions = try conditions.toOwnedSlice(), .possiblities = try possiblities.toOwnedSlice(), .fallback = &.{} } } };
     }
 
     fn parseWhileLoopStmt(self: *Parser) Error!Node {
@@ -602,15 +602,15 @@ pub const Parser = struct {
     }
 
     fn parseReturnStmt(self: *Parser) Error!Node {
-        const keyword = self.nextToken();
+        const return_token = self.nextToken();
 
-        const value = try self.parseExpr(.lowest);
+        const maybe_value = if (self.peekToken().tag == .semicolon) null else (try self.parseExpr(.lowest)).expr;
 
         return Node{
             .stmt = .{
                 .@"return" = .{
-                    .value = value.expr,
-                    .source_loc = self.tokenSourceLoc(keyword),
+                    .maybe_value = maybe_value,
+                    .source_loc = self.tokenSourceLoc(return_token),
                 },
             },
         };
@@ -774,7 +774,7 @@ pub const Parser = struct {
             inline else => |other_err| return other_err,
         };
 
-        const unescaped = unescaped_list.items;
+        const unescaped = try unescaped_list.toOwnedSlice();
 
         return Node.Expr{
             .string = .{
@@ -800,7 +800,7 @@ pub const Parser = struct {
             inline else => |other_err| return other_err,
         };
 
-        const unescaped = unescaped_list.items;
+        const unescaped = try unescaped_list.toOwnedSlice();
 
         const decoded = switch (unescaped.len) {
             1 => unescaped[0],
@@ -1116,7 +1116,7 @@ pub const Parser = struct {
             return error.UnexpectedToken;
         }
 
-        return arguments.items;
+        return arguments.toOwnedSlice();
     }
 
     fn parseSubType(self: *Parser) Error!SubType {
@@ -1159,7 +1159,7 @@ pub const Parser = struct {
 
                 return .{
                     .function = .{
-                        .parameter_subtypes = parameter_subtypes.items,
+                        .parameter_subtypes = try parameter_subtypes.toOwnedSlice(self.allocator),
                         .return_subtype = return_subtype_on_heap,
                     },
                 };

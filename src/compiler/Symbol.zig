@@ -12,18 +12,17 @@ linkage: Linkage,
 pub const Linkage = enum {
     local,
     global,
-    external,
 };
 
 pub const Type = union(enum) {
     void,
     bool,
-    pointer: Pointer,
-    function: Function,
     ambigiuous_int,
     ambigiuous_float,
     int: Int,
     float: Float,
+    pointer: Pointer,
+    function: Function,
 
     pub const Pointer = struct {
         size: Size,
@@ -165,7 +164,11 @@ pub const Type = union(enum) {
 
     pub fn getFunction(self: Type) ?Type.Function {
         if (self.getPointer()) |pointer| {
-            return pointer.child_type.getFunction();
+            if (pointer.child_type.* == .function) {
+                return pointer.child_type.function;
+            } else {
+                return null;
+            }
         }
 
         if (self != .function) {
@@ -217,7 +220,18 @@ pub const Type = union(enum) {
     }
 
     pub fn eql(self: Type, other: Type) bool {
-        if (self.getFunction()) |function| {
+        if (self.getPointer()) |pointer| {
+            const other_pointer = other.getPointer() orelse return false;
+
+            if (!pointer.child_type.eql(other_pointer.child_type.*) or
+                (pointer.is_const and !other_pointer.is_const) or
+                pointer.size != other_pointer.size)
+            {
+                return false;
+            }
+
+            return true;
+        } else if (self.getFunction()) |function| {
             const other_function = other.getFunction() orelse return false;
 
             if (function.parameter_types.len != other_function.parameter_types.len) {
@@ -231,17 +245,6 @@ pub const Type = union(enum) {
             }
 
             if (!function.return_type.eql(other_function.return_type.*)) {
-                return false;
-            }
-
-            return true;
-        } else if (self.getPointer()) |pointer| {
-            const other_pointer = other.getPointer() orelse return false;
-
-            if (!pointer.child_type.eql(other_pointer.child_type.*) or
-                (pointer.is_const and !other_pointer.is_const) or
-                pointer.size != other_pointer.size)
-            {
                 return false;
             }
 

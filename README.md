@@ -57,11 +57,6 @@ A general-purpose programming language that aims to be the most sane
 
 - Cross Compilation
     - [ ] Allow passing a Triple Target via Command Line Arguments
-    - [ ] Compile to various targets
-        - [ ] Add support for compiling to various Assembly outputs
-            - [ ] Add support for compiling to Aarch64 Assembly
-            - [x] Add support for compiling to x86_64 Assembly
-        - [ ] Make an Assembler for those Assembly outputs
 
 - Inline Assembly
     - [x] Add support for input constraints
