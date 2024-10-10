@@ -77,8 +77,6 @@ pub fn emit(self: *LlvmBackend, output_file_path: [:0]const u8, output_kind: Com
     c.LLVMInitializeAllAsmParsers();
     c.LLVMInitializeAllAsmPrinters();
 
-    c.LLVMDumpModule(self.module);
-
     const target_triple = try std.fmt.allocPrintZ(self.allocator, "{s}-{s}-{s}", .{
         @tagName(self.target.cpu.arch),
         @tagName(self.target.os.tag),

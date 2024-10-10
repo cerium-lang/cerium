@@ -116,7 +116,7 @@ pub fn compile(self: *Compilation, file_path: []const u8, input: [:0]const u8) v
         defer self.pipeline.mutex.unlock();
 
         self.pipeline.lirs.append(self.allocator, lir) catch |err| {
-            std.debug.print("{s}\n", .{Cli.errorDescription(err)});
+            std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
 
             break :blk null;
         };
@@ -140,7 +140,7 @@ pub fn finalize(self: Compilation) std.mem.Allocator.Error!Lir {
 
 pub fn parse(self: Compilation, file_path: []const u8, input: [:0]const u8) ?Ast {
     var ast_parser = Ast.Parser.init(self.allocator, input) catch |err| {
-        std.debug.print("{s}\n", .{Cli.errorDescription(err)});
+        std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
 
         return null;
     };
@@ -149,7 +149,7 @@ pub fn parse(self: Compilation, file_path: []const u8, input: [:0]const u8) ?Ast
 
     const ast = ast_parser.parse() catch |err| switch (err) {
         error.OutOfMemory => {
-            std.debug.print("{s}\n", .{Cli.errorDescription(err)});
+            std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
 
             return null;
         },
@@ -169,7 +169,7 @@ pub fn generate(self: Compilation, file_path: []const u8, ast: Ast) ?Hir {
 
     hir_generator.generate(ast) catch |err| switch (err) {
         error.OutOfMemory => {
-            std.debug.print("{s}\n", .{Cli.errorDescription(err)});
+            std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
 
             return null;
         },
@@ -190,7 +190,7 @@ pub fn analyze(self: Compilation, file_path: []const u8, hir: Hir) ?Lir {
 
     sema.analyze() catch |err| switch (err) {
         error.OutOfMemory => {
-            std.debug.print("{s}\n", .{Cli.errorDescription(err)});
+            std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
 
             return null;
         },
@@ -217,4 +217,39 @@ pub fn emit(self: Compilation, lir: Lir, output_file_path: [:0]const u8, output_
     try backend.render();
 
     try backend.emit(output_file_path, output_kind);
+}
+
+pub fn link(self: Compilation, object_file_path: []const u8, output_file_path: []const u8) !u8 {
+    const lld = switch (self.env.target.ofmt) {
+        .coff => "lld-link",
+        .elf => "ld.lld",
+        .macho => "ld64.lld",
+        .wasm => "wasm-ld",
+
+        else => return error.UnsupportedObjectFormat,
+    };
+
+    const lld_argv: [4][]const u8 = .{
+        lld,
+        object_file_path,
+        "-o",
+        output_file_path,
+    };
+
+    if (!std.process.can_spawn) {
+        @compileError("TODO: use lld library if spawning is not supported");
+    }
+
+    const lld_process = try std.process.Child.run(.{
+        .allocator = self.allocator,
+        .argv = &lld_argv,
+    });
+
+    std.debug.print("{s}", .{lld_process.stderr});
+
+    switch (lld_process.term) {
+        .Exited => |code| return code,
+
+        else => return 1,
+    }
 }

@@ -55,6 +55,7 @@ pub const Cli = struct {
             error.SystemResources => "ran out of system resources",
             error.FatalError => "a fatal error occurred",
             error.Unexpected => "an unexpected error occurred",
+            error.UnsupportedObjectFormat => "unsupported object format",
             else => @errorName(e),
         };
     }
@@ -114,12 +115,14 @@ pub const Cli = struct {
         var runner_file_path_buf: [std.fs.max_path_bytes]u8 = undefined;
 
         const runner_file_path = cerium_lib_dir.realpath("std/runners/exe.cerm", &runner_file_path_buf) catch {
-            std.debug.print("Error: could not find the standard library executable runner file path\n", .{});
+            std.debug.print("Error: could not find the executable runner file path\n", .{});
 
             return 1;
         };
 
-        var compilation = Compilation.init(self.allocator, .{ .cerium_lib_dir = cerium_lib_dir, .target = builtin.target });
+        const target = builtin.target;
+
+        var compilation = Compilation.init(self.allocator, .{ .cerium_lib_dir = cerium_lib_dir, .target = target });
         defer compilation.deinit();
 
         const lir = blk: {
@@ -132,24 +135,30 @@ pub const Cli = struct {
 
             break :blk compilation.finalize();
         } catch |err| {
-            std.debug.print("{s}\n", .{errorDescription(err)});
+            std.debug.print("Error: {s}\n", .{errorDescription(err)});
 
             return 1;
         };
 
-        const output_file_path = std.fmt.allocPrintZ(self.allocator, "{s}.o", .{std.fs.path.stem(options.file_path)}) catch |err| {
-            std.debug.print("{s}\n", .{errorDescription(err)});
+        const output_file_path = std.fs.path.stem(options.file_path);
+
+        const object_file_path = std.fmt.allocPrintZ(self.allocator, "{s}{s}", .{ output_file_path, target.ofmt.fileExt(target.cpu.arch) }) catch |err| {
+            std.debug.print("Error: {s}\n", .{errorDescription(err)});
 
             return 1;
         };
 
-        compilation.emit(lir, output_file_path, .object) catch |err| {
-            std.debug.print("{s}\n", .{errorDescription(err)});
+        compilation.emit(lir, object_file_path, .object) catch |err| {
+            std.debug.print("Error: {s}\n", .{errorDescription(err)});
 
             return 1;
         };
 
-        return 0;
+        return compilation.link(object_file_path, output_file_path) catch |err| {
+            std.debug.print("Error: {s}\n", .{errorDescription(err)});
+
+            return 1;
+        };
     }
 
     fn executeHelpCommand(self: Cli) u8 {
@@ -164,8 +173,8 @@ pub fn main() u8 {
 
     const allocator = gpa.allocator();
 
-    var argument_iterator = std.process.ArgIterator.initWithAllocator(allocator) catch {
-        std.debug.print("ran out of memory\n", .{});
+    var argument_iterator = std.process.ArgIterator.initWithAllocator(allocator) catch |err| {
+        std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
 
         return 1;
     };
