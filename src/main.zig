@@ -114,7 +114,7 @@ pub const Cli = struct {
 
         var runner_file_path_buf: [std.fs.max_path_bytes]u8 = undefined;
 
-        const runner_file_path = cerium_lib_dir.realpath("std/runners/exe.cerm", &runner_file_path_buf) catch {
+        const runner_file_path = cerium_lib_dir.realpath("std" ++ std.fs.path.sep_str ++ "runners" ++ std.fs.path.sep_str ++ "exe.cerm", &runner_file_path_buf) catch {
             std.debug.print("Error: could not find the executable runner file path\n", .{});
 
             return 1;

@@ -34,7 +34,7 @@ pub const Environment = struct {
         while (!opened) {
             opened = true;
 
-            dir = dir.openDir("lib/cerium", .{}) catch |err| switch (err) {
+            dir = dir.openDir("lib" ++ std.fs.path.sep_str ++ "cerium", .{}) catch |err| switch (err) {
                 error.FileNotFound => blk: {
                     break :blk dir.openDir("lib", .{}) catch |another_err| switch (another_err) {
                         error.FileNotFound => {
