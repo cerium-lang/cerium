@@ -66,7 +66,7 @@ pub const Instruction = union(enum) {
     int: i128,
     /// Push a float onto the stack
     float: f64,
-    /// Negate an integer or float on the stack
+    /// Negate an integer or float on the top of the stack
     negate: SourceLoc,
     /// Reverse a boolean from true to false and from false to true
     bool_not: SourceLoc,
