@@ -70,6 +70,231 @@ pub fn deinit(self: *LlvmBackend) void {
     c.LLVMShutdown();
 }
 
+/// Yoinked from the Zig compiler that is licensed under the MIT license.
+/// https://github.com/ziglang/zig/blob/master/src/codegen/llvm.zig
+fn subArchName(features: std.Target.Cpu.Feature.Set, arch: anytype, mappings: anytype) ?[]const u8 {
+    inline for (mappings) |mapping| {
+        if (arch.featureSetHas(features, mapping[0])) return mapping[1];
+    }
+
+    return null;
+}
+
+/// Yoinked from the Zig compiler that is licensed under the MIT license.
+/// https://github.com/ziglang/zig/blob/master/src/codegen/llvm.zig
+pub fn targetTriple(allocator: std.mem.Allocator, target: std.Target) ![]const u8 {
+    var llvm_triple = std.ArrayList(u8).init(allocator);
+    defer llvm_triple.deinit();
+
+    const features = target.cpu.features;
+
+    const llvm_arch = switch (target.cpu.arch) {
+        .arm => "arm",
+        .armeb => "armeb",
+        .aarch64 => if (target.abi == .ilp32) "aarch64_32" else "aarch64",
+        .aarch64_be => "aarch64_be",
+        .arc => "arc",
+        .avr => "avr",
+        .bpfel => "bpfel",
+        .bpfeb => "bpfeb",
+        .csky => "csky",
+        .hexagon => "hexagon",
+        .loongarch32 => "loongarch32",
+        .loongarch64 => "loongarch64",
+        .m68k => "m68k",
+        // MIPS sub-architectures are a bit irregular, so we handle them manually here.
+        .mips => if (std.Target.mips.featureSetHas(features, .mips32r6)) "mipsisa32r6" else "mips",
+        .mipsel => if (std.Target.mips.featureSetHas(features, .mips32r6)) "mipsisa32r6el" else "mipsel",
+        .mips64 => if (std.Target.mips.featureSetHas(features, .mips64r6)) "mipsisa64r6" else "mips64",
+        .mips64el => if (std.Target.mips.featureSetHas(features, .mips64r6)) "mipsisa64r6el" else "mips64el",
+        .msp430 => "msp430",
+        .powerpc => "powerpc",
+        .powerpcle => "powerpcle",
+        .powerpc64 => "powerpc64",
+        .powerpc64le => "powerpc64le",
+        .amdgcn => "amdgcn",
+        .riscv32 => "riscv32",
+        .riscv64 => "riscv64",
+        .sparc => "sparc",
+        .sparc64 => "sparc64",
+        .s390x => "s390x",
+        .thumb => "thumb",
+        .thumbeb => "thumbeb",
+        .x86 => "i386",
+        .x86_64 => "x86_64",
+        .xcore => "xcore",
+        .xtensa => "xtensa",
+        .nvptx => "nvptx",
+        .nvptx64 => "nvptx64",
+        .spirv => "spirv",
+        .spirv32 => "spirv32",
+        .spirv64 => "spirv64",
+        .lanai => "lanai",
+        .wasm32 => "wasm32",
+        .wasm64 => "wasm64",
+        .ve => "ve",
+
+        else => unreachable,
+    };
+
+    try llvm_triple.appendSlice(llvm_arch);
+
+    const llvm_sub_arch: ?[]const u8 = switch (target.cpu.arch) {
+        .arm, .armeb, .thumb, .thumbeb => subArchName(features, std.Target.arm, .{
+            .{ .v4t, "v4t" },
+            .{ .v5t, "v5t" },
+            .{ .v5te, "v5te" },
+            .{ .v5tej, "v5tej" },
+            .{ .v6, "v6" },
+            .{ .v6k, "v6k" },
+            .{ .v6kz, "v6kz" },
+            .{ .v6m, "v6m" },
+            .{ .v6t2, "v6t2" },
+            // v7k and v7s imply v7a so they have to be tested first.
+            .{ .v7k, "v7k" },
+            .{ .v7s, "v7s" },
+            .{ .v7a, "v7a" },
+            .{ .v7em, "v7em" },
+            .{ .v7m, "v7m" },
+            .{ .v7r, "v7r" },
+            .{ .v7ve, "v7ve" },
+            .{ .v8a, "v8a" },
+            .{ .v8_1a, "v8.1a" },
+            .{ .v8_2a, "v8.2a" },
+            .{ .v8_3a, "v8.3a" },
+            .{ .v8_4a, "v8.4a" },
+            .{ .v8_5a, "v8.5a" },
+            .{ .v8_6a, "v8.6a" },
+            .{ .v8_7a, "v8.7a" },
+            .{ .v8_8a, "v8.8a" },
+            .{ .v8_9a, "v8.9a" },
+            .{ .v8m, "v8m.base" },
+            .{ .v8m_main, "v8m.main" },
+            .{ .v8_1m_main, "v8.1m.main" },
+            .{ .v8r, "v8r" },
+            .{ .v9a, "v9a" },
+            .{ .v9_1a, "v9.1a" },
+            .{ .v9_2a, "v9.2a" },
+            .{ .v9_3a, "v9.3a" },
+            .{ .v9_4a, "v9.4a" },
+            .{ .v9_5a, "v9.5a" },
+        }),
+        .powerpc => subArchName(features, std.Target.powerpc, .{
+            .{ .spe, "spe" },
+        }),
+        .spirv => subArchName(features, std.Target.spirv, .{
+            .{ .v1_5, "1.5" },
+        }),
+        .spirv32, .spirv64 => subArchName(features, std.Target.spirv, .{
+            .{ .v1_5, "1.5" },
+            .{ .v1_4, "1.4" },
+            .{ .v1_3, "1.3" },
+            .{ .v1_2, "1.2" },
+            .{ .v1_1, "1.1" },
+        }),
+        else => null,
+    };
+
+    if (llvm_sub_arch) |sub| try llvm_triple.appendSlice(sub);
+
+    // Unlike CPU backends, GPU backends actually care about the vendor tag.
+    try llvm_triple.appendSlice(switch (target.cpu.arch) {
+        .amdgcn => if (target.os.tag == .mesa3d) "-mesa-" else "-amd-",
+        .nvptx, .nvptx64 => "-nvidia-",
+        .spirv64 => if (target.os.tag == .amdhsa) "-amd-" else "-unknown-",
+        else => "-unknown-",
+    });
+
+    const llvm_os = switch (target.os.tag) {
+        .freestanding => "unknown",
+        .dragonfly => "dragonfly",
+        .freebsd => "freebsd",
+        .fuchsia => "fuchsia",
+        .linux => "linux",
+        .ps3 => "lv2",
+        .netbsd => "netbsd",
+        .openbsd => "openbsd",
+        .solaris, .illumos => "solaris",
+        .windows, .uefi => "windows",
+        .zos => "zos",
+        .haiku => "haiku",
+        .rtems => "rtems",
+        .aix => "aix",
+        .cuda => "cuda",
+        .nvcl => "nvcl",
+        .amdhsa => "amdhsa",
+        .opencl => "unknown", // https://llvm.org/docs/SPIRVUsage.html#target-triples
+        .ps4 => "ps4",
+        .ps5 => "ps5",
+        .elfiamcu => "elfiamcu",
+        .mesa3d => "mesa3d",
+        .amdpal => "amdpal",
+        .hermit => "hermit",
+        .hurd => "hurd",
+        .wasi => "wasi",
+        .emscripten => "emscripten",
+        .bridgeos => "bridgeos",
+        .macos => "macosx",
+        .ios => "ios",
+        .tvos => "tvos",
+        .watchos => "watchos",
+        .driverkit => "driverkit",
+        .visionos => "xros",
+        .serenity => "serenity",
+        .vulkan => "vulkan",
+
+        .opengl,
+        .plan9,
+        .contiki,
+        .other,
+        => "unknown",
+
+        else => unreachable,
+    };
+    try llvm_triple.appendSlice(llvm_os);
+
+    if (target.os.tag.isDarwin()) {
+        const min_version = target.os.version_range.semver.min;
+        try llvm_triple.writer().print("{d}.{d}.{d}", .{
+            min_version.major,
+            min_version.minor,
+            min_version.patch,
+        });
+    }
+    try llvm_triple.append('-');
+
+    const llvm_abi = switch (target.abi) {
+        .none, .ilp32 => "unknown",
+        .gnu => "gnu",
+        .gnuabin32 => "gnuabin32",
+        .gnuabi64 => "gnuabi64",
+        .gnueabi => "gnueabi",
+        .gnueabihf => "gnueabihf",
+        .gnuf32 => "gnuf32",
+        .gnusf => "gnusf",
+        .gnux32 => "gnux32",
+        .gnuilp32 => "gnuilp32",
+        .code16 => "code16",
+        .eabi => "eabi",
+        .eabihf => "eabihf",
+        .android => "android",
+        .androideabi => "androideabi",
+        .musl => "musl",
+        .musleabi => "musleabi",
+        .musleabihf => "musleabihf",
+        .muslx32 => "muslx32",
+        .msvc => "msvc",
+        .itanium => "itanium",
+        .cygnus => "cygnus",
+        .simulator => "simulator",
+        .macabi => "macabi",
+        .ohos => "ohos",
+    };
+    try llvm_triple.appendSlice(llvm_abi);
+
+    return llvm_triple.toOwnedSlice();
+}
+
 pub fn emit(self: *LlvmBackend, output_file_path: [:0]const u8, output_kind: Compilation.OutputKind) Error!void {
     c.LLVMInitializeAllTargetInfos();
     c.LLVMInitializeAllTargets();
@@ -77,11 +302,7 @@ pub fn emit(self: *LlvmBackend, output_file_path: [:0]const u8, output_kind: Com
     c.LLVMInitializeAllAsmParsers();
     c.LLVMInitializeAllAsmPrinters();
 
-    const target_triple = try std.fmt.allocPrintZ(self.allocator, "{s}-{s}-{s}", .{
-        @tagName(self.target.cpu.arch),
-        @tagName(self.target.os.tag),
-        @tagName(self.target.abi),
-    });
+    const target_triple = try self.allocator.dupeZ(u8, try targetTriple(self.allocator, self.target));
 
     defer self.allocator.free(target_triple);
 

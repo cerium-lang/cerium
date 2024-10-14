@@ -56,7 +56,7 @@ A general-purpose programming language that aims to be the most sane
             - [ ] Make a System Call API for Windows
 
 - Cross Compilation
-    - [ ] Allow passing a Triple Target via Command Line Arguments
+    - [x] Allow passing a Triple Target via Command Line Arguments
 
 - Inline Assembly
     - [x] Add support for input constraints

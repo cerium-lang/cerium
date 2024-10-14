@@ -225,7 +225,7 @@ pub fn link(self: Compilation, object_file_path: []const u8, output_file_path: [
         .macho => "ld64.lld",
         .wasm => "wasm-ld",
 
-        else => return error.UnsupportedObjectFormat,
+        else => return error.UnknownObjectFormat,
     };
 
     const lld_argv: [4][]const u8 = .{

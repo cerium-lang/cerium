@@ -15,11 +15,14 @@ pub const Cli = struct {
 
         const Compile = struct {
             file_path: []const u8,
+            target: std.Target,
 
             const usage =
                 \\Usage:
                 \\  {s} compile <file_path>
                 \\
+                \\Options:
+                \\  --target <arch-os-abi>  -- specify the target triple you want to compile to
                 \\
             ;
         };
@@ -55,7 +58,16 @@ pub const Cli = struct {
             error.SystemResources => "ran out of system resources",
             error.FatalError => "a fatal error occurred",
             error.Unexpected => "an unexpected error occurred",
-            error.UnsupportedObjectFormat => "unsupported object format",
+            error.UnexpectedExtraField => "unexpected extra field",
+            error.UnknownArchitecture => "unrecognized architecture",
+            error.UnknownOperatingSystem, error.MissingOperatingSystem => "unrecognized operating system",
+            error.UnknownObjectFormat => "unrecognized object format",
+            error.UnknownCpuFeature => "unrecognized cpu feature",
+            error.UnknownCpuModel => "unrecognized cpu model",
+            error.UnknownApplicationBinaryInterface => "unrecognized application binary interface",
+            error.InvalidAbiVersion => "invalid application binary interface version",
+            error.InvalidOperatingSystemVersion => "invalid operating system version",
+
             else => @errorName(e),
         };
     }
@@ -68,19 +80,47 @@ pub const Cli = struct {
 
         while (argument_iterator.next()) |argument| {
             if (std.mem.eql(u8, argument, "compile")) {
-                const maybe_file_path = argument_iterator.next();
-
-                if (maybe_file_path == null) {
+                const file_path = argument_iterator.next() orelse {
                     std.debug.print(Command.Compile.usage, .{self.program});
 
                     std.debug.print("Error: expected a file path\n", .{});
 
                     return null;
+                };
+
+                var target: std.Target = builtin.target;
+
+                if (argument_iterator.next()) |next_argument| {
+                    if (std.mem.eql(u8, next_argument, "--target")) {
+                        if (argument_iterator.next()) |raw_target_triple| {
+                            const target_query = std.Target.Query.parse(.{ .arch_os_abi = raw_target_triple }) catch |err| {
+                                std.debug.print("Error: could not parse target query: {s}\n", .{errorDescription(err)});
+
+                                return null;
+                            };
+
+                            target = std.zig.system.resolveTargetQuery(target_query) catch |err| {
+                                std.debug.print("Error: could not resolve target query: {s}\n", .{errorDescription(err)});
+
+                                return null;
+                            };
+                        } else {
+                            std.debug.print(Command.Compile.usage, .{self.program});
+
+                            std.debug.print("Error: expected a target triple\n", .{});
+
+                            return null;
+                        }
+                    } else {
+                        std.debug.print(Command.Compile.usage, .{self.program});
+
+                        std.debug.print("Error: unrecognized argument: {s}\n", .{next_argument});
+
+                        return null;
+                    }
                 }
 
-                const file_path = maybe_file_path.?;
-
-                self.command = .{ .compile = .{ .file_path = file_path } };
+                self.command = .{ .compile = .{ .file_path = file_path, .target = target } };
             } else if (std.mem.eql(u8, argument, "help")) {
                 self.command = .help;
             } else {
@@ -120,9 +160,7 @@ pub const Cli = struct {
             return 1;
         };
 
-        const target = builtin.target;
-
-        var compilation = Compilation.init(self.allocator, .{ .cerium_lib_dir = cerium_lib_dir, .target = target });
+        var compilation = Compilation.init(self.allocator, .{ .cerium_lib_dir = cerium_lib_dir, .target = options.target });
         defer compilation.deinit();
 
         const lir = blk: {
@@ -142,20 +180,20 @@ pub const Cli = struct {
 
         const output_file_path = std.fs.path.stem(options.file_path);
 
-        const object_file_path = std.fmt.allocPrintZ(self.allocator, "{s}{s}", .{ output_file_path, target.ofmt.fileExt(target.cpu.arch) }) catch |err| {
+        const object_file_path = std.fmt.allocPrintZ(self.allocator, "{s}{s}", .{ output_file_path, options.target.ofmt.fileExt(options.target.cpu.arch) }) catch |err| {
             std.debug.print("Error: {s}\n", .{errorDescription(err)});
 
             return 1;
         };
 
         compilation.emit(lir, object_file_path, .object) catch |err| {
-            std.debug.print("Error: {s}\n", .{errorDescription(err)});
+            std.debug.print("Error: could not emit object file: {s}\n", .{errorDescription(err)});
 
             return 1;
         };
 
         return compilation.link(object_file_path, output_file_path) catch |err| {
-            std.debug.print("Error: {s}\n", .{errorDescription(err)});
+            std.debug.print("Error: could not link object file: {s}\n", .{errorDescription(err)});
 
             return 1;
         };
