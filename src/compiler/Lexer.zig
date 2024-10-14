@@ -13,6 +13,8 @@ pub const State = enum {
     string_literal,
     char_literal,
     number,
+    forward_slash,
+    comment,
     equal_sign,
     bang,
     less_than,
@@ -37,7 +39,15 @@ pub fn next(self: *Lexer) Token {
 
     state: switch (State.start) {
         .start => switch (self.buffer[self.index]) {
-            0 => {},
+            0 => {
+                result = .{
+                    .tag = .eof,
+                    .range = .{
+                        .start = self.index,
+                        .end = self.index,
+                    },
+                };
+            },
 
             ' ', '\r', '\n', '\t' => {
                 self.index += 1;
@@ -173,8 +183,8 @@ pub fn next(self: *Lexer) Token {
             '/' => {
                 result.range.start = self.index;
                 self.index += 1;
-                result.range.end = self.index;
                 result.tag = .forward_slash;
+                continue :state .forward_slash;
             },
 
             '&' => {
@@ -290,6 +300,29 @@ pub fn next(self: *Lexer) Token {
 
             else => {
                 result.range.end = self.index;
+            },
+        },
+
+        .forward_slash => switch (self.buffer[self.index]) {
+            '/' => {
+                self.index += 1;
+                continue :state .comment;
+            },
+
+            else => {
+                result.range.end = self.index;
+            },
+        },
+
+        .comment => switch (self.buffer[self.index]) {
+            '\n' => {
+                self.index += 1;
+                continue :state .start;
+            },
+
+            else => {
+                self.index += 1;
+                continue :state .comment;
             },
         },
 
