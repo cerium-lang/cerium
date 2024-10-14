@@ -25,7 +25,7 @@ pub const Instruction = union(enum) {
     float: f64,
     /// Push a boolean onto the stack
     boolean: bool,
-    /// Negate an integer or float
+    /// Negate an integer or float on the top of the stack
     negate,
     /// Reverse a boolean from true to false and from false to true
     bool_not,
@@ -75,7 +75,7 @@ pub const Instruction = union(enum) {
     variable: Symbol,
     /// Same as `variable` but the variable is external
     external: Symbol,
-    /// Set a valua of a variable with a value on top of the stack
+    /// Set a variable with a value on top of the stack
     set: []const u8,
     /// Get a value of a variable
     get: []const u8,

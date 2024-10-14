@@ -66,7 +66,7 @@ pub const Instruction = union(enum) {
     int: i128,
     /// Push a float onto the stack
     float: f64,
-    /// Negate an integer or float
+    /// Negate an integer or float on the stack
     negate: SourceLoc,
     /// Reverse a boolean from true to false and from false to true
     bool_not: SourceLoc,
@@ -122,9 +122,9 @@ pub const Instruction = union(enum) {
     variable_infer: SubSymbol,
     /// Same as `variable` but the variable is external
     external: SubSymbol,
-    /// Set a type alias
+    /// Declare a type alias
     type_alias: SubSymbol,
-    /// Set a valua of a variable with a value on top of the stack
+    /// Set a variable with a value on top of the stack
     set: Name,
     /// Get a value of a variable
     get: Name,
