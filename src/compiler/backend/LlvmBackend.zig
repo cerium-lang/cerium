@@ -26,7 +26,7 @@ module: c.LLVMModuleRef,
 builder: c.LLVMBuilderRef,
 
 maybe_function: ?c.LLVMValueRef = null,
-basic_blocks: std.AutoArrayHashMapUnmanaged(u32, c.LLVMBasicBlockRef) = .{},
+basic_blocks: std.AutoHashMapUnmanaged(u32, c.LLVMBasicBlockRef) = .{},
 
 strings: std.StringHashMapUnmanaged(c.LLVMValueRef) = .{},
 
@@ -151,6 +151,7 @@ pub fn render(self: *LlvmBackend) Error!void {
 fn renderInstruction(self: *LlvmBackend, lir_instruction: Lir.Instruction) Error!void {
     switch (lir_instruction) {
         .duplicate => try self.stack.append(self.allocator, self.stack.getLast()),
+        .reverse => |count| std.mem.reverse(c.LLVMValueRef, self.stack.items[self.stack.items.len - count ..]),
         .pop => _ = self.stack.pop(),
 
         .string => |string| try self.renderString(string),
@@ -168,6 +169,7 @@ fn renderInstruction(self: *LlvmBackend, lir_instruction: Lir.Instruction) Error
 
         .write => try self.renderWrite(),
         .read => |element_type| try self.renderRead(element_type),
+        .get_element_ptr => |element_type| try self.renderGetElementPtr(element_type),
 
         .add => try self.renderArithmetic(.add),
         .sub => try self.renderArithmetic(.sub),
@@ -298,9 +300,23 @@ fn renderRead(self: *LlvmBackend, element_type: Type) Error!void {
         "",
     );
 
+    try self.stack.append(self.allocator, read_value);
+}
+
+fn renderGetElementPtr(self: *LlvmBackend, element_type: Type) Error!void {
+    var rhs = self.stack.pop();
+    const lhs = self.stack.pop();
+
     try self.stack.append(
         self.allocator,
-        read_value,
+        c.LLVMBuildGEP2(
+            self.builder,
+            try self.getLlvmType(element_type),
+            lhs,
+            &rhs,
+            1,
+            "",
+        ),
     );
 }
 
@@ -553,6 +569,8 @@ fn renderVariable(self: *LlvmBackend, symbol: Symbol) Error!void {
             },
 
             .local => c.LLVMBuildAlloca(self.builder, llvm_type, ""),
+
+            .external => unreachable,
         };
 
         try self.scope.put(

@@ -1,7 +1,10 @@
+//! Compilation.
+//!
+//! A wrapper around the compilation pipeline of Cerium.
+
 const std = @import("std");
 const root = @import("root");
 
-const Ast = @import("Ast.zig");
 const Hir = @import("Hir.zig");
 const Lir = @import("Lir.zig");
 const Sema = @import("Sema.zig");
@@ -20,13 +23,15 @@ pub const Environment = struct {
     cerium_lib_dir: std.fs.Dir,
     target: std.Target,
 
-    pub inline fn openCeriumLibrary() !std.fs.Dir {
+    /// Open the Cerium library directory by finding `lib/cerium` or `lib`
+    pub fn openCeriumLibrary() !std.fs.Dir {
         var self_exe_dir_path_buf: [std.fs.max_path_bytes]u8 = undefined;
 
         const self_exe_dir_path = try std.fs.selfExeDirPath(&self_exe_dir_path_buf);
 
         const self_exe_dir = try std.fs.openDirAbsolute(self_exe_dir_path, .{});
 
+        // We start from the executable directory, and iterate upwards
         var dir = self_exe_dir;
 
         var opened = false;
@@ -34,12 +39,16 @@ pub const Environment = struct {
         while (!opened) {
             opened = true;
 
+            // We first try to open `lib/cerium` directory so we differentiate between
+            // `/usr/lib` and `/usr/lib/cerium` if the executable is in `/usr/bin`
             dir = dir.openDir("lib" ++ std.fs.path.sep_str ++ "cerium", .{}) catch |err| switch (err) {
                 error.FileNotFound => blk: {
+                    // Ok so we didn't find `lib/cerium` let's now try the more generic `lib`
                     break :blk dir.openDir("lib", .{}) catch |another_err| switch (another_err) {
                         error.FileNotFound => {
                             opened = false;
 
+                            // We still didn't find any of those, so we need to go up one directory
                             break :blk try dir.openDir("..", .{});
                         },
 
@@ -74,6 +83,7 @@ pub fn deinit(self: *Compilation) void {
     self.pipeline.lirs.deinit(self.allocator);
 }
 
+/// Add a file to the compilation pipeline and associate it with its path
 pub fn put(self: *Compilation, file_path: []const u8) !void {
     if (self.pipeline.files.get(file_path) != null) return;
 
@@ -86,6 +96,7 @@ pub fn put(self: *Compilation, file_path: []const u8) !void {
     try self.pipeline.files.put(self.allocator, file_path, input);
 }
 
+/// Start the compilation pipeline and make it run in parallel
 pub fn start(self: *Compilation) !void {
     var thread_pool: std.Thread.Pool = undefined;
     try thread_pool.init(.{ .allocator = self.allocator });
@@ -100,13 +111,11 @@ pub fn start(self: *Compilation) !void {
     thread_pool.waitAndWork(&wait_group);
 }
 
+/// Compile a file and append the result to the compilation pipeline's LIRs
 pub fn compile(self: *Compilation, file_path: []const u8, input: [:0]const u8) void {
     _ = blk: {
-        // TODO: Ast is leaking memory..
-        const ast = self.parse(file_path, input) orelse break :blk null;
-
         // TODO: Hir is leaking memory..
-        const hir = self.generate(file_path, ast) orelse break :blk null;
+        const hir = self.parse(file_path, input) orelse break :blk null;
 
         // TODO: Some of the strucures in Lir depend on Hir memory allocated data, we can not free Hir memory here.
         // find a way to free Hir memory when we are done with it or do not depend on it anymore.
@@ -128,6 +137,7 @@ pub fn compile(self: *Compilation, file_path: []const u8, input: [:0]const u8) v
     };
 }
 
+/// Concatenate all the LIRs in the compilation pipeline and return the result
 pub fn finalize(self: Compilation) std.mem.Allocator.Error!Lir {
     var concatenated_lir: Lir = .{};
 
@@ -138,16 +148,17 @@ pub fn finalize(self: Compilation) std.mem.Allocator.Error!Lir {
     return concatenated_lir;
 }
 
-pub fn parse(self: Compilation, file_path: []const u8, input: [:0]const u8) ?Ast {
-    var ast_parser = Ast.Parser.init(self.allocator, input) catch |err| {
+/// Parse a file into an HIR
+pub fn parse(self: Compilation, file_path: []const u8, input: [:0]const u8) ?Hir {
+    var hir_parser = Hir.Parser.init(self.allocator, self.env, input) catch |err| {
         std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
 
         return null;
     };
 
-    defer ast_parser.deinit();
+    defer hir_parser.deinit();
 
-    const ast = ast_parser.parse() catch |err| switch (err) {
+    hir_parser.parse() catch |err| switch (err) {
         error.OutOfMemory => {
             std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
 
@@ -155,37 +166,23 @@ pub fn parse(self: Compilation, file_path: []const u8, input: [:0]const u8) ?Ast
         },
 
         else => {
-            std.debug.print("{s}:{}:{}: {s}\n", .{ file_path, ast_parser.error_info.?.source_loc.line, ast_parser.error_info.?.source_loc.column, ast_parser.error_info.?.message });
+            std.debug.print("{s}:{}:{}: {s}\n", .{ file_path, hir_parser.error_info.?.source_loc.line, hir_parser.error_info.?.source_loc.column, hir_parser.error_info.?.message });
 
             return null;
         },
     };
 
-    return ast;
+    return hir_parser.hir;
 }
 
-pub fn generate(self: Compilation, file_path: []const u8, ast: Ast) ?Hir {
-    var hir_generator = Hir.Generator.init(self.allocator, self.env);
-
-    hir_generator.generate(ast) catch |err| switch (err) {
-        error.OutOfMemory => {
-            std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
-
-            return null;
-        },
-
-        else => {
-            std.debug.print("{s}:{}:{}: {s}\n", .{ file_path, hir_generator.error_info.?.source_loc.line, hir_generator.error_info.?.source_loc.column, hir_generator.error_info.?.message });
-
-            return null;
-        },
-    };
-
-    return hir_generator.hir;
-}
-
+/// Analyze an HIR and lower it to LIR
 pub fn analyze(self: Compilation, file_path: []const u8, hir: Hir) ?Lir {
-    var sema = Sema.init(self.allocator, self.env, hir);
+    var sema = Sema.init(self.allocator, self.env, hir) catch |err| {
+        std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
+
+        return null;
+    };
+
     defer sema.deinit();
 
     sema.analyze() catch |err| switch (err) {
@@ -210,6 +207,7 @@ pub const OutputKind = enum {
     assembly,
 };
 
+/// Emit a LIR to an object file or an assembly file
 pub fn emit(self: Compilation, lir: Lir, output_file_path: [:0]const u8, output_kind: OutputKind) std.mem.Allocator.Error!void {
     var backend = LlvmBackend.init(self.allocator, self.env.target, lir);
     defer backend.deinit();
@@ -219,6 +217,7 @@ pub fn emit(self: Compilation, lir: Lir, output_file_path: [:0]const u8, output_
     try backend.emit(output_file_path, output_kind);
 }
 
+/// Link an object file into an executable file
 pub fn link(self: Compilation, object_file_path: []const u8, output_file_path: []const u8) !u8 {
     const lld = switch (self.env.target.ofmt) {
         .coff => "lld-link",

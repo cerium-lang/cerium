@@ -1,7 +1,7 @@
 //! Low Intermediate Representation.
 //!
 //! An analyzed and checked stack-based intermediate representation lowered from `Hir`.
-//! Returned from `Sema` and is the last intermediate representation to be used before lowering to machine code.
+//! Last intermediate representation to be used before lowering to machine code.
 
 const std = @import("std");
 
@@ -13,6 +13,8 @@ instructions: std.ArrayListUnmanaged(Instruction) = .{},
 pub const Instruction = union(enum) {
     /// Duplicate the top of the stack
     duplicate,
+    /// Reverse the stack into nth depth
+    reverse: u32,
     /// Pop the top of the stack
     pop,
     /// Push a string onto the stack
@@ -35,10 +37,12 @@ pub const Instruction = union(enum) {
     bit_or,
     /// Perform bitwise XOR operation on the bits of lhs and rhs
     bit_xor,
-    /// Read the data that the pointer is pointing to
-    read: Type,
     /// Override the data that the pointer is pointing to
     write,
+    /// Read the data that the pointer is pointing to
+    read: Type,
+    /// Calculate the pointer of an element in a "size many" pointer
+    get_element_ptr: Type,
     /// Add two integers or floats on the top of the stack
     add,
     /// Subtract two integers or floats on the top of the stack

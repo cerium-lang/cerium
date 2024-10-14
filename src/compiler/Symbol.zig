@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const Name = @import("Ast.zig").Name;
+const Name = @import("Hir.zig").Name;
 const Compilation = @import("Compilation.zig");
 
 const Symbol = @This();
@@ -12,6 +12,7 @@ linkage: Linkage,
 pub const Linkage = enum {
     local,
     global,
+    external,
 };
 
 pub const Type = union(enum) {

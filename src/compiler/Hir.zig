@@ -1,22 +1,54 @@
 //! High Intermediate Representation.
 //!
-//! An unchecked stack-based intermediate representation lowered from `Ast`.
-//! Passed to `Sema` which checks all the instructions and types to be valid and lowers it down to `Lir`,
+//! An unchecked stack-based intermediate representation lowered down from `Token`s.
+//! Passed to `Sema` which checks all the instructions and types to be valid and lowers it down to `Lir`.
 //! And then `Lir` gets lowered down to machine code.
 
 const std = @import("std");
 
-const Ast = @import("Ast.zig");
 const Compilation = @import("Compilation.zig");
+const Lexer = @import("Lexer.zig");
 const Symbol = @import("Symbol.zig");
-const SubType = Ast.SubType;
+const Type = Symbol.Type;
+const Token = @import("Token.zig");
 
 const Hir = @This();
 
 instructions: std.ArrayListUnmanaged(Instruction) = .{},
 
+pub const SourceLoc = struct {
+    line: u32 = 1,
+    column: u32 = 1,
+};
+
+pub const Name = struct {
+    buffer: []const u8,
+    source_loc: SourceLoc,
+};
+
+/// A first concept of a type and should be resolved later by the semantic analyzer
+pub const SubType = union(enum) {
+    name: Name,
+    function: Function,
+    pointer: Pointer,
+    pure: Type,
+
+    pub const Function = struct {
+        parameter_subtypes: []const SubType,
+        return_subtype: *const SubType,
+    };
+
+    pub const Pointer = struct {
+        size: Type.Pointer.Size,
+        is_const: bool,
+        is_local: bool,
+        child_subtype: *const SubType,
+    };
+};
+
+/// A first concept of a symbol and should be resolved later by the semantic analyzer
 pub const SubSymbol = struct {
-    name: Ast.Name,
+    name: Name,
     subtype: SubType,
     linkage: Symbol.Linkage,
 };
@@ -24,6 +56,8 @@ pub const SubSymbol = struct {
 pub const Instruction = union(enum) {
     /// Duplicate the top of the stack
     duplicate,
+    /// Reverse the stack into nth depth
+    reverse: u32,
     /// Pop the top of the stack
     pop,
     /// Push a string onto the stack
@@ -33,51 +67,51 @@ pub const Instruction = union(enum) {
     /// Push a float onto the stack
     float: f64,
     /// Negate an integer or float
-    negate: Ast.SourceLoc,
+    negate: SourceLoc,
     /// Reverse a boolean from true to false and from false to true
-    bool_not: Ast.SourceLoc,
+    bool_not: SourceLoc,
     /// Perform bitwise NOT operation on the bits of rhs (Which is to reverse its bits representation)
-    bit_not: Ast.SourceLoc,
+    bit_not: SourceLoc,
     /// Perform bitwise AND operation on the bits of lhs and rhs
-    bit_and: Ast.SourceLoc,
+    bit_and: SourceLoc,
     /// Perform bitwise OR operation on the bits of lhs and rhs
-    bit_or: Ast.SourceLoc,
+    bit_or: SourceLoc,
     /// Perform bitwise XOR operation on the bits of lhs and rhs
-    bit_xor: Ast.SourceLoc,
+    bit_xor: SourceLoc,
     /// Get a pointer of a value on the stack
-    reference: Ast.SourceLoc,
-    /// Read the data that the pointer is pointing to
-    read: Ast.SourceLoc,
+    reference: SourceLoc,
     /// Override the data that the pointer is pointing to
-    write: Ast.SourceLoc,
-    /// Offset a pointer using byte alignment and type size as a factor
-    offset: Ast.SourceLoc,
+    write: SourceLoc,
+    /// Read the data that the pointer is pointing to
+    read: SourceLoc,
+    /// Calculate the pointer of an element in an "size many" pointer
+    get_element_ptr: SourceLoc,
     /// Add two integers or floats or pointers on the top of the stack
-    add: Ast.SourceLoc,
+    add: SourceLoc,
     /// Subtract two integers or floats or pointers on the top of the stack
-    sub: Ast.SourceLoc,
+    sub: SourceLoc,
     /// Multiply two integers or floats on the top of the stack
-    mul: Ast.SourceLoc,
+    mul: SourceLoc,
     /// Divide two integers or floats on the top of the stack
-    div: Ast.SourceLoc,
+    div: SourceLoc,
     /// Compare between two integers or floats on the stack and check for order (in this case, lhs less than rhs)
-    lt: Ast.SourceLoc,
+    lt: SourceLoc,
     /// Compare between two integers or floats on the stack and check for order (in this case, lhs greater than rhs)
-    gt: Ast.SourceLoc,
+    gt: SourceLoc,
     /// Compare between two values on the stack and check for equality
-    eql: Ast.SourceLoc,
+    eql: SourceLoc,
     /// Shift to left the bits of lhs using rhs offset
-    shl: Ast.SourceLoc,
+    shl: SourceLoc,
     /// Shift to right the bits of lhs using rhs offset
-    shr: Ast.SourceLoc,
+    shr: SourceLoc,
     /// Place a machine-specific assembly in the output
-    assembly: Ast.Node.Expr.Assembly,
+    assembly: Assembly,
     /// Call a function pointer on the stack
     call: Call,
     /// Declare a function
-    function: Function,
+    function: SubSymbol,
     /// Declare function parameters
-    parameters,
+    parameters: []const SubSymbol,
     /// Declare a constant that is replaced at compile time and acts as a placeholder for a value
     constant: SubSymbol,
     /// Same as `constant` but the type is unknown at the point of declaration
@@ -91,9 +125,9 @@ pub const Instruction = union(enum) {
     /// Set a type alias
     type_alias: SubSymbol,
     /// Set a valua of a variable with a value on top of the stack
-    set: Ast.Name,
+    set: Name,
     /// Get a value of a variable
-    get: Ast.Name,
+    get: Name,
     /// Make a new block out of instructions
     block: Block,
     /// Unconditionally branch to a block
@@ -105,18 +139,25 @@ pub const Instruction = union(enum) {
     /// End a scope
     end_scope,
     /// Return out of the function with a value on the stack
-    ret,
+    ret: SourceLoc,
     /// Return out of the function without a value
-    ret_void,
+    ret_void: SourceLoc,
 
-    pub const Function = struct {
-        prototype: Ast.Node.Stmt.FunctionDeclaration.Prototype,
-        subtype: SubType,
+    pub const Assembly = struct {
+        content: []const u8,
+        input_constraints: []const []const u8,
+        output_constraint: ?OutputConstraint,
+        source_loc: SourceLoc,
+
+        pub const OutputConstraint = struct {
+            register: []const u8,
+            subtype: SubType,
+        };
     };
 
     pub const Call = struct {
         arguments_count: usize,
-        source_loc: Ast.SourceLoc,
+        source_loc: SourceLoc,
     };
 
     pub const Block = struct {
@@ -130,16 +171,21 @@ pub const Instruction = union(enum) {
     pub const CondBr = struct {
         true_id: u32,
         false_id: u32,
-        source_loc: Ast.SourceLoc,
+        source_loc: SourceLoc,
     };
 };
 
-pub const Generator = struct {
+pub const Parser = struct {
     allocator: std.mem.Allocator,
 
     env: Compilation.Environment,
 
-    hir: Hir = .{},
+    buffer: [:0]const u8,
+
+    tokens: std.MultiArrayList(Token).Slice,
+    token_index: u32,
+
+    hir: Hir,
 
     block_id: ?u32 = null,
 
@@ -147,71 +193,196 @@ pub const Generator = struct {
 
     pub const ErrorInfo = struct {
         message: []const u8,
-        source_loc: Ast.SourceLoc,
+        source_loc: SourceLoc,
     };
 
     pub const Error = error{
+        InvalidType,
+        InvalidString,
+        InvalidChar,
+        InvalidNumber,
+        UnexpectedToken,
         UnexpectedStatement,
         UnexpectedExpression,
-        UnsupportedFeature,
     } || std.mem.Allocator.Error;
 
-    pub fn init(allocator: std.mem.Allocator, env: Compilation.Environment) Generator {
-        return Generator{
+    pub fn init(allocator: std.mem.Allocator, env: Compilation.Environment, buffer: [:0]const u8) std.mem.Allocator.Error!Parser {
+        var tokens: std.MultiArrayList(Token) = .{};
+
+        // Tokens should have a lowering rate of 2 to 1, we use that estimate to avoid reallocation
+        try tokens.ensureTotalCapacity(allocator, buffer.len / 2);
+
+        var lexer = Lexer.init(buffer);
+
+        while (true) {
+            const token = lexer.next();
+
+            try tokens.append(allocator, token);
+
+            if (token.tag == .eof) break;
+        }
+
+        var hir: Hir = .{};
+
+        // Hir instructions are always less than or equal to the tokens length
+        try hir.instructions.ensureTotalCapacity(allocator, tokens.len);
+
+        return Parser{
             .allocator = allocator,
             .env = env,
+            .buffer = buffer,
+            .tokens = tokens.toOwnedSlice(),
+            .token_index = 0,
+            .hir = hir,
         };
     }
 
-    pub fn generate(self: *Generator, ast: Ast) Error!void {
-        for (ast.body) |node| {
-            try self.generateNode(node);
+    pub fn deinit(self: *Parser) void {
+        self.tokens.deinit(self.allocator);
+    }
+
+    fn nextToken(self: *Parser) Token {
+        self.token_index += 1;
+        return self.tokens.get(self.token_index - 1);
+    }
+
+    pub fn peekToken(self: Parser) Token {
+        return self.tokens.get(self.token_index);
+    }
+
+    fn eatToken(self: *Parser, tag: Token.Tag) bool {
+        if (self.peekToken().tag == tag) {
+            _ = self.nextToken();
+
+            return true;
+        } else {
+            return false;
         }
     }
 
-    fn generateNode(self: *Generator, node: Ast.Node) Error!void {
-        switch (node) {
-            .stmt => |stmt| try self.generateStmt(stmt),
-            .expr => |expr| {
-                if (self.block_id == null) {
-                    self.error_info = .{ .message = "did not expect an expression to be in top level", .source_loc = expr.getSourceLoc() };
+    fn tokenValue(self: Parser, token: Token) []const u8 {
+        return self.buffer[token.range.start..token.range.end];
+    }
 
-                    return error.UnexpectedExpression;
-                }
+    fn tokenSourceLoc(self: Parser, token: Token) SourceLoc {
+        var source_loc: SourceLoc = .{};
 
-                try self.generateExpr(expr);
+        for (0..self.buffer.len) |i| {
+            switch (self.buffer[i]) {
+                0 => break,
+
+                '\n' => {
+                    source_loc.line += 1;
+                    source_loc.column = 1;
+                },
+
+                else => source_loc.column += 1,
+            }
+
+            if (i == token.range.start) break;
+        }
+
+        return source_loc;
+    }
+
+    pub fn parse(self: *Parser) Error!void {
+        while (self.peekToken().tag != .eof) {
+            try self.parseTopLevelDeclaration();
+        }
+    }
+
+    fn parseTopLevelDeclaration(self: *Parser) Error!void {
+        switch (self.peekToken().tag) {
+            .keyword_extern => try self.parseExternalDeclaration(),
+
+            .keyword_fn => return self.parseFunctionDeclaration(.global),
+
+            .keyword_const, .keyword_var => try self.parseVariableDeclaration(.global),
+
+            .keyword_type => try self.parseTypeAlias(.global),
+
+            else => {
+                self.error_info = .{ .message = "expected a top level declaration", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                return error.UnexpectedToken;
+            },
+        }
+
+        if (!self.eatToken(.semicolon)) {
+            self.error_info = .{ .message = "expected a ';'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+            return error.UnexpectedToken;
+        }
+    }
+
+    fn parseStmt(self: *Parser) Error!void {
+        switch (self.peekToken().tag) {
+            .keyword_const, .keyword_var => try self.parseVariableDeclaration(.local),
+
+            .keyword_type => try self.parseTypeAlias(.local),
+
+            .keyword_if => return self.parseConditional(),
+
+            .keyword_while => return self.parseWhileLoop(),
+
+            .keyword_break => try self.parseBreak(),
+
+            .keyword_continue => try self.parseContinue(),
+
+            .keyword_return => try self.parseReturn(),
+
+            else => {
+                try self.parseExpr(.lowest);
 
                 try self.hir.instructions.append(self.allocator, .pop);
             },
         }
-    }
 
-    fn generateStmt(self: *Generator, stmt: Ast.Node.Stmt) Error!void {
-        switch (stmt) {
-            .function_declaration => |function_declaration| try self.generateFunctionDeclarationStmt(function_declaration),
-            .variable_declaration => |variable_declaration| try self.generateVariableDeclarationStmt(variable_declaration),
+        if (!self.eatToken(.semicolon)) {
+            self.error_info = .{ .message = "expected a ';'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
 
-            .type_alias => |type_alias| try self.generateTypeAliasStmt(type_alias),
-
-            .conditional => |conditional| try self.generateConditionalStmt(conditional),
-
-            .while_loop => |while_loop| try self.generateWhileLoopStmt(while_loop),
-            .@"continue" => |@"continue"| try self.generateContinueStmt(@"continue"),
-            .@"break" => |@"break"| try self.generateBreakStmt(@"break"),
-
-            .@"return" => |@"return"| try self.generateReturnStmt(@"return"),
+            return error.UnexpectedToken;
         }
     }
 
-    fn generateFunctionDeclarationStmt(self: *Generator, ast_function: Ast.Node.Stmt.FunctionDeclaration) Error!void {
-        var parameter_subtypes = try self.allocator.alloc(SubType, ast_function.prototype.parameters.len);
+    fn parseExternalDeclaration(self: *Parser) Error!void {
+        const source_loc = self.tokenSourceLoc(self.nextToken());
 
-        for (ast_function.prototype.parameters, 0..) |ast_function_parameter, i| {
-            parameter_subtypes[i] = ast_function_parameter.expected_subtype;
+        if (self.peekToken().tag == .keyword_fn) {
+            try self.parseFunctionDeclaration(.external);
+        } else if (self.peekToken().tag == .keyword_var) {
+            try self.parseVariableDeclaration(.external);
+        } else if (self.peekToken().tag == .keyword_const) {
+            self.error_info = .{ .message = "'const' is declaring a compile time constant and cannot be used with 'extern'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+            return error.UnexpectedToken;
+        } else {
+            self.error_info = .{ .message = "expected a function or variable declaration", .source_loc = source_loc };
+
+            return error.UnexpectedToken;
         }
+    }
+
+    fn parseFunctionDeclaration(self: *Parser, linkage: Symbol.Linkage) Error!void {
+        const source_loc = self.tokenSourceLoc(self.nextToken());
+
+        const name = try self.parseName();
+
+        const parameter_subsymbols = try self.parseFunctionParameters();
+
+        const parameter_subtypes = try self.allocator.alloc(SubType, parameter_subsymbols.len);
+
+        for (parameter_subsymbols, 0..) |parameter_subsymbol, i| {
+            parameter_subtypes[i] = parameter_subsymbol.subtype;
+        }
+
+        const return_subtype = if (self.peekToken().tag == .open_brace or (self.peekToken().tag == .semicolon and linkage == .external))
+            SubType{ .pure = .void }
+        else
+            try self.parseSubType();
 
         const return_subtype_on_heap = try self.allocator.create(SubType);
-        return_subtype_on_heap.* = ast_function.prototype.return_subtype;
+        return_subtype_on_heap.* = return_subtype;
 
         const function_subtype: SubType = .{
             .function = .{
@@ -226,29 +397,27 @@ pub const Generator = struct {
         const function_pointer_subtype: SubType = .{
             .pointer = .{
                 .size = .one,
-                .is_const = true,
                 .is_local = false,
+                .is_const = true,
                 .child_subtype = function_subtype_on_heap,
             },
         };
 
-        if (ast_function.prototype.is_external) {
-            return self.hir.instructions.append(
-                self.allocator,
-                .{
-                    .external = .{
-                        .name = ast_function.prototype.name,
-                        .subtype = function_pointer_subtype,
-                        .linkage = .global,
-                    },
+        if (linkage == .external) {
+            return self.hir.instructions.append(self.allocator, .{
+                .external = .{
+                    .name = name,
+                    .subtype = function_pointer_subtype,
+                    .linkage = linkage,
                 },
-            );
+            });
         }
 
         try self.hir.instructions.append(self.allocator, .{
             .function = .{
-                .prototype = ast_function.prototype,
+                .name = name,
                 .subtype = function_pointer_subtype,
+                .linkage = linkage,
             },
         });
 
@@ -259,118 +428,177 @@ pub const Generator = struct {
 
         try self.hir.instructions.append(self.allocator, .start_scope);
 
-        if (ast_function.prototype.parameters.len != 0) {
-            try self.hir.instructions.append(self.allocator, .parameters);
+        if (parameter_subsymbols.len != 0) {
+            try self.hir.instructions.append(self.allocator, .{ .parameters = parameter_subsymbols });
         }
 
-        for (ast_function.body) |node| {
-            try self.generateNode(node);
-        }
+        try self.parseBody();
 
         if (self.hir.instructions.items.len == 0 or
             (self.hir.instructions.getLast() != .ret and
             self.hir.instructions.getLast() != .ret_void))
         {
-            try self.hir.instructions.append(self.allocator, .ret_void);
+            try self.hir.instructions.append(self.allocator, .{ .ret_void = source_loc });
         }
 
         try self.hir.instructions.append(self.allocator, .end_scope);
     }
 
-    fn emitVariable(self: *Generator, variable: Ast.Node.Stmt.VariableDeclaration, linkage: Symbol.Linkage) Error!void {
-        try self.hir.instructions.append(
-            self.allocator,
-            if (variable.subtype) |@"type"|
-                if (variable.is_const)
-                    .{
-                        .constant = .{
-                            .name = variable.name,
-                            .subtype = @"type",
-                            .linkage = linkage,
-                        },
-                    }
-                else
-                    .{
-                        .variable = .{
-                            .name = variable.name,
-                            .subtype = @"type",
-                            .linkage = linkage,
-                        },
-                    }
-            else if (variable.is_const)
-                .{
-                    .constant_infer = .{
-                        .name = variable.name,
-                        .subtype = .{ .pure = .void },
-                        .linkage = linkage,
-                    },
-                }
-            else
-                .{
-                    .variable_infer = .{
-                        .name = variable.name,
-                        .subtype = .{ .pure = .void },
-                        .linkage = linkage,
-                    },
-                },
-        );
+    fn parseFunctionParameters(self: *Parser) Error![]SubSymbol {
+        if (!self.eatToken(.open_paren)) {
+            self.error_info = .{ .message = "expected a '('", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+            return error.UnexpectedToken;
+        }
+
+        var paramters: std.ArrayListUnmanaged(SubSymbol) = .{};
+
+        while (!self.eatToken(.close_paren)) {
+            if (self.peekToken().tag == .eof) {
+                self.error_info = .{ .message = "expected a ')'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                return error.UnexpectedToken;
+            }
+
+            try paramters.append(self.allocator, .{
+                .name = try self.parseName(),
+                .subtype = try self.parseSubType(),
+                .linkage = .local,
+            });
+
+            if (!self.eatToken(.comma) and self.peekToken().tag != .close_paren) {
+                self.error_info = .{ .message = "expected a ',' after parameter", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                return error.UnexpectedToken;
+            }
+        }
+
+        return paramters.toOwnedSlice(self.allocator);
     }
 
-    fn generateVariableDeclarationStmt(self: *Generator, variable: Ast.Node.Stmt.VariableDeclaration) Error!void {
-        if (variable.is_external) {
+    fn parseVariableDeclaration(self: *Parser, linkage: Symbol.Linkage) Error!void {
+        const init_token = self.nextToken();
+
+        const is_const = init_token.tag == .keyword_const;
+
+        const name = try self.parseName();
+
+        const maybe_subtype = if (self.peekToken().tag == .equal_sign)
+            null
+        else
+            try self.parseSubType();
+
+        if (maybe_subtype != null and linkage != .external and !self.eatToken(.equal_sign)) {
+            self.error_info = .{ .message = "expected a '='", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+            return error.UnexpectedToken;
+        } else if (self.eatToken(.equal_sign) and linkage == .external) {
+            self.error_info = .{ .message = "'extern' variables cannot have an initializer", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+            return error.UnexpectedToken;
+        }
+
+        if (linkage == .external) {
             return self.hir.instructions.append(
                 self.allocator,
                 .{
                     .external = .{
-                        .name = variable.name,
-                        .subtype = variable.subtype.?,
+                        .name = name,
+                        .subtype = maybe_subtype.?,
                         .linkage = .global,
                     },
                 },
             );
         }
 
-        try self.generateExpr(variable.value);
+        try self.parseExpr(.lowest);
 
-        try self.emitVariable(variable, if (self.block_id == null) .global else .local);
+        if (maybe_subtype) |subtype| {
+            try self.hir.instructions.append(
+                self.allocator,
+                if (is_const)
+                    .{
+                        .constant = .{
+                            .name = name,
+                            .subtype = subtype,
+                            .linkage = linkage,
+                        },
+                    }
+                else
+                    .{
+                        .variable = .{
+                            .name = name,
+                            .subtype = subtype,
+                            .linkage = linkage,
+                        },
+                    },
+            );
+        } else {
+            try self.hir.instructions.append(
+                self.allocator,
+                if (is_const)
+                    .{
+                        .constant_infer = .{
+                            .name = name,
+                            .subtype = .{ .pure = .void },
+                            .linkage = linkage,
+                        },
+                    }
+                else
+                    .{
+                        .variable_infer = .{
+                            .name = name,
+                            .subtype = .{ .pure = .void },
+                            .linkage = linkage,
+                        },
+                    },
+            );
+        }
 
-        try self.hir.instructions.append(self.allocator, .{ .set = variable.name });
+        try self.hir.instructions.append(self.allocator, .{ .set = name });
     }
 
-    fn generateTypeAliasStmt(self: *Generator, type_alias: Ast.Node.Stmt.TypeAlias) Error!void {
+    fn parseTypeAlias(self: *Parser, linkage: Symbol.Linkage) Error!void {
+        _ = self.nextToken();
+
+        const name = try self.parseName();
+
+        if (!self.eatToken(.equal_sign)) {
+            self.error_info = .{ .message = "expected a '='", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+            return error.UnexpectedToken;
+        }
+
+        const subtype = try self.parseSubType();
+
         try self.hir.instructions.append(
             self.allocator,
             .{
                 .type_alias = .{
-                    .name = type_alias.name,
-                    .subtype = type_alias.subtype,
-                    .linkage = if (self.block_id == null) .global else .local,
+                    .name = name,
+                    .subtype = subtype,
+                    .linkage = linkage,
                 },
             },
         );
     }
 
-    fn generateConditionalStmt(self: *Generator, conditional: Ast.Node.Stmt.Conditional) Error!void {
-        std.debug.assert(conditional.conditions.len >= 1);
-        std.debug.assert(conditional.possiblities.len >= 1);
-
-        if (self.block_id == null) {
-            self.error_info = .{ .message = "expected the conditional statement to be inside a function", .source_loc = conditional.conditions[0].getSourceLoc() };
-
-            return error.UnexpectedStatement;
-        }
-
+    fn parseConditional(self: *Parser) Error!void {
         const end_block_id = self.block_id.?;
         self.block_id.? += 1;
 
-        for (conditional.conditions, conditional.possiblities) |condition, possiblity| {
-            try self.generateExpr(condition);
+        while (self.peekToken().tag == .keyword_if) {
+            _ = self.nextToken();
+
+            const condition_source_loc = self.tokenSourceLoc(self.peekToken());
+
+            try self.parseExpr(.lowest);
 
             try self.hir.instructions.append(self.allocator, .{
                 .cond_br = .{
                     .true_id = self.block_id.?,
                     .false_id = self.block_id.? + 1,
-                    .source_loc = condition.getSourceLoc(),
+                    .source_loc = condition_source_loc,
                 },
             });
 
@@ -379,28 +607,33 @@ pub const Generator = struct {
 
             try self.hir.instructions.append(self.allocator, .start_scope);
 
-            for (possiblity) |possibility_node| {
-                try self.generateNode(possibility_node);
-            }
+            try self.parseBody();
 
             try self.hir.instructions.append(self.allocator, .end_scope);
 
             try self.hir.instructions.append(self.allocator, .{ .br = .{ .id = end_block_id } });
-        }
 
-        {
-            try self.hir.instructions.append(self.allocator, .{ .block = .{ .id = self.block_id.? } });
-            self.block_id.? += 1;
+            if (self.eatToken(.keyword_else)) {
+                if (self.peekToken().tag == .keyword_if) continue;
 
-            try self.hir.instructions.append(self.allocator, .start_scope);
+                try self.hir.instructions.append(self.allocator, .{ .block = .{ .id = self.block_id.? } });
+                self.block_id.? += 1;
 
-            for (conditional.fallback) |fallback_node| {
-                try self.generateNode(fallback_node);
+                try self.hir.instructions.append(self.allocator, .start_scope);
+
+                try self.parseBody();
+
+                try self.hir.instructions.append(self.allocator, .end_scope);
+
+                try self.hir.instructions.append(self.allocator, .{ .br = .{ .id = end_block_id } });
+            } else {
+                try self.hir.instructions.append(self.allocator, .{ .block = .{ .id = self.block_id.? } });
+                self.block_id.? += 1;
+
+                try self.hir.instructions.append(self.allocator, .{ .br = .{ .id = end_block_id } });
             }
 
-            try self.hir.instructions.append(self.allocator, .end_scope);
-
-            try self.hir.instructions.append(self.allocator, .{ .br = .{ .id = end_block_id } });
+            break;
         }
 
         try self.hir.instructions.append(self.allocator, .{ .block = .{ .id = end_block_id } });
@@ -409,12 +642,8 @@ pub const Generator = struct {
     var maybe_header_block_id: ?u32 = null;
     var maybe_end_block_id: ?u32 = null;
 
-    fn generateWhileLoopStmt(self: *Generator, while_loop: Ast.Node.Stmt.WhileLoop) Error!void {
-        if (self.block_id == null) {
-            self.error_info = .{ .message = "expected the while loop statement to be inside a function", .source_loc = while_loop.condition.getSourceLoc() };
-
-            return error.UnexpectedStatement;
-        }
+    fn parseWhileLoop(self: *Parser) Error!void {
+        _ = self.nextToken();
 
         const header_block_id = self.block_id.?;
         self.block_id.? += 1;
@@ -437,21 +666,21 @@ pub const Generator = struct {
 
         try self.hir.instructions.append(self.allocator, .{ .block = .{ .id = header_block_id } });
 
-        try self.generateExpr(while_loop.condition);
+        const condition_source_loc = self.tokenSourceLoc(self.peekToken());
+
+        try self.parseExpr(.lowest);
 
         try self.hir.instructions.append(self.allocator, .{ .cond_br = .{
             .true_id = body_block_id,
             .false_id = end_block_id,
-            .source_loc = while_loop.condition.getSourceLoc(),
+            .source_loc = condition_source_loc,
         } });
 
         try self.hir.instructions.append(self.allocator, .{ .block = .{ .id = body_block_id } });
 
         try self.hir.instructions.append(self.allocator, .start_scope);
 
-        for (while_loop.body) |node| {
-            try self.generateNode(node);
-        }
+        try self.parseBody();
 
         try self.hir.instructions.append(self.allocator, .end_scope);
 
@@ -460,261 +689,743 @@ pub const Generator = struct {
         try self.hir.instructions.append(self.allocator, .{ .block = .{ .id = end_block_id } });
     }
 
-    fn generateContinueStmt(self: *Generator, @"continue": Ast.Node.Stmt.Continue) Error!void {
+    fn parseContinue(self: *Parser) Error!void {
+        const source_loc = self.tokenSourceLoc(self.nextToken());
+
         if (maybe_header_block_id) |header_block_id| {
             return self.hir.instructions.append(self.allocator, .{ .br = .{ .id = header_block_id } });
         }
 
-        self.error_info = .{ .message = "expected the continue statement to be inside a loop", .source_loc = @"continue".source_loc };
+        self.error_info = .{ .message = "expected the continue statement to be inside a loop", .source_loc = source_loc };
 
         return error.UnexpectedStatement;
     }
 
-    fn generateBreakStmt(self: *Generator, @"break": Ast.Node.Stmt.Break) Error!void {
+    fn parseBreak(self: *Parser) Error!void {
+        const source_loc = self.tokenSourceLoc(self.nextToken());
+
         if (maybe_end_block_id) |end_block_id| {
             return self.hir.instructions.append(self.allocator, .{ .br = .{ .id = end_block_id } });
         }
 
-        self.error_info = .{ .message = "expected the break statement to be inside a loop", .source_loc = @"break".source_loc };
+        self.error_info = .{ .message = "expected the break statement to be inside a loop", .source_loc = source_loc };
 
         return error.UnexpectedStatement;
     }
 
-    fn generateReturnStmt(self: *Generator, @"return": Ast.Node.Stmt.Return) Error!void {
-        if (self.block_id == null) {
-            self.error_info = .{ .message = "expected the return statement to be inside a function", .source_loc = @"return".source_loc };
+    fn parseReturn(self: *Parser) Error!void {
+        const source_loc = self.tokenSourceLoc(self.nextToken());
 
-            return error.UnexpectedStatement;
-        }
-
-        if (@"return".maybe_value) |value| {
-            try self.generateExpr(value);
-
-            try self.hir.instructions.append(self.allocator, .ret);
+        if (self.peekToken().tag == .semicolon) {
+            try self.hir.instructions.append(self.allocator, .{ .ret_void = source_loc });
         } else {
-            try self.hir.instructions.append(self.allocator, .ret_void);
+            try self.parseExpr(.lowest);
+
+            try self.hir.instructions.append(self.allocator, .{ .ret = source_loc });
         }
     }
 
-    fn generateExpr(self: *Generator, expr: Ast.Node.Expr) Error!void {
-        switch (expr) {
-            .identifier => |identifier| try self.generateIdentifierExpr(identifier),
+    const Precedence = enum {
+        lowest,
+        assign,
+        comparison,
+        sum,
+        product,
+        bit_or,
+        bit_xor,
+        bit_and,
+        shift,
+        prefix,
+        call,
+        subscript,
 
-            .string => |string| try self.generateStringExpr(string),
+        fn from(token: Token) Precedence {
+            return switch (token.tag) {
+                .equal_sign => .assign,
+                .less_than, .greater_than, .double_equal_sign, .bang_equal_sign => .comparison,
+                .plus, .minus => .sum,
+                .star, .forward_slash => .product,
+                .ampersand => .bit_and,
+                .pipe => .bit_or,
+                .caret => .bit_xor,
+                .double_less_than, .double_greater_than => .shift,
+                .open_paren => .call,
+                .open_bracket => .subscript,
 
-            .int => |int| try self.generateIntExpr(int),
+                else => .lowest,
+            };
+        }
+    };
 
-            .float => |float| try self.generateFloatExpr(float),
+    fn parseExpr(self: *Parser, precedence: Precedence) Error!void {
+        try self.parseUnaryExpr();
 
-            .assembly => |assembly| try self.generateAssemblyExpr(assembly),
-
-            .unary_operation => |unary_operation| try self.generateUnaryOperationExpr(unary_operation),
-
-            .binary_operation => |binary_operation| try self.generateBinaryOperationExpr(binary_operation),
-
-            .subscript => |subscript| try self.generateSubscript(subscript),
-
-            .call => |call| try self.generateCallExpr(call),
+        while (@intFromEnum(Precedence.from(self.peekToken())) > @intFromEnum(precedence) and self.peekToken().tag != .semicolon) {
+            try self.parseBinaryExpr();
         }
     }
 
-    fn generateIdentifierExpr(self: *Generator, identifier: Ast.Node.Expr.Identifier) Error!void {
-        try self.hir.instructions.append(self.allocator, .{ .get = identifier.name });
+    fn parseUnaryExpr(self: *Parser) Error!void {
+        switch (self.peekToken().tag) {
+            .identifier => try self.parseIdentifier(),
+
+            .string_literal => try self.parseString(),
+
+            .char_literal => try self.parseChar(),
+
+            .int => try self.parseInt(),
+
+            .float => try self.parseFloat(),
+
+            .keyword_asm => try self.parseAssembly(),
+
+            .open_paren => try self.parseParentheses(),
+
+            .minus, .bang, .tilde, .ampersand, .star => try self.parseUnaryOperation(),
+
+            else => {
+                self.error_info = .{ .message = "expected a statement or an expression", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                return error.UnexpectedToken;
+            },
+        }
     }
 
-    fn generateStringExpr(self: *Generator, string: Ast.Node.Expr.String) Error!void {
-        try self.hir.instructions.append(self.allocator, .{ .string = string.value });
+    fn parseIdentifier(self: *Parser) Error!void {
+        try self.hir.instructions.append(self.allocator, .{ .get = try self.parseName() });
     }
 
-    fn generateIntExpr(self: *Generator, int: Ast.Node.Expr.Int) Error!void {
-        try self.hir.instructions.append(self.allocator, .{ .int = int.value });
+    const UnescapeError = error{InvalidEscapeCharacter} || std.mem.Allocator.Error;
+
+    fn unescape(output: *std.ArrayList(u8), input: []const u8) UnescapeError!void {
+        try output.ensureTotalCapacity(input.len);
+
+        var unescaping = false;
+
+        for (input) |input_char| {
+            switch (unescaping) {
+                false => switch (input_char) {
+                    '\\' => unescaping = true,
+
+                    else => output.appendAssumeCapacity(input_char),
+                },
+
+                true => {
+                    unescaping = false;
+
+                    switch (input_char) {
+                        '\\' => {
+                            output.appendAssumeCapacity('\\');
+                        },
+
+                        'n' => {
+                            output.appendAssumeCapacity('\n');
+                        },
+
+                        'r' => {
+                            output.appendAssumeCapacity('\r');
+                        },
+
+                        't' => {
+                            output.appendAssumeCapacity('\t');
+                        },
+
+                        'e' => {
+                            output.appendAssumeCapacity(27);
+                        },
+
+                        'v' => {
+                            output.appendAssumeCapacity(11);
+                        },
+
+                        'b' => {
+                            output.appendAssumeCapacity(8);
+                        },
+
+                        'f' => {
+                            output.appendAssumeCapacity(20);
+                        },
+
+                        '"' => {
+                            output.appendAssumeCapacity('"');
+                        },
+
+                        else => return error.InvalidEscapeCharacter,
+                    }
+                },
+            }
+        }
     }
 
-    fn generateFloatExpr(self: *Generator, float: Ast.Node.Expr.Float) Error!void {
-        try self.hir.instructions.append(self.allocator, .{ .float = float.value });
+    fn parseString(self: *Parser) Error!void {
+        const content = self.tokenValue(self.peekToken());
+        const source_loc = self.tokenSourceLoc(self.nextToken());
+
+        var unescaped_list = std.ArrayList(u8).init(self.allocator);
+
+        unescape(&unescaped_list, content) catch |err| switch (err) {
+            error.InvalidEscapeCharacter => {
+                self.error_info = .{ .message = "invalid escape character", .source_loc = source_loc };
+
+                return error.InvalidString;
+            },
+
+            inline else => |other_err| return other_err,
+        };
+
+        const unescaped = try unescaped_list.toOwnedSlice();
+
+        try self.hir.instructions.append(self.allocator, .{ .string = unescaped });
     }
 
-    fn generateAssemblyExpr(self: *Generator, assembly: Ast.Node.Expr.Assembly) Error!void {
-        var i: usize = assembly.input_constraints.len;
+    fn parseChar(self: *Parser) Error!void {
+        const encoded = self.tokenValue(self.peekToken());
+        const source_loc = self.tokenSourceLoc(self.nextToken());
 
-        while (i > 0) {
-            i -= 1;
+        var unescaped_list = std.ArrayList(u8).init(self.allocator);
 
-            const input_constraint = assembly.input_constraints[i];
+        unescape(&unescaped_list, encoded) catch |err| switch (err) {
+            error.InvalidEscapeCharacter => {
+                self.error_info = .{ .message = "invalid escape character", .source_loc = source_loc };
 
-            try self.generateExpr(input_constraint.value.*);
+                return error.InvalidChar;
+            },
+
+            inline else => |other_err| return other_err,
+        };
+
+        const unescaped = try unescaped_list.toOwnedSlice();
+
+        const decoded = switch (unescaped.len) {
+            1 => unescaped[0],
+            2 => std.unicode.utf8Decode2(unescaped[0..2].*),
+            3 => std.unicode.utf8Decode3(unescaped[0..3].*),
+            4 => std.unicode.utf8Decode4(unescaped[0..4].*),
+            else => error.TooMuchCodes,
+        } catch {
+            self.error_info = .{ .message = "invalid character literal", .source_loc = source_loc };
+
+            return error.InvalidChar;
+        };
+
+        try self.hir.instructions.append(self.allocator, .{ .int = decoded });
+    }
+
+    fn parseInt(self: *Parser) Error!void {
+        const value = std.fmt.parseInt(i128, self.tokenValue(self.nextToken()), 0) catch {
+            self.error_info = .{ .message = "invalid number", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+            return error.InvalidNumber;
+        };
+
+        try self.hir.instructions.append(self.allocator, .{ .int = value });
+    }
+
+    fn parseFloat(self: *Parser) Error!void {
+        const value = std.fmt.parseFloat(f64, self.tokenValue(self.nextToken())) catch {
+            self.error_info = .{ .message = "invalid number", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+            return error.InvalidNumber;
+        };
+
+        try self.hir.instructions.append(self.allocator, .{ .float = value });
+    }
+
+    fn parseAssembly(self: *Parser) Error!void {
+        const asm_keyword_token = self.nextToken();
+
+        var content: std.ArrayListUnmanaged(u8) = .{};
+
+        if (!self.eatToken(.open_brace)) {
+            self.error_info = .{ .message = "expected a '{'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+            return error.UnexpectedToken;
         }
 
-        try self.hir.instructions.append(self.allocator, .{ .assembly = assembly });
+        var input_constraints: []const []const u8 = &.{};
+        var output_constraint: ?Instruction.Assembly.OutputConstraint = null;
+
+        while (!self.eatToken(.close_brace)) {
+            if (self.peekToken().tag == .eof) {
+                self.error_info = .{ .message = "expected a '}'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                return error.UnexpectedToken;
+            }
+
+            if (self.peekToken().tag != .string_literal) {
+                self.error_info = .{ .message = "expected a valid string", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                return error.UnexpectedToken;
+            }
+
+            try self.parseString();
+
+            try content.appendSlice(self.allocator, self.hir.instructions.pop().string);
+
+            var parsed_input_constraints = false;
+
+            if (self.eatToken(.colon)) {
+                input_constraints = try self.parseAssemblyInputConstraints();
+                parsed_input_constraints = true;
+            }
+
+            if (self.eatToken(.colon)) {
+                output_constraint = try self.parseAssemblyOutputConstraint();
+            }
+
+            try content.append(self.allocator, '\n');
+
+            if (self.peekToken().tag != .close_brace and parsed_input_constraints) {
+                self.error_info = .{ .message = "expected a '}'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                return error.UnexpectedToken;
+            }
+        }
+
+        try self.hir.instructions.append(self.allocator, .{
+            .assembly = .{
+                .content = try content.toOwnedSlice(self.allocator),
+                .input_constraints = input_constraints,
+                .output_constraint = output_constraint,
+                .source_loc = self.tokenSourceLoc(asm_keyword_token),
+            },
+        });
     }
 
-    fn generateUnaryOperationExpr(self: *Generator, unary_operation: Ast.Node.Expr.UnaryOperation) Error!void {
-        switch (unary_operation.operator) {
+    fn parseAssemblyInputConstraints(self: *Parser) Error![][]const u8 {
+        var constraints = std.ArrayList([]const u8).init(self.allocator);
+
+        while (self.peekToken().tag != .eof and self.peekToken().tag != .colon and self.peekToken().tag != .close_brace) {
+            try constraints.append(try self.parseAssemblyInputConstraint());
+
+            if (!self.eatToken(.comma) and self.peekToken().tag != .colon and self.peekToken().tag != .close_brace) {
+                self.error_info = .{ .message = "expected a ','", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                return error.UnexpectedToken;
+            }
+        }
+
+        try self.hir.instructions.append(self.allocator, .{ .reverse = @intCast(constraints.items.len) });
+
+        return constraints.toOwnedSlice();
+    }
+
+    fn parseAssemblyInputConstraint(self: *Parser) Error![]const u8 {
+        if (self.peekToken().tag != .string_literal) {
+            self.error_info = .{ .message = "expected a valid string", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+            return error.UnexpectedToken;
+        }
+
+        try self.parseString();
+
+        const register = self.hir.instructions.pop().string;
+
+        if (!self.eatToken(.open_paren)) {
+            self.error_info = .{ .message = "expected a '('", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+            return error.UnexpectedToken;
+        }
+
+        try self.parseExpr(.lowest);
+
+        if (!self.eatToken(.close_paren)) {
+            self.error_info = .{ .message = "expected a ')'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+            return error.UnexpectedToken;
+        }
+
+        return register;
+    }
+
+    fn parseAssemblyOutputConstraint(self: *Parser) Error!Instruction.Assembly.OutputConstraint {
+        if (self.peekToken().tag != .string_literal) {
+            self.error_info = .{ .message = "expected a valid string", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+            return error.UnexpectedToken;
+        }
+
+        try self.parseString();
+
+        const register = self.hir.instructions.pop().string;
+
+        if (!self.eatToken(.open_paren)) {
+            self.error_info = .{ .message = "expected a '('", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+            return error.UnexpectedToken;
+        }
+
+        const subtype = try self.parseSubType();
+
+        if (!self.eatToken(.close_paren)) {
+            self.error_info = .{ .message = "expected a ')'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+            return error.UnexpectedToken;
+        }
+
+        return Instruction.Assembly.OutputConstraint{
+            .register = register,
+            .subtype = subtype,
+        };
+    }
+
+    fn parseParentheses(self: *Parser) Error!void {
+        _ = self.nextToken();
+
+        try self.parseExpr(.lowest);
+
+        if (!self.eatToken(.close_paren)) {
+            self.error_info = .{ .message = "expected a ')'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+            return error.UnexpectedToken;
+        }
+    }
+
+    fn parseUnaryOperation(self: *Parser) Error!void {
+        const operator_token = self.nextToken();
+        const source_loc = self.tokenSourceLoc(operator_token);
+
+        try self.parseExpr(.prefix);
+
+        switch (operator_token.tag) {
             .minus => {
-                try self.generateExpr(unary_operation.rhs.*);
-                try self.hir.instructions.append(self.allocator, .{ .negate = unary_operation.source_loc });
+                try self.hir.instructions.append(self.allocator, .{ .negate = source_loc });
             },
 
             .bang => {
-                try self.generateExpr(unary_operation.rhs.*);
-                try self.hir.instructions.append(self.allocator, .{ .bool_not = unary_operation.source_loc });
+                try self.hir.instructions.append(self.allocator, .{ .bool_not = source_loc });
             },
 
             .tilde => {
-                try self.generateExpr(unary_operation.rhs.*);
-                try self.hir.instructions.append(self.allocator, .{ .bit_not = unary_operation.source_loc });
+                try self.hir.instructions.append(self.allocator, .{ .bit_not = source_loc });
             },
 
             .ampersand => {
-                if (unary_operation.rhs.* == .subscript) {
-                    try self.generateExpr(unary_operation.rhs.subscript.target.*);
-                    try self.generateExpr(unary_operation.rhs.subscript.index.*);
-
-                    try self.hir.instructions.append(self.allocator, .{ .offset = unary_operation.rhs.subscript.source_loc });
+                if (self.hir.instructions.items[self.hir.instructions.items.len - 1] == .read and
+                    self.hir.instructions.items[self.hir.instructions.items.len - 2] == .get_element_ptr)
+                {
+                    _ = self.hir.instructions.pop();
                 } else {
-                    try self.generateExpr(unary_operation.rhs.*);
-
-                    try self.hir.instructions.append(self.allocator, .{ .reference = unary_operation.source_loc });
+                    try self.hir.instructions.append(self.allocator, .{ .reference = source_loc });
                 }
             },
 
             .star => {
-                try self.generateExpr(unary_operation.rhs.*);
-                try self.hir.instructions.append(self.allocator, .{ .read = unary_operation.source_loc });
+                try self.hir.instructions.append(self.allocator, .{ .read = source_loc });
+            },
+
+            else => unreachable,
+        }
+    }
+
+    fn parseBinaryExpr(self: *Parser) Error!void {
+        switch (self.peekToken().tag) {
+            .plus,
+            .minus,
+            .star,
+            .forward_slash,
+            .equal_sign,
+            .less_than,
+            .greater_than,
+            .double_less_than,
+            .double_greater_than,
+            .ampersand,
+            .pipe,
+            .caret,
+            .double_equal_sign,
+            .bang_equal_sign,
+            => try self.parseBinaryOperation(),
+
+            .open_bracket => try self.parseSubscript(),
+
+            .open_paren => try self.parseCall(),
+
+            else => {
+                self.error_info = .{ .message = "expected a statement or an expression", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                return error.UnexpectedToken;
             },
         }
     }
 
-    fn generateBinaryOperationExpr(self: *Generator, binary_operation: Ast.Node.Expr.BinaryOperation) Error!void {
-        switch (binary_operation.operator) {
-            .plus => {
-                try self.generateExpr(binary_operation.lhs.*);
-                try self.generateExpr(binary_operation.rhs.*);
+    fn parseBinaryOperation(self: *Parser) Error!void {
+        const operator_token = self.nextToken();
+        const source_loc = self.tokenSourceLoc(operator_token);
 
-                try self.hir.instructions.append(self.allocator, .{ .add = binary_operation.source_loc });
+        if (operator_token.tag != .equal_sign) {
+            try self.parseExpr(.lowest);
+        }
+
+        switch (operator_token.tag) {
+            .plus => {
+                try self.hir.instructions.append(self.allocator, .{ .add = source_loc });
             },
 
             .minus => {
-                try self.generateExpr(binary_operation.lhs.*);
-                try self.generateExpr(binary_operation.rhs.*);
-
-                try self.hir.instructions.append(self.allocator, .{ .sub = binary_operation.source_loc });
+                try self.hir.instructions.append(self.allocator, .{ .sub = source_loc });
             },
 
             .star => {
-                try self.generateExpr(binary_operation.lhs.*);
-                try self.generateExpr(binary_operation.rhs.*);
-
-                try self.hir.instructions.append(self.allocator, .{ .mul = binary_operation.source_loc });
+                try self.hir.instructions.append(self.allocator, .{ .mul = source_loc });
             },
 
             .forward_slash => {
-                try self.generateExpr(binary_operation.lhs.*);
-                try self.generateExpr(binary_operation.rhs.*);
-
-                try self.hir.instructions.append(self.allocator, .{ .div = binary_operation.source_loc });
+                try self.hir.instructions.append(self.allocator, .{ .div = source_loc });
             },
 
             .equal_sign => {
-                try self.generateExpr(binary_operation.rhs.*);
-                try self.hir.instructions.append(self.allocator, .duplicate);
+                const last_instruction = self.hir.instructions.pop();
 
-                if (binary_operation.lhs.* == .unary_operation and binary_operation.lhs.unary_operation.operator == .star) {
-                    try self.generateExpr(binary_operation.lhs.unary_operation.rhs.*);
+                try self.parseExpr(.lowest);
 
-                    try self.hir.instructions.append(self.allocator, .{ .write = binary_operation.source_loc });
-                } else if (binary_operation.lhs.* == .identifier) {
-                    try self.hir.instructions.append(self.allocator, .{ .set = binary_operation.lhs.identifier.name });
+                if (last_instruction == .read) {
+                    // 1:
+                    // lhs
+                    // rhs
+                    //
+                    // 2:
+                    // lhs
+                    // rhs
+                    // rhs
+                    //
+                    // 3:
+                    // rhs
+                    // rhs
+                    // lhs
+
+                    try self.hir.instructions.append(self.allocator, .duplicate);
+                    try self.hir.instructions.append(self.allocator, .{ .reverse = 3 });
+                    try self.hir.instructions.append(self.allocator, .{ .write = source_loc });
+                } else if (last_instruction == .get) {
+                    try self.hir.instructions.append(self.allocator, .duplicate);
+                    try self.hir.instructions.append(self.allocator, .{ .set = last_instruction.get });
                 } else {
-                    self.error_info = .{ .message = "expected an identifier or a pointer dereference", .source_loc = binary_operation.lhs.getSourceLoc() };
+                    self.error_info = .{ .message = "expected an identifier or a pointer dereference", .source_loc = source_loc };
 
                     return error.UnexpectedExpression;
                 }
             },
 
             .less_than => {
-                try self.generateExpr(binary_operation.lhs.*);
-                try self.generateExpr(binary_operation.rhs.*);
-
-                try self.hir.instructions.append(self.allocator, .{ .lt = binary_operation.source_loc });
+                try self.hir.instructions.append(self.allocator, .{ .lt = source_loc });
             },
 
             .greater_than => {
-                try self.generateExpr(binary_operation.lhs.*);
-                try self.generateExpr(binary_operation.rhs.*);
-
-                try self.hir.instructions.append(self.allocator, .{ .gt = binary_operation.source_loc });
+                try self.hir.instructions.append(self.allocator, .{ .gt = source_loc });
             },
 
             .double_less_than => {
-                try self.generateExpr(binary_operation.lhs.*);
-                try self.generateExpr(binary_operation.rhs.*);
-
-                try self.hir.instructions.append(self.allocator, .{ .shl = binary_operation.source_loc });
+                try self.hir.instructions.append(self.allocator, .{ .shl = source_loc });
             },
 
             .double_greater_than => {
-                try self.generateExpr(binary_operation.lhs.*);
-                try self.generateExpr(binary_operation.rhs.*);
-
-                try self.hir.instructions.append(self.allocator, .{ .shr = binary_operation.source_loc });
+                try self.hir.instructions.append(self.allocator, .{ .shr = source_loc });
             },
 
             .ampersand => {
-                try self.generateExpr(binary_operation.lhs.*);
-                try self.generateExpr(binary_operation.rhs.*);
-
-                try self.hir.instructions.append(self.allocator, .{ .bit_and = binary_operation.source_loc });
+                try self.hir.instructions.append(self.allocator, .{ .bit_and = source_loc });
             },
 
             .pipe => {
-                try self.generateExpr(binary_operation.lhs.*);
-                try self.generateExpr(binary_operation.rhs.*);
-
-                try self.hir.instructions.append(self.allocator, .{ .bit_or = binary_operation.source_loc });
+                try self.hir.instructions.append(self.allocator, .{ .bit_or = source_loc });
             },
 
             .caret => {
-                try self.generateExpr(binary_operation.lhs.*);
-                try self.generateExpr(binary_operation.rhs.*);
-
-                try self.hir.instructions.append(self.allocator, .{ .bit_xor = binary_operation.source_loc });
+                try self.hir.instructions.append(self.allocator, .{ .bit_xor = source_loc });
             },
 
             .double_equal_sign, .bang_equal_sign => {
-                try self.generateExpr(binary_operation.lhs.*);
-                try self.generateExpr(binary_operation.rhs.*);
+                try self.hir.instructions.append(self.allocator, .{ .eql = source_loc });
 
-                try self.hir.instructions.append(self.allocator, .{ .eql = binary_operation.source_loc });
-
-                if (binary_operation.operator == .bang_equal_sign) {
-                    try self.hir.instructions.append(self.allocator, .{ .bool_not = binary_operation.source_loc });
+                if (operator_token.tag == .bang_equal_sign) {
+                    try self.hir.instructions.append(self.allocator, .{ .bool_not = source_loc });
                 }
             },
+
+            else => unreachable,
         }
     }
 
-    fn generateSubscript(self: *Generator, subscript: Ast.Node.Expr.Subscript) Error!void {
-        try self.generateExpr(subscript.target.*);
-        try self.generateExpr(subscript.index.*);
+    fn parseSubscript(self: *Parser) Error!void {
+        const source_loc = self.tokenSourceLoc(self.nextToken());
 
-        try self.hir.instructions.append(self.allocator, .{ .offset = subscript.source_loc });
-        try self.hir.instructions.append(self.allocator, .{ .read = subscript.source_loc });
+        try self.parseExpr(.subscript);
+
+        try self.hir.instructions.append(self.allocator, .{ .get_element_ptr = source_loc });
+        try self.hir.instructions.append(self.allocator, .{ .read = source_loc });
     }
 
-    fn generateCallExpr(self: *Generator, call: Ast.Node.Expr.Call) Error!void {
-        var i: usize = call.arguments.len;
+    fn parseCall(self: *Parser) Error!void {
+        const source_loc = self.tokenSourceLoc(self.nextToken());
 
-        while (i > 0) {
-            i -= 1;
+        const arguments_count = try self.parseCallArguments();
 
-            const argument = call.arguments[i];
+        try self.hir.instructions.append(self.allocator, .{ .reverse = arguments_count + 1 });
 
-            try self.generateExpr(argument);
+        try self.hir.instructions.append(self.allocator, .{
+            .call = .{
+                .arguments_count = arguments_count,
+                .source_loc = source_loc,
+            },
+        });
+    }
+
+    fn parseCallArguments(self: *Parser) Error!u32 {
+        var count: u32 = 0;
+
+        while (self.peekToken().tag != .eof and self.peekToken().tag != .close_paren) {
+            try self.parseExpr(.lowest);
+            count += 1;
+
+            if (!self.eatToken(.comma) and self.peekToken().tag != .close_paren) {
+                self.error_info = .{ .message = "expected a ','", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                return error.UnexpectedToken;
+            }
         }
 
-        try self.generateExpr(call.callable.*);
+        if (!self.eatToken(.close_paren)) {
+            self.error_info = .{ .message = "expected a ')'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
 
-        try self.hir.instructions.append(self.allocator, .{ .call = .{ .arguments_count = call.arguments.len, .source_loc = call.source_loc } });
+            return error.UnexpectedToken;
+        }
+
+        return count;
+    }
+
+    fn parseName(self: *Parser) Error!Name {
+        if (self.peekToken().tag != .identifier) {
+            self.error_info = .{ .message = "expected a name", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+            return error.UnexpectedToken;
+        }
+
+        const token = self.nextToken();
+
+        return Name{ .buffer = self.tokenValue(token), .source_loc = self.tokenSourceLoc(token) };
+    }
+
+    fn parseSubType(self: *Parser) Error!SubType {
+        switch (self.peekToken().tag) {
+            .identifier => {
+                return SubType{ .name = try self.parseName() };
+            },
+
+            .keyword_fn => {
+                _ = self.nextToken();
+
+                if (!self.eatToken(.open_paren)) {
+                    self.error_info = .{ .message = "expected a '('", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                    return error.UnexpectedToken;
+                }
+
+                var parameter_subtypes: std.ArrayListUnmanaged(SubType) = .{};
+
+                while (self.peekToken().tag != .eof and self.peekToken().tag != .close_paren) {
+                    try parameter_subtypes.append(self.allocator, try self.parseSubType());
+
+                    if (!self.eatToken(.comma) and self.peekToken().tag != .close_paren) {
+                        self.error_info = .{ .message = "expected a ','", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                        return error.UnexpectedToken;
+                    }
+                }
+
+                if (!self.eatToken(.close_paren)) {
+                    self.error_info = .{ .message = "expected a ')'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                    return error.UnexpectedToken;
+                }
+
+                const return_subtype = try self.parseSubType();
+
+                const return_subtype_on_heap = try self.allocator.create(SubType);
+                return_subtype_on_heap.* = return_subtype;
+
+                return SubType{
+                    .function = .{
+                        .parameter_subtypes = try parameter_subtypes.toOwnedSlice(self.allocator),
+                        .return_subtype = return_subtype_on_heap,
+                    },
+                };
+            },
+
+            .star => {
+                _ = self.nextToken();
+
+                const is_const = self.eatToken(.keyword_const);
+
+                const child = try self.parseSubType();
+
+                const child_on_heap = try self.allocator.create(SubType);
+                child_on_heap.* = child;
+
+                return SubType{
+                    .pointer = .{
+                        .size = .one,
+                        .is_const = is_const,
+                        .is_local = self.block_id != null,
+                        .child_subtype = child_on_heap,
+                    },
+                };
+            },
+
+            .open_bracket => {
+                _ = self.nextToken();
+
+                if (!self.eatToken(.star)) {
+                    self.error_info = .{ .message = "expected a '*'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                    return error.UnexpectedToken;
+                }
+
+                if (!self.eatToken(.close_bracket)) {
+                    self.error_info = .{ .message = "expected a ']'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                    return error.UnexpectedToken;
+                }
+
+                const is_const = self.eatToken(.keyword_const);
+
+                const child = try self.parseSubType();
+
+                const child_on_heap = try self.allocator.create(SubType);
+                child_on_heap.* = child;
+
+                return SubType{
+                    .pointer = .{
+                        .size = .many,
+                        .is_const = is_const,
+                        .is_local = self.block_id != null,
+                        .child_subtype = child_on_heap,
+                    },
+                };
+            },
+
+            else => {},
+        }
+
+        self.error_info = .{ .message = "expected a type", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+        return error.InvalidType;
+    }
+
+    fn parseBody(self: *Parser) Error!void {
+        if (!self.eatToken(.open_brace)) {
+            self.error_info = .{ .message = "expected a '{'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+            return error.UnexpectedToken;
+        }
+
+        while (!self.eatToken(.close_brace)) {
+            try self.parseStmt();
+
+            if (self.peekToken().tag == .eof) {
+                self.error_info = .{ .message = "expected a '}'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                return error.UnexpectedToken;
+            }
+        }
     }
 };

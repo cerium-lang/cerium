@@ -1,9 +1,9 @@
 const std = @import("std");
 
 tag: Tag,
-buffer_loc: BufferLoc,
+range: Range,
 
-pub const Tag = enum {
+pub const Tag = enum(u8) {
     eof,
     invalid,
     identifier,
@@ -50,9 +50,9 @@ pub const Tag = enum {
     keyword_return,
 };
 
-pub const BufferLoc = struct {
-    start: usize,
-    end: usize,
+pub const Range = packed struct(u64) {
+    start: u32,
+    end: u32,
 };
 
 pub const keywords = std.StaticStringMap(Tag).initComptime(.{

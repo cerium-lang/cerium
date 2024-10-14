@@ -5,8 +5,7 @@ const Token = @import("Token.zig");
 const Lexer = @This();
 
 buffer: [:0]const u8,
-index: usize,
-state: State,
+index: u32,
 
 pub const State = enum {
     start,
@@ -24,364 +23,319 @@ pub fn init(buffer: [:0]const u8) Lexer {
     return Lexer{
         .buffer = buffer,
         .index = 0,
-        .state = .start,
     };
 }
 
 pub fn next(self: *Lexer) Token {
     var result = Token{
         .tag = .eof,
-        .buffer_loc = .{
+        .range = .{
             .start = self.index,
             .end = self.index,
         },
     };
 
-    while (self.buffer.len >= self.index) : (self.index += 1) {
-        const current_char = self.buffer[self.index];
+    state: switch (State.start) {
+        .start => switch (self.buffer[self.index]) {
+            0 => {},
 
-        switch (self.state) {
-            .start => switch (current_char) {
-                0 => break,
-
-                ' ', '\r', '\n', '\t' => {},
-
-                'a'...'z', 'A'...'Z', '_' => {
-                    result.buffer_loc.start = self.index;
-                    result.tag = .identifier;
-                    self.state = .identifier;
-                },
-
-                '"' => {
-                    result.buffer_loc.start = self.index + 1;
-                    result.tag = .string_literal;
-                    self.state = .string_literal;
-                },
-
-                '\'' => {
-                    result.buffer_loc.start = self.index + 1;
-                    result.tag = .char_literal;
-                    self.state = .char_literal;
-                },
-
-                '0'...'9' => {
-                    result.buffer_loc.start = self.index;
-                    result.tag = .int;
-                    self.state = .number;
-                },
-
-                '(' => {
-                    result.buffer_loc.start = self.index;
-                    self.index += 1;
-                    result.buffer_loc.end = self.index;
-                    result.tag = .open_paren;
-                    break;
-                },
-
-                ')' => {
-                    result.buffer_loc.start = self.index;
-                    self.index += 1;
-                    result.buffer_loc.end = self.index;
-                    result.tag = .close_paren;
-                    break;
-                },
-
-                '{' => {
-                    result.buffer_loc.start = self.index;
-                    self.index += 1;
-                    result.buffer_loc.end = self.index;
-                    result.tag = .open_brace;
-                    break;
-                },
-
-                '}' => {
-                    result.buffer_loc.start = self.index;
-                    self.index += 1;
-                    result.buffer_loc.end = self.index;
-                    result.tag = .close_brace;
-                    break;
-                },
-
-                '[' => {
-                    result.buffer_loc.start = self.index;
-                    self.index += 1;
-                    result.buffer_loc.end = self.index;
-                    result.tag = .open_bracket;
-                    break;
-                },
-
-                ']' => {
-                    result.buffer_loc.start = self.index;
-                    self.index += 1;
-                    result.buffer_loc.end = self.index;
-                    result.tag = .close_bracket;
-                    break;
-                },
-
-                '=' => {
-                    result.buffer_loc.start = self.index;
-                    result.tag = .equal_sign;
-                    self.state = .equal_sign;
-                },
-
-                '!' => {
-                    result.buffer_loc.start = self.index;
-                    result.tag = .bang;
-                    self.state = .bang;
-                },
-
-                '<' => {
-                    result.buffer_loc.start = self.index;
-                    result.tag = .less_than;
-                    self.state = .less_than;
-                },
-
-                '>' => {
-                    result.buffer_loc.start = self.index;
-                    result.tag = .greater_than;
-                    self.state = .greater_than;
-                },
-
-                '~' => {
-                    result.buffer_loc.start = self.index;
-                    self.index += 1;
-                    result.buffer_loc.end = self.index;
-                    result.tag = .tilde;
-                    break;
-                },
-
-                '+' => {
-                    result.buffer_loc.start = self.index;
-                    self.index += 1;
-                    result.buffer_loc.end = self.index;
-                    result.tag = .plus;
-                    break;
-                },
-
-                '-' => {
-                    result.buffer_loc.start = self.index;
-                    self.index += 1;
-                    result.buffer_loc.end = self.index;
-                    result.tag = .minus;
-                    break;
-                },
-
-                '*' => {
-                    result.buffer_loc.start = self.index;
-                    self.index += 1;
-                    result.buffer_loc.end = self.index;
-                    result.tag = .star;
-                    break;
-                },
-
-                '/' => {
-                    result.buffer_loc.start = self.index;
-                    self.index += 1;
-                    result.buffer_loc.end = self.index;
-                    result.tag = .forward_slash;
-                    break;
-                },
-
-                '&' => {
-                    result.buffer_loc.start = self.index;
-                    self.index += 1;
-                    result.buffer_loc.end = self.index;
-                    result.tag = .ampersand;
-                    break;
-                },
-
-                '|' => {
-                    result.buffer_loc.start = self.index;
-                    self.index += 1;
-                    result.buffer_loc.end = self.index;
-                    result.tag = .pipe;
-                    break;
-                },
-
-                '^' => {
-                    result.buffer_loc.start = self.index;
-                    self.index += 1;
-                    result.buffer_loc.end = self.index;
-                    result.tag = .caret;
-                    break;
-                },
-
-                ',' => {
-                    result.buffer_loc.start = self.index;
-                    self.index += 1;
-                    result.buffer_loc.end = self.index;
-                    result.tag = .comma;
-                    break;
-                },
-
-                ':' => {
-                    result.buffer_loc.start = self.index;
-                    self.index += 1;
-                    result.buffer_loc.end = self.index;
-                    result.tag = .colon;
-                    break;
-                },
-
-                ';' => {
-                    result.buffer_loc.start = self.index;
-                    self.index += 1;
-                    result.buffer_loc.end = self.index;
-                    result.tag = .semicolon;
-                    break;
-                },
-
-                else => {
-                    result.buffer_loc.start = self.index;
-                    self.index += 1;
-                    result.buffer_loc.end = self.index;
-                    result.tag = .invalid;
-                    break;
-                },
+            ' ', '\r', '\n', '\t' => {
+                self.index += 1;
+                continue :state .start;
             },
 
-            .identifier => switch (current_char) {
-                'a'...'z', 'A'...'Z', '0'...'9', '_' => {},
-
-                else => {
-                    result.buffer_loc.end = self.index;
-                    if (Token.keywords.get(self.buffer[result.buffer_loc.start..result.buffer_loc.end])) |keyword_tag| {
-                        result.tag = keyword_tag;
-                    }
-                    self.state = .start;
-                    break;
-                },
+            'a'...'z', 'A'...'Z', '_' => {
+                result.range.start = self.index;
+                result.tag = .identifier;
+                self.index += 1;
+                continue :state .identifier;
             },
 
-            .string_literal => switch (current_char) {
-                0 => {
-                    result.buffer_loc.end = self.index;
-                    self.state = .start;
-                    result.tag = .invalid;
-                    break;
-                },
-
-                '\n' => {
-                    result.buffer_loc.end = self.index;
-                    self.index += 1;
-                    self.state = .start;
-                    result.tag = .invalid;
-                    break;
-                },
-
-                '"' => {
-                    result.buffer_loc.end = self.index;
-                    self.index += 1;
-                    self.state = .start;
-                    break;
-                },
-
-                else => {},
+            '"' => {
+                result.range.start = self.index + 1;
+                result.tag = .string_literal;
+                self.index += 1;
+                continue :state .string_literal;
             },
 
-            .char_literal => switch (current_char) {
-                0 => {
-                    result.buffer_loc.end = self.index;
-                    self.state = .start;
-                    result.tag = .invalid;
-                    break;
-                },
-
-                '\n' => {
-                    result.buffer_loc.end = self.index;
-                    self.index += 1;
-                    self.state = .start;
-                    result.tag = .invalid;
-                    break;
-                },
-
-                '\'' => {
-                    result.buffer_loc.end = self.index;
-                    self.index += 1;
-                    self.state = .start;
-                    break;
-                },
-
-                else => {},
+            '\'' => {
+                result.range.start = self.index + 1;
+                result.tag = .char_literal;
+                self.index += 1;
+                continue :state .char_literal;
             },
 
-            .number => switch (current_char) {
-                'a'...'z', 'A'...'Z', '0'...'9', '_' => {},
-
-                '.' => {
-                    result.tag = .float;
-                },
-
-                else => {
-                    result.buffer_loc.end = self.index;
-                    self.state = .start;
-                    break;
-                },
+            '0'...'9' => {
+                result.range.start = self.index;
+                result.tag = .int;
+                self.index += 1;
+                continue :state .number;
             },
 
-            .equal_sign => switch (current_char) {
-                '=' => {
-                    self.index += 1;
-                    result.buffer_loc.end = self.index;
-                    result.tag = .double_equal_sign;
-                    self.state = .start;
-                    break;
-                },
-
-                else => {
-                    result.buffer_loc.end = self.index;
-                    self.state = .start;
-                    break;
-                },
+            '(' => {
+                result.range.start = self.index;
+                self.index += 1;
+                result.range.end = self.index;
+                result.tag = .open_paren;
             },
 
-            .bang => switch (current_char) {
-                '=' => {
-                    self.index += 1;
-                    result.buffer_loc.end = self.index;
-                    result.tag = .bang_equal_sign;
-                    self.state = .start;
-                    break;
-                },
-
-                else => {
-                    result.buffer_loc.end = self.index;
-                    self.state = .start;
-                    break;
-                },
+            ')' => {
+                result.range.start = self.index;
+                self.index += 1;
+                result.range.end = self.index;
+                result.tag = .close_paren;
             },
 
-            .less_than => switch (current_char) {
-                '<' => {
-                    self.index += 1;
-                    result.buffer_loc.end = self.index;
-                    result.tag = .double_less_than;
-                    self.state = .start;
-                    break;
-                },
-
-                else => {
-                    result.buffer_loc.end = self.index;
-                    self.state = .start;
-                    break;
-                },
+            '{' => {
+                result.range.start = self.index;
+                self.index += 1;
+                result.range.end = self.index;
+                result.tag = .open_brace;
             },
 
-            .greater_than => switch (current_char) {
-                '>' => {
-                    self.index += 1;
-                    result.buffer_loc.end = self.index;
-                    result.tag = .double_greater_than;
-                    self.state = .start;
-                    break;
-                },
-
-                else => {
-                    result.buffer_loc.end = self.index;
-                    self.state = .start;
-                    break;
-                },
+            '}' => {
+                result.range.start = self.index;
+                self.index += 1;
+                result.range.end = self.index;
+                result.tag = .close_brace;
             },
-        }
+
+            '[' => {
+                result.range.start = self.index;
+                self.index += 1;
+                result.range.end = self.index;
+                result.tag = .open_bracket;
+            },
+
+            ']' => {
+                result.range.start = self.index;
+                self.index += 1;
+                result.range.end = self.index;
+                result.tag = .close_bracket;
+            },
+
+            '=' => {
+                result.range.start = self.index;
+                result.tag = .equal_sign;
+                self.index += 1;
+                continue :state .equal_sign;
+            },
+
+            '!' => {
+                result.range.start = self.index;
+                result.tag = .bang;
+                self.index += 1;
+                continue :state .bang;
+            },
+
+            '<' => {
+                result.range.start = self.index;
+                result.tag = .less_than;
+                self.index += 1;
+                continue :state .less_than;
+            },
+
+            '>' => {
+                result.range.start = self.index;
+                result.tag = .greater_than;
+                self.index += 1;
+                continue :state .greater_than;
+            },
+
+            '~' => {
+                result.range.start = self.index;
+                self.index += 1;
+                result.range.end = self.index;
+                result.tag = .tilde;
+            },
+
+            '+' => {
+                result.range.start = self.index;
+                self.index += 1;
+                result.range.end = self.index;
+                result.tag = .plus;
+            },
+
+            '-' => {
+                result.range.start = self.index;
+                self.index += 1;
+                result.range.end = self.index;
+                result.tag = .minus;
+            },
+
+            '*' => {
+                result.range.start = self.index;
+                self.index += 1;
+                result.range.end = self.index;
+                result.tag = .star;
+            },
+
+            '/' => {
+                result.range.start = self.index;
+                self.index += 1;
+                result.range.end = self.index;
+                result.tag = .forward_slash;
+            },
+
+            '&' => {
+                result.range.start = self.index;
+                self.index += 1;
+                result.range.end = self.index;
+                result.tag = .ampersand;
+            },
+
+            '|' => {
+                result.range.start = self.index;
+                self.index += 1;
+                result.range.end = self.index;
+                result.tag = .pipe;
+            },
+
+            '^' => {
+                result.range.start = self.index;
+                self.index += 1;
+                result.range.end = self.index;
+                result.tag = .caret;
+            },
+
+            ',' => {
+                result.range.start = self.index;
+                self.index += 1;
+                result.range.end = self.index;
+                result.tag = .comma;
+            },
+
+            ':' => {
+                result.range.start = self.index;
+                self.index += 1;
+                result.range.end = self.index;
+                result.tag = .colon;
+            },
+
+            ';' => {
+                result.range.start = self.index;
+                self.index += 1;
+                result.range.end = self.index;
+                result.tag = .semicolon;
+            },
+
+            else => {
+                result.range.start = self.index;
+                self.index += 1;
+                result.range.end = self.index;
+                result.tag = .invalid;
+            },
+        },
+
+        .identifier => switch (self.buffer[self.index]) {
+            'a'...'z', 'A'...'Z', '0'...'9', '_' => {
+                self.index += 1;
+                continue :state .identifier;
+            },
+
+            else => {
+                result.range.end = self.index;
+
+                if (Token.keywords.get(self.buffer[result.range.start..result.range.end])) |keyword_tag| {
+                    result.tag = keyword_tag;
+                }
+            },
+        },
+
+        .string_literal => switch (self.buffer[self.index]) {
+            0, '\n' => {
+                result.range.end = self.index;
+                result.tag = .invalid;
+            },
+
+            '"' => {
+                result.range.end = self.index;
+                self.index += 1;
+            },
+
+            else => {
+                self.index += 1;
+                continue :state .string_literal;
+            },
+        },
+
+        .char_literal => switch (self.buffer[self.index]) {
+            0, '\n' => {
+                result.range.end = self.index;
+                result.tag = .invalid;
+            },
+
+            '\'' => {
+                result.range.end = self.index;
+                self.index += 1;
+            },
+
+            else => {
+                self.index += 1;
+                continue :state .char_literal;
+            },
+        },
+
+        .number => switch (self.buffer[self.index]) {
+            'a'...'z', 'A'...'Z', '0'...'9', '_' => {
+                self.index += 1;
+                continue :state .number;
+            },
+
+            '.' => {
+                result.tag = .float;
+                self.index += 1;
+                continue :state .number;
+            },
+
+            else => {
+                result.range.end = self.index;
+            },
+        },
+
+        .equal_sign => switch (self.buffer[self.index]) {
+            '=' => {
+                result.range.end = self.index;
+                result.tag = .double_equal_sign;
+            },
+
+            else => {
+                result.range.end = self.index;
+            },
+        },
+
+        .bang => switch (self.buffer[self.index]) {
+            '=' => {
+                result.range.end = self.index;
+                result.tag = .bang_equal_sign;
+            },
+
+            else => {
+                result.range.end = self.index;
+            },
+        },
+
+        .less_than => switch (self.buffer[self.index]) {
+            '<' => {
+                result.range.end = self.index;
+                result.tag = .double_less_than;
+            },
+
+            else => {
+                result.range.end = self.index;
+            },
+        },
+
+        .greater_than => switch (self.buffer[self.index]) {
+            '>' => {
+                result.range.end = self.index;
+                result.tag = .double_greater_than;
+            },
+
+            else => {
+                result.range.end = self.index;
+            },
+        },
     }
 
     return result;

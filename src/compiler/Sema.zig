@@ -1,11 +1,12 @@
 //! Semantic Analyzer.
 //!
-//! An analyzer that lowers down `Hir` to `Lir` while checking if the semantics are completely right.
+//! An analyzer that lowers down `Hir` to `Lir` while checking if the instructions and the types are valid.
 
 const std = @import("std");
 
-const Ast = @import("Ast.zig");
 const Hir = @import("Hir.zig");
+const Name = Hir.Name;
+const SourceLoc = Hir.SourceLoc;
 const Compilation = @import("Compilation.zig");
 const Lir = @import("Lir.zig");
 const Symbol = @import("Symbol.zig");
@@ -20,9 +21,9 @@ env: Compilation.Environment,
 
 hir: Hir,
 
-lir: Lir = .{},
+lir: Lir,
 
-maybe_hir_function: ?Hir.Instruction.Function = null,
+maybe_function: ?Type = null,
 
 stack: std.ArrayListUnmanaged(Value) = .{},
 
@@ -33,7 +34,7 @@ error_info: ?ErrorInfo = null,
 
 pub const ErrorInfo = struct {
     message: []const u8,
-    source_loc: Ast.SourceLoc,
+    source_loc: SourceLoc,
 };
 
 pub const Error = error{
@@ -62,7 +63,7 @@ const Value = union(enum) {
 
         const Data = union(enum) {
             none,
-            name: Ast.Name,
+            name: Name,
         };
     };
 
@@ -127,7 +128,7 @@ const Variable = struct {
     is_type_alias: bool = false,
 };
 
-fn checkRepresentability(self: *Sema, source_value: Value, destination_type: Type, source_loc: Ast.SourceLoc) Error!void {
+fn checkRepresentability(self: *Sema, source_value: Value, destination_type: Type, source_loc: SourceLoc) Error!void {
     const source_type = source_value.getType();
 
     if (!source_value.canImplicitCast(destination_type)) {
@@ -161,7 +162,7 @@ fn checkRepresentability(self: *Sema, source_value: Value, destination_type: Typ
     }
 }
 
-fn checkIntOrFloat(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {
+fn checkIntOrFloat(self: *Sema, provided_type: Type, source_loc: SourceLoc) Error!void {
     if (!provided_type.isIntOrFloat()) {
         var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
@@ -172,7 +173,7 @@ fn checkIntOrFloat(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) 
     }
 }
 
-fn checkIntOrFloatOrPointer(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {
+fn checkIntOrFloatOrPointer(self: *Sema, provided_type: Type, source_loc: SourceLoc) Error!void {
     if (!provided_type.isIntOrFloatOrPointer()) {
         var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
@@ -184,7 +185,7 @@ fn checkIntOrFloatOrPointer(self: *Sema, provided_type: Type, source_loc: Ast.So
     }
 }
 
-fn checkInt(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {
+fn checkInt(self: *Sema, provided_type: Type, source_loc: SourceLoc) Error!void {
     if (!provided_type.isInt()) {
         var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
@@ -196,7 +197,7 @@ fn checkInt(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!v
     }
 }
 
-fn checkCanBeCompared(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {
+fn checkCanBeCompared(self: *Sema, provided_type: Type, source_loc: SourceLoc) Error!void {
     if (provided_type.getPointer()) |pointer| {
         if (pointer.size == .many) {
             var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
@@ -210,7 +211,7 @@ fn checkCanBeCompared(self: *Sema, provided_type: Type, source_loc: Ast.SourceLo
     }
 }
 
-fn reportIncompatibleTypes(self: *Sema, lhs: Type, rhs: Type, source_loc: Ast.SourceLoc) Error!void {
+fn reportIncompatibleTypes(self: *Sema, lhs: Type, rhs: Type, source_loc: SourceLoc) Error!void {
     var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
     try error_message_buf.writer(self.allocator).print("'{}' is not compatible with '{}'", .{ lhs, rhs });
@@ -220,7 +221,7 @@ fn reportIncompatibleTypes(self: *Sema, lhs: Type, rhs: Type, source_loc: Ast.So
     return error.MismatchedTypes;
 }
 
-fn reportNotDeclared(self: *Sema, name: Ast.Name) Error!void {
+fn reportNotDeclared(self: *Sema, name: Name) Error!void {
     var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
     try error_message_buf.writer(self.allocator).print("'{s}' is not declared", .{name.buffer});
@@ -230,7 +231,7 @@ fn reportNotDeclared(self: *Sema, name: Ast.Name) Error!void {
     return error.Undeclared;
 }
 
-fn reportRedeclaration(self: *Sema, name: Ast.Name) Error!void {
+fn reportRedeclaration(self: *Sema, name: Name) Error!void {
     var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
     try error_message_buf.writer(self.allocator).print("redeclaration of '{s}'", .{name.buffer});
@@ -240,7 +241,7 @@ fn reportRedeclaration(self: *Sema, name: Ast.Name) Error!void {
     return error.Redeclared;
 }
 
-fn reportTypeNotDeclared(self: *Sema, name: Ast.Name) Error!void {
+fn reportTypeNotDeclared(self: *Sema, name: Name) Error!void {
     var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
     try error_message_buf.writer(self.allocator).print("type '{s}' is not declared", .{name.buffer});
@@ -250,7 +251,7 @@ fn reportTypeNotDeclared(self: *Sema, name: Ast.Name) Error!void {
     return error.Undeclared;
 }
 
-fn reportTypeNotExpression(self: *Sema, name: Ast.Name) Error!void {
+fn reportTypeNotExpression(self: *Sema, name: Name) Error!void {
     var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
     try error_message_buf.writer(self.allocator).print("'{s}' is a type not an expression", .{name.buffer});
@@ -260,7 +261,7 @@ fn reportTypeNotExpression(self: *Sema, name: Ast.Name) Error!void {
     return error.Undeclared;
 }
 
-fn reportNotPointer(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {
+fn reportNotPointer(self: *Sema, provided_type: Type, source_loc: SourceLoc) Error!void {
     var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
     try error_message_buf.writer(self.allocator).print("'{}' is not a pointer", .{provided_type});
@@ -270,7 +271,7 @@ fn reportNotPointer(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc)
     return error.MismatchedTypes;
 }
 
-fn reportNotIndexable(self: *Sema, provided_type: Type, source_loc: Ast.SourceLoc) Error!void {
+fn reportNotIndexable(self: *Sema, provided_type: Type, source_loc: SourceLoc) Error!void {
     var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
     try error_message_buf.writer(self.allocator).print("'{}' does not support indexing", .{provided_type});
@@ -280,11 +281,17 @@ fn reportNotIndexable(self: *Sema, provided_type: Type, source_loc: Ast.SourceLo
     return error.UnexpectedType;
 }
 
-pub fn init(allocator: std.mem.Allocator, env: Compilation.Environment, hir: Hir) Sema {
+pub fn init(allocator: std.mem.Allocator, env: Compilation.Environment, hir: Hir) std.mem.Allocator.Error!Sema {
+    var lir: Lir = .{};
+
+    // Lir instructions are always less than or equal to the Hir instructions length
+    try lir.instructions.ensureTotalCapacity(allocator, hir.instructions.items.len);
+
     return Sema{
         .allocator = allocator,
         .env = env,
         .hir = hir,
+        .lir = lir,
     };
 }
 
@@ -293,81 +300,7 @@ pub fn deinit(self: *Sema) void {
     self.scope_stack.deinit(self.allocator);
 }
 
-pub fn analyze(self: *Sema) Error!void {
-    const global_scope = try self.scope_stack.addOne(self.allocator);
-    global_scope.* = .{};
-    self.scope = global_scope;
-
-    try self.putBuiltinConstants();
-
-    for (self.hir.instructions.items) |hir_instruction| {
-        try self.analyzeInstruction(hir_instruction);
-    }
-}
-
-fn analyzeSubType(self: *Sema, hir_subtype: Ast.SubType) Error!Type {
-    switch (hir_subtype) {
-        .name => |name| {
-            if (self.scope.get(name.buffer)) |variable| {
-                if (variable.is_type_alias) {
-                    return variable.symbol.type;
-                }
-            }
-
-            try self.reportTypeNotDeclared(name);
-
-            unreachable;
-        },
-
-        .function => |function| {
-            const parameter_types = try self.allocator.alloc(Type, function.parameter_subtypes.len);
-
-            for (function.parameter_subtypes, 0..) |parameter_subtype, i| {
-                parameter_types[i] = try self.analyzeSubType(parameter_subtype);
-            }
-
-            const return_type = try self.analyzeSubType(function.return_subtype.*);
-
-            const return_type_on_heap = try self.allocator.create(Type);
-            return_type_on_heap.* = return_type;
-
-            return .{
-                .function = .{
-                    .parameter_types = parameter_types,
-                    .return_type = return_type_on_heap,
-                },
-            };
-        },
-
-        .pointer => |pointer| {
-            const child_type = try self.analyzeSubType(pointer.child_subtype.*);
-
-            const child_type_on_heap = try self.allocator.create(Type);
-            child_type_on_heap.* = child_type;
-
-            return .{
-                .pointer = .{
-                    .size = pointer.size,
-                    .is_const = pointer.is_const,
-                    .is_local = pointer.is_local,
-                    .child_type = child_type_on_heap,
-                },
-            };
-        },
-
-        .pure => |pure_type| return pure_type,
-    }
-}
-
-fn analyzeSubSymbol(self: *Sema, subsymbol: Hir.SubSymbol) Error!Symbol {
-    return Symbol{
-        .name = subsymbol.name,
-        .type = try self.analyzeSubType(subsymbol.subtype),
-        .linkage = subsymbol.linkage,
-    };
-}
-
-fn putBuiltinConstants(self: *Sema) Error!void {
+fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
     try self.scope.ensureTotalCapacity(self.allocator, 64);
 
     self.scope.putAssumeCapacity("true", .{
@@ -594,9 +527,84 @@ fn putBuiltinConstants(self: *Sema) Error!void {
     });
 }
 
-fn analyzeInstruction(self: *Sema, hir_instruction: Hir.Instruction) Error!void {
-    switch (hir_instruction) {
+pub fn analyze(self: *Sema) Error!void {
+    const global_scope = try self.scope_stack.addOne(self.allocator);
+    global_scope.* = .{};
+    self.scope = global_scope;
+
+    try self.putBuiltinConstants();
+
+    for (self.hir.instructions.items) |instruction| {
+        try self.analyzeInstruction(instruction);
+    }
+}
+
+fn analyzeSubType(self: *Sema, subtype: Hir.SubType) Error!Type {
+    switch (subtype) {
+        .name => |name| {
+            if (self.scope.get(name.buffer)) |variable| {
+                if (variable.is_type_alias) {
+                    return variable.symbol.type;
+                }
+            }
+
+            try self.reportTypeNotDeclared(name);
+
+            unreachable;
+        },
+
+        .function => |function| {
+            const parameter_types = try self.allocator.alloc(Type, function.parameter_subtypes.len);
+
+            for (function.parameter_subtypes, 0..) |parameter_subtype, i| {
+                parameter_types[i] = try self.analyzeSubType(parameter_subtype);
+            }
+
+            const return_type = try self.analyzeSubType(function.return_subtype.*);
+
+            const return_type_on_heap = try self.allocator.create(Type);
+            return_type_on_heap.* = return_type;
+
+            return .{
+                .function = .{
+                    .parameter_types = parameter_types,
+                    .return_type = return_type_on_heap,
+                },
+            };
+        },
+
+        .pointer => |pointer| {
+            const child_type = try self.analyzeSubType(pointer.child_subtype.*);
+
+            const child_type_on_heap = try self.allocator.create(Type);
+            child_type_on_heap.* = child_type;
+
+            return .{
+                .pointer = .{
+                    .size = pointer.size,
+                    .is_const = pointer.is_const,
+                    .is_local = pointer.is_local,
+                    .child_type = child_type_on_heap,
+                },
+            };
+        },
+
+        .pure => |pure_type| return pure_type,
+    }
+}
+
+fn analyzeSubSymbol(self: *Sema, subsymbol: Hir.SubSymbol) Error!Symbol {
+    return Symbol{
+        .name = subsymbol.name,
+        .type = try self.analyzeSubType(subsymbol.subtype),
+        .linkage = subsymbol.linkage,
+    };
+}
+
+fn analyzeInstruction(self: *Sema, instruction: Hir.Instruction) Error!void {
+    switch (instruction) {
         .duplicate => try self.analyzeDuplicate(),
+        .reverse => |count| try self.analyzeReverse(count),
         .pop => try self.analyzePop(),
 
         .string => |string| try self.analyzeString(string),
@@ -612,9 +620,9 @@ fn analyzeInstruction(self: *Sema, hir_instruction: Hir.Instruction) Error!void 
         .bit_or => |source_loc| try self.analyzeBitwiseArithmetic(.bit_or, source_loc),
         .bit_xor => |source_loc| try self.analyzeBitwiseArithmetic(.bit_xor, source_loc),
 
-        .read => |source_loc| try self.analyzeRead(source_loc),
         .write => |source_loc| try self.analyzeWrite(source_loc),
-        .offset => |source_loc| try self.analyzeOffset(source_loc),
+        .read => |source_loc| try self.analyzeRead(source_loc),
+        .get_element_ptr => |source_loc| try self.analyzeGetElementPtr(source_loc),
         .reference => |source_loc| try self.analyzeReference(source_loc),
 
         .add => |source_loc| try self.analyzeArithmetic(.add, source_loc),
@@ -633,9 +641,9 @@ fn analyzeInstruction(self: *Sema, hir_instruction: Hir.Instruction) Error!void 
 
         .call => |call| try self.analyzeCall(call),
 
-        .function => |function| try self.analyzeFunction(function),
+        .function => |subsymbol| try self.analyzeFunction(subsymbol),
 
-        .parameters => try self.analyzeParameters(),
+        .parameters => |subsymbols| try self.analyzeParameters(subsymbols),
 
         .constant => |subsymbol| try self.analyzeConstant(false, subsymbol),
         .constant_infer => |subsymbol| try self.analyzeConstant(true, subsymbol),
@@ -657,14 +665,19 @@ fn analyzeInstruction(self: *Sema, hir_instruction: Hir.Instruction) Error!void 
         .start_scope => try self.modifyScope(true),
         .end_scope => try self.modifyScope(false),
 
-        .ret => try self.analyzeReturn(true),
-        .ret_void => try self.analyzeReturn(false),
+        .ret => |source_loc| try self.analyzeReturn(true, source_loc),
+        .ret_void => |source_loc| try self.analyzeReturn(false, source_loc),
     }
 }
 
 fn analyzeDuplicate(self: *Sema) Error!void {
     try self.stack.append(self.allocator, self.stack.getLast());
     try self.lir.instructions.append(self.allocator, .duplicate);
+}
+
+fn analyzeReverse(self: *Sema, count: u32) Error!void {
+    std.mem.reverse(Value, self.stack.items[self.stack.items.len - count ..]);
+    try self.lir.instructions.append(self.allocator, .{ .reverse = count });
 }
 
 fn analyzePop(self: *Sema) Error!void {
@@ -693,7 +706,7 @@ fn analyzeFloat(self: *Sema, float: f64) Error!void {
     try self.lir.instructions.append(self.allocator, .{ .float = float });
 }
 
-fn analyzeNegate(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
+fn analyzeNegate(self: *Sema, source_loc: SourceLoc) Error!void {
     const rhs = self.stack.pop();
 
     if (!rhs.getType().canBeNegative()) {
@@ -734,7 +747,7 @@ const NotOperation = enum {
     bit,
 };
 
-fn analyzeNot(self: *Sema, comptime operand: NotOperation, source_loc: Ast.SourceLoc) Error!void {
+fn analyzeNot(self: *Sema, comptime operand: NotOperation, source_loc: SourceLoc) Error!void {
     const rhs = self.stack.pop();
     const rhs_type = rhs.getType();
 
@@ -773,7 +786,7 @@ const BitwiseArithmeticOperation = enum {
     bit_xor,
 };
 
-fn analyzeBitwiseArithmetic(self: *Sema, comptime operation: BitwiseArithmeticOperation, source_loc: Ast.SourceLoc) Error!void {
+fn analyzeBitwiseArithmetic(self: *Sema, comptime operation: BitwiseArithmeticOperation, source_loc: SourceLoc) Error!void {
     const rhs = self.stack.pop();
     const lhs = self.stack.pop();
 
@@ -834,26 +847,7 @@ fn analyzeBitwiseArithmetic(self: *Sema, comptime operation: BitwiseArithmeticOp
     }
 }
 
-fn analyzeRead(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
-    const rhs = self.stack.pop();
-    const rhs_type = rhs.getType();
-
-    const rhs_pointer = rhs_type.getPointer() orelse return self.reportNotPointer(rhs_type, source_loc);
-
-    if (rhs_pointer.child_type.* == .function) {
-        self.error_info = .{ .message = "cannot read from a function pointer, it can only be called", .source_loc = source_loc };
-
-        return error.UnexpectedFunctionPointer;
-    }
-
-    const result_type = rhs_pointer.child_type.*;
-
-    try self.lir.instructions.append(self.allocator, .{ .read = result_type });
-
-    try self.stack.append(self.allocator, .{ .runtime = .{ .type = result_type } });
-}
-
-fn analyzeWrite(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
+fn analyzeWrite(self: *Sema, source_loc: SourceLoc) Error!void {
     // Intentially swapped the order of operands so it can work with duplicate (i.e value first then duplicate then pointer)
     const lhs = self.stack.pop();
     const lhs_type = lhs.getType();
@@ -873,7 +867,26 @@ fn analyzeWrite(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
     try self.lir.instructions.append(self.allocator, .write);
 }
 
-fn analyzeOffset(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
+fn analyzeRead(self: *Sema, source_loc: SourceLoc) Error!void {
+    const rhs = self.stack.pop();
+    const rhs_type = rhs.getType();
+
+    const rhs_pointer = rhs_type.getPointer() orelse return self.reportNotPointer(rhs_type, source_loc);
+
+    if (rhs_pointer.child_type.* == .function) {
+        self.error_info = .{ .message = "cannot read from a function pointer, it can only be called", .source_loc = source_loc };
+
+        return error.UnexpectedFunctionPointer;
+    }
+
+    const result_type = rhs_pointer.child_type.*;
+
+    try self.lir.instructions.append(self.allocator, .{ .read = result_type });
+
+    try self.stack.append(self.allocator, .{ .runtime = .{ .type = result_type } });
+}
+
+fn analyzeGetElementPtr(self: *Sema, source_loc: SourceLoc) Error!void {
     const rhs = self.stack.pop();
 
     const lhs = self.stack.pop();
@@ -887,15 +900,12 @@ fn analyzeOffset(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
 
     try self.checkRepresentability(rhs, usize_type, source_loc);
 
-    try self.lir.instructions.append(self.allocator, .{ .int = lhs_pointer.child_type.byteSize(self.env) });
-    try self.lir.instructions.append(self.allocator, .mul);
-
-    try self.lir.instructions.append(self.allocator, .add);
+    try self.lir.instructions.append(self.allocator, .{ .get_element_ptr = lhs_pointer.child_type.* });
 
     try self.stack.append(self.allocator, .{ .runtime = .{ .type = lhs_type } });
 }
 
-fn analyzeReference(self: *Sema, source_loc: Ast.SourceLoc) Error!void {
+fn analyzeReference(self: *Sema, source_loc: SourceLoc) Error!void {
     const rhs = self.stack.pop();
 
     if (!(rhs == .runtime and rhs.runtime.data == .name)) {
@@ -940,7 +950,7 @@ const ArithmeticOperation = enum {
     div,
 };
 
-fn analyzeArithmetic(self: *Sema, comptime operation: ArithmeticOperation, source_loc: Ast.SourceLoc) Error!void {
+fn analyzeArithmetic(self: *Sema, comptime operation: ArithmeticOperation, source_loc: SourceLoc) Error!void {
     const rhs = self.stack.pop();
     const lhs = self.stack.pop();
 
@@ -1061,7 +1071,7 @@ const ComparisonOperation = enum {
     eql,
 };
 
-fn analyzeComparison(self: *Sema, comptime operation: ComparisonOperation, source_loc: Ast.SourceLoc) Error!void {
+fn analyzeComparison(self: *Sema, comptime operation: ComparisonOperation, source_loc: SourceLoc) Error!void {
     const rhs = self.stack.pop();
     const lhs = self.stack.pop();
 
@@ -1168,7 +1178,7 @@ const BitwiseShiftDirection = enum {
     right,
 };
 
-fn analyzeBitwiseShift(self: *Sema, comptime direction: BitwiseShiftDirection, source_loc: Ast.SourceLoc) Error!void {
+fn analyzeBitwiseShift(self: *Sema, comptime direction: BitwiseShiftDirection, source_loc: SourceLoc) Error!void {
     const rhs = self.stack.pop();
     const lhs = self.stack.pop();
 
@@ -1210,11 +1220,11 @@ fn analyzeBitwiseShift(self: *Sema, comptime direction: BitwiseShiftDirection, s
     }
 }
 
-fn analyzeAssembly(self: *Sema, assembly: Ast.Node.Expr.Assembly) Error!void {
+fn analyzeAssembly(self: *Sema, assembly: Hir.Instruction.Assembly) Error!void {
     const input_constraints = try self.allocator.alloc([]const u8, assembly.input_constraints.len);
 
-    for (assembly.input_constraints, 0..) |input_constraint, i| {
-        input_constraints[i] = input_constraint.register;
+    for (assembly.input_constraints, 0..) |register, i| {
+        input_constraints[i] = register;
 
         _ = self.stack.pop();
     }
@@ -1280,50 +1290,39 @@ fn analyzeCall(self: *Sema, call: Hir.Instruction.Call) Error!void {
     }
 }
 
-fn analyzeFunction(self: *Sema, function: Hir.Instruction.Function) Error!void {
-    if (self.scope.get(function.prototype.name.buffer) != null) return self.reportRedeclaration(function.prototype.name);
+fn analyzeFunction(self: *Sema, subsymbol: Hir.SubSymbol) Error!void {
+    const symbol = try self.analyzeSubSymbol(subsymbol);
+    if (self.scope.get(symbol.name.buffer) != null) return self.reportRedeclaration(symbol.name);
 
-    self.maybe_hir_function = function;
-
-    const function_type = try self.analyzeSubType(function.subtype);
+    self.maybe_function = symbol.type;
 
     try self.lir.instructions.append(self.allocator, .{
         .function = .{
-            .name = function.prototype.name.buffer,
-            .type = function_type,
+            .name = symbol.name.buffer,
+            .type = symbol.type,
         },
     });
 
-    try self.scope.put(self.allocator, function.prototype.name.buffer, .{
-        .symbol = .{
-            .name = function.prototype.name,
-            .type = function_type,
-            .linkage = .global,
-        },
-    });
+    try self.scope.put(self.allocator, symbol.name.buffer, .{ .symbol = symbol });
 }
 
-fn analyzeParameters(self: *Sema) Error!void {
-    var parameter_symbols: std.ArrayListUnmanaged(Symbol) = .{};
+fn analyzeParameters(self: *Sema, subsymbols: []const Hir.SubSymbol) Error!void {
+    var symbols: std.ArrayListUnmanaged(Symbol) = .{};
+    try symbols.ensureTotalCapacity(self.allocator, subsymbols.len);
 
-    try parameter_symbols.ensureTotalCapacity(self.allocator, self.maybe_hir_function.?.prototype.parameters.len);
+    for (subsymbols) |subsymbol| {
+        const symbol = try self.analyzeSubSymbol(subsymbol);
+        if (self.scope.get(symbol.name.buffer) != null) return self.reportRedeclaration(symbol.name);
 
-    for (self.maybe_hir_function.?.prototype.parameters) |parameter| {
-        const parameter_symbol: Symbol = .{
-            .name = parameter.name,
-            .type = try self.analyzeSubType(parameter.expected_subtype),
-            .linkage = .local,
-        };
+        symbols.appendAssumeCapacity(symbol);
 
-        parameter_symbols.appendAssumeCapacity(parameter_symbol);
-
-        try self.scope.put(self.allocator, parameter_symbol.name.buffer, .{
+        try self.scope.put(self.allocator, symbol.name.buffer, .{
+            .symbol = symbol,
             .is_const = true,
-            .symbol = parameter_symbol,
         });
     }
 
-    try self.lir.instructions.append(self.allocator, .{ .parameters = parameter_symbols.items });
+    try self.lir.instructions.append(self.allocator, .{ .parameters = try symbols.toOwnedSlice(self.allocator) });
 }
 
 fn analyzeConstant(self: *Sema, infer: bool, subsymbol: Hir.SubSymbol) Error!void {
@@ -1409,7 +1408,7 @@ fn analyzeTypeAlias(self: *Sema, subsymbol: Hir.SubSymbol) Error!void {
     });
 }
 
-fn analyzeSet(self: *Sema, name: Ast.Name) Error!void {
+fn analyzeSet(self: *Sema, name: Name) Error!void {
     const variable = self.scope.getPtr(name.buffer) orelse return self.reportNotDeclared(name);
     if (variable.is_type_alias) return self.reportTypeNotExpression(name);
 
@@ -1421,20 +1420,20 @@ fn analyzeSet(self: *Sema, name: Ast.Name) Error!void {
         self.error_info = .{ .message = "cannot mutate the value of a constant", .source_loc = name.source_loc };
 
         return error.UnexpectedMutation;
-    } else if (variable.symbol.linkage == .global and value == .runtime and self.maybe_hir_function == null) {
+    } else if (variable.symbol.linkage == .global and value == .runtime and self.maybe_function == null) {
         self.error_info = .{ .message = "expected global variable initializer to be compile time known", .source_loc = name.source_loc };
 
         return error.ExpectedCompiletimeConstant;
     } else {
         try self.checkRepresentability(value, variable.symbol.type, name.source_loc);
 
-        if (self.maybe_hir_function != null) {
+        if (self.maybe_function != null) {
             try self.lir.instructions.append(self.allocator, .{ .set = name.buffer });
         }
     }
 }
 
-fn analyzeGet(self: *Sema, name: Ast.Name) Error!void {
+fn analyzeGet(self: *Sema, name: Name) Error!void {
     const variable = self.scope.get(name.buffer) orelse return self.reportNotDeclared(name);
     if (variable.is_type_alias) return self.reportTypeNotExpression(name);
 
@@ -1513,16 +1512,16 @@ fn modifyScope(self: *Sema, start: bool) Error!void {
     }
 }
 
-fn analyzeReturn(self: *Sema, with_value: bool) Error!void {
-    std.debug.assert(self.maybe_hir_function != null);
+fn analyzeReturn(self: *Sema, with_value: bool, source_loc: SourceLoc) Error!void {
+    std.debug.assert(self.maybe_function != null);
 
-    const return_type = try self.analyzeSubType(self.maybe_hir_function.?.prototype.return_subtype);
+    const return_type = self.maybe_function.?.pointer.child_type.*.function.return_type.*;
 
     if (with_value) {
-        try self.checkRepresentability(self.stack.pop(), return_type, self.maybe_hir_function.?.prototype.name.source_loc);
+        try self.checkRepresentability(self.stack.pop(), return_type, source_loc);
     } else {
         if (return_type != .void) {
-            self.error_info = .{ .message = "function with non void return type returns void", .source_loc = self.maybe_hir_function.?.prototype.name.source_loc };
+            self.error_info = .{ .message = "function with non void return type returns void", .source_loc = source_loc };
 
             return error.ExpectedExplicitReturn;
         }
