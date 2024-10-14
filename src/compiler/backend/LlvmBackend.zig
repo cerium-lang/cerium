@@ -87,8 +87,6 @@ pub fn emit(self: *LlvmBackend, output_file_path: [:0]const u8, output_kind: Com
 
     _ = c.LLVMSetTarget(self.module, target_triple);
 
-    c.LLVMDumpModule(self.module);
-
     var llvm_target: c.LLVMTargetRef = undefined;
 
     _ = c.LLVMGetTargetFromTriple(target_triple, &llvm_target, null);
