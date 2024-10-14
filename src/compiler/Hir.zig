@@ -145,8 +145,9 @@ pub const Instruction = union(enum) {
 
     pub const Assembly = struct {
         content: []const u8,
-        input_constraints: []const []const u8,
         output_constraint: ?OutputConstraint,
+        input_constraints: []const []const u8,
+        clobbers: []const []const u8,
         source_loc: SourceLoc,
 
         pub const OutputConstraint = struct {
@@ -944,14 +945,9 @@ pub const Parser = struct {
 
         var input_constraints: []const []const u8 = &.{};
         var output_constraint: ?Instruction.Assembly.OutputConstraint = null;
+        var clobbers: []const []const u8 = &.{};
 
         while (!self.eatToken(.close_brace)) {
-            if (self.peekToken().tag == .eof) {
-                self.error_info = .{ .message = "expected a '}'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
-
-                return error.UnexpectedToken;
-            }
-
             if (self.peekToken().tag != .string_literal) {
                 self.error_info = .{ .message = "expected a valid string", .source_loc = self.tokenSourceLoc(self.peekToken()) };
 
@@ -962,20 +958,27 @@ pub const Parser = struct {
 
             try content.appendSlice(self.allocator, self.hir.instructions.pop().string);
 
-            var parsed_input_constraints = false;
-
             if (self.eatToken(.colon)) {
-                input_constraints = try self.parseAssemblyInputConstraints();
-                parsed_input_constraints = true;
+                if (self.peekToken().tag != .colon) {
+                    output_constraint = try self.parseAssemblyOutputConstraint();
+                }
             }
 
             if (self.eatToken(.colon)) {
-                output_constraint = try self.parseAssemblyOutputConstraint();
+                if (self.peekToken().tag != .colon) {
+                    input_constraints = try self.parseAssemblyInputConstraints();
+                }
+            }
+
+            if (self.eatToken(.colon)) {
+                if (self.peekToken().tag != .close_brace) {
+                    clobbers = try self.parseAssemblyClobbers();
+                }
             }
 
             try content.append(self.allocator, '\n');
 
-            if (self.peekToken().tag != .close_brace and parsed_input_constraints) {
+            if (self.peekToken().tag != .close_brace and (self.peekToken().tag != .colon or self.peekToken().tag != .string_literal)) {
                 self.error_info = .{ .message = "expected a '}'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
 
                 return error.UnexpectedToken;
@@ -987,6 +990,7 @@ pub const Parser = struct {
                 .content = try content.toOwnedSlice(self.allocator),
                 .input_constraints = input_constraints,
                 .output_constraint = output_constraint,
+                .clobbers = clobbers,
                 .source_loc = self.tokenSourceLoc(asm_keyword_token),
             },
         });
@@ -1067,6 +1071,30 @@ pub const Parser = struct {
             .register = register,
             .subtype = subtype,
         };
+    }
+
+    fn parseAssemblyClobbers(self: *Parser) Error![][]const u8 {
+        var clobbers = std.ArrayList([]const u8).init(self.allocator);
+
+        while (self.peekToken().tag != .eof and self.peekToken().tag != .close_brace) {
+            if (self.peekToken().tag != .string_literal) {
+                self.error_info = .{ .message = "expected a valid string", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                return error.UnexpectedToken;
+            }
+
+            try self.parseString();
+
+            try clobbers.append(self.hir.instructions.pop().string);
+
+            if (!self.eatToken(.comma) and self.peekToken().tag != .close_brace) {
+                self.error_info = .{ .message = "expected a ','", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                return error.UnexpectedToken;
+            }
+        }
+
+        return clobbers.toOwnedSlice();
     }
 
     fn parseParentheses(self: *Parser) Error!void {

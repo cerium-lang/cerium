@@ -87,6 +87,8 @@ pub fn emit(self: *LlvmBackend, output_file_path: [:0]const u8, output_kind: Com
 
     _ = c.LLVMSetTarget(self.module, target_triple);
 
+    c.LLVMDumpModule(self.module);
+
     var llvm_target: c.LLVMTargetRef = undefined;
 
     _ = c.LLVMGetTargetFromTriple(target_triple, &llvm_target, null);
@@ -417,18 +419,24 @@ fn renderAssembly(self: *LlvmBackend, assembly: Lir.Instruction.Assembly) Error!
 
     if (assembly.output_constraint) |output_constraint| {
         try assembly_constraints.appendSlice(self.allocator, output_constraint.register);
-        try assembly_constraints.append(self.allocator, ',');
+        if (assembly.input_constraints.len != 0) try assembly_constraints.append(self.allocator, ',');
     }
 
     for (assembly.input_constraints, 0..) |register, i| {
         assembly_inputs[i] = self.stack.pop();
 
         try assembly_constraints.appendSlice(self.allocator, register);
-        if (i != assembly.input_constraints.len - 1) try assembly_constraints.append(self.allocator, ',');
+        if (assembly.clobbers.len != 0 or i != assembly.input_constraints.len - 1) try assembly_constraints.append(self.allocator, ',');
+    }
+
+    for (assembly.clobbers, 0..) |clobber, i| {
+        try assembly_constraints.writer(self.allocator).print("~{{{s}}}", .{clobber});
+        if (i != assembly.clobbers.len - 1) try assembly_constraints.append(self.allocator, ',');
     }
 
     if (self.target.cpu.arch.isX86()) {
-        try assembly_constraints.appendSlice(self.allocator, ",~{dirflag},~{fpsr},~{flags}");
+        if (assembly_constraints.items.len != 0) try assembly_constraints.append(self.allocator, ',');
+        try assembly_constraints.appendSlice(self.allocator, "~{dirflag},~{fpsr},~{flags}");
     }
 
     const assembly_parameter_types = try self.allocator.alloc(c.LLVMTypeRef, assembly.input_constraints.len);

@@ -1223,13 +1223,7 @@ fn analyzeBitwiseShift(self: *Sema, comptime direction: BitwiseShiftDirection, s
 }
 
 fn analyzeAssembly(self: *Sema, assembly: Hir.Instruction.Assembly) Error!void {
-    const input_constraints = try self.allocator.alloc([]const u8, assembly.input_constraints.len);
-
-    for (assembly.input_constraints, 0..) |register, i| {
-        input_constraints[i] = register;
-
-        _ = self.stack.pop();
-    }
+    self.stack.shrinkRetainingCapacity(self.stack.items.len - assembly.input_constraints.len);
 
     if (assembly.output_constraint) |output_constraint| {
         const output_constraint_type = try self.analyzeSubType(output_constraint.subtype);
@@ -1237,11 +1231,12 @@ fn analyzeAssembly(self: *Sema, assembly: Hir.Instruction.Assembly) Error!void {
         try self.lir.instructions.append(self.allocator, .{
             .assembly = .{
                 .content = assembly.content,
-                .input_constraints = input_constraints,
+                .input_constraints = assembly.input_constraints,
                 .output_constraint = .{
                     .register = output_constraint.register,
                     .type = output_constraint_type,
                 },
+                .clobbers = assembly.clobbers,
             },
         });
 
@@ -1250,8 +1245,9 @@ fn analyzeAssembly(self: *Sema, assembly: Hir.Instruction.Assembly) Error!void {
         try self.lir.instructions.append(self.allocator, .{
             .assembly = .{
                 .content = assembly.content,
-                .input_constraints = input_constraints,
+                .input_constraints = assembly.input_constraints,
                 .output_constraint = null,
+                .clobbers = assembly.clobbers,
             },
         });
 

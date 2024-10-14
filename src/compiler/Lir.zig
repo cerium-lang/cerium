@@ -98,8 +98,9 @@ pub const Instruction = union(enum) {
 
     pub const Assembly = struct {
         content: []const u8,
-        input_constraints: []const []const u8,
         output_constraint: ?OutputConstraint,
+        input_constraints: []const []const u8,
+        clobbers: []const []const u8,
 
         pub const OutputConstraint = struct {
             register: []const u8,

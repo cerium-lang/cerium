@@ -61,4 +61,4 @@ A general-purpose programming language that aims to be the most sane
 - Inline Assembly
     - [x] Add support for input constraints
     - [x] Add support for output constraints
-    - [ ] Add support for clobbers
+    - [x] Add support for clobbers
