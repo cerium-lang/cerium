@@ -892,7 +892,7 @@ fn analyzeGetElementPtr(self: *Sema, source_loc: SourceLoc) Error!void {
     const lhs = self.stack.pop();
     const lhs_type = lhs.getType();
 
-    const lhs_pointer = lhs_type.getPointer() orelse return self.reportNotIndexable(lhs_type, source_loc);
+    var lhs_pointer = lhs_type.getPointer() orelse return self.reportNotIndexable(lhs_type, source_loc);
 
     if (lhs_pointer.size != .many) return try self.reportNotIndexable(lhs_type, source_loc);
 
@@ -902,7 +902,9 @@ fn analyzeGetElementPtr(self: *Sema, source_loc: SourceLoc) Error!void {
 
     try self.lir.instructions.append(self.allocator, .{ .get_element_ptr = lhs_pointer.child_type.* });
 
-    try self.stack.append(self.allocator, .{ .runtime = .{ .type = lhs_type } });
+    lhs_pointer.size = .one;
+
+    try self.stack.append(self.allocator, .{ .runtime = .{ .type = .{ .pointer = lhs_pointer } } });
 }
 
 fn analyzeReference(self: *Sema, source_loc: SourceLoc) Error!void {
