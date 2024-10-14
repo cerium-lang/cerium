@@ -10,6 +10,7 @@ fn write(fd u32, buf [*]const u8, count u64) u64 {
           "{rdi}" (fd),
           "{rsi}" (buf),
           "{rdx}" (count),
+        : "rcx", "r11", "memory"
     };
 }
 
