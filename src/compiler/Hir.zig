@@ -1251,6 +1251,12 @@ pub const Parser = struct {
 
         try self.parseExpr(.subscript);
 
+        if (!self.eatToken(.close_bracket)) {
+            self.error_info = .{ .message = "expected a ']'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+            return error.UnexpectedToken;
+        }
+
         try self.hir.instructions.append(self.allocator, .{ .get_element_ptr = source_loc });
         try self.hir.instructions.append(self.allocator, .{ .read = source_loc });
     }
