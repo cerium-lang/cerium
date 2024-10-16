@@ -47,6 +47,7 @@ pub const Tag = enum(u8) {
     keyword_break,
     keyword_continue,
     keyword_asm,
+    keyword_as,
     keyword_return,
 };
 
@@ -67,5 +68,6 @@ pub const keywords = std.StaticStringMap(Tag).initComptime(.{
     .{ "break", .keyword_break },
     .{ "continue", .keyword_continue },
     .{ "asm", .keyword_asm },
+    .{ "as", .keyword_as },
     .{ "return", .keyword_return },
 });

@@ -98,7 +98,7 @@ pub const Type = union(enum) {
     }
 
     pub fn isLocalPointer(self: Type) bool {
-        return self == .pointer and self == .pointer and self.pointer.is_local;
+        return self == .pointer and self.pointer.is_local;
     }
 
     pub fn minInt(self: Type) i128 {
