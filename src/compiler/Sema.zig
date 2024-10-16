@@ -637,6 +637,8 @@ fn analyzeInstruction(self: *Sema, instruction: Hir.Instruction) Error!void {
         .shl => |source_loc| try self.analyzeBitwiseShift(.left, source_loc),
         .shr => |source_loc| try self.analyzeBitwiseShift(.right, source_loc),
 
+        .cast => |cast| try self.analyzeCast(cast),
+
         .assembly => |assembly| try self.analyzeAssembly(assembly),
 
         .call => |call| try self.analyzeCall(call),
@@ -1220,6 +1222,37 @@ fn analyzeBitwiseShift(self: *Sema, comptime direction: BitwiseShiftDirection, s
 
         try self.stack.append(self.allocator, .{ .runtime = .{ .type = lhs_type } });
     }
+}
+
+fn analyzeCast(self: *Sema, cast: Hir.Instruction.Cast) Error!void {
+    const rhs = self.stack.pop();
+
+    const from = rhs.getType();
+    const to = try self.analyzeSubType(cast.to);
+
+    if (to == .void) {
+        self.error_info = .{ .message = "cannot cast 'void' as it is not possible to represent a value of this type", .source_loc = cast.source_loc };
+
+        return error.UnexpectedType;
+    } else if (to == .function) {
+        self.error_info = .{ .message = "cannot cast to a raw function as it should be always wrapped in a pointer", .source_loc = cast.source_loc };
+
+        return error.UnexpectedType;
+    } else if (to == .pointer and from != .pointer) {
+        const usize_type: Type = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.ptrBitWidth() } };
+
+        try self.checkRepresentability(rhs, usize_type, cast.source_loc);
+    } else if (to == .bool) {
+        try self.checkInt(from, cast.source_loc);
+    } else if (from == .bool) {
+        try self.checkInt(to, cast.source_loc);
+    } else if (from.isFloat()) {
+        try self.checkIntOrFloat(to, cast.source_loc);
+    }
+
+    try self.lir.instructions.append(self.allocator, .{ .cast = .{ .from = from, .to = to } });
+
+    try self.stack.append(self.allocator, .{ .runtime = .{ .type = to } });
 }
 
 fn analyzeAssembly(self: *Sema, assembly: Hir.Instruction.Assembly) Error!void {

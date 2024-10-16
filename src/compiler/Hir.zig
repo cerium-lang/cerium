@@ -104,6 +104,8 @@ pub const Instruction = union(enum) {
     shl: SourceLoc,
     /// Shift to right the bits of lhs using rhs offset
     shr: SourceLoc,
+    /// Cast a value to a different type
+    cast: Cast,
     /// Place a machine-specific assembly in the output
     assembly: Assembly,
     /// Call a function pointer on the stack
@@ -142,6 +144,11 @@ pub const Instruction = union(enum) {
     ret: SourceLoc,
     /// Return out of the function without a value
     ret_void: SourceLoc,
+
+    pub const Cast = struct {
+        to: SubType,
+        source_loc: SourceLoc,
+    };
 
     pub const Assembly = struct {
         content: []const u8,
@@ -736,6 +743,7 @@ pub const Parser = struct {
         bit_xor,
         bit_and,
         shift,
+        cast,
         prefix,
         call,
         subscript,
@@ -750,6 +758,7 @@ pub const Parser = struct {
                 .pipe => .bit_or,
                 .caret => .bit_xor,
                 .double_less_than, .double_greater_than => .shift,
+                .keyword_as => .cast,
                 .open_paren => .call,
                 .open_bracket => .subscript,
 
@@ -1164,9 +1173,11 @@ pub const Parser = struct {
             .bang_equal_sign,
             => try self.parseBinaryOperation(),
 
-            .open_bracket => try self.parseSubscript(),
+            .keyword_as => try self.parseCast(),
 
             .open_paren => try self.parseCall(),
+
+            .open_bracket => try self.parseSubscript(),
 
             else => {
                 self.error_info = .{ .message = "expected a statement or an expression", .source_loc = self.tokenSourceLoc(self.peekToken()) };
@@ -1274,19 +1285,12 @@ pub const Parser = struct {
         }
     }
 
-    fn parseSubscript(self: *Parser) Error!void {
+    fn parseCast(self: *Parser) Error!void {
         const source_loc = self.tokenSourceLoc(self.nextToken());
 
-        try self.parseExpr(.subscript);
+        const to = try self.parseSubType();
 
-        if (!self.eatToken(.close_bracket)) {
-            self.error_info = .{ .message = "expected a ']'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
-
-            return error.UnexpectedToken;
-        }
-
-        try self.hir.instructions.append(self.allocator, .{ .get_element_ptr = source_loc });
-        try self.hir.instructions.append(self.allocator, .{ .read = source_loc });
+        try self.hir.instructions.append(self.allocator, .{ .cast = .{ .to = to, .source_loc = source_loc } });
     }
 
     fn parseCall(self: *Parser) Error!void {
@@ -1325,6 +1329,21 @@ pub const Parser = struct {
         }
 
         return count;
+    }
+
+    fn parseSubscript(self: *Parser) Error!void {
+        const source_loc = self.tokenSourceLoc(self.nextToken());
+
+        try self.parseExpr(.subscript);
+
+        if (!self.eatToken(.close_bracket)) {
+            self.error_info = .{ .message = "expected a ']'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+            return error.UnexpectedToken;
+        }
+
+        try self.hir.instructions.append(self.allocator, .{ .get_element_ptr = source_loc });
+        try self.hir.instructions.append(self.allocator, .{ .read = source_loc });
     }
 
     fn parseName(self: *Parser) Error!Name {

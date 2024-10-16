@@ -63,6 +63,8 @@ pub const Instruction = union(enum) {
     shl,
     /// Shift to right the bits of lhs using rhs offset
     shr,
+    /// Cast a value to a different type
+    cast: Cast,
     /// Place a machine-specific assembly in the output
     assembly: Assembly,
     /// Declare function parameters
@@ -95,6 +97,11 @@ pub const Instruction = union(enum) {
     ret,
     /// Return out of the function without a value
     ret_void,
+
+    pub const Cast = struct {
+        from: Type,
+        to: Type,
+    };
 
     pub const Assembly = struct {
         content: []const u8,

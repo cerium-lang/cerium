@@ -308,6 +308,8 @@ pub fn emit(self: *LlvmBackend, output_file_path: [:0]const u8, output_kind: Com
 
     _ = c.LLVMSetTarget(self.module, target_triple);
 
+    c.LLVMDumpModule(self.module);
+
     var llvm_target: c.LLVMTargetRef = undefined;
 
     _ = c.LLVMGetTargetFromTriple(target_triple, &llvm_target, null);
@@ -405,6 +407,8 @@ fn renderInstruction(self: *LlvmBackend, lir_instruction: Lir.Instruction) Error
         .shl => try self.renderBitwiseShift(.left),
         .shr => try self.renderBitwiseShift(.right),
 
+        .cast => |cast| try self.renderCast(cast),
+
         .assembly => |assembly| try self.renderAssembly(assembly),
 
         .call => |function_type| try self.renderCall(function_type),
@@ -452,7 +456,7 @@ fn renderString(self: *LlvmBackend, string: []const u8) Error!void {
 fn renderInt(self: *LlvmBackend, int: i128) Error!void {
     const bits: c_uint = @intFromFloat(@ceil(@log2(@as(f64, @floatFromInt(@abs(int) + 1)))));
     const int_repr: c_ulonglong = @truncate(@as(u128, @bitCast(int)));
-    const int_type = c.LLVMIntTypeInContext(self.context, std.math.clamp(bits, 8, 64));
+    const int_type = c.LLVMIntTypeInContext(self.context, std.mem.alignForward(c_uint, bits, 8));
 
     try self.stack.append(self.allocator, c.LLVMConstInt(int_type, int_repr, @intFromBool(int < 0)));
 }
@@ -627,6 +631,51 @@ fn renderBitwiseShift(self: *LlvmBackend, comptime direction: BitwiseShiftDirect
         switch (direction) {
             .left => c.LLVMBuildShl(self.builder, lhs, rhs, ""),
             .right => c.LLVMBuildAShr(self.builder, lhs, rhs, ""),
+        },
+    );
+}
+
+fn renderCast(self: *LlvmBackend, cast: Lir.Instruction.Cast) Error!void {
+    const cast_value = self.stack.pop();
+    const cast_to = try self.getLlvmType(cast.to);
+
+    try self.stack.append(
+        self.allocator,
+        switch (cast.from) {
+            .int, .ambigiuous_int => switch (cast.to) {
+                .int, .bool => c.LLVMBuildIntCast2(self.builder, cast_value, cast_to, @intFromBool(cast.from.canBeNegative()), ""),
+
+                .float => if (cast.from.canBeNegative())
+                    c.LLVMBuildSIToFP(self.builder, cast_value, cast_to, "")
+                else
+                    c.LLVMBuildUIToFP(self.builder, cast_value, cast_to, ""),
+
+                .pointer => c.LLVMBuildIntToPtr(self.builder, cast_value, cast_to, ""),
+
+                else => unreachable,
+            },
+
+            .float, .ambigiuous_float => switch (cast.to) {
+                .int => if (cast.to.canBeNegative())
+                    c.LLVMBuildFPToSI(self.builder, cast_value, cast_to, "")
+                else
+                    c.LLVMBuildFPToUI(self.builder, cast_value, cast_to, ""),
+
+                .float => c.LLVMBuildFPCast(self.builder, cast_value, cast_to, ""),
+
+                else => unreachable,
+            },
+
+            .pointer => switch (cast.to) {
+                .int => c.LLVMBuildPtrToInt(self.builder, cast_value, cast_to, ""),
+                .pointer => c.LLVMBuildPointerCast(self.builder, cast_value, cast_to, ""),
+                else => unreachable,
+            },
+
+            .bool => c.LLVMBuildZExt(self.builder, cast_value, cast_to, ""),
+
+            .void => unreachable,
+            .function => unreachable,
         },
     );
 }
