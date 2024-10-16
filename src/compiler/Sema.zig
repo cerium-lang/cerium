@@ -1225,10 +1225,12 @@ fn analyzeBitwiseShift(self: *Sema, comptime direction: BitwiseShiftDirection, s
 }
 
 fn analyzeCast(self: *Sema, cast: Hir.Instruction.Cast) Error!void {
-    const rhs = self.stack.pop();
-
-    const from = rhs.getType();
+    const from = self.stack.getLast().getType();
     const to = try self.analyzeSubType(cast.to);
+
+    if (from.eql(to)) return;
+
+    const rhs = self.stack.pop();
 
     if (to == .void) {
         self.error_info = .{ .message = "cannot cast to 'void' as it is not possible to represent a value of this type", .source_loc = cast.source_loc };
