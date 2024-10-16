@@ -1231,11 +1231,11 @@ fn analyzeCast(self: *Sema, cast: Hir.Instruction.Cast) Error!void {
     const to = try self.analyzeSubType(cast.to);
 
     if (to == .void) {
-        self.error_info = .{ .message = "cannot cast 'void' as it is not possible to represent a value of this type", .source_loc = cast.source_loc };
+        self.error_info = .{ .message = "cannot cast to 'void' as it is not possible to represent a value of this type", .source_loc = cast.source_loc };
 
         return error.UnexpectedType;
     } else if (to == .function) {
-        self.error_info = .{ .message = "cannot cast to a raw function as it should be always wrapped in a pointer", .source_loc = cast.source_loc };
+        self.error_info = .{ .message = "cannot cast to a function type as it should be always wrapped in a pointer", .source_loc = cast.source_loc };
 
         return error.UnexpectedType;
     } else if (to == .pointer and from != .pointer) {
