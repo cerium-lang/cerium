@@ -308,8 +308,6 @@ pub fn emit(self: *LlvmBackend, output_file_path: [:0]const u8, output_kind: Com
 
     _ = c.LLVMSetTarget(self.module, target_triple);
 
-    c.LLVMDumpModule(self.module);
-
     var llvm_target: c.LLVMTargetRef = undefined;
 
     _ = c.LLVMGetTargetFromTriple(target_triple, &llvm_target, null);
@@ -455,10 +453,12 @@ fn renderString(self: *LlvmBackend, string: []const u8) Error!void {
 
 fn renderInt(self: *LlvmBackend, int: i128) Error!void {
     const bits: c_uint = @intFromFloat(@ceil(@log2(@as(f64, @floatFromInt(@abs(int) + 1)))));
-    const int_repr: c_ulonglong = @truncate(@as(u128, @bitCast(int)));
-    const int_type = c.LLVMIntTypeInContext(self.context, std.mem.alignForward(c_uint, bits, 8));
+    const bigger_bits = std.mem.alignForward(c_uint, bits + 1, 8);
 
-    try self.stack.append(self.allocator, c.LLVMConstInt(int_type, int_repr, @intFromBool(int < 0)));
+    const int_repr: c_ulonglong = @truncate(@as(u128, @bitCast(int)));
+    const int_type = c.LLVMIntTypeInContext(self.context, bigger_bits);
+
+    try self.stack.append(self.allocator, c.LLVMConstInt(int_type, int_repr, 1));
 }
 
 fn renderFloat(self: *LlvmBackend, float: f64) Error!void {

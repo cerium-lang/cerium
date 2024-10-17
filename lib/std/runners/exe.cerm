@@ -1,16 +1,19 @@
-extern fn main();
+const SYS_exit_group = 231;
 
-fn exit_group(code u8) {
-    asm {
+fn syscall1(code usize, arg1 usize) usize {
+    return asm {
         "syscall"
-        :
-        : "{rax}" (231),
-          "{rdi}" (code),
+        : "={rax}" (usize)
+        : "{rax}" (code),
+          "{rdi}" (arg1),
         : "rcx", "r11", "memory"
     };
 }
 
+extern fn main();
+
 fn _start() {
     main();
-    exit_group(0);
+
+    syscall1(SYS_exit_group, 0);
 }
