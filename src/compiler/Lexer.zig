@@ -328,6 +328,7 @@ pub fn next(self: *Lexer) Token {
 
         .equal_sign => switch (self.buffer[self.index]) {
             '=' => {
+                self.index += 1;
                 result.range.end = self.index;
                 result.tag = .double_equal_sign;
             },
@@ -339,6 +340,7 @@ pub fn next(self: *Lexer) Token {
 
         .bang => switch (self.buffer[self.index]) {
             '=' => {
+                self.index += 1;
                 result.range.end = self.index;
                 result.tag = .bang_equal_sign;
             },
@@ -350,6 +352,7 @@ pub fn next(self: *Lexer) Token {
 
         .less_than => switch (self.buffer[self.index]) {
             '<' => {
+                self.index += 1;
                 result.range.end = self.index;
                 result.tag = .double_less_than;
             },
@@ -361,6 +364,7 @@ pub fn next(self: *Lexer) Token {
 
         .greater_than => switch (self.buffer[self.index]) {
             '>' => {
+                self.index += 1;
                 result.range.end = self.index;
                 result.tag = .double_greater_than;
             },
