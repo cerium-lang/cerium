@@ -101,7 +101,6 @@ const Value = union(enum) {
                 .pointer = .{
                     .size = .many,
                     .is_const = true,
-                    .is_local = false,
                     .child_type = &.{ .int = .{ .signedness = .unsigned, .bits = 8 } },
                 },
             },
@@ -149,16 +148,6 @@ fn checkRepresentability(self: *Sema, source_value: Value, destination_type: Typ
         self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
 
         return error.TypeCannotRepresentValue;
-    }
-
-    if (source_type.isLocalPointer() and !destination_type.isLocalPointer()) {
-        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-        try error_message_buf.writer(self.allocator).print("'{}' is pointing to data that is local to this function and therefore cannot escape globally", .{source_type});
-
-        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
-
-        return error.MismatchedTypes;
     }
 }
 
@@ -596,7 +585,6 @@ fn analyzeSubType(self: *Sema, subtype: Hir.SubType) Error!Type {
                 .pointer = .{
                     .size = pointer.size,
                     .is_const = pointer.is_const,
-                    .is_local = pointer.is_local,
                     .child_type = child_type_on_heap,
                 },
             };
@@ -968,8 +956,6 @@ fn analyzeGetFieldPtr(self: *Sema, name: Name) Error!void {
                             .pointer = .{
                                 .size = .one,
                                 .is_const = false,
-                                // TODO: We should check if the struct is in local or a global scope
-                                .is_local = false,
                                 .child_type = child_type_on_heap,
                             },
                         },
@@ -1005,7 +991,6 @@ fn analyzeReference(self: *Sema, source_loc: SourceLoc) Error!void {
     const rhs_runtime_type = rhs.runtime.type;
 
     const rhs_variable = self.scope.get(rhs_runtime_name.buffer).?;
-    const rhs_symbol = rhs_variable.symbol;
 
     const child_on_heap = try self.allocator.create(Type);
     child_on_heap.* = rhs_runtime_type;
@@ -1018,7 +1003,6 @@ fn analyzeReference(self: *Sema, source_loc: SourceLoc) Error!void {
                 .pointer = .{
                     .size = .one,
                     .is_const = rhs_variable.is_const,
-                    .is_local = rhs_symbol.linkage == .local,
                     .child_type = child_on_heap,
                 },
             },
@@ -1498,12 +1482,6 @@ fn analyzeVariable(self: *Sema, infer: bool, subsymbol: Hir.SubSymbol) Error!voi
         self.error_info = .{ .message = "cannot declare a variable with an ambigiuous type", .source_loc = variable.symbol.name.source_loc };
 
         return error.UnexpectedType;
-    }
-
-    if (variable.symbol.type == .pointer) {
-        if (self.stack.getLast().getType().getPointer()) |value_pointer| {
-            variable.symbol.type.pointer.is_local = value_pointer.is_local;
-        }
     }
 
     try self.scope.put(self.allocator, variable.symbol.name.buffer, variable);

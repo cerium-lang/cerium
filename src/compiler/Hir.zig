@@ -42,7 +42,6 @@ pub const SubType = union(enum) {
     pub const Pointer = struct {
         size: Type.Pointer.Size,
         is_const: bool,
-        is_local: bool,
         child_subtype: *const SubType,
     };
 
@@ -415,7 +414,6 @@ pub const Parser = struct {
         const function_pointer_subtype: SubType = .{
             .pointer = .{
                 .size = .one,
-                .is_local = false,
                 .is_const = true,
                 .child_subtype = function_subtype_on_heap,
             },
@@ -1493,7 +1491,6 @@ pub const Parser = struct {
                     .pointer = .{
                         .size = .one,
                         .is_const = is_const,
-                        .is_local = self.block_id != null,
                         .child_subtype = child_on_heap,
                     },
                 };
@@ -1525,7 +1522,6 @@ pub const Parser = struct {
                     .pointer = .{
                         .size = .many,
                         .is_const = is_const,
-                        .is_local = self.block_id != null,
                         .child_subtype = child_on_heap,
                     },
                 };

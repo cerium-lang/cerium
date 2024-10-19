@@ -43,7 +43,6 @@ pub const Type = union(enum) {
     pub const Pointer = struct {
         size: Size,
         is_const: bool,
-        is_local: bool,
         child_type: *const Type,
 
         pub const Size = enum {
@@ -105,10 +104,6 @@ pub const Type = union(enum) {
 
     pub fn byteSize(self: Type, env: Compilation.Environment) u16 {
         return std.math.divCeil(u16, self.bitSize(env), 8) catch unreachable;
-    }
-
-    pub fn isLocalPointer(self: Type) bool {
-        return self == .pointer and self.pointer.is_local;
     }
 
     pub fn minInt(self: Type) i128 {
