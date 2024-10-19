@@ -802,7 +802,7 @@ pub const Parser = struct {
 
             .open_paren => try self.parseParentheses(),
 
-            .minus, .bang, .tilde, .ampersand, .star => try self.parseUnaryOperation(),
+            .minus, .bang, .tilde, .ampersand => try self.parseUnaryOperation(),
 
             else => {
                 self.error_info = .{ .message = "expected a statement or an expression", .source_loc = self.tokenSourceLoc(self.peekToken()) };
@@ -1159,10 +1159,6 @@ pub const Parser = struct {
                 }
             },
 
-            .star => {
-                try self.hir.instructions.append(self.allocator, .{ .read = source_loc });
-            },
-
             else => unreachable,
         }
     }
@@ -1363,11 +1359,15 @@ pub const Parser = struct {
     fn parseFieldAccess(self: *Parser) Error!void {
         _ = self.nextToken();
 
-        const name = try self.parseName();
+        if (self.peekToken().tag == .star) {
+            try self.hir.instructions.append(self.allocator, .{ .read = self.tokenSourceLoc(self.nextToken()) });
+        } else {
+            const name = try self.parseName();
 
-        try self.hir.instructions.append(self.allocator, .{ .reference_if_not_ptr = name.source_loc });
-        try self.hir.instructions.append(self.allocator, .{ .get_field_ptr = name });
-        try self.hir.instructions.append(self.allocator, .{ .read = name.source_loc });
+            try self.hir.instructions.append(self.allocator, .{ .reference_if_not_ptr = name.source_loc });
+            try self.hir.instructions.append(self.allocator, .{ .get_field_ptr = name });
+            try self.hir.instructions.append(self.allocator, .{ .read = name.source_loc });
+        }
     }
 
     fn parseName(self: *Parser) Error!Name {
