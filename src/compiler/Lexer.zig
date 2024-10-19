@@ -159,6 +159,13 @@ pub fn next(self: *Lexer) Token {
                 result.tag = .tilde;
             },
 
+            '.' => {
+                result.range.start = self.index;
+                self.index += 1;
+                result.range.end = self.index;
+                result.tag = .period;
+            },
+
             '+' => {
                 result.range.start = self.index;
                 self.index += 1;
