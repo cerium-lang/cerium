@@ -24,6 +24,21 @@ pub const Type = union(enum) {
     float: Float,
     pointer: Pointer,
     function: Function,
+    @"struct": Struct,
+
+    pub const Int = struct {
+        signedness: Signedness,
+        bits: u16,
+
+        pub const Signedness = enum {
+            signed,
+            unsigned,
+        };
+    };
+
+    pub const Float = struct {
+        bits: u16,
+    };
 
     pub const Pointer = struct {
         size: Size,
@@ -42,18 +57,13 @@ pub const Type = union(enum) {
         return_type: *const Type,
     };
 
-    pub const Int = struct {
-        signedness: Signedness,
-        bits: u16,
+    pub const Struct = struct {
+        fields: []const Field,
 
-        pub const Signedness = enum {
-            signed,
-            unsigned,
+        pub const Field = struct {
+            name: []const u8,
+            type: Type,
         };
-    };
-
-    pub const Float = struct {
-        bits: u16,
     };
 
     pub fn isInt(self: Type) bool {
@@ -210,6 +220,20 @@ pub const Type = union(enum) {
                 }
 
                 try writer.print(") {}", .{function.return_type});
+            },
+
+            .@"struct" => |@"struct"| {
+                try writer.writeAll("struct { ");
+
+                for (@"struct".fields, 0..) |field, i| {
+                    try writer.print("{}", .{field.type});
+
+                    if (i < @"struct".fields.len - 1) {
+                        try writer.writeAll(", ");
+                    }
+                }
+
+                try writer.writeAll(" }");
             },
 
             .ambigiuous_int => try writer.writeAll("ambigiuous_int"),

@@ -31,6 +31,7 @@ pub const SubType = union(enum) {
     name: Name,
     function: Function,
     pointer: Pointer,
+    @"struct": Struct,
     pure: Type,
 
     pub const Function = struct {
@@ -43,6 +44,10 @@ pub const SubType = union(enum) {
         is_const: bool,
         is_local: bool,
         child_subtype: *const SubType,
+    };
+
+    pub const Struct = struct {
+        subsymbols: []const SubSymbol,
     };
 };
 
@@ -1362,6 +1367,40 @@ pub const Parser = struct {
         switch (self.peekToken().tag) {
             .identifier => {
                 return SubType{ .name = try self.parseName() };
+            },
+
+            .keyword_struct => {
+                _ = self.nextToken();
+
+                if (!self.eatToken(.open_brace)) {
+                    self.error_info = .{ .message = "expected a '{'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                    return error.UnexpectedToken;
+                }
+
+                var subsymbols: std.ArrayListUnmanaged(SubSymbol) = .{};
+
+                while (self.peekToken().tag != .close_brace) {
+                    try subsymbols.append(self.allocator, .{
+                        .name = try self.parseName(),
+                        .subtype = try self.parseSubType(),
+                        .linkage = .local,
+                    });
+
+                    if (!self.eatToken(.comma) and self.peekToken().tag != .close_brace) {
+                        self.error_info = .{ .message = "expected a ','", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                        return error.UnexpectedToken;
+                    }
+                }
+
+                if (!self.eatToken(.close_brace)) {
+                    self.error_info = .{ .message = "expected a '}'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                    return error.UnexpectedToken;
+                }
+
+                return SubType{ .@"struct" = .{ .subsymbols = try subsymbols.toOwnedSlice(self.allocator) } };
             },
 
             .keyword_fn => {

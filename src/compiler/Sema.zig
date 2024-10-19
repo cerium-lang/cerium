@@ -565,7 +565,7 @@ fn analyzeSubType(self: *Sema, subtype: Hir.SubType) Error!Type {
             const return_type_on_heap = try self.allocator.create(Type);
             return_type_on_heap.* = return_type;
 
-            return .{
+            return Type{
                 .function = .{
                     .parameter_types = parameter_types,
                     .return_type = return_type_on_heap,
@@ -579,7 +579,7 @@ fn analyzeSubType(self: *Sema, subtype: Hir.SubType) Error!Type {
             const child_type_on_heap = try self.allocator.create(Type);
             child_type_on_heap.* = child_type;
 
-            return .{
+            return Type{
                 .pointer = .{
                     .size = pointer.size,
                     .is_const = pointer.is_const,
@@ -589,7 +589,19 @@ fn analyzeSubType(self: *Sema, subtype: Hir.SubType) Error!Type {
             };
         },
 
-        .pure => |pure_type| return pure_type,
+        .@"struct" => |@"struct"| {
+            var fields = try self.allocator.alloc(Type.Struct.Field, @"struct".subsymbols.len);
+
+            for (@"struct".subsymbols, 0..) |subsymbol, i| {
+                const symbol = try self.analyzeSubSymbol(subsymbol);
+
+                fields[i] = .{ .name = symbol.name.buffer, .type = symbol.type };
+            }
+
+            return Type{ .@"struct" = .{ .fields = fields } };
+        },
+
+        .pure => |pure| return pure,
     }
 }
 
@@ -1158,17 +1170,17 @@ fn analyzeComparison(self: *Sema, comptime operation: ComparisonOperation, sourc
     }
 
     switch (operation) {
-        .lt => try self.lir.instructions.append(self.allocator, if (lhs.runtime.type.isInt())
-            .{ .icmp = if (lhs.runtime.type.canBeNegative() and rhs.runtime.type.canBeNegative()) .slt else .ult }
+        .lt => try self.lir.instructions.append(self.allocator, if (lhs.getType().isInt())
+            .{ .icmp = if (lhs.getType().canBeNegative() and rhs.getType().canBeNegative()) .slt else .ult }
         else
             .{ .fcmp = .lt }),
 
-        .gt => try self.lir.instructions.append(self.allocator, if (lhs.runtime.type.isInt())
-            .{ .icmp = if (lhs.runtime.type.canBeNegative() and rhs.runtime.type.canBeNegative()) .sgt else .ugt }
+        .gt => try self.lir.instructions.append(self.allocator, if (lhs.getType().isInt())
+            .{ .icmp = if (lhs.getType().canBeNegative() and rhs.getType().canBeNegative()) .sgt else .ugt }
         else
             .{ .fcmp = .gt }),
 
-        .eql => try self.lir.instructions.append(self.allocator, if (lhs.runtime.type.isInt() or lhs.runtime.type == .bool)
+        .eql => try self.lir.instructions.append(self.allocator, if (lhs.getType().isInt() or lhs.getType() == .bool)
             .{ .icmp = .eql }
         else
             .{ .fcmp = .eql }),
@@ -1238,6 +1250,10 @@ fn analyzeCast(self: *Sema, cast: Hir.Instruction.Cast) Error!void {
         return error.UnexpectedType;
     } else if (to == .function) {
         self.error_info = .{ .message = "cannot cast to a function type as it should be always wrapped in a pointer", .source_loc = cast.source_loc };
+
+        return error.UnexpectedType;
+    } else if (to == .@"struct" or from == .@"struct") {
+        self.error_info = .{ .message = "cannot cast from or to a struct as it has multiple fields that should be casted individually", .source_loc = cast.source_loc };
 
         return error.UnexpectedType;
     } else if (to == .pointer and from != .pointer) {

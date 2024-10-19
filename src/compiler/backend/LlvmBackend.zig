@@ -348,9 +348,17 @@ fn getLlvmType(self: *LlvmBackend, @"type": Type) Error!c.LLVMTypeRef {
 
             const return_type = try self.getLlvmType(function.return_type.*);
 
-            const function_type = c.LLVMFunctionType(return_type, parameter_types.ptr, @intCast(parameter_types.len), 0);
+            break :blk c.LLVMFunctionType(return_type, parameter_types.ptr, @intCast(parameter_types.len), 0);
+        },
 
-            break :blk function_type;
+        .@"struct" => |@"struct"| blk: {
+            const element_types = try self.allocator.alloc(c.LLVMTypeRef, @"struct".fields.len);
+
+            for (@"struct".fields, 0..) |field, i| {
+                element_types[i] = try self.getLlvmType(field.type);
+            }
+
+            break :blk c.LLVMStructType(element_types.ptr, @intCast(element_types.len), 0);
         },
 
         else => unreachable,
@@ -676,6 +684,7 @@ fn renderCast(self: *LlvmBackend, cast: Lir.Instruction.Cast) Error!void {
 
             .void => unreachable,
             .function => unreachable,
+            .@"struct" => unreachable,
         },
     );
 }
