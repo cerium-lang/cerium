@@ -85,12 +85,16 @@ pub const Instruction = union(enum) {
     bit_xor: SourceLoc,
     /// Get a pointer of a value on the stack
     reference: SourceLoc,
+    /// Like `reference` but only if the value is not a pointer
+    reference_if_not_ptr: SourceLoc,
     /// Override the data that the pointer is pointing to
     write: SourceLoc,
     /// Read the data that the pointer is pointing to
     read: SourceLoc,
     /// Calculate the pointer of an element in an "size many" pointer
     get_element_ptr: SourceLoc,
+    /// Get the pointer of a field in a struct pointer
+    get_field_ptr: Name,
     /// Add two integers or floats or pointers on the top of the stack
     add: SourceLoc,
     /// Subtract two integers or floats or pointers on the top of the stack
@@ -214,6 +218,7 @@ pub const Parser = struct {
         InvalidString,
         InvalidChar,
         InvalidNumber,
+        Redeclared,
         UnexpectedToken,
         UnexpectedStatement,
         UnexpectedExpression,
@@ -766,6 +771,7 @@ pub const Parser = struct {
                 .keyword_as => .cast,
                 .open_paren => .call,
                 .open_bracket => .subscript,
+                .period => .subscript,
 
                 else => .lowest,
             };
@@ -1144,7 +1150,8 @@ pub const Parser = struct {
 
             .ampersand => {
                 if (self.hir.instructions.items[self.hir.instructions.items.len - 1] == .read and
-                    self.hir.instructions.items[self.hir.instructions.items.len - 2] == .get_element_ptr)
+                    (self.hir.instructions.items[self.hir.instructions.items.len - 2] == .get_element_ptr or
+                    self.hir.instructions.items[self.hir.instructions.items.len - 2] == .get_field_ptr))
                 {
                     _ = self.hir.instructions.pop();
                 } else {
@@ -1183,6 +1190,8 @@ pub const Parser = struct {
             .open_paren => try self.parseCall(),
 
             .open_bracket => try self.parseSubscript(),
+
+            .period => try self.parseFieldAccess(),
 
             else => {
                 self.error_info = .{ .message = "expected a statement or an expression", .source_loc = self.tokenSourceLoc(self.peekToken()) };
@@ -1351,6 +1360,16 @@ pub const Parser = struct {
         try self.hir.instructions.append(self.allocator, .{ .read = source_loc });
     }
 
+    fn parseFieldAccess(self: *Parser) Error!void {
+        _ = self.nextToken();
+
+        const name = try self.parseName();
+
+        try self.hir.instructions.append(self.allocator, .{ .reference_if_not_ptr = name.source_loc });
+        try self.hir.instructions.append(self.allocator, .{ .get_field_ptr = name });
+        try self.hir.instructions.append(self.allocator, .{ .read = name.source_loc });
+    }
+
     fn parseName(self: *Parser) Error!Name {
         if (self.peekToken().tag != .identifier) {
             self.error_info = .{ .message = "expected a name", .source_loc = self.tokenSourceLoc(self.peekToken()) };
@@ -1380,9 +1399,26 @@ pub const Parser = struct {
 
                 var subsymbols: std.ArrayListUnmanaged(SubSymbol) = .{};
 
+                var fields_hashset = std.StringHashMapUnmanaged(void){};
+                defer fields_hashset.deinit(self.allocator);
+
                 while (self.peekToken().tag != .close_brace) {
+                    const name = try self.parseName();
+
+                    if (fields_hashset.get(name.buffer)) |_| {
+                        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+                        try error_message_buf.writer(self.allocator).print("redeclaration of '{s}' in struct fields", .{name.buffer});
+
+                        self.error_info = .{ .message = error_message_buf.items, .source_loc = name.source_loc };
+
+                        return error.Redeclared;
+                    }
+
+                    try fields_hashset.put(self.allocator, name.buffer, {});
+
                     try subsymbols.append(self.allocator, .{
-                        .name = try self.parseName(),
+                        .name = name,
                         .subtype = try self.parseSubType(),
                         .linkage = .local,
                     });

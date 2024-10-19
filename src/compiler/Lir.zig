@@ -43,6 +43,8 @@ pub const Instruction = union(enum) {
     read: Type,
     /// Calculate the pointer of an element in a "size many" pointer
     get_element_ptr: Type,
+    /// Get the pointer of a field in a struct using an index in the struct fields
+    get_field_ptr: GetFieldPtr,
     /// Add two integers or floats on the top of the stack
     add,
     /// Subtract two integers or floats on the top of the stack
@@ -97,6 +99,11 @@ pub const Instruction = union(enum) {
     ret,
     /// Return out of the function without a value
     ret_void,
+
+    pub const GetFieldPtr = struct {
+        struct_type: Type,
+        index: u32,
+    };
 
     pub const Cast = struct {
         from: Type,

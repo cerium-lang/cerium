@@ -399,6 +399,7 @@ fn renderInstruction(self: *LlvmBackend, lir_instruction: Lir.Instruction) Error
         .write => try self.renderWrite(),
         .read => |element_type| try self.renderRead(element_type),
         .get_element_ptr => |element_type| try self.renderGetElementPtr(element_type),
+        .get_field_ptr => |field_index| try self.renderGetFieldPtr(field_index),
 
         .add => try self.renderArithmetic(.add),
         .sub => try self.renderArithmetic(.sub),
@@ -548,6 +549,21 @@ fn renderGetElementPtr(self: *LlvmBackend, element_type: Type) Error!void {
             lhs,
             &rhs,
             1,
+            "",
+        ),
+    );
+}
+
+fn renderGetFieldPtr(self: *LlvmBackend, info: Lir.Instruction.GetFieldPtr) Error!void {
+    const lhs = self.stack.pop();
+
+    try self.stack.append(
+        self.allocator,
+        c.LLVMBuildStructGEP2(
+            self.builder,
+            try self.getLlvmType(info.struct_type),
+            lhs,
+            @intCast(info.index),
             "",
         ),
     );

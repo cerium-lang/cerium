@@ -211,6 +211,19 @@ fn checkCanBeCompared(self: *Sema, provided_type: Type, source_loc: SourceLoc) E
     }
 }
 
+fn checkStructOrStructPointer(self: *Sema, provided_type: Type, source_loc: SourceLoc) Error!void {
+    if (provided_type == .@"struct") return;
+    if (provided_type.getPointer()) |pointer| if (pointer.child_type.* == .@"struct") return;
+
+    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+    try error_message_buf.writer(self.allocator).print("'{}' is not a struct nor a pointer to a struct", .{provided_type});
+
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+
+    return error.MismatchedTypes;
+}
+
 fn reportIncompatibleTypes(self: *Sema, lhs: Type, rhs: Type, source_loc: SourceLoc) Error!void {
     var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
@@ -635,7 +648,9 @@ fn analyzeInstruction(self: *Sema, instruction: Hir.Instruction) Error!void {
         .write => |source_loc| try self.analyzeWrite(source_loc),
         .read => |source_loc| try self.analyzeRead(source_loc),
         .get_element_ptr => |source_loc| try self.analyzeGetElementPtr(source_loc),
+        .get_field_ptr => |name| try self.analyzeGetFieldPtr(name),
         .reference => |source_loc| try self.analyzeReference(source_loc),
+        .reference_if_not_ptr => |source_loc| try self.analyzeReferenceIfNotPtr(source_loc),
 
         .add => |source_loc| try self.analyzeArithmetic(.add, source_loc),
         .sub => |source_loc| try self.analyzeArithmetic(.sub, source_loc),
@@ -921,6 +936,58 @@ fn analyzeGetElementPtr(self: *Sema, source_loc: SourceLoc) Error!void {
     try self.stack.append(self.allocator, .{ .runtime = .{ .type = .{ .pointer = lhs_pointer } } });
 }
 
+fn analyzeGetFieldPtr(self: *Sema, name: Name) Error!void {
+    const rhs = self.stack.pop();
+
+    const rhs_type = rhs.getType();
+
+    try self.checkStructOrStructPointer(rhs_type, name.source_loc);
+
+    const rhs_struct = if (rhs_type.getPointer()) |pointer| pointer.child_type.@"struct" else rhs_type.@"struct";
+
+    for (rhs_struct.fields, 0..) |field, i| {
+        if (std.mem.eql(u8, field.name, name.buffer)) {
+            try self.lir.instructions.append(
+                self.allocator,
+                .{
+                    .get_field_ptr = .{
+                        .struct_type = .{ .@"struct" = rhs_struct },
+                        .index = @intCast(i),
+                    },
+                },
+            );
+
+            const child_type_on_heap = try self.allocator.create(Type);
+            child_type_on_heap.* = field.type;
+
+            return self.stack.append(
+                self.allocator,
+                .{
+                    .runtime = .{
+                        .type = .{
+                            .pointer = .{
+                                .size = .one,
+                                .is_const = false,
+                                // TODO: We should check if the struct is in local or a global scope
+                                .is_local = false,
+                                .child_type = child_type_on_heap,
+                            },
+                        },
+                    },
+                },
+            );
+        }
+    }
+
+    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+    try error_message_buf.writer(self.allocator).print("'{s}' is not a field in '{}'", .{ name.buffer, rhs.getType() });
+
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = name.source_loc };
+
+    return error.Undeclared;
+}
+
 fn analyzeReference(self: *Sema, source_loc: SourceLoc) Error!void {
     const rhs = self.stack.pop();
 
@@ -957,6 +1024,12 @@ fn analyzeReference(self: *Sema, source_loc: SourceLoc) Error!void {
             },
         },
     });
+}
+
+fn analyzeReferenceIfNotPtr(self: *Sema, source_loc: SourceLoc) Error!void {
+    if (self.stack.getLast().getType() != .pointer) {
+        try self.analyzeReference(source_loc);
+    }
 }
 
 const ArithmeticOperation = enum {
