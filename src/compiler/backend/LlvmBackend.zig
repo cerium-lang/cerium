@@ -358,7 +358,7 @@ fn getLlvmType(self: *LlvmBackend, @"type": Type) Error!c.LLVMTypeRef {
                 element_types[i] = try self.getLlvmType(field.type);
             }
 
-            break :blk c.LLVMStructType(element_types.ptr, @intCast(element_types.len), 0);
+            break :blk c.LLVMStructTypeInContext(self.context, element_types.ptr, @intCast(element_types.len), 0);
         },
 
         else => unreachable,
