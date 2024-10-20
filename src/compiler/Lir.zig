@@ -43,7 +43,7 @@ pub const Instruction = union(enum) {
     read: Type,
     /// Calculate the pointer of an element in a "size many" pointer
     get_element_ptr: Type,
-    /// Get the pointer of a field in a struct using an index in the struct fields
+    /// Calculate the pointer of a field in a struct pointer
     get_field_ptr: GetFieldPtr,
     /// Add two integers or floats on the top of the stack
     add,

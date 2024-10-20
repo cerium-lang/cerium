@@ -638,7 +638,6 @@ fn analyzeInstruction(self: *Sema, instruction: Hir.Instruction) Error!void {
         .get_element_ptr => |source_loc| try self.analyzeGetElementPtr(source_loc),
         .get_field_ptr => |name| try self.analyzeGetFieldPtr(name),
         .reference => |source_loc| try self.analyzeReference(source_loc),
-        .reference_if_not_ptr => |source_loc| try self.analyzeReferenceIfNotPtr(source_loc),
 
         .add => |source_loc| try self.analyzeArithmetic(.add, source_loc),
         .sub => |source_loc| try self.analyzeArithmetic(.sub, source_loc),
@@ -925,11 +924,13 @@ fn analyzeGetElementPtr(self: *Sema, source_loc: SourceLoc) Error!void {
 }
 
 fn analyzeGetFieldPtr(self: *Sema, name: Name) Error!void {
-    const rhs = self.stack.pop();
-
-    const rhs_type = rhs.getType();
+    const rhs_type = self.stack.getLast().getType();
 
     try self.checkStructOrStructPointer(rhs_type, name.source_loc);
+
+    if (rhs_type != .pointer) try self.analyzeReference(name.source_loc);
+
+    const rhs = self.stack.pop();
 
     const rhs_struct = if (rhs_type.getPointer()) |pointer| pointer.child_type.@"struct" else rhs_type.@"struct";
 
@@ -1008,12 +1009,6 @@ fn analyzeReference(self: *Sema, source_loc: SourceLoc) Error!void {
             },
         },
     });
-}
-
-fn analyzeReferenceIfNotPtr(self: *Sema, source_loc: SourceLoc) Error!void {
-    if (self.stack.getLast().getType() != .pointer) {
-        try self.analyzeReference(source_loc);
-    }
 }
 
 const ArithmeticOperation = enum {

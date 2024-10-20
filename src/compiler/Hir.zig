@@ -84,15 +84,13 @@ pub const Instruction = union(enum) {
     bit_xor: SourceLoc,
     /// Get a pointer of a value on the stack
     reference: SourceLoc,
-    /// Like `reference` but only if the value is not a pointer
-    reference_if_not_ptr: SourceLoc,
     /// Override the data that the pointer is pointing to
     write: SourceLoc,
     /// Read the data that the pointer is pointing to
     read: SourceLoc,
     /// Calculate the pointer of an element in an "size many" pointer
     get_element_ptr: SourceLoc,
-    /// Get the pointer of a field in a struct pointer
+    /// Calculate the pointer of a field in a struct (convert to struct pointer if needed)
     get_field_ptr: Name,
     /// Add two integers or floats or pointers on the top of the stack
     add: SourceLoc,
@@ -1362,7 +1360,12 @@ pub const Parser = struct {
         } else {
             const name = try self.parseName();
 
-            try self.hir.instructions.append(self.allocator, .{ .reference_if_not_ptr = name.source_loc });
+            if (self.hir.instructions.items[self.hir.instructions.items.len - 1] == .read and
+                self.hir.instructions.items[self.hir.instructions.items.len - 2] == .get_field_ptr)
+            {
+                _ = self.hir.instructions.pop();
+            }
+
             try self.hir.instructions.append(self.allocator, .{ .get_field_ptr = name });
             try self.hir.instructions.append(self.allocator, .{ .read = name.source_loc });
         }
