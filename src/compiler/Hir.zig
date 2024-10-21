@@ -282,19 +282,18 @@ pub const Parser = struct {
     fn tokenSourceLoc(self: Parser, token: Token) SourceLoc {
         var source_loc: SourceLoc = .{};
 
-        for (0..self.buffer.len) |i| {
-            switch (self.buffer[i]) {
-                0 => break,
+        var line_start: usize = 0;
 
-                '\n' => {
-                    source_loc.line += 1;
-                    source_loc.column = 1;
-                },
+        while (std.mem.indexOfScalarPos(u8, self.buffer, line_start, '\n')) |i| {
+            if (i >= token.range.start) break;
+            source_loc.line += 1;
+            line_start = i + 1;
+        }
 
-                else => source_loc.column += 1,
-            }
-
+        for (self.buffer[line_start..], 0..) |c, i| {
             if (i == token.range.start) break;
+            if (c == '\n') source_loc.line += 1;
+            source_loc.column += 1;
         }
 
         return source_loc;
