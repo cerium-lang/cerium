@@ -3,7 +3,7 @@ const SYS_write = 1;
 fn syscall3(code usize, arg1 usize, arg2 usize, arg3 usize) usize {
     return asm {
         "syscall"
-        : "={rax}" (u64)
+        : "={rax}" (usize)
         : "{rax}" (code),
           "{rdi}" (arg1),
           "{rsi}" (arg2),
