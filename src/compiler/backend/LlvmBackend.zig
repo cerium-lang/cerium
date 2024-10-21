@@ -337,7 +337,7 @@ fn getLlvmType(self: *LlvmBackend, @"type": Type) Error!c.LLVMTypeRef {
         .bool => c.LLVMIntTypeInContext(self.context, 1),
         .int => |int| c.LLVMIntTypeInContext(self.context, int.bits),
         .float => |float| if (float.bits == 32) c.LLVMFloatTypeInContext(self.context) else c.LLVMDoubleTypeInContext(self.context),
-        .pointer => |pointer| c.LLVMPointerType(try self.getLlvmType(pointer.child_type.*), 1),
+        .pointer => c.LLVMPointerTypeInContext(self.context, 1),
 
         .function => |function| blk: {
             const parameter_types = try self.allocator.alloc(c.LLVMTypeRef, function.parameter_types.len);
