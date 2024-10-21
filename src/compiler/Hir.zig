@@ -292,7 +292,7 @@ pub const Parser = struct {
 
         for (self.buffer[line_start..], 0..) |c, i| {
             if (i == token.range.start) break;
-            if (c == '\n') source_loc.line += 1;
+            source_loc.line += @intFromBool(c == '\n');
             source_loc.column += 1;
         }
 
