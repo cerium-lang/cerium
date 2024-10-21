@@ -44,6 +44,7 @@ pub const Error = error{
     ExpectedExplicitReturn,
     UnexpectedMutation,
     TypeCannotRepresentValue,
+    CircularDependency,
     UnexpectedType,
     MismatchedTypes,
     Undeclared,
@@ -213,6 +214,24 @@ fn checkStructOrStructPointer(self: *Sema, provided_type: Type, source_loc: Sour
     return error.MismatchedTypes;
 }
 
+fn checkTypeCircularDependency(self: *Sema, type_name: Name, provided_subtype: Hir.SubType) Error!void {
+    switch (provided_subtype) {
+        .name => |referenced_name| {
+            if (std.mem.eql(u8, type_name.buffer, referenced_name.buffer)) {
+                return self.reportCircularDependency(referenced_name);
+            }
+        },
+
+        .@"struct" => |referenced_struct| {
+            for (referenced_struct.subsymbols) |subsymbol| {
+                try self.checkTypeCircularDependency(type_name, subsymbol.subtype);
+            }
+        },
+
+        else => {},
+    }
+}
+
 fn reportIncompatibleTypes(self: *Sema, lhs: Type, rhs: Type, source_loc: SourceLoc) Error!void {
     var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
@@ -281,6 +300,16 @@ fn reportNotIndexable(self: *Sema, provided_type: Type, source_loc: SourceLoc) E
     self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
 
     return error.UnexpectedType;
+}
+
+fn reportCircularDependency(self: *Sema, name: Name) Error!void {
+    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+    try error_message_buf.writer(self.allocator).print("'{s}' is circularly dependent on itself", .{name.buffer});
+
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = name.source_loc };
+
+    return error.CircularDependency;
 }
 
 pub fn init(allocator: std.mem.Allocator, env: Compilation.Environment, hir: Hir) std.mem.Allocator.Error!Sema {
@@ -576,18 +605,38 @@ fn analyzeSubType(self: *Sema, subtype: Hir.SubType) Error!Type {
         },
 
         .pointer => |pointer| {
-            const child_type = try self.analyzeSubType(pointer.child_subtype.*);
+            if (pointer.child_subtype.* == .name) {
+                const child_subtype_name = pointer.child_subtype.name;
 
-            const child_type_on_heap = try self.allocator.create(Type);
-            child_type_on_heap.* = child_type;
+                if (self.scope.getPtr(child_subtype_name.buffer)) |child_subtype_variable| {
+                    if (child_subtype_variable.is_type_alias) {
+                        return Type{
+                            .pointer = .{
+                                .size = pointer.size,
+                                .is_const = pointer.is_const,
+                                .child_type = &child_subtype_variable.symbol.type,
+                            },
+                        };
+                    }
+                }
 
-            return Type{
-                .pointer = .{
-                    .size = pointer.size,
-                    .is_const = pointer.is_const,
-                    .child_type = child_type_on_heap,
-                },
-            };
+                try self.reportTypeNotDeclared(child_subtype_name);
+
+                unreachable;
+            } else {
+                const child_type = try self.analyzeSubType(pointer.child_subtype.*);
+
+                const child_type_on_heap = try self.allocator.create(Type);
+                child_type_on_heap.* = child_type;
+
+                return Type{
+                    .pointer = .{
+                        .size = pointer.size,
+                        .is_const = pointer.is_const,
+                        .child_type = child_type_on_heap,
+                    },
+                };
+            }
         },
 
         .@"struct" => |@"struct"| {
@@ -1494,13 +1543,13 @@ fn analyzeExternal(self: *Sema, subsymbol: Hir.SubSymbol) Error!void {
 }
 
 fn analyzeTypeAlias(self: *Sema, subsymbol: Hir.SubSymbol) Error!void {
-    const symbol = try self.analyzeSubSymbol(subsymbol);
-    if (self.scope.get(symbol.name.buffer) != null) return self.reportRedeclaration(symbol.name);
+    if (self.scope.get(subsymbol.name.buffer) != null) return self.reportRedeclaration(subsymbol.name);
 
-    try self.scope.put(self.allocator, symbol.name.buffer, .{
-        .symbol = symbol,
-        .is_type_alias = true,
-    });
+    try self.checkTypeCircularDependency(subsymbol.name, subsymbol.subtype);
+
+    const symbol_entry = try self.scope.getOrPut(self.allocator, subsymbol.name.buffer);
+    symbol_entry.value_ptr.is_type_alias = true;
+    symbol_entry.value_ptr.symbol = try self.analyzeSubSymbol(subsymbol);
 }
 
 fn analyzeSet(self: *Sema, name: Name) Error!void {

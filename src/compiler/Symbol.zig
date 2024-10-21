@@ -315,6 +315,10 @@ pub fn Scope(comptime V: type) type {
             return null;
         }
 
+        pub fn getOrPut(self: *Self, allocator: std.mem.Allocator, name: []const u8) std.mem.Allocator.Error!std.StringHashMapUnmanaged(V).GetOrPutResult {
+            return self.items.getOrPut(allocator, name);
+        }
+
         pub fn clearAndFree(self: *Self, allocator: std.mem.Allocator) void {
             self.items.clearAndFree(allocator);
         }
