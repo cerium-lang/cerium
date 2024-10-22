@@ -332,7 +332,7 @@ pub fn deinit(self: *Sema) void {
 }
 
 fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
-    try self.scope.ensureTotalCapacity(self.allocator, 64);
+    try self.scope.ensureTotalCapacity(self.allocator, 65);
 
     self.scope.putAssumeCapacity("true", .{
         .is_const = true,
@@ -555,6 +555,30 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
             .linkage = .global,
         },
         .is_type_alias = true,
+    });
+
+    self.scope.putAssumeCapacity("$target_os", .{
+        .symbol = .{
+            .name = undefined,
+            .type = .ambigiuous_int,
+            .linkage = .global,
+        },
+
+        .maybe_value = .{ .int = @intFromEnum(self.env.target.os.tag) },
+        .is_const = true,
+        .is_comptime = true,
+    });
+
+    self.scope.putAssumeCapacity("$target_arch", .{
+        .symbol = .{
+            .name = undefined,
+            .type = .ambigiuous_int,
+            .linkage = .global,
+        },
+
+        .maybe_value = .{ .int = @intFromEnum(self.env.target.cpu.arch) },
+        .is_const = true,
+        .is_comptime = true,
     });
 }
 
