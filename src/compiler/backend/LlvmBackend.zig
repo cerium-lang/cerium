@@ -853,7 +853,7 @@ fn renderVariable(self: *LlvmBackend, symbol: Symbol) Error!void {
 
     if (self.scope.get(symbol.name.buffer)) |variable| {
         if (variable.linkage == .global) {
-            _ = c.LLVMSetInitializer(variable.pointer, self.stack.pop());
+            _ = c.LLVMSetInitializer(variable.pointer, self.stack.popOrNull() orelse c.LLVMGetUndef(llvm_type));
         }
     } else {
         const variable_pointer = switch (symbol.linkage) {
@@ -864,7 +864,7 @@ fn renderVariable(self: *LlvmBackend, symbol: Symbol) Error!void {
                     try self.allocator.dupeZ(u8, symbol.name.buffer),
                 );
 
-                _ = c.LLVMSetInitializer(global_variable_pointer, self.stack.pop());
+                _ = c.LLVMSetInitializer(global_variable_pointer, self.stack.popOrNull() orelse c.LLVMGetUndef(llvm_type));
 
                 break :blk global_variable_pointer;
             },
