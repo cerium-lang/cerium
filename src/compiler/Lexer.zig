@@ -54,7 +54,7 @@ pub fn next(self: *Lexer) Token {
                 continue :state .start;
             },
 
-            'a'...'z', 'A'...'Z', '_', '$' => {
+            'a'...'z', 'A'...'Z', '_' => {
                 result.range.start = self.index;
                 result.tag = .identifier;
                 self.index += 1;
@@ -245,7 +245,7 @@ pub fn next(self: *Lexer) Token {
         },
 
         .identifier => switch (self.buffer[self.index]) {
-            'a'...'z', 'A'...'Z', '0'...'9', '_', '$' => {
+            'a'...'z', 'A'...'Z', '0'...'9', '_', ':' => {
                 self.index += 1;
                 continue :state .identifier;
             },

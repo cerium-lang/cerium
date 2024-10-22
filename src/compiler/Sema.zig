@@ -557,7 +557,7 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
         .is_type_alias = true,
     });
 
-    self.scope.putAssumeCapacity("$target_os", .{
+    self.scope.putAssumeCapacity("builtin::target::os", .{
         .symbol = .{
             .name = undefined,
             .type = .ambigiuous_int,
@@ -569,7 +569,7 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
         .is_comptime = true,
     });
 
-    self.scope.putAssumeCapacity("$target_arch", .{
+    self.scope.putAssumeCapacity("builtin::target::arch", .{
         .symbol = .{
             .name = undefined,
             .type = .ambigiuous_int,
