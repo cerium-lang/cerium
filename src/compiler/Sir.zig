@@ -290,8 +290,8 @@ pub const Parser = struct {
             line_start = i + 1;
         }
 
-        for (self.buffer[line_start..], 0..) |c, i| {
-            if (i == token.range.start) break;
+        for (self.buffer[line_start..], line_start..) |c, i| {
+            if (i >= token.range.start) break;
             source_loc.line += @intFromBool(c == '\n');
             source_loc.column += 1;
         }
@@ -501,16 +501,6 @@ pub const Parser = struct {
         else
             try self.parseSubType();
 
-        if (maybe_subtype != null and linkage != .external and !self.eatToken(.equal_sign)) {
-            self.error_info = .{ .message = "expected a '='", .source_loc = self.tokenSourceLoc(self.peekToken()) };
-
-            return error.UnexpectedToken;
-        } else if (self.eatToken(.equal_sign) and linkage == .external) {
-            self.error_info = .{ .message = "'extern' variables cannot have an initializer", .source_loc = self.tokenSourceLoc(self.peekToken()) };
-
-            return error.UnexpectedToken;
-        }
-
         if (linkage == .external) {
             return self.sir.instructions.append(
                 self.allocator,
@@ -524,7 +514,15 @@ pub const Parser = struct {
             );
         }
 
-        try self.parseExpr(.lowest);
+        const evaluate_value = self.peekToken().tag != .semicolon or is_const;
+
+        if (evaluate_value and !self.eatToken(.equal_sign)) {
+            self.error_info = .{ .message = "expected a '='", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+            return error.UnexpectedToken;
+        }
+
+        if (evaluate_value) try self.parseExpr(.lowest);
 
         if (maybe_subtype) |subtype| {
             try self.sir.instructions.append(
@@ -568,7 +566,7 @@ pub const Parser = struct {
             );
         }
 
-        try self.sir.instructions.append(self.allocator, .{ .set = name });
+        if (evaluate_value) try self.sir.instructions.append(self.allocator, .{ .set = name });
     }
 
     fn parseTypeAlias(self: *Parser, linkage: Symbol.Linkage) Error!void {
