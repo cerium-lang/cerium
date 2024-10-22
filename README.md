@@ -16,7 +16,7 @@ A general-purpose programming language that aims to be the most sane
         - [x] Add support for Booleans
         - [x] Add support for Pointers
         - [x] Add support for Functions
-        - [ ] Add support for Structures
+        - [x] Add support for Structures
         - [ ] Add support for Enumerations 
         - [ ] Add support for Unions 
 
