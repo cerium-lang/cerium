@@ -7,7 +7,7 @@ const c = @cImport({
 });
 
 const Compilation = @import("../Compilation.zig");
-const Lir = @import("../Lir.zig");
+const Air = @import("../Air.zig");
 const Symbol = @import("../Symbol.zig");
 const Scope = Symbol.Scope;
 const Type = Symbol.Type;
@@ -18,7 +18,7 @@ allocator: std.mem.Allocator,
 
 target: std.Target,
 
-lir: Lir,
+air: Air,
 counter: usize = 0,
 
 context: c.LLVMContextRef,
@@ -43,7 +43,7 @@ pub const Variable = struct {
     linkage: Symbol.Linkage,
 };
 
-pub fn init(allocator: std.mem.Allocator, target: std.Target, lir: Lir) LlvmBackend {
+pub fn init(allocator: std.mem.Allocator, target: std.Target, air: Air) LlvmBackend {
     const context = c.LLVMContextCreate();
     const module = c.LLVMModuleCreateWithNameInContext("module", context);
     const builder = c.LLVMCreateBuilderInContext(context);
@@ -51,7 +51,7 @@ pub fn init(allocator: std.mem.Allocator, target: std.Target, lir: Lir) LlvmBack
     return LlvmBackend{
         .allocator = allocator,
         .target = target,
-        .lir = lir,
+        .air = air,
         .context = context,
         .module = module,
         .builder = builder,
@@ -370,15 +370,15 @@ pub fn render(self: *LlvmBackend) Error!void {
     global_scope.* = .{};
     self.scope = global_scope;
 
-    for (self.lir.instructions.items) |lir_instruction| {
-        try self.renderInstruction(lir_instruction);
+    for (self.air.instructions.items) |air_instruction| {
+        try self.renderInstruction(air_instruction);
 
         self.counter += 1;
     }
 }
 
-fn renderInstruction(self: *LlvmBackend, lir_instruction: Lir.Instruction) Error!void {
-    switch (lir_instruction) {
+fn renderInstruction(self: *LlvmBackend, air_instruction: Air.Instruction) Error!void {
+    switch (air_instruction) {
         .duplicate => try self.stack.append(self.allocator, self.stack.getLast()),
         .reverse => |count| std.mem.reverse(c.LLVMValueRef, self.stack.items[self.stack.items.len - count ..]),
         .pop => _ = self.stack.pop(),
@@ -554,7 +554,7 @@ fn renderGetElementPtr(self: *LlvmBackend, element_type: Type) Error!void {
     );
 }
 
-fn renderGetFieldPtr(self: *LlvmBackend, info: Lir.Instruction.GetFieldPtr) Error!void {
+fn renderGetFieldPtr(self: *LlvmBackend, info: Air.Instruction.GetFieldPtr) Error!void {
     const lhs = self.stack.pop();
 
     try self.stack.append(
@@ -611,7 +611,7 @@ fn renderArithmetic(self: *LlvmBackend, comptime operation: ArithmeticOperation)
     }
 }
 
-fn renderIntComparison(self: *LlvmBackend, operation: Lir.Instruction.ICmp) Error!void {
+fn renderIntComparison(self: *LlvmBackend, operation: Air.Instruction.ICmp) Error!void {
     const rhs = self.stack.pop();
     const lhs = self.stack.pop();
 
@@ -627,7 +627,7 @@ fn renderIntComparison(self: *LlvmBackend, operation: Lir.Instruction.ICmp) Erro
     );
 }
 
-fn renderFloatComparison(self: *LlvmBackend, operation: Lir.Instruction.FCmp) Error!void {
+fn renderFloatComparison(self: *LlvmBackend, operation: Air.Instruction.FCmp) Error!void {
     const rhs = self.stack.pop();
     const lhs = self.stack.pop();
 
@@ -659,7 +659,7 @@ fn renderBitwiseShift(self: *LlvmBackend, comptime direction: BitwiseShiftDirect
     );
 }
 
-fn renderCast(self: *LlvmBackend, cast: Lir.Instruction.Cast) Error!void {
+fn renderCast(self: *LlvmBackend, cast: Air.Instruction.Cast) Error!void {
     const cast_value = self.stack.pop();
     const cast_to = try self.getLlvmType(cast.to);
 
@@ -705,7 +705,7 @@ fn renderCast(self: *LlvmBackend, cast: Lir.Instruction.Cast) Error!void {
     );
 }
 
-fn renderAssembly(self: *LlvmBackend, assembly: Lir.Instruction.Assembly) Error!void {
+fn renderAssembly(self: *LlvmBackend, assembly: Air.Instruction.Assembly) Error!void {
     const assembly_inputs = try self.allocator.alloc(c.LLVMValueRef, assembly.input_constraints.len);
 
     var assembly_constraints: std.ArrayListUnmanaged(u8) = .{};
@@ -789,7 +789,7 @@ fn renderCall(self: *LlvmBackend, function_type: Type.Function) Error!void {
     try self.stack.append(self.allocator, call);
 }
 
-fn renderFunction(self: *LlvmBackend, function: Lir.Instruction.Function) Error!void {
+fn renderFunction(self: *LlvmBackend, function: Air.Instruction.Function) Error!void {
     const function_pointer = if (self.scope.get(function.name)) |function_variable|
         function_variable.pointer
     else blk: {
@@ -816,8 +816,8 @@ fn renderFunction(self: *LlvmBackend, function: Lir.Instruction.Function) Error!
 
     var scope_depth: usize = 0;
 
-    for (self.lir.instructions.items[self.counter..]) |lir_instruction| {
-        switch (lir_instruction) {
+    for (self.air.instructions.items[self.counter..]) |air_instruction| {
+        switch (air_instruction) {
             .block => |block| try self.basic_blocks.put(self.allocator, block.id, c.LLVMAppendBasicBlock(function_pointer, "")),
             .start_scope => scope_depth += 1,
             .end_scope => {
@@ -951,15 +951,15 @@ fn renderGetPtr(self: *LlvmBackend, name: []const u8) Error!void {
     );
 }
 
-fn renderBlock(self: *LlvmBackend, block: Lir.Instruction.Block) Error!void {
+fn renderBlock(self: *LlvmBackend, block: Air.Instruction.Block) Error!void {
     c.LLVMPositionBuilderAtEnd(self.builder, self.basic_blocks.get(block.id).?);
 }
 
-fn renderBr(self: *LlvmBackend, br: Lir.Instruction.Br) Error!void {
+fn renderBr(self: *LlvmBackend, br: Air.Instruction.Br) Error!void {
     _ = c.LLVMBuildBr(self.builder, self.basic_blocks.get(br.id).?);
 }
 
-fn renderCondBr(self: *LlvmBackend, cond_br: Lir.Instruction.CondBr) Error!void {
+fn renderCondBr(self: *LlvmBackend, cond_br: Air.Instruction.CondBr) Error!void {
     const condition = self.stack.pop();
 
     const true_basic_block = self.basic_blocks.get(cond_br.true_id).?;

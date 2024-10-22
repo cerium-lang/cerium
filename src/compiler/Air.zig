@@ -1,6 +1,6 @@
-//! Low Intermediate Representation.
+//! Analyzed Intermediate Representation.
 //!
-//! An analyzed and checked stack-based intermediate representation lowered from `Hir`.
+//! An analyzed and checked stack-based intermediate representation lowered from `Sir`.
 //! Last intermediate representation to be used before lowering to machine code.
 
 const std = @import("std");

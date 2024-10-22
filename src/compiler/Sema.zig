@@ -1,14 +1,14 @@
 //! Semantic Analyzer.
 //!
-//! An analyzer that lowers down `Hir` to `Lir` while checking if the instructions and the types are valid.
+//! An analyzer that lowers down `Sir` to `Air` while checking if the instructions and the types are valid.
 
 const std = @import("std");
 
-const Hir = @import("Hir.zig");
-const Name = Hir.Name;
-const SourceLoc = Hir.SourceLoc;
+const Sir = @import("Sir.zig");
+const Name = Sir.Name;
+const SourceLoc = Sir.SourceLoc;
 const Compilation = @import("Compilation.zig");
-const Lir = @import("Lir.zig");
+const Air = @import("Air.zig");
 const Symbol = @import("Symbol.zig");
 const Scope = Symbol.Scope;
 const Type = Symbol.Type;
@@ -19,9 +19,9 @@ allocator: std.mem.Allocator,
 
 env: Compilation.Environment,
 
-hir: Hir,
+sir: Sir,
 
-lir: Lir,
+air: Air,
 
 maybe_function: ?Type = null,
 
@@ -214,7 +214,7 @@ fn checkStructOrStructPointer(self: *Sema, provided_type: Type, source_loc: Sour
     return error.MismatchedTypes;
 }
 
-fn checkTypeCircularDependency(self: *Sema, type_name: Name, provided_subtype: Hir.SubType) Error!void {
+fn checkTypeCircularDependency(self: *Sema, type_name: Name, provided_subtype: Sir.SubType) Error!void {
     switch (provided_subtype) {
         .name => |referenced_name| {
             if (std.mem.eql(u8, type_name.buffer, referenced_name.buffer)) {
@@ -312,17 +312,17 @@ fn reportCircularDependency(self: *Sema, name: Name) Error!void {
     return error.CircularDependency;
 }
 
-pub fn init(allocator: std.mem.Allocator, env: Compilation.Environment, hir: Hir) std.mem.Allocator.Error!Sema {
-    var lir: Lir = .{};
+pub fn init(allocator: std.mem.Allocator, env: Compilation.Environment, sir: Sir) std.mem.Allocator.Error!Sema {
+    var air: Air = .{};
 
-    // Lir instructions are always less than or equal to the Hir instructions length
-    try lir.instructions.ensureTotalCapacity(allocator, hir.instructions.items.len);
+    // Air instructions are always less than or equal to the Sir instructions length
+    try air.instructions.ensureTotalCapacity(allocator, sir.instructions.items.len);
 
     return Sema{
         .allocator = allocator,
         .env = env,
-        .hir = hir,
-        .lir = lir,
+        .sir = sir,
+        .air = air,
     };
 }
 
@@ -565,12 +565,12 @@ pub fn analyze(self: *Sema) Error!void {
 
     try self.putBuiltinConstants();
 
-    for (self.hir.instructions.items) |instruction| {
+    for (self.sir.instructions.items) |instruction| {
         try self.analyzeInstruction(instruction);
     }
 }
 
-fn analyzeSubType(self: *Sema, subtype: Hir.SubType) Error!Type {
+fn analyzeSubType(self: *Sema, subtype: Sir.SubType) Error!Type {
     switch (subtype) {
         .name => |name| {
             if (self.scope.get(name.buffer)) |variable| {
@@ -655,7 +655,7 @@ fn analyzeSubType(self: *Sema, subtype: Hir.SubType) Error!Type {
     }
 }
 
-fn analyzeSubSymbol(self: *Sema, subsymbol: Hir.SubSymbol) Error!Symbol {
+fn analyzeSubSymbol(self: *Sema, subsymbol: Sir.SubSymbol) Error!Symbol {
     return Symbol{
         .name = subsymbol.name,
         .type = try self.analyzeSubType(subsymbol.subtype),
@@ -663,7 +663,7 @@ fn analyzeSubSymbol(self: *Sema, subsymbol: Hir.SubSymbol) Error!Symbol {
     };
 }
 
-fn analyzeInstruction(self: *Sema, instruction: Hir.Instruction) Error!void {
+fn analyzeInstruction(self: *Sema, instruction: Sir.Instruction) Error!void {
     switch (instruction) {
         .duplicate => try self.analyzeDuplicate(),
         .reverse => |count| try self.analyzeReverse(count),
@@ -737,18 +737,18 @@ fn analyzeInstruction(self: *Sema, instruction: Hir.Instruction) Error!void {
 
 fn analyzeDuplicate(self: *Sema) Error!void {
     try self.stack.append(self.allocator, self.stack.getLast());
-    try self.lir.instructions.append(self.allocator, .duplicate);
+    try self.air.instructions.append(self.allocator, .duplicate);
 }
 
 fn analyzeReverse(self: *Sema, count: u32) Error!void {
     std.mem.reverse(Value, self.stack.items[self.stack.items.len - count ..]);
-    try self.lir.instructions.append(self.allocator, .{ .reverse = count });
+    try self.air.instructions.append(self.allocator, .{ .reverse = count });
 }
 
 fn analyzePop(self: *Sema) Error!void {
     if (self.stack.popOrNull()) |unused_value| {
         if (unused_value.getType() != .void) {
-            try self.lir.instructions.append(self.allocator, .pop);
+            try self.air.instructions.append(self.allocator, .pop);
         }
     }
 }
@@ -756,19 +756,19 @@ fn analyzePop(self: *Sema) Error!void {
 fn analyzeString(self: *Sema, string: []const u8) Error!void {
     try self.stack.append(self.allocator, .{ .string = string });
 
-    try self.lir.instructions.append(self.allocator, .{ .string = string });
+    try self.air.instructions.append(self.allocator, .{ .string = string });
 }
 
 fn analyzeInt(self: *Sema, int: i128) Error!void {
     try self.stack.append(self.allocator, .{ .int = int });
 
-    try self.lir.instructions.append(self.allocator, .{ .int = int });
+    try self.air.instructions.append(self.allocator, .{ .int = int });
 }
 
 fn analyzeFloat(self: *Sema, float: f64) Error!void {
     try self.stack.append(self.allocator, .{ .float = float });
 
-    try self.lir.instructions.append(self.allocator, .{ .float = float });
+    try self.air.instructions.append(self.allocator, .{ .float = float });
 }
 
 fn analyzeNegate(self: *Sema, source_loc: SourceLoc) Error!void {
@@ -786,19 +786,19 @@ fn analyzeNegate(self: *Sema, source_loc: SourceLoc) Error!void {
 
     switch (rhs) {
         .int => |rhs_int| {
-            self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .int = -rhs_int };
+            self.air.instructions.items[self.air.instructions.items.len - 1] = .{ .int = -rhs_int };
 
             try self.stack.append(self.allocator, .{ .int = -rhs_int });
         },
 
         .float => |rhs_float| {
-            self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .float = -rhs_float };
+            self.air.instructions.items[self.air.instructions.items.len - 1] = .{ .float = -rhs_float };
 
             try self.stack.append(self.allocator, .{ .float = -rhs_float });
         },
 
         .runtime => |rhs_runtime| {
-            try self.lir.instructions.append(self.allocator, .negate);
+            try self.air.instructions.append(self.allocator, .negate);
 
             try self.stack.append(self.allocator, .{ .runtime = .{ .type = rhs_runtime.type } });
         },
@@ -824,19 +824,19 @@ fn analyzeNot(self: *Sema, comptime operand: NotOperation, source_loc: SourceLoc
 
     switch (rhs) {
         .int => |rhs_int| {
-            self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .int = ~rhs_int };
+            self.air.instructions.items[self.air.instructions.items.len - 1] = .{ .int = ~rhs_int };
 
             try self.stack.append(self.allocator, .{ .int = ~rhs_int });
         },
 
         .boolean => |rhs_boolean| {
-            self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .boolean = !rhs_boolean };
+            self.air.instructions.items[self.air.instructions.items.len - 1] = .{ .boolean = !rhs_boolean };
 
             try self.stack.append(self.allocator, .{ .boolean = !rhs_boolean });
         },
 
         .runtime => |rhs_runtime| {
-            try self.lir.instructions.append(self.allocator, if (operand == .bool) .bool_not else .bit_not);
+            try self.air.instructions.append(self.allocator, if (operand == .bool) .bool_not else .bit_not);
 
             try self.stack.append(self.allocator, .{ .runtime = .{ .type = rhs_runtime.type } });
         },
@@ -866,9 +866,9 @@ fn analyzeBitwiseArithmetic(self: *Sema, comptime operation: BitwiseArithmeticOp
     }
 
     switch (operation) {
-        .bit_and => try self.lir.instructions.append(self.allocator, .bit_and),
-        .bit_or => try self.lir.instructions.append(self.allocator, .bit_or),
-        .bit_xor => try self.lir.instructions.append(self.allocator, .bit_xor),
+        .bit_and => try self.air.instructions.append(self.allocator, .bit_and),
+        .bit_or => try self.air.instructions.append(self.allocator, .bit_or),
+        .bit_xor => try self.air.instructions.append(self.allocator, .bit_xor),
     }
 
     switch (lhs) {
@@ -882,9 +882,9 @@ fn analyzeBitwiseArithmetic(self: *Sema, comptime operation: BitwiseArithmeticOp
 
                 try self.stack.append(self.allocator, .{ .int = result });
 
-                _ = self.lir.instructions.pop();
+                _ = self.air.instructions.pop();
 
-                self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .int = result };
+                self.air.instructions.items[self.air.instructions.items.len - 1] = .{ .int = result };
 
                 return;
             },
@@ -929,7 +929,7 @@ fn analyzeWrite(self: *Sema, source_loc: SourceLoc) Error!void {
 
     try self.checkRepresentability(rhs, lhs_pointer.child_type.*, source_loc);
 
-    try self.lir.instructions.append(self.allocator, .write);
+    try self.air.instructions.append(self.allocator, .write);
 }
 
 fn analyzeRead(self: *Sema, source_loc: SourceLoc) Error!void {
@@ -946,7 +946,7 @@ fn analyzeRead(self: *Sema, source_loc: SourceLoc) Error!void {
 
     const result_type = rhs_pointer.child_type.*;
 
-    try self.lir.instructions.append(self.allocator, .{ .read = result_type });
+    try self.air.instructions.append(self.allocator, .{ .read = result_type });
 
     try self.stack.append(self.allocator, .{ .runtime = .{ .type = result_type } });
 }
@@ -965,7 +965,7 @@ fn analyzeGetElementPtr(self: *Sema, source_loc: SourceLoc) Error!void {
 
     try self.checkRepresentability(rhs, usize_type, source_loc);
 
-    try self.lir.instructions.append(self.allocator, .{ .get_element_ptr = lhs_pointer.child_type.* });
+    try self.air.instructions.append(self.allocator, .{ .get_element_ptr = lhs_pointer.child_type.* });
 
     lhs_pointer.size = .one;
 
@@ -985,7 +985,7 @@ fn analyzeGetFieldPtr(self: *Sema, name: Name) Error!void {
 
     for (rhs_struct.fields, 0..) |field, i| {
         if (std.mem.eql(u8, field.name, name.buffer)) {
-            try self.lir.instructions.append(
+            try self.air.instructions.append(
                 self.allocator,
                 .{
                     .get_field_ptr = .{
@@ -1045,7 +1045,7 @@ fn analyzeReference(self: *Sema, source_loc: SourceLoc) Error!void {
     const child_on_heap = try self.allocator.create(Type);
     child_on_heap.* = rhs_runtime_type;
 
-    self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .get_ptr = rhs_runtime_name.buffer };
+    self.air.instructions.items[self.air.instructions.items.len - 1] = .{ .get_ptr = rhs_runtime_name.buffer };
 
     try self.stack.append(self.allocator, .{
         .runtime = .{
@@ -1112,9 +1112,9 @@ fn analyzeArithmetic(self: *Sema, comptime operation: ArithmeticOperation, sourc
 
                 try self.stack.append(self.allocator, .{ .int = result });
 
-                _ = self.lir.instructions.pop();
+                _ = self.air.instructions.pop();
 
-                self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .int = result };
+                self.air.instructions.items[self.air.instructions.items.len - 1] = .{ .int = result };
 
                 return;
             },
@@ -1133,9 +1133,9 @@ fn analyzeArithmetic(self: *Sema, comptime operation: ArithmeticOperation, sourc
 
                 try self.stack.append(self.allocator, .{ .float = result });
 
-                _ = self.lir.instructions.pop();
+                _ = self.air.instructions.pop();
 
-                self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .float = result };
+                self.air.instructions.items[self.air.instructions.items.len - 1] = .{ .float = result };
 
                 return;
             },
@@ -1167,10 +1167,10 @@ fn analyzeArithmetic(self: *Sema, comptime operation: ArithmeticOperation, sourc
     }
 
     switch (operation) {
-        .add => try self.lir.instructions.append(self.allocator, .add),
-        .sub => try self.lir.instructions.append(self.allocator, .sub),
-        .mul => try self.lir.instructions.append(self.allocator, .mul),
-        .div => try self.lir.instructions.append(
+        .add => try self.air.instructions.append(self.allocator, .add),
+        .sub => try self.air.instructions.append(self.allocator, .sub),
+        .mul => try self.air.instructions.append(self.allocator, .mul),
+        .div => try self.air.instructions.append(
             self.allocator,
             if (lhs_type.isInt() and lhs_type.canBeNegative() and rhs_type.canBeNegative())
                 .sdiv
@@ -1215,9 +1215,9 @@ fn analyzeComparison(self: *Sema, comptime operation: ComparisonOperation, sourc
                     .eql => lhs_int == rhs_int,
                 };
 
-                _ = self.lir.instructions.pop();
+                _ = self.air.instructions.pop();
 
-                self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .boolean = result };
+                self.air.instructions.items[self.air.instructions.items.len - 1] = .{ .boolean = result };
 
                 try self.stack.append(self.allocator, .{ .boolean = result });
 
@@ -1235,9 +1235,9 @@ fn analyzeComparison(self: *Sema, comptime operation: ComparisonOperation, sourc
                     .eql => lhs_float == rhs_float,
                 };
 
-                _ = self.lir.instructions.pop();
+                _ = self.air.instructions.pop();
 
-                self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .boolean = result };
+                self.air.instructions.items[self.air.instructions.items.len - 1] = .{ .boolean = result };
 
                 try self.stack.append(self.allocator, .{ .boolean = result });
 
@@ -1255,9 +1255,9 @@ fn analyzeComparison(self: *Sema, comptime operation: ComparisonOperation, sourc
                     else => unreachable,
                 };
 
-                _ = self.lir.instructions.pop();
+                _ = self.air.instructions.pop();
 
-                self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .boolean = result };
+                self.air.instructions.items[self.air.instructions.items.len - 1] = .{ .boolean = result };
 
                 try self.stack.append(self.allocator, .{ .boolean = result });
 
@@ -1271,17 +1271,17 @@ fn analyzeComparison(self: *Sema, comptime operation: ComparisonOperation, sourc
     }
 
     switch (operation) {
-        .lt => try self.lir.instructions.append(self.allocator, if (lhs.getType().isInt())
+        .lt => try self.air.instructions.append(self.allocator, if (lhs.getType().isInt())
             .{ .icmp = if (lhs.getType().canBeNegative() and rhs.getType().canBeNegative()) .slt else .ult }
         else
             .{ .fcmp = .lt }),
 
-        .gt => try self.lir.instructions.append(self.allocator, if (lhs.getType().isInt())
+        .gt => try self.air.instructions.append(self.allocator, if (lhs.getType().isInt())
             .{ .icmp = if (lhs.getType().canBeNegative() and rhs.getType().canBeNegative()) .sgt else .ugt }
         else
             .{ .fcmp = .gt }),
 
-        .eql => try self.lir.instructions.append(self.allocator, if (lhs.getType().isInt() or lhs.getType() == .bool)
+        .eql => try self.air.instructions.append(self.allocator, if (lhs.getType().isInt() or lhs.getType() == .bool)
             .{ .icmp = .eql }
         else
             .{ .fcmp = .eql }),
@@ -1324,20 +1324,20 @@ fn analyzeBitwiseShift(self: *Sema, comptime direction: BitwiseShiftDirection, s
 
         try self.stack.append(self.allocator, .{ .int = result });
 
-        _ = self.lir.instructions.pop();
+        _ = self.air.instructions.pop();
 
-        self.lir.instructions.items[self.lir.instructions.items.len - 1] = .{ .int = result };
+        self.air.instructions.items[self.air.instructions.items.len - 1] = .{ .int = result };
     } else {
         switch (direction) {
-            .left => try self.lir.instructions.append(self.allocator, .shl),
-            .right => try self.lir.instructions.append(self.allocator, .shr),
+            .left => try self.air.instructions.append(self.allocator, .shl),
+            .right => try self.air.instructions.append(self.allocator, .shr),
         }
 
         try self.stack.append(self.allocator, .{ .runtime = .{ .type = lhs_type } });
     }
 }
 
-fn analyzeCast(self: *Sema, cast: Hir.Instruction.Cast) Error!void {
+fn analyzeCast(self: *Sema, cast: Sir.Instruction.Cast) Error!void {
     const from = self.stack.getLast().getType();
     const to = try self.analyzeSubType(cast.to);
 
@@ -1369,18 +1369,18 @@ fn analyzeCast(self: *Sema, cast: Hir.Instruction.Cast) Error!void {
         try self.checkIntOrFloat(to, cast.source_loc);
     }
 
-    try self.lir.instructions.append(self.allocator, .{ .cast = .{ .from = from, .to = to } });
+    try self.air.instructions.append(self.allocator, .{ .cast = .{ .from = from, .to = to } });
 
     try self.stack.append(self.allocator, .{ .runtime = .{ .type = to } });
 }
 
-fn analyzeAssembly(self: *Sema, assembly: Hir.Instruction.Assembly) Error!void {
+fn analyzeAssembly(self: *Sema, assembly: Sir.Instruction.Assembly) Error!void {
     self.stack.shrinkRetainingCapacity(self.stack.items.len - assembly.input_constraints.len);
 
     if (assembly.output_constraint) |output_constraint| {
         const output_constraint_type = try self.analyzeSubType(output_constraint.subtype);
 
-        try self.lir.instructions.append(self.allocator, .{
+        try self.air.instructions.append(self.allocator, .{
             .assembly = .{
                 .content = assembly.content,
                 .input_constraints = assembly.input_constraints,
@@ -1394,7 +1394,7 @@ fn analyzeAssembly(self: *Sema, assembly: Hir.Instruction.Assembly) Error!void {
 
         try self.stack.append(self.allocator, .{ .runtime = .{ .type = output_constraint_type } });
     } else {
-        try self.lir.instructions.append(self.allocator, .{
+        try self.air.instructions.append(self.allocator, .{
             .assembly = .{
                 .content = assembly.content,
                 .input_constraints = assembly.input_constraints,
@@ -1407,7 +1407,7 @@ fn analyzeAssembly(self: *Sema, assembly: Hir.Instruction.Assembly) Error!void {
     }
 }
 
-fn analyzeCall(self: *Sema, call: Hir.Instruction.Call) Error!void {
+fn analyzeCall(self: *Sema, call: Sir.Instruction.Call) Error!void {
     const callable = self.stack.pop();
     const callable_type = callable.getType();
 
@@ -1428,7 +1428,7 @@ fn analyzeCall(self: *Sema, call: Hir.Instruction.Call) Error!void {
             try self.checkRepresentability(argument, parameter_type, call.source_loc);
         }
 
-        try self.lir.instructions.append(self.allocator, .{ .call = function });
+        try self.air.instructions.append(self.allocator, .{ .call = function });
 
         try self.stack.append(self.allocator, .{ .runtime = .{ .type = function.return_type.*, .data = .none } });
     } else {
@@ -1440,13 +1440,13 @@ fn analyzeCall(self: *Sema, call: Hir.Instruction.Call) Error!void {
     }
 }
 
-fn analyzeFunction(self: *Sema, subsymbol: Hir.SubSymbol) Error!void {
+fn analyzeFunction(self: *Sema, subsymbol: Sir.SubSymbol) Error!void {
     const symbol = try self.analyzeSubSymbol(subsymbol);
     if (self.scope.get(symbol.name.buffer) != null) return self.reportRedeclaration(symbol.name);
 
     self.maybe_function = symbol.type;
 
-    try self.lir.instructions.append(self.allocator, .{
+    try self.air.instructions.append(self.allocator, .{
         .function = .{
             .name = symbol.name.buffer,
             .type = symbol.type,
@@ -1456,7 +1456,7 @@ fn analyzeFunction(self: *Sema, subsymbol: Hir.SubSymbol) Error!void {
     try self.scope.put(self.allocator, symbol.name.buffer, .{ .symbol = symbol });
 }
 
-fn analyzeParameters(self: *Sema, subsymbols: []const Hir.SubSymbol) Error!void {
+fn analyzeParameters(self: *Sema, subsymbols: []const Sir.SubSymbol) Error!void {
     var symbols: std.ArrayListUnmanaged(Symbol) = .{};
     try symbols.ensureTotalCapacity(self.allocator, subsymbols.len);
 
@@ -1472,10 +1472,10 @@ fn analyzeParameters(self: *Sema, subsymbols: []const Hir.SubSymbol) Error!void 
         });
     }
 
-    try self.lir.instructions.append(self.allocator, .{ .parameters = try symbols.toOwnedSlice(self.allocator) });
+    try self.air.instructions.append(self.allocator, .{ .parameters = try symbols.toOwnedSlice(self.allocator) });
 }
 
-fn analyzeConstant(self: *Sema, infer: bool, subsymbol: Hir.SubSymbol) Error!void {
+fn analyzeConstant(self: *Sema, infer: bool, subsymbol: Sir.SubSymbol) Error!void {
     const symbol = try self.analyzeSubSymbol(subsymbol);
     if (self.scope.get(symbol.name.buffer) != null) return self.reportRedeclaration(symbol.name);
 
@@ -1500,13 +1500,13 @@ fn analyzeConstant(self: *Sema, infer: bool, subsymbol: Hir.SubSymbol) Error!voi
     }
 
     if (variable.symbol.linkage != .global) {
-        _ = self.lir.instructions.pop();
+        _ = self.air.instructions.pop();
     }
 
     try self.scope.put(self.allocator, variable.symbol.name.buffer, variable);
 }
 
-fn analyzeVariable(self: *Sema, infer: bool, subsymbol: Hir.SubSymbol) Error!void {
+fn analyzeVariable(self: *Sema, infer: bool, subsymbol: Sir.SubSymbol) Error!void {
     const symbol = try self.analyzeSubSymbol(subsymbol);
     if (self.scope.get(symbol.name.buffer) != null) return self.reportRedeclaration(symbol.name);
 
@@ -1530,19 +1530,19 @@ fn analyzeVariable(self: *Sema, infer: bool, subsymbol: Hir.SubSymbol) Error!voi
 
     try self.scope.put(self.allocator, variable.symbol.name.buffer, variable);
 
-    try self.lir.instructions.append(self.allocator, .{ .variable = variable.symbol });
+    try self.air.instructions.append(self.allocator, .{ .variable = variable.symbol });
 }
 
-fn analyzeExternal(self: *Sema, subsymbol: Hir.SubSymbol) Error!void {
+fn analyzeExternal(self: *Sema, subsymbol: Sir.SubSymbol) Error!void {
     const symbol = try self.analyzeSubSymbol(subsymbol);
     if (self.scope.get(symbol.name.buffer) != null) return self.reportRedeclaration(symbol.name);
 
     try self.scope.put(self.allocator, symbol.name.buffer, .{ .symbol = symbol });
 
-    try self.lir.instructions.append(self.allocator, .{ .external = symbol });
+    try self.air.instructions.append(self.allocator, .{ .external = symbol });
 }
 
-fn analyzeTypeAlias(self: *Sema, subsymbol: Hir.SubSymbol) Error!void {
+fn analyzeTypeAlias(self: *Sema, subsymbol: Sir.SubSymbol) Error!void {
     if (self.scope.get(subsymbol.name.buffer) != null) return self.reportRedeclaration(subsymbol.name);
 
     try self.checkTypeCircularDependency(subsymbol.name, subsymbol.subtype);
@@ -1572,7 +1572,7 @@ fn analyzeSet(self: *Sema, name: Name) Error!void {
         try self.checkRepresentability(value, variable.symbol.type, name.source_loc);
 
         if (self.maybe_function != null) {
-            try self.lir.instructions.append(self.allocator, .{ .set = name.buffer });
+            try self.air.instructions.append(self.allocator, .{ .set = name.buffer });
         }
     }
 }
@@ -1583,51 +1583,51 @@ fn analyzeGet(self: *Sema, name: Name) Error!void {
 
     if (variable.maybe_value) |value| {
         switch (value) {
-            .string => |value_string| try self.lir.instructions.append(self.allocator, .{ .string = value_string }),
-            .int => |value_int| try self.lir.instructions.append(self.allocator, .{ .int = value_int }),
-            .float => |value_float| try self.lir.instructions.append(self.allocator, .{ .float = value_float }),
-            .boolean => |value_boolean| try self.lir.instructions.append(self.allocator, .{ .boolean = value_boolean }),
+            .string => |value_string| try self.air.instructions.append(self.allocator, .{ .string = value_string }),
+            .int => |value_int| try self.air.instructions.append(self.allocator, .{ .int = value_int }),
+            .float => |value_float| try self.air.instructions.append(self.allocator, .{ .float = value_float }),
+            .boolean => |value_boolean| try self.air.instructions.append(self.allocator, .{ .boolean = value_boolean }),
             .runtime => unreachable,
         }
 
         try self.stack.append(self.allocator, value);
     } else {
         if (variable.symbol.type.getFunction() != null) {
-            try self.lir.instructions.append(self.allocator, .{ .get_ptr = name.buffer });
+            try self.air.instructions.append(self.allocator, .{ .get_ptr = name.buffer });
         } else {
-            try self.lir.instructions.append(self.allocator, .{ .get = name.buffer });
+            try self.air.instructions.append(self.allocator, .{ .get = name.buffer });
         }
 
         try self.stack.append(self.allocator, .{ .runtime = .{ .type = variable.symbol.type, .data = .{ .name = variable.symbol.name } } });
     }
 }
 
-fn analyzeBlock(self: *Sema, block: Hir.Instruction.Block) Error!void {
-    try self.lir.instructions.append(self.allocator, .{ .block = .{ .id = block.id } });
+fn analyzeBlock(self: *Sema, block: Sir.Instruction.Block) Error!void {
+    try self.air.instructions.append(self.allocator, .{ .block = .{ .id = block.id } });
 }
 
-fn analyzeBr(self: *Sema, br: Hir.Instruction.Br) Error!void {
-    try self.lir.instructions.append(self.allocator, .{ .br = .{ .id = br.id } });
+fn analyzeBr(self: *Sema, br: Sir.Instruction.Br) Error!void {
+    try self.air.instructions.append(self.allocator, .{ .br = .{ .id = br.id } });
 }
 
-fn analyzeCondBr(self: *Sema, cond_br: Hir.Instruction.CondBr) Error!void {
+fn analyzeCondBr(self: *Sema, cond_br: Sir.Instruction.CondBr) Error!void {
     const condition = self.stack.pop();
 
     try self.checkRepresentability(condition, .bool, cond_br.source_loc);
 
     switch (condition) {
         .boolean => |condition_boolean| {
-            _ = self.lir.instructions.pop();
+            _ = self.air.instructions.pop();
 
             if (condition_boolean == false) {
-                try self.lir.instructions.append(self.allocator, .{ .br = .{ .id = cond_br.false_id } });
+                try self.air.instructions.append(self.allocator, .{ .br = .{ .id = cond_br.false_id } });
             } else {
-                try self.lir.instructions.append(self.allocator, .{ .br = .{ .id = cond_br.true_id } });
+                try self.air.instructions.append(self.allocator, .{ .br = .{ .id = cond_br.true_id } });
             }
         },
 
         else => {
-            try self.lir.instructions.append(
+            try self.air.instructions.append(
                 self.allocator,
                 .{
                     .cond_br = .{
@@ -1646,13 +1646,13 @@ fn modifyScope(self: *Sema, start: bool) Error!void {
         local_scope.* = .{ .maybe_parent = self.scope };
         self.scope = local_scope;
 
-        try self.lir.instructions.append(self.allocator, .start_scope);
+        try self.air.instructions.append(self.allocator, .start_scope);
     } else {
         self.scope.clearAndFree(self.allocator);
         self.scope = self.scope.maybe_parent.?;
         _ = self.scope_stack.pop();
 
-        try self.lir.instructions.append(self.allocator, .end_scope);
+        try self.air.instructions.append(self.allocator, .end_scope);
     }
 }
 
@@ -1671,5 +1671,5 @@ fn analyzeReturn(self: *Sema, with_value: bool, source_loc: SourceLoc) Error!voi
         }
     }
 
-    try self.lir.instructions.append(self.allocator, if (with_value) .ret else .ret_void);
+    try self.air.instructions.append(self.allocator, if (with_value) .ret else .ret_void);
 }

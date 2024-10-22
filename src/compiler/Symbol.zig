@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const Name = @import("Hir.zig").Name;
+const Name = @import("Sir.zig").Name;
 const Compilation = @import("Compilation.zig");
 
 const Symbol = @This();

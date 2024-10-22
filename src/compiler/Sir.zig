@@ -1,8 +1,8 @@
-//! High Intermediate Representation.
+//! Syntax Intermediate Representation.
 //!
 //! An unchecked stack-based intermediate representation lowered down from `Token`s.
-//! Passed to `Sema` which checks all the instructions and types to be valid and lowers it down to `Lir`.
-//! And then `Lir` gets lowered down to machine code.
+//! Passed to `Sema` which checks all the instructions and types to be valid and lowers it down to `Air`.
+//! And then `Air` gets lowered down to machine code.
 
 const std = @import("std");
 
@@ -12,7 +12,7 @@ const Symbol = @import("Symbol.zig");
 const Type = Symbol.Type;
 const Token = @import("Token.zig");
 
-const Hir = @This();
+const Sir = @This();
 
 instructions: std.ArrayListUnmanaged(Instruction) = .{},
 
@@ -199,7 +199,7 @@ pub const Parser = struct {
     tokens: std.MultiArrayList(Token).Slice,
     token_index: u32,
 
-    hir: Hir,
+    sir: Sir,
 
     block_id: ?u32 = null,
 
@@ -237,10 +237,10 @@ pub const Parser = struct {
             if (token.tag == .eof) break;
         }
 
-        var hir: Hir = .{};
+        var sir: Sir = .{};
 
-        // Hir instructions are always less than or equal to the tokens length
-        try hir.instructions.ensureTotalCapacity(allocator, tokens.len);
+        // Sir instructions are always less than or equal to the tokens length
+        try sir.instructions.ensureTotalCapacity(allocator, tokens.len);
 
         return Parser{
             .allocator = allocator,
@@ -248,7 +248,7 @@ pub const Parser = struct {
             .buffer = buffer,
             .tokens = tokens.toOwnedSlice(),
             .token_index = 0,
-            .hir = hir,
+            .sir = sir,
         };
     }
 
@@ -348,7 +348,7 @@ pub const Parser = struct {
             else => {
                 try self.parseExpr(.lowest);
 
-                try self.hir.instructions.append(self.allocator, .pop);
+                try self.sir.instructions.append(self.allocator, .pop);
             },
         }
 
@@ -417,7 +417,7 @@ pub const Parser = struct {
         };
 
         if (linkage == .external) {
-            return self.hir.instructions.append(self.allocator, .{
+            return self.sir.instructions.append(self.allocator, .{
                 .external = .{
                     .name = name,
                     .subtype = function_pointer_subtype,
@@ -426,7 +426,7 @@ pub const Parser = struct {
             });
         }
 
-        try self.hir.instructions.append(self.allocator, .{
+        try self.sir.instructions.append(self.allocator, .{
             .function = .{
                 .name = name,
                 .subtype = function_pointer_subtype,
@@ -434,27 +434,27 @@ pub const Parser = struct {
             },
         });
 
-        try self.hir.instructions.append(self.allocator, .{ .block = .{ .id = 0 } });
+        try self.sir.instructions.append(self.allocator, .{ .block = .{ .id = 0 } });
 
         self.block_id = 1;
         defer self.block_id = null;
 
-        try self.hir.instructions.append(self.allocator, .start_scope);
+        try self.sir.instructions.append(self.allocator, .start_scope);
 
         if (parameter_subsymbols.len != 0) {
-            try self.hir.instructions.append(self.allocator, .{ .parameters = parameter_subsymbols });
+            try self.sir.instructions.append(self.allocator, .{ .parameters = parameter_subsymbols });
         }
 
         try self.parseBody();
 
-        if (self.hir.instructions.items.len == 0 or
-            (self.hir.instructions.getLast() != .ret and
-            self.hir.instructions.getLast() != .ret_void))
+        if (self.sir.instructions.items.len == 0 or
+            (self.sir.instructions.getLast() != .ret and
+            self.sir.instructions.getLast() != .ret_void))
         {
-            try self.hir.instructions.append(self.allocator, .{ .ret_void = source_loc });
+            try self.sir.instructions.append(self.allocator, .{ .ret_void = source_loc });
         }
 
-        try self.hir.instructions.append(self.allocator, .end_scope);
+        try self.sir.instructions.append(self.allocator, .end_scope);
     }
 
     fn parseFunctionParameters(self: *Parser) Error![]SubSymbol {
@@ -512,7 +512,7 @@ pub const Parser = struct {
         }
 
         if (linkage == .external) {
-            return self.hir.instructions.append(
+            return self.sir.instructions.append(
                 self.allocator,
                 .{
                     .external = .{
@@ -527,7 +527,7 @@ pub const Parser = struct {
         try self.parseExpr(.lowest);
 
         if (maybe_subtype) |subtype| {
-            try self.hir.instructions.append(
+            try self.sir.instructions.append(
                 self.allocator,
                 if (is_const)
                     .{
@@ -547,7 +547,7 @@ pub const Parser = struct {
                     },
             );
         } else {
-            try self.hir.instructions.append(
+            try self.sir.instructions.append(
                 self.allocator,
                 if (is_const)
                     .{
@@ -568,7 +568,7 @@ pub const Parser = struct {
             );
         }
 
-        try self.hir.instructions.append(self.allocator, .{ .set = name });
+        try self.sir.instructions.append(self.allocator, .{ .set = name });
     }
 
     fn parseTypeAlias(self: *Parser, linkage: Symbol.Linkage) Error!void {
@@ -584,7 +584,7 @@ pub const Parser = struct {
 
         const subtype = try self.parseSubType();
 
-        try self.hir.instructions.append(
+        try self.sir.instructions.append(
             self.allocator,
             .{
                 .type_alias = .{
@@ -607,7 +607,7 @@ pub const Parser = struct {
 
             try self.parseExpr(.lowest);
 
-            try self.hir.instructions.append(self.allocator, .{
+            try self.sir.instructions.append(self.allocator, .{
                 .cond_br = .{
                     .true_id = self.block_id.?,
                     .false_id = self.block_id.? + 1,
@@ -615,41 +615,41 @@ pub const Parser = struct {
                 },
             });
 
-            try self.hir.instructions.append(self.allocator, .{ .block = .{ .id = self.block_id.? } });
+            try self.sir.instructions.append(self.allocator, .{ .block = .{ .id = self.block_id.? } });
             self.block_id.? += 1;
 
-            try self.hir.instructions.append(self.allocator, .start_scope);
+            try self.sir.instructions.append(self.allocator, .start_scope);
 
             try self.parseBody();
 
-            try self.hir.instructions.append(self.allocator, .end_scope);
+            try self.sir.instructions.append(self.allocator, .end_scope);
 
-            try self.hir.instructions.append(self.allocator, .{ .br = .{ .id = end_block_id } });
+            try self.sir.instructions.append(self.allocator, .{ .br = .{ .id = end_block_id } });
 
             if (self.eatToken(.keyword_else)) {
                 if (self.peekToken().tag == .keyword_if) continue;
 
-                try self.hir.instructions.append(self.allocator, .{ .block = .{ .id = self.block_id.? } });
+                try self.sir.instructions.append(self.allocator, .{ .block = .{ .id = self.block_id.? } });
                 self.block_id.? += 1;
 
-                try self.hir.instructions.append(self.allocator, .start_scope);
+                try self.sir.instructions.append(self.allocator, .start_scope);
 
                 try self.parseBody();
 
-                try self.hir.instructions.append(self.allocator, .end_scope);
+                try self.sir.instructions.append(self.allocator, .end_scope);
 
-                try self.hir.instructions.append(self.allocator, .{ .br = .{ .id = end_block_id } });
+                try self.sir.instructions.append(self.allocator, .{ .br = .{ .id = end_block_id } });
             } else {
-                try self.hir.instructions.append(self.allocator, .{ .block = .{ .id = self.block_id.? } });
+                try self.sir.instructions.append(self.allocator, .{ .block = .{ .id = self.block_id.? } });
                 self.block_id.? += 1;
 
-                try self.hir.instructions.append(self.allocator, .{ .br = .{ .id = end_block_id } });
+                try self.sir.instructions.append(self.allocator, .{ .br = .{ .id = end_block_id } });
             }
 
             break;
         }
 
-        try self.hir.instructions.append(self.allocator, .{ .block = .{ .id = end_block_id } });
+        try self.sir.instructions.append(self.allocator, .{ .block = .{ .id = end_block_id } });
     }
 
     var maybe_header_block_id: ?u32 = null;
@@ -675,38 +675,38 @@ pub const Parser = struct {
         maybe_end_block_id = end_block_id;
         defer maybe_end_block_id = previous_end_block_id;
 
-        try self.hir.instructions.append(self.allocator, .{ .br = .{ .id = header_block_id } });
+        try self.sir.instructions.append(self.allocator, .{ .br = .{ .id = header_block_id } });
 
-        try self.hir.instructions.append(self.allocator, .{ .block = .{ .id = header_block_id } });
+        try self.sir.instructions.append(self.allocator, .{ .block = .{ .id = header_block_id } });
 
         const condition_source_loc = self.tokenSourceLoc(self.peekToken());
 
         try self.parseExpr(.lowest);
 
-        try self.hir.instructions.append(self.allocator, .{ .cond_br = .{
+        try self.sir.instructions.append(self.allocator, .{ .cond_br = .{
             .true_id = body_block_id,
             .false_id = end_block_id,
             .source_loc = condition_source_loc,
         } });
 
-        try self.hir.instructions.append(self.allocator, .{ .block = .{ .id = body_block_id } });
+        try self.sir.instructions.append(self.allocator, .{ .block = .{ .id = body_block_id } });
 
-        try self.hir.instructions.append(self.allocator, .start_scope);
+        try self.sir.instructions.append(self.allocator, .start_scope);
 
         try self.parseBody();
 
-        try self.hir.instructions.append(self.allocator, .end_scope);
+        try self.sir.instructions.append(self.allocator, .end_scope);
 
-        try self.hir.instructions.append(self.allocator, .{ .br = .{ .id = header_block_id } });
+        try self.sir.instructions.append(self.allocator, .{ .br = .{ .id = header_block_id } });
 
-        try self.hir.instructions.append(self.allocator, .{ .block = .{ .id = end_block_id } });
+        try self.sir.instructions.append(self.allocator, .{ .block = .{ .id = end_block_id } });
     }
 
     fn parseContinue(self: *Parser) Error!void {
         const source_loc = self.tokenSourceLoc(self.nextToken());
 
         if (maybe_header_block_id) |header_block_id| {
-            return self.hir.instructions.append(self.allocator, .{ .br = .{ .id = header_block_id } });
+            return self.sir.instructions.append(self.allocator, .{ .br = .{ .id = header_block_id } });
         }
 
         self.error_info = .{ .message = "expected the continue statement to be inside a loop", .source_loc = source_loc };
@@ -718,7 +718,7 @@ pub const Parser = struct {
         const source_loc = self.tokenSourceLoc(self.nextToken());
 
         if (maybe_end_block_id) |end_block_id| {
-            return self.hir.instructions.append(self.allocator, .{ .br = .{ .id = end_block_id } });
+            return self.sir.instructions.append(self.allocator, .{ .br = .{ .id = end_block_id } });
         }
 
         self.error_info = .{ .message = "expected the break statement to be inside a loop", .source_loc = source_loc };
@@ -730,11 +730,11 @@ pub const Parser = struct {
         const source_loc = self.tokenSourceLoc(self.nextToken());
 
         if (self.peekToken().tag == .semicolon) {
-            try self.hir.instructions.append(self.allocator, .{ .ret_void = source_loc });
+            try self.sir.instructions.append(self.allocator, .{ .ret_void = source_loc });
         } else {
             try self.parseExpr(.lowest);
 
-            try self.hir.instructions.append(self.allocator, .{ .ret = source_loc });
+            try self.sir.instructions.append(self.allocator, .{ .ret = source_loc });
         }
     }
 
@@ -808,7 +808,7 @@ pub const Parser = struct {
     }
 
     fn parseIdentifier(self: *Parser) Error!void {
-        try self.hir.instructions.append(self.allocator, .{ .get = try self.parseName() });
+        try self.sir.instructions.append(self.allocator, .{ .get = try self.parseName() });
     }
 
     const UnescapeError = error{InvalidEscapeCharacter} || std.mem.Allocator.Error;
@@ -891,7 +891,7 @@ pub const Parser = struct {
 
         const unescaped = try unescaped_list.toOwnedSlice();
 
-        try self.hir.instructions.append(self.allocator, .{ .string = unescaped });
+        try self.sir.instructions.append(self.allocator, .{ .string = unescaped });
     }
 
     fn parseChar(self: *Parser) Error!void {
@@ -924,7 +924,7 @@ pub const Parser = struct {
             return error.InvalidChar;
         };
 
-        try self.hir.instructions.append(self.allocator, .{ .int = decoded });
+        try self.sir.instructions.append(self.allocator, .{ .int = decoded });
     }
 
     fn parseInt(self: *Parser) Error!void {
@@ -934,7 +934,7 @@ pub const Parser = struct {
             return error.InvalidNumber;
         };
 
-        try self.hir.instructions.append(self.allocator, .{ .int = value });
+        try self.sir.instructions.append(self.allocator, .{ .int = value });
     }
 
     fn parseFloat(self: *Parser) Error!void {
@@ -944,7 +944,7 @@ pub const Parser = struct {
             return error.InvalidNumber;
         };
 
-        try self.hir.instructions.append(self.allocator, .{ .float = value });
+        try self.sir.instructions.append(self.allocator, .{ .float = value });
     }
 
     fn parseAssembly(self: *Parser) Error!void {
@@ -971,7 +971,7 @@ pub const Parser = struct {
 
             try self.parseString();
 
-            try content.appendSlice(self.allocator, self.hir.instructions.pop().string);
+            try content.appendSlice(self.allocator, self.sir.instructions.pop().string);
 
             if (self.eatToken(.colon)) {
                 if (self.peekToken().tag != .colon) {
@@ -1000,7 +1000,7 @@ pub const Parser = struct {
             }
         }
 
-        try self.hir.instructions.append(self.allocator, .{
+        try self.sir.instructions.append(self.allocator, .{
             .assembly = .{
                 .content = try content.toOwnedSlice(self.allocator),
                 .input_constraints = input_constraints,
@@ -1024,7 +1024,7 @@ pub const Parser = struct {
             }
         }
 
-        try self.hir.instructions.append(self.allocator, .{ .reverse = @intCast(constraints.items.len) });
+        try self.sir.instructions.append(self.allocator, .{ .reverse = @intCast(constraints.items.len) });
 
         return constraints.toOwnedSlice();
     }
@@ -1038,7 +1038,7 @@ pub const Parser = struct {
 
         try self.parseString();
 
-        const register = self.hir.instructions.pop().string;
+        const register = self.sir.instructions.pop().string;
 
         if (!self.eatToken(.open_paren)) {
             self.error_info = .{ .message = "expected a '('", .source_loc = self.tokenSourceLoc(self.peekToken()) };
@@ -1066,7 +1066,7 @@ pub const Parser = struct {
 
         try self.parseString();
 
-        const register = self.hir.instructions.pop().string;
+        const register = self.sir.instructions.pop().string;
 
         if (!self.eatToken(.open_paren)) {
             self.error_info = .{ .message = "expected a '('", .source_loc = self.tokenSourceLoc(self.peekToken()) };
@@ -1100,7 +1100,7 @@ pub const Parser = struct {
 
             try self.parseString();
 
-            try clobbers.append(self.hir.instructions.pop().string);
+            try clobbers.append(self.sir.instructions.pop().string);
 
             if (!self.eatToken(.comma) and self.peekToken().tag != .close_brace) {
                 self.error_info = .{ .message = "expected a ','", .source_loc = self.tokenSourceLoc(self.peekToken()) };
@@ -1132,25 +1132,25 @@ pub const Parser = struct {
 
         switch (operator_token.tag) {
             .minus => {
-                try self.hir.instructions.append(self.allocator, .{ .negate = source_loc });
+                try self.sir.instructions.append(self.allocator, .{ .negate = source_loc });
             },
 
             .bang => {
-                try self.hir.instructions.append(self.allocator, .{ .bool_not = source_loc });
+                try self.sir.instructions.append(self.allocator, .{ .bool_not = source_loc });
             },
 
             .tilde => {
-                try self.hir.instructions.append(self.allocator, .{ .bit_not = source_loc });
+                try self.sir.instructions.append(self.allocator, .{ .bit_not = source_loc });
             },
 
             .ampersand => {
-                if (self.hir.instructions.items[self.hir.instructions.items.len - 1] == .read and
-                    (self.hir.instructions.items[self.hir.instructions.items.len - 2] == .get_element_ptr or
-                    self.hir.instructions.items[self.hir.instructions.items.len - 2] == .get_field_ptr))
+                if (self.sir.instructions.items[self.sir.instructions.items.len - 1] == .read and
+                    (self.sir.instructions.items[self.sir.instructions.items.len - 2] == .get_element_ptr or
+                    self.sir.instructions.items[self.sir.instructions.items.len - 2] == .get_field_ptr))
                 {
-                    _ = self.hir.instructions.pop();
+                    _ = self.sir.instructions.pop();
                 } else {
-                    try self.hir.instructions.append(self.allocator, .{ .reference = source_loc });
+                    try self.sir.instructions.append(self.allocator, .{ .reference = source_loc });
                 }
             },
 
@@ -1202,23 +1202,23 @@ pub const Parser = struct {
 
         switch (operator_token.tag) {
             .plus => {
-                try self.hir.instructions.append(self.allocator, .{ .add = source_loc });
+                try self.sir.instructions.append(self.allocator, .{ .add = source_loc });
             },
 
             .minus => {
-                try self.hir.instructions.append(self.allocator, .{ .sub = source_loc });
+                try self.sir.instructions.append(self.allocator, .{ .sub = source_loc });
             },
 
             .star => {
-                try self.hir.instructions.append(self.allocator, .{ .mul = source_loc });
+                try self.sir.instructions.append(self.allocator, .{ .mul = source_loc });
             },
 
             .forward_slash => {
-                try self.hir.instructions.append(self.allocator, .{ .div = source_loc });
+                try self.sir.instructions.append(self.allocator, .{ .div = source_loc });
             },
 
             .equal_sign => {
-                const last_instruction = self.hir.instructions.pop();
+                const last_instruction = self.sir.instructions.pop();
 
                 try self.parseExpr(.lowest);
 
@@ -1237,12 +1237,12 @@ pub const Parser = struct {
                     // rhs
                     // lhs
 
-                    try self.hir.instructions.append(self.allocator, .duplicate);
-                    try self.hir.instructions.append(self.allocator, .{ .reverse = 3 });
-                    try self.hir.instructions.append(self.allocator, .{ .write = source_loc });
+                    try self.sir.instructions.append(self.allocator, .duplicate);
+                    try self.sir.instructions.append(self.allocator, .{ .reverse = 3 });
+                    try self.sir.instructions.append(self.allocator, .{ .write = source_loc });
                 } else if (last_instruction == .get) {
-                    try self.hir.instructions.append(self.allocator, .duplicate);
-                    try self.hir.instructions.append(self.allocator, .{ .set = last_instruction.get });
+                    try self.sir.instructions.append(self.allocator, .duplicate);
+                    try self.sir.instructions.append(self.allocator, .{ .set = last_instruction.get });
                 } else {
                     self.error_info = .{ .message = "expected an identifier or a pointer dereference", .source_loc = source_loc };
 
@@ -1251,38 +1251,38 @@ pub const Parser = struct {
             },
 
             .less_than => {
-                try self.hir.instructions.append(self.allocator, .{ .lt = source_loc });
+                try self.sir.instructions.append(self.allocator, .{ .lt = source_loc });
             },
 
             .greater_than => {
-                try self.hir.instructions.append(self.allocator, .{ .gt = source_loc });
+                try self.sir.instructions.append(self.allocator, .{ .gt = source_loc });
             },
 
             .double_less_than => {
-                try self.hir.instructions.append(self.allocator, .{ .shl = source_loc });
+                try self.sir.instructions.append(self.allocator, .{ .shl = source_loc });
             },
 
             .double_greater_than => {
-                try self.hir.instructions.append(self.allocator, .{ .shr = source_loc });
+                try self.sir.instructions.append(self.allocator, .{ .shr = source_loc });
             },
 
             .ampersand => {
-                try self.hir.instructions.append(self.allocator, .{ .bit_and = source_loc });
+                try self.sir.instructions.append(self.allocator, .{ .bit_and = source_loc });
             },
 
             .pipe => {
-                try self.hir.instructions.append(self.allocator, .{ .bit_or = source_loc });
+                try self.sir.instructions.append(self.allocator, .{ .bit_or = source_loc });
             },
 
             .caret => {
-                try self.hir.instructions.append(self.allocator, .{ .bit_xor = source_loc });
+                try self.sir.instructions.append(self.allocator, .{ .bit_xor = source_loc });
             },
 
             .double_equal_sign, .bang_equal_sign => {
-                try self.hir.instructions.append(self.allocator, .{ .eql = source_loc });
+                try self.sir.instructions.append(self.allocator, .{ .eql = source_loc });
 
                 if (operator_token.tag == .bang_equal_sign) {
-                    try self.hir.instructions.append(self.allocator, .{ .bool_not = source_loc });
+                    try self.sir.instructions.append(self.allocator, .{ .bool_not = source_loc });
                 }
             },
 
@@ -1295,7 +1295,7 @@ pub const Parser = struct {
 
         const to = try self.parseSubType();
 
-        try self.hir.instructions.append(self.allocator, .{ .cast = .{ .to = to, .source_loc = source_loc } });
+        try self.sir.instructions.append(self.allocator, .{ .cast = .{ .to = to, .source_loc = source_loc } });
     }
 
     fn parseCall(self: *Parser) Error!void {
@@ -1303,9 +1303,9 @@ pub const Parser = struct {
 
         const arguments_count = try self.parseCallArguments();
 
-        try self.hir.instructions.append(self.allocator, .{ .reverse = arguments_count + 1 });
+        try self.sir.instructions.append(self.allocator, .{ .reverse = arguments_count + 1 });
 
-        try self.hir.instructions.append(self.allocator, .{
+        try self.sir.instructions.append(self.allocator, .{
             .call = .{
                 .arguments_count = arguments_count,
                 .source_loc = source_loc,
@@ -1347,26 +1347,26 @@ pub const Parser = struct {
             return error.UnexpectedToken;
         }
 
-        try self.hir.instructions.append(self.allocator, .{ .get_element_ptr = source_loc });
-        try self.hir.instructions.append(self.allocator, .{ .read = source_loc });
+        try self.sir.instructions.append(self.allocator, .{ .get_element_ptr = source_loc });
+        try self.sir.instructions.append(self.allocator, .{ .read = source_loc });
     }
 
     fn parseFieldAccess(self: *Parser) Error!void {
         _ = self.nextToken();
 
         if (self.peekToken().tag == .star) {
-            try self.hir.instructions.append(self.allocator, .{ .read = self.tokenSourceLoc(self.nextToken()) });
+            try self.sir.instructions.append(self.allocator, .{ .read = self.tokenSourceLoc(self.nextToken()) });
         } else {
             const name = try self.parseName();
 
-            if (self.hir.instructions.items[self.hir.instructions.items.len - 1] == .read and
-                self.hir.instructions.items[self.hir.instructions.items.len - 2] == .get_field_ptr)
+            if (self.sir.instructions.items[self.sir.instructions.items.len - 1] == .read and
+                self.sir.instructions.items[self.sir.instructions.items.len - 2] == .get_field_ptr)
             {
-                _ = self.hir.instructions.pop();
+                _ = self.sir.instructions.pop();
             }
 
-            try self.hir.instructions.append(self.allocator, .{ .get_field_ptr = name });
-            try self.hir.instructions.append(self.allocator, .{ .read = name.source_loc });
+            try self.sir.instructions.append(self.allocator, .{ .get_field_ptr = name });
+            try self.sir.instructions.append(self.allocator, .{ .read = name.source_loc });
         }
     }
 
