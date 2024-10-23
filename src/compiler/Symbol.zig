@@ -31,8 +31,8 @@ pub const Type = union(enum) {
         bits: u16,
 
         pub const Signedness = enum {
-            signed,
             unsigned,
+            signed,
         };
     };
 
@@ -89,23 +89,6 @@ pub const Type = union(enum) {
         return (self.isInt() or self.isFloat() or self == .pointer);
     }
 
-    pub fn bitSize(self: Type, env: Compilation.Environment) u16 {
-        return switch (self) {
-            .void => 0,
-            .bool => 1,
-            .ambigiuous_int => 128,
-            .ambigiuous_float => 64,
-            .pointer => env.target.ptrBitWidth(),
-            .function => env.target.ptrBitWidth(),
-
-            inline else => |other| other.bits,
-        };
-    }
-
-    pub fn byteSize(self: Type, env: Compilation.Environment) u16 {
-        return std.math.divCeil(u16, self.bitSize(env), 8) catch unreachable;
-    }
-
     pub fn minInt(self: Type) i128 {
         return switch (self) {
             .ambigiuous_int => std.math.minInt(i128),
@@ -139,6 +122,25 @@ pub const Type = union(enum) {
             .float => |float| if (float.bits == 32) std.math.floatMax(f32) else if (float.bits == 64) std.math.floatMax(f64) else unreachable,
 
             else => unreachable,
+        };
+    }
+
+    pub fn intFittingRange(from: i128, to: i128) Type {
+        const signedness: Int.Signedness = @enumFromInt(@intFromBool(from < 0));
+
+        const largest_positive_integer = @max(if (from < 0) (-from) - 1 else from, to); // two's complement
+
+        const base: u7 = @intFromFloat(@ceil(@log2(@as(f64, @floatFromInt(largest_positive_integer + 1)))));
+        const upper = (@as(i128, 1) << base) - 1;
+
+        var magnitude_bits = if (upper >= largest_positive_integer) base else base + 1;
+        magnitude_bits += @intFromEnum(signedness);
+
+        return Type{
+            .int = .{
+                .signedness = signedness,
+                .bits = @intCast(magnitude_bits),
+            },
         };
     }
 

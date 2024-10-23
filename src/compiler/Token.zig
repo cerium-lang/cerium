@@ -38,6 +38,7 @@ pub const Tag = enum(u8) {
     bang_equal_sign,
     forward_slash,
     keyword_struct,
+    keyword_enum,
     keyword_extern,
     keyword_fn,
     keyword_var,
@@ -60,6 +61,7 @@ pub const Range = packed struct(u64) {
 
 pub const keywords = std.StaticStringMap(Tag).initComptime(.{
     .{ "struct", .keyword_struct },
+    .{ "enum", .keyword_enum },
     .{ "extern", .keyword_extern },
     .{ "fn", .keyword_fn },
     .{ "var", .keyword_var },

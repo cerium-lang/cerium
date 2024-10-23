@@ -59,6 +59,8 @@ pub fn init(allocator: std.mem.Allocator, target: std.Target, air: Air) LlvmBack
 }
 
 pub fn deinit(self: *LlvmBackend) void {
+    c.LLVMDumpModule(self.module);
+
     self.basic_blocks.deinit(self.allocator);
     self.strings.deinit(self.allocator);
     self.stack.deinit(self.allocator);
@@ -461,11 +463,10 @@ fn renderString(self: *LlvmBackend, string: []const u8) Error!void {
 }
 
 fn renderInt(self: *LlvmBackend, int: i128) Error!void {
-    const bits: c_uint = @intFromFloat(@ceil(@log2(@as(f64, @floatFromInt(@abs(int) + 1)))));
-    const bigger_bits = std.mem.alignForward(c_uint, bits + 1, 8);
+    const bits = if (int >= 0) Type.intFittingRange(-int, int).int.bits else Type.intFittingRange(int, -int).int.bits;
 
     const int_repr: c_ulonglong = @truncate(@as(u128, @bitCast(int)));
-    const int_type = c.LLVMIntTypeInContext(self.context, bigger_bits);
+    const int_type = c.LLVMIntTypeInContext(self.context, std.math.clamp(bits, 1, 64));
 
     try self.stack.append(self.allocator, c.LLVMConstInt(int_type, int_repr, 1));
 }

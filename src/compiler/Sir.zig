@@ -32,6 +32,7 @@ pub const SubType = union(enum) {
     function: Function,
     pointer: Pointer,
     @"struct": Struct,
+    @"enum": Enum,
     pure: Type,
 
     pub const Function = struct {
@@ -47,6 +48,17 @@ pub const SubType = union(enum) {
 
     pub const Struct = struct {
         subsymbols: []const SubSymbol,
+    };
+
+    pub const Enum = struct {
+        subtype: *const SubType,
+        fields: []const Field,
+        source_loc: SourceLoc,
+
+        pub const Field = struct {
+            name: Name,
+            value: i128,
+        };
     };
 };
 
@@ -514,19 +526,19 @@ pub const Parser = struct {
             );
         }
 
-        const evaluate_value = self.peekToken().tag != .semicolon or is_const;
+        const has_initializer = self.peekToken().tag != .semicolon or is_const;
 
-        if (evaluate_value and !self.eatToken(.equal_sign)) {
+        if (has_initializer and !self.eatToken(.equal_sign)) {
             self.error_info = .{ .message = "expected a '='", .source_loc = self.tokenSourceLoc(self.peekToken()) };
 
             return error.UnexpectedToken;
         }
 
-        if (evaluate_value) try self.parseExpr(.lowest);
+        if (has_initializer) try self.parseExpr(.lowest);
 
-        if (maybe_subtype) |subtype| {
-            try self.sir.instructions.append(
-                self.allocator,
+        try self.sir.instructions.append(
+            self.allocator,
+            if (maybe_subtype) |subtype|
                 if (is_const)
                     .{
                         .constant = .{
@@ -542,31 +554,26 @@ pub const Parser = struct {
                             .subtype = subtype,
                             .linkage = linkage,
                         },
-                    },
-            );
-        } else {
-            try self.sir.instructions.append(
-                self.allocator,
-                if (is_const)
-                    .{
-                        .constant_infer = .{
-                            .name = name,
-                            .subtype = .{ .pure = .void },
-                            .linkage = linkage,
-                        },
                     }
-                else
-                    .{
-                        .variable_infer = .{
-                            .name = name,
-                            .subtype = .{ .pure = .void },
-                            .linkage = linkage,
-                        },
+            else if (is_const)
+                .{
+                    .constant_infer = .{
+                        .name = name,
+                        .subtype = .{ .pure = .void },
+                        .linkage = linkage,
                     },
-            );
-        }
+                }
+            else
+                .{
+                    .variable_infer = .{
+                        .name = name,
+                        .subtype = .{ .pure = .void },
+                        .linkage = linkage,
+                    },
+                },
+        );
 
-        if (evaluate_value) try self.sir.instructions.append(self.allocator, .{ .set = name });
+        if (has_initializer) try self.sir.instructions.append(self.allocator, .{ .set = name });
     }
 
     fn parseTypeAlias(self: *Parser, linkage: Symbol.Linkage) Error!void {
@@ -1435,6 +1442,98 @@ pub const Parser = struct {
                 }
 
                 return SubType{ .@"struct" = .{ .subsymbols = try subsymbols.toOwnedSlice(self.allocator) } };
+            },
+
+            .keyword_enum => {
+                const source_loc = self.tokenSourceLoc(self.nextToken());
+
+                const maybe_subtype = if (self.peekToken().tag == .open_brace)
+                    null
+                else
+                    try self.parseSubType();
+
+                if (!self.eatToken(.open_brace)) {
+                    self.error_info = .{ .message = "expected a '{'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                    return error.UnexpectedToken;
+                }
+
+                var fields: std.ArrayListUnmanaged(SubType.Enum.Field) = .{};
+
+                var fields_hashset = std.StringHashMapUnmanaged(void){};
+                defer fields_hashset.deinit(self.allocator);
+
+                var previous_value: i128 = 0;
+
+                var max_value: i128 = 0;
+                var min_value: i128 = 0;
+
+                while (self.peekToken().tag != .eof and self.peekToken().tag != .close_brace) {
+                    const name = try self.parseName();
+
+                    if (fields_hashset.get(name.buffer)) |_| {
+                        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+                        try error_message_buf.writer(self.allocator).print("redeclaration of '{s}' in enum fields", .{name.buffer});
+
+                        self.error_info = .{ .message = error_message_buf.items, .source_loc = name.source_loc };
+
+                        return error.Redeclared;
+                    }
+
+                    try fields_hashset.put(self.allocator, name.buffer, {});
+
+                    const value = if (self.eatToken(.equal_sign)) blk: {
+                        if (self.peekToken().tag != .int) {
+                            self.error_info = .{ .message = "expected a valid integer", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                            return error.UnexpectedToken;
+                        }
+
+                        try self.parseInt();
+
+                        break :blk self.sir.instructions.pop().int;
+                    } else previous_value + 1;
+
+                    previous_value = value;
+
+                    if (value > max_value) max_value = value;
+                    if (value < min_value) min_value = value;
+
+                    try fields.append(self.allocator, .{
+                        .name = name,
+                        .value = value,
+                    });
+
+                    if (!self.eatToken(.comma) and self.peekToken().tag != .close_brace) {
+                        self.error_info = .{ .message = "expected a ','", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                        return error.UnexpectedToken;
+                    }
+                }
+
+                if (!self.eatToken(.close_brace)) {
+                    self.error_info = .{ .message = "expected a '}'", .source_loc = self.tokenSourceLoc(self.peekToken()) };
+
+                    return error.UnexpectedToken;
+                }
+
+                const subtype = if (maybe_subtype) |subtype|
+                    subtype
+                else blk: {
+                    break :blk SubType{ .pure = .intFittingRange(min_value, max_value) };
+                };
+
+                const subtype_on_heap = try self.allocator.create(SubType);
+                subtype_on_heap.* = subtype;
+
+                return SubType{
+                    .@"enum" = .{
+                        .subtype = subtype_on_heap,
+                        .fields = try fields.toOwnedSlice(self.allocator),
+                        .source_loc = source_loc,
+                    },
+                };
             },
 
             .keyword_fn => {

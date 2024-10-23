@@ -54,9 +54,15 @@ pub const Error = error{
 const Value = union(enum) {
     string: []const u8,
     int: i128,
+    typed_int: TypedInt,
     float: f64,
     boolean: bool,
     runtime: Runtime,
+
+    const TypedInt = struct {
+        type: Type,
+        value: i128,
+    };
 
     const Runtime = struct {
         type: Type,
@@ -88,9 +94,7 @@ const Value = union(enum) {
             self == .int and self.int <= as.maxInt()) or
             (self == .float and self.float >= -as.maxFloat() and
             self == .float and self.float <= as.maxFloat()) or
-            (self == .boolean) or
-            (self == .string) or
-            (self == .runtime);
+            (self != .int and self != .float);
     }
 
     fn getType(self: Value) Type {
@@ -105,13 +109,14 @@ const Value = union(enum) {
                     .child_type = &.{ .int = .{ .signedness = .unsigned, .bits = 8 } },
                 },
             },
-            .runtime => |runtime| runtime.type,
+            inline else => |other| other.type,
         };
     }
 
     pub fn format(self: Value, _: anytype, _: anytype, writer: anytype) !void {
         switch (self) {
             .int => |int| try writer.print("{}", .{int}),
+            .typed_int => |typed_int| try writer.print("{}", .{typed_int.value}),
             .float => |float| try writer.print("{d}", .{float}),
             .boolean => |boolean| try writer.print("{}", .{boolean}),
             .string => |string| try writer.print("{s}", .{string}),
@@ -180,6 +185,18 @@ fn checkInt(self: *Sema, provided_type: Type, source_loc: SourceLoc) Error!void 
         var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
         try error_message_buf.writer(self.allocator).print("'{}' is provided while expected an integer", .{provided_type});
+
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+
+        return error.MismatchedTypes;
+    }
+}
+
+fn checkIntType(self: *Sema, provided_type: Type, source_loc: SourceLoc) Error!void {
+    if (!provided_type.isInt()) {
+        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+        try error_message_buf.writer(self.allocator).print("'{}' is provided while expected an integer type", .{provided_type});
 
         self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
 
@@ -673,6 +690,12 @@ fn analyzeSubType(self: *Sema, subtype: Sir.SubType) Error!Type {
             }
 
             return Type{ .@"struct" = .{ .fields = fields } };
+        },
+
+        .@"enum" => |@"enum"| {
+            self.error_info = .{ .message = "enums should be in a type alias as they require a namespace", .source_loc = @"enum".source_loc };
+
+            return error.UnexpectedType;
         },
 
         .pure => |pure| return pure,
@@ -1571,9 +1594,47 @@ fn analyzeTypeAlias(self: *Sema, subsymbol: Sir.SubSymbol) Error!void {
 
     try self.checkTypeCircularDependency(subsymbol.name, subsymbol.subtype);
 
-    const symbol_entry = try self.scope.getOrPut(self.allocator, subsymbol.name.buffer);
-    symbol_entry.value_ptr.is_type_alias = true;
-    symbol_entry.value_ptr.symbol = try self.analyzeSubSymbol(subsymbol);
+    if (subsymbol.subtype == .@"enum") {
+        const @"enum" = subsymbol.subtype.@"enum";
+        const enum_type = try self.analyzeSubType(@"enum".subtype.*);
+
+        try self.checkIntType(enum_type, @"enum".source_loc);
+
+        if (enum_type.int.bits > 64) {
+            // TODO: LLVM supports more than 64 bits but we don't currently expose this feature, sorry...
+            self.error_info = .{
+                .message = "enum is backed by an integer which takes more than 64 bits in memory but it is not currently supported",
+                .source_loc = @"enum".source_loc,
+            };
+
+            return error.UnexpectedType;
+        }
+
+        for (@"enum".fields) |field| {
+            const enum_field_value: Value = .{ .int = field.value };
+
+            try self.checkRepresentability(enum_field_value, enum_type, field.name.source_loc);
+
+            const enum_field_typed_value: Value = .{ .typed_int = .{ .type = enum_type, .value = field.value } };
+
+            const enum_field_entry = try std.mem.concat(self.allocator, u8, &.{ subsymbol.name.buffer, "::", field.name.buffer });
+
+            try self.scope.put(self.allocator, enum_field_entry, .{
+                .symbol = undefined,
+                .maybe_value = enum_field_typed_value,
+                .is_const = true,
+                .is_comptime = true,
+            });
+        }
+
+        const symbol_entry = try self.scope.getOrPut(self.allocator, subsymbol.name.buffer);
+        symbol_entry.value_ptr.is_type_alias = true;
+        symbol_entry.value_ptr.symbol = .{ .name = subsymbol.name, .type = enum_type, .linkage = subsymbol.linkage };
+    } else {
+        const symbol_entry = try self.scope.getOrPut(self.allocator, subsymbol.name.buffer);
+        symbol_entry.value_ptr.is_type_alias = true;
+        symbol_entry.value_ptr.symbol = try self.analyzeSubSymbol(subsymbol);
+    }
 }
 
 fn analyzeSet(self: *Sema, name: Name) Error!void {
@@ -1607,10 +1668,11 @@ fn analyzeGet(self: *Sema, name: Name) Error!void {
 
     if (variable.maybe_value) |value| {
         switch (value) {
-            .string => |value_string| try self.air.instructions.append(self.allocator, .{ .string = value_string }),
-            .int => |value_int| try self.air.instructions.append(self.allocator, .{ .int = value_int }),
-            .float => |value_float| try self.air.instructions.append(self.allocator, .{ .float = value_float }),
-            .boolean => |value_boolean| try self.air.instructions.append(self.allocator, .{ .boolean = value_boolean }),
+            .string => |string| try self.air.instructions.append(self.allocator, .{ .string = string }),
+            .int => |int| try self.air.instructions.append(self.allocator, .{ .int = int }),
+            .typed_int => |typed_int| try self.air.instructions.append(self.allocator, .{ .int = typed_int.value }),
+            .float => |float| try self.air.instructions.append(self.allocator, .{ .float = float }),
+            .boolean => |boolean| try self.air.instructions.append(self.allocator, .{ .boolean = boolean }),
             .runtime => unreachable,
         }
 
