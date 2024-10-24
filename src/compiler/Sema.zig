@@ -1603,7 +1603,7 @@ fn analyzeTypeAlias(self: *Sema, subsymbol: Sir.SubSymbol) Error!void {
         if (enum_type.int.bits > 64) {
             // TODO: LLVM supports more than 64 bits but we don't currently expose this feature, sorry...
             self.error_info = .{
-                .message = "enum is backed by an integer which takes more than 64 bits in memory but it is not currently supported",
+                .message = "enum is backed by an integer that takes more than 64 bits in memory but it is not currently supported",
                 .source_loc = @"enum".source_loc,
             };
 
@@ -1618,6 +1618,9 @@ fn analyzeTypeAlias(self: *Sema, subsymbol: Sir.SubSymbol) Error!void {
             const enum_field_typed_value: Value = .{ .typed_int = .{ .type = enum_type, .value = field.value } };
 
             const enum_field_entry = try std.mem.concat(self.allocator, u8, &.{ subsymbol.name.buffer, "::", field.name.buffer });
+
+            if (self.scope.get(enum_field_entry) != null)
+                return self.reportRedeclaration(.{ .buffer = enum_field_entry, .source_loc = field.name.source_loc });
 
             try self.scope.put(self.allocator, enum_field_entry, .{
                 .symbol = undefined,
