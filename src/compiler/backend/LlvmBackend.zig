@@ -59,8 +59,6 @@ pub fn init(allocator: std.mem.Allocator, target: std.Target, air: Air) LlvmBack
 }
 
 pub fn deinit(self: *LlvmBackend) void {
-    c.LLVMDumpModule(self.module);
-
     self.basic_blocks.deinit(self.allocator);
     self.strings.deinit(self.allocator);
     self.stack.deinit(self.allocator);
