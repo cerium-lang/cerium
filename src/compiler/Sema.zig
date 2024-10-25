@@ -54,24 +54,20 @@ pub const Error = error{
 const Value = union(enum) {
     string: []const u8,
     int: i128,
-    typed_int: TypedInt,
     float: f64,
+    typed_int: TypedInt,
+    typed_float: TypedFloat,
     boolean: bool,
-    runtime: Runtime,
+    runtime: Type,
 
     const TypedInt = struct {
         type: Type,
         value: i128,
     };
 
-    const Runtime = struct {
+    const TypedFloat = struct {
         type: Type,
-        data: Data = .none,
-
-        const Data = union(enum) {
-            none,
-            name: Name,
-        };
+        value: f64,
     };
 
     fn canImplicitCast(self: Value, to: Type) bool {
@@ -101,6 +97,8 @@ const Value = union(enum) {
         return switch (self) {
             .int => .ambigiuous_int,
             .float => .ambigiuous_float,
+            .typed_int => |typed_int| typed_int.type,
+            .typed_float => |typed_float| typed_float.type,
             .boolean => .bool,
             .string => Type{
                 .pointer = .{
@@ -109,24 +107,26 @@ const Value = union(enum) {
                     .child_type = &.{ .int = .{ .signedness = .unsigned, .bits = 8 } },
                 },
             },
-            inline else => |other| other.type,
+            .runtime => |runtime| runtime,
         };
     }
 
     pub fn format(self: Value, _: anytype, _: anytype, writer: anytype) !void {
         switch (self) {
             .int => |int| try writer.print("{}", .{int}),
-            .typed_int => |typed_int| try writer.print("{}", .{typed_int.value}),
             .float => |float| try writer.print("{d}", .{float}),
+            .typed_int => |typed_int| try writer.print("{}", .{typed_int.value}),
+            .typed_float => |typed_float| try writer.print("{d}", .{typed_float.value}),
             .boolean => |boolean| try writer.print("{}", .{boolean}),
             .string => |string| try writer.print("{s}", .{string}),
-            .runtime => |runtime| try writer.print("<runtime value '{}'>", .{runtime.type}),
+            .runtime => |runtime| try writer.print("<runtime value '{}'>", .{runtime}),
         }
     }
 };
 
 const Variable = struct {
-    symbol: Symbol,
+    type: Type,
+    linkage: Symbol.Linkage,
     maybe_value: ?Value = null,
     is_const: bool = false,
     is_comptime: bool = false,
@@ -352,247 +352,166 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
     try self.scope.ensureTotalCapacity(self.allocator, 65);
 
     self.scope.putAssumeCapacity("true", .{
+        .type = .bool,
+        .linkage = .global,
+        .maybe_value = .{ .boolean = true },
         .is_const = true,
         .is_comptime = true,
-        .symbol = undefined,
-        .maybe_value = .{ .boolean = true },
     });
 
     self.scope.putAssumeCapacity("false", .{
+        .type = .bool,
+        .linkage = .global,
+        .maybe_value = .{ .boolean = false },
         .is_const = true,
         .is_comptime = true,
-        .symbol = undefined,
-        .maybe_value = .{ .boolean = false },
     });
 
     self.scope.putAssumeCapacity("void", .{
-        .symbol = .{
-            .name = undefined,
-            .type = .void,
-            .linkage = .global,
-        },
+        .type = .void,
+        .linkage = .global,
         .is_type_alias = true,
     });
 
     self.scope.putAssumeCapacity("bool", .{
-        .symbol = .{
-            .name = undefined,
-            .type = .bool,
-            .linkage = .global,
-        },
+        .type = .bool,
+        .linkage = .global,
         .is_type_alias = true,
     });
 
     self.scope.putAssumeCapacity("usize", .{
-        .symbol = .{
-            .name = undefined,
-            .type = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.ptrBitWidth() } },
-            .linkage = .global,
-        },
+        .type = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.ptrBitWidth() } },
+        .linkage = .global,
         .is_type_alias = true,
     });
     self.scope.putAssumeCapacity("isize", .{
-        .symbol = .{
-            .name = undefined,
-            .type = .{ .int = .{ .signedness = .signed, .bits = self.env.target.ptrBitWidth() } },
-            .linkage = .global,
-        },
+        .type = .{ .int = .{ .signedness = .signed, .bits = self.env.target.ptrBitWidth() } },
+        .linkage = .global,
         .is_type_alias = true,
     });
 
     self.scope.putAssumeCapacity("c_char", .{
-        .symbol = .{
-            .name = undefined,
-            .type = .{ .int = .{ .signedness = .signed, .bits = self.env.target.cTypeBitSize(.char) } },
-            .linkage = .global,
-        },
+        .type = .{ .int = .{ .signedness = .signed, .bits = self.env.target.cTypeBitSize(.char) } },
+        .linkage = .global,
         .is_type_alias = true,
     });
     self.scope.putAssumeCapacity("c_short", .{
-        .symbol = .{
-            .name = undefined,
-            .type = .{ .int = .{ .signedness = .signed, .bits = self.env.target.cTypeBitSize(.short) } },
-            .linkage = .global,
-        },
+        .type = .{ .int = .{ .signedness = .signed, .bits = self.env.target.cTypeBitSize(.short) } },
+        .linkage = .global,
         .is_type_alias = true,
     });
     self.scope.putAssumeCapacity("c_ushort", .{
-        .symbol = .{
-            .name = undefined,
-            .type = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.cTypeBitSize(.ushort) } },
-            .linkage = .global,
-        },
+        .type = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.cTypeBitSize(.ushort) } },
+        .linkage = .global,
         .is_type_alias = true,
     });
     self.scope.putAssumeCapacity("c_int", .{
-        .symbol = .{
-            .name = undefined,
-            .type = .{ .int = .{ .signedness = .signed, .bits = self.env.target.cTypeBitSize(.int) } },
-            .linkage = .global,
-        },
+        .type = .{ .int = .{ .signedness = .signed, .bits = self.env.target.cTypeBitSize(.int) } },
+        .linkage = .global,
         .is_type_alias = true,
     });
     self.scope.putAssumeCapacity("c_uint", .{
-        .symbol = .{
-            .name = undefined,
-            .type = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.cTypeBitSize(.uint) } },
-            .linkage = .global,
-        },
+        .type = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.cTypeBitSize(.uint) } },
+        .linkage = .global,
         .is_type_alias = true,
     });
     self.scope.putAssumeCapacity("c_long", .{
-        .symbol = .{
-            .name = undefined,
-            .type = .{ .int = .{ .signedness = .signed, .bits = self.env.target.cTypeBitSize(.long) } },
-            .linkage = .global,
-        },
+        .type = .{ .int = .{ .signedness = .signed, .bits = self.env.target.cTypeBitSize(.long) } },
+        .linkage = .global,
         .is_type_alias = true,
     });
     self.scope.putAssumeCapacity("c_ulong", .{
-        .symbol = .{
-            .name = undefined,
-            .type = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.cTypeBitSize(.ulong) } },
-            .linkage = .global,
-        },
+        .type = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.cTypeBitSize(.ulong) } },
+        .linkage = .global,
         .is_type_alias = true,
     });
     self.scope.putAssumeCapacity("c_longlong", .{
-        .symbol = .{
-            .name = undefined,
-            .type = .{ .int = .{ .signedness = .signed, .bits = self.env.target.cTypeBitSize(.longlong) } },
-            .linkage = .global,
-        },
+        .type = .{ .int = .{ .signedness = .signed, .bits = self.env.target.cTypeBitSize(.longlong) } },
+        .linkage = .global,
         .is_type_alias = true,
     });
     self.scope.putAssumeCapacity("c_ulonglong", .{
-        .symbol = .{
-            .name = undefined,
-            .type = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.cTypeBitSize(.ulonglong) } },
-            .linkage = .global,
-        },
+        .type = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.cTypeBitSize(.ulonglong) } },
+        .linkage = .global,
         .is_type_alias = true,
     });
 
     self.scope.putAssumeCapacity("c_float", .{
-        .symbol = .{
-            .name = undefined,
-            .type = .{ .float = .{ .bits = self.env.target.cTypeBitSize(.float) } },
-            .linkage = .global,
-        },
+        .type = .{ .float = .{ .bits = self.env.target.cTypeBitSize(.float) } },
+        .linkage = .global,
         .is_type_alias = true,
     });
     self.scope.putAssumeCapacity("c_double", .{
-        .symbol = .{
-            .name = undefined,
-            .type = .{ .float = .{ .bits = self.env.target.cTypeBitSize(.double) } },
-            .linkage = .global,
-        },
+        .type = .{ .float = .{ .bits = self.env.target.cTypeBitSize(.double) } },
+        .linkage = .global,
         .is_type_alias = true,
     });
 
     // TODO: Type `c_longdouble` requires `f80` and `f128` to be supported.
 
     self.scope.putAssumeCapacity("u8", .{
-        .symbol = .{
-            .name = undefined,
-            .type = .{ .int = .{ .signedness = .unsigned, .bits = 8 } },
-            .linkage = .global,
-        },
+        .type = .{ .int = .{ .signedness = .unsigned, .bits = 8 } },
+        .linkage = .global,
         .is_type_alias = true,
     });
     self.scope.putAssumeCapacity("u16", .{
-        .symbol = .{
-            .name = undefined,
-            .type = .{ .int = .{ .signedness = .unsigned, .bits = 16 } },
-            .linkage = .global,
-        },
+        .type = .{ .int = .{ .signedness = .unsigned, .bits = 16 } },
+        .linkage = .global,
         .is_type_alias = true,
     });
     self.scope.putAssumeCapacity("u32", .{
-        .symbol = .{
-            .name = undefined,
-            .type = .{ .int = .{ .signedness = .unsigned, .bits = 32 } },
-            .linkage = .global,
-        },
+        .type = .{ .int = .{ .signedness = .unsigned, .bits = 32 } },
+        .linkage = .global,
         .is_type_alias = true,
     });
     self.scope.putAssumeCapacity("u64", .{
-        .symbol = .{
-            .name = undefined,
-            .type = .{ .int = .{ .signedness = .unsigned, .bits = 64 } },
-            .linkage = .global,
-        },
+        .type = .{ .int = .{ .signedness = .unsigned, .bits = 64 } },
+        .linkage = .global,
         .is_type_alias = true,
     });
     self.scope.putAssumeCapacity("i8", .{
-        .symbol = .{
-            .name = undefined,
-            .type = .{ .int = .{ .signedness = .signed, .bits = 8 } },
-            .linkage = .global,
-        },
+        .type = .{ .int = .{ .signedness = .signed, .bits = 8 } },
+        .linkage = .global,
         .is_type_alias = true,
     });
     self.scope.putAssumeCapacity("i16", .{
-        .symbol = .{
-            .name = undefined,
-            .type = .{ .int = .{ .signedness = .signed, .bits = 16 } },
-            .linkage = .global,
-        },
+        .type = .{ .int = .{ .signedness = .signed, .bits = 16 } },
+        .linkage = .global,
         .is_type_alias = true,
     });
     self.scope.putAssumeCapacity("i32", .{
-        .symbol = .{
-            .name = undefined,
-            .type = .{ .int = .{ .signedness = .signed, .bits = 32 } },
-            .linkage = .global,
-        },
+        .type = .{ .int = .{ .signedness = .signed, .bits = 32 } },
+        .linkage = .global,
         .is_type_alias = true,
     });
     self.scope.putAssumeCapacity("i64", .{
-        .symbol = .{
-            .name = undefined,
-            .type = .{ .int = .{ .signedness = .signed, .bits = 64 } },
-            .linkage = .global,
-        },
+        .type = .{ .int = .{ .signedness = .signed, .bits = 64 } },
+        .linkage = .global,
         .is_type_alias = true,
     });
 
     self.scope.putAssumeCapacity("f32", .{
-        .symbol = .{
-            .name = undefined,
-            .type = .{ .float = .{ .bits = 32 } },
-            .linkage = .global,
-        },
+        .type = .{ .float = .{ .bits = 32 } },
+        .linkage = .global,
         .is_type_alias = true,
     });
     self.scope.putAssumeCapacity("f64", .{
-        .symbol = .{
-            .name = undefined,
-            .type = .{ .float = .{ .bits = 64 } },
-            .linkage = .global,
-        },
+        .type = .{ .float = .{ .bits = 64 } },
+        .linkage = .global,
         .is_type_alias = true,
     });
 
     self.scope.putAssumeCapacity("builtin::target::os", .{
-        .symbol = .{
-            .name = undefined,
-            .type = .ambigiuous_int,
-            .linkage = .global,
-        },
-
+        .type = .ambigiuous_int,
+        .linkage = .global,
         .maybe_value = .{ .int = @intFromEnum(self.env.target.os.tag) },
         .is_const = true,
         .is_comptime = true,
     });
 
     self.scope.putAssumeCapacity("builtin::target::arch", .{
-        .symbol = .{
-            .name = undefined,
-            .type = .ambigiuous_int,
-            .linkage = .global,
-        },
-
+        .type = .ambigiuous_int,
+        .linkage = .global,
         .maybe_value = .{ .int = @intFromEnum(self.env.target.cpu.arch) },
         .is_const = true,
         .is_comptime = true,
@@ -616,7 +535,7 @@ fn analyzeSubType(self: *Sema, subtype: Sir.SubType) Error!Type {
         .name => |name| {
             if (self.scope.get(name.buffer)) |variable| {
                 if (variable.is_type_alias) {
-                    return variable.symbol.type;
+                    return variable.type;
                 }
             }
 
@@ -655,7 +574,7 @@ fn analyzeSubType(self: *Sema, subtype: Sir.SubType) Error!Type {
                             .pointer = .{
                                 .size = pointer.size,
                                 .is_const = pointer.is_const,
-                                .child_type = &child_subtype_variable.symbol.type,
+                                .child_type = &child_subtype_variable.type,
                             },
                         };
                     }
@@ -847,7 +766,7 @@ fn analyzeNegate(self: *Sema, source_loc: SourceLoc) Error!void {
         .runtime => |rhs_runtime| {
             try self.air.instructions.append(self.allocator, .negate);
 
-            try self.stack.append(self.allocator, .{ .runtime = .{ .type = rhs_runtime.type } });
+            try self.stack.append(self.allocator, .{ .runtime = rhs_runtime });
         },
 
         else => unreachable,
@@ -885,7 +804,7 @@ fn analyzeNot(self: *Sema, comptime operand: NotOperation, source_loc: SourceLoc
         .runtime => |rhs_runtime| {
             try self.air.instructions.append(self.allocator, if (operand == .bool) .bool_not else .bit_not);
 
-            try self.stack.append(self.allocator, .{ .runtime = .{ .type = rhs_runtime.type } });
+            try self.stack.append(self.allocator, .{ .runtime = rhs_runtime });
         },
 
         else => unreachable,
@@ -948,14 +867,14 @@ fn analyzeBitwiseArithmetic(self: *Sema, comptime operation: BitwiseArithmeticOp
             try self.checkRepresentability(rhs, lhs_type, source_loc);
         }
 
-        try self.stack.append(self.allocator, .{ .runtime = .{ .type = lhs_type } });
+        try self.stack.append(self.allocator, .{ .runtime = lhs_type });
     } else {
         // Check if we can represent the lhs ambigiuous value as rhs type (e.g. 4 + x)
         if (!rhs_type.isAmbigiuous()) {
             try self.checkRepresentability(lhs, rhs_type, source_loc);
         }
 
-        try self.stack.append(self.allocator, .{ .runtime = .{ .type = rhs_type } });
+        try self.stack.append(self.allocator, .{ .runtime = rhs_type });
     }
 }
 
@@ -995,7 +914,7 @@ fn analyzeRead(self: *Sema, source_loc: SourceLoc) Error!void {
 
     try self.air.instructions.append(self.allocator, .{ .read = result_type });
 
-    try self.stack.append(self.allocator, .{ .runtime = .{ .type = result_type } });
+    try self.stack.append(self.allocator, .{ .runtime = result_type });
 }
 
 fn analyzeGetElementPtr(self: *Sema, source_loc: SourceLoc) Error!void {
@@ -1016,7 +935,7 @@ fn analyzeGetElementPtr(self: *Sema, source_loc: SourceLoc) Error!void {
 
     lhs_pointer.size = .one;
 
-    try self.stack.append(self.allocator, .{ .runtime = .{ .type = .{ .pointer = lhs_pointer } } });
+    try self.stack.append(self.allocator, .{ .runtime = .{ .pointer = lhs_pointer } });
 }
 
 fn analyzeGetFieldPtr(self: *Sema, name: Name) Error!void {
@@ -1049,12 +968,10 @@ fn analyzeGetFieldPtr(self: *Sema, name: Name) Error!void {
                 self.allocator,
                 .{
                     .runtime = .{
-                        .type = .{
-                            .pointer = .{
-                                .size = .one,
-                                .is_const = false,
-                                .child_type = child_type_on_heap,
-                            },
+                        .pointer = .{
+                            .size = .one,
+                            .is_const = false,
+                            .child_type = child_type_on_heap,
                         },
                     },
                 },
@@ -1074,7 +991,9 @@ fn analyzeGetFieldPtr(self: *Sema, name: Name) Error!void {
 fn analyzeReference(self: *Sema, source_loc: SourceLoc) Error!void {
     const rhs = self.stack.pop();
 
-    if (!(rhs == .runtime and rhs.runtime.data == .name)) {
+    const last_instruction = &self.air.instructions.items[self.air.instructions.items.len - 1];
+
+    if (last_instruction.* != .get) {
         var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
         try error_message_buf.writer(self.allocator).print("'{}' value cannot be referenced", .{rhs.getType()});
@@ -1084,24 +1003,22 @@ fn analyzeReference(self: *Sema, source_loc: SourceLoc) Error!void {
         return error.MismatchedTypes;
     }
 
-    const rhs_runtime_name = rhs.runtime.data.name;
-    const rhs_runtime_type = rhs.runtime.type;
+    const rhs_name = last_instruction.get;
+    const rhs_type = rhs.getType();
 
-    const rhs_variable = self.scope.get(rhs_runtime_name.buffer).?;
+    last_instruction.* = .{ .get_ptr = rhs_name };
+
+    const rhs_variable = self.scope.get(rhs_name).?;
 
     const child_on_heap = try self.allocator.create(Type);
-    child_on_heap.* = rhs_runtime_type;
-
-    self.air.instructions.items[self.air.instructions.items.len - 1] = .{ .get_ptr = rhs_runtime_name.buffer };
+    child_on_heap.* = rhs_type;
 
     try self.stack.append(self.allocator, .{
         .runtime = .{
-            .type = .{
-                .pointer = .{
-                    .size = .one,
-                    .is_const = rhs_variable.is_const,
-                    .child_type = child_on_heap,
-                },
+            .pointer = .{
+                .size = .one,
+                .is_const = rhs_variable.is_const,
+                .child_type = child_on_heap,
             },
         },
     });
@@ -1194,23 +1111,23 @@ fn analyzeArithmetic(self: *Sema, comptime operation: ArithmeticOperation, sourc
     }
 
     if (lhs_type == .pointer) {
-        try self.stack.append(self.allocator, .{ .runtime = .{ .type = lhs_type } });
+        try self.stack.append(self.allocator, .{ .runtime = lhs_type });
     } else if (rhs_type == .pointer) {
-        try self.stack.append(self.allocator, .{ .runtime = .{ .type = rhs_type } });
+        try self.stack.append(self.allocator, .{ .runtime = rhs_type });
     } else if (!lhs_type.isAmbigiuous()) {
         // Check if we can represent the rhs ambigiuous value as lhs type (e.g. x + 4)
         if (rhs_type.isAmbigiuous()) {
             try self.checkRepresentability(rhs, lhs_type, source_loc);
         }
 
-        try self.stack.append(self.allocator, .{ .runtime = .{ .type = lhs_type } });
+        try self.stack.append(self.allocator, .{ .runtime = lhs_type });
     } else {
         // Check if we can represent the lhs ambigiuous value as rhs type (e.g. 4 + x)
         if (!rhs_type.isAmbigiuous()) {
             try self.checkRepresentability(lhs, rhs_type, source_loc);
         }
 
-        try self.stack.append(self.allocator, .{ .runtime = .{ .type = rhs_type } });
+        try self.stack.append(self.allocator, .{ .runtime = rhs_type });
     }
 
     switch (operation) {
@@ -1334,7 +1251,7 @@ fn analyzeComparison(self: *Sema, comptime operation: ComparisonOperation, sourc
             .{ .fcmp = .eql }),
     }
 
-    try self.stack.append(self.allocator, .{ .runtime = .{ .type = .bool } });
+    try self.stack.append(self.allocator, .{ .runtime = .bool });
 }
 
 const BitwiseShiftDirection = enum {
@@ -1380,7 +1297,7 @@ fn analyzeBitwiseShift(self: *Sema, comptime direction: BitwiseShiftDirection, s
             .right => try self.air.instructions.append(self.allocator, .shr),
         }
 
-        try self.stack.append(self.allocator, .{ .runtime = .{ .type = lhs_type } });
+        try self.stack.append(self.allocator, .{ .runtime = lhs_type });
     }
 }
 
@@ -1418,7 +1335,7 @@ fn analyzeCast(self: *Sema, cast: Sir.Instruction.Cast) Error!void {
 
     try self.air.instructions.append(self.allocator, .{ .cast = .{ .from = from, .to = to } });
 
-    try self.stack.append(self.allocator, .{ .runtime = .{ .type = to } });
+    try self.stack.append(self.allocator, .{ .runtime = to });
 }
 
 fn analyzeAssembly(self: *Sema, assembly: Sir.Instruction.Assembly) Error!void {
@@ -1439,7 +1356,7 @@ fn analyzeAssembly(self: *Sema, assembly: Sir.Instruction.Assembly) Error!void {
             },
         });
 
-        try self.stack.append(self.allocator, .{ .runtime = .{ .type = output_constraint_type } });
+        try self.stack.append(self.allocator, .{ .runtime = output_constraint_type });
     } else {
         try self.air.instructions.append(self.allocator, .{
             .assembly = .{
@@ -1450,7 +1367,7 @@ fn analyzeAssembly(self: *Sema, assembly: Sir.Instruction.Assembly) Error!void {
             },
         });
 
-        try self.stack.append(self.allocator, .{ .runtime = .{ .type = .void } });
+        try self.stack.append(self.allocator, .{ .runtime = .void });
     }
 }
 
@@ -1477,7 +1394,7 @@ fn analyzeCall(self: *Sema, call: Sir.Instruction.Call) Error!void {
 
         try self.air.instructions.append(self.allocator, .{ .call = function });
 
-        try self.stack.append(self.allocator, .{ .runtime = .{ .type = function.return_type.*, .data = .none } });
+        try self.stack.append(self.allocator, .{ .runtime = function.return_type.* });
     } else {
         try error_message_buf.writer(self.allocator).print("'{}' is not a callable", .{callable_type});
 
@@ -1500,7 +1417,7 @@ fn analyzeFunction(self: *Sema, subsymbol: Sir.SubSymbol) Error!void {
         },
     });
 
-    try self.scope.put(self.allocator, symbol.name.buffer, .{ .symbol = symbol });
+    try self.scope.put(self.allocator, symbol.name.buffer, .{ .type = symbol.type, .linkage = symbol.linkage });
 }
 
 fn analyzeParameters(self: *Sema, subsymbols: []const Sir.SubSymbol) Error!void {
@@ -1514,7 +1431,8 @@ fn analyzeParameters(self: *Sema, subsymbols: []const Sir.SubSymbol) Error!void 
         symbols.appendAssumeCapacity(symbol);
 
         try self.scope.put(self.allocator, symbol.name.buffer, .{
-            .symbol = symbol,
+            .type = symbol.type,
+            .linkage = symbol.linkage,
             .is_const = true,
         });
     }
@@ -1526,65 +1444,74 @@ fn analyzeConstant(self: *Sema, infer: bool, subsymbol: Sir.SubSymbol) Error!voi
     const symbol = try self.analyzeSubSymbol(subsymbol);
     if (self.scope.get(symbol.name.buffer) != null) return self.reportRedeclaration(symbol.name);
 
-    var variable: Variable = .{ .is_const = true, .is_comptime = true, .symbol = symbol };
+    var variable: Variable = .{
+        .type = symbol.type,
+        .linkage = symbol.linkage,
+        .is_const = true,
+        .is_comptime = true,
+    };
 
-    const value = self.stack.getLast();
+    var value = self.stack.getLast();
 
     if (infer) {
-        variable.symbol.type = value.getType();
+        variable.type = value.getType();
     }
 
-    if (variable.symbol.type == .void) {
-        self.error_info = .{ .message = "cannot declare a constant with type 'void'", .source_loc = variable.symbol.name.source_loc };
+    if (variable.type == .void) {
+        self.error_info = .{ .message = "cannot declare a constant with type 'void'", .source_loc = symbol.name.source_loc };
 
         return error.UnexpectedType;
     }
 
     if (value == .runtime) {
-        self.error_info = .{ .message = "expected the constant initializer to be compile time known", .source_loc = variable.symbol.name.source_loc };
+        self.error_info = .{ .message = "expected the constant initializer to be compile time known", .source_loc = symbol.name.source_loc };
 
         return error.ExpectedCompiletimeConstant;
     }
 
-    if (variable.symbol.linkage != .global) {
+    if (variable.linkage != .global) {
         _ = self.air.instructions.pop();
     }
 
-    try self.scope.put(self.allocator, variable.symbol.name.buffer, variable);
+    try self.scope.put(self.allocator, symbol.name.buffer, variable);
 }
 
 fn analyzeVariable(self: *Sema, infer: bool, subsymbol: Sir.SubSymbol) Error!void {
     const symbol = try self.analyzeSubSymbol(subsymbol);
     if (self.scope.get(symbol.name.buffer) != null) return self.reportRedeclaration(symbol.name);
 
-    var variable: Variable = .{ .symbol = symbol };
+    var variable: Variable = .{ .type = symbol.type, .linkage = symbol.linkage };
 
     if (infer) {
-        variable.symbol.type = self.stack.getLast().getType();
+        variable.type = self.stack.getLast().getType();
     }
 
-    if (variable.symbol.type == .void) {
-        self.error_info = .{ .message = "cannot declare a variable with type 'void'", .source_loc = variable.symbol.name.source_loc };
+    if (variable.type == .void) {
+        self.error_info = .{ .message = "cannot declare a variable with type 'void'", .source_loc = symbol.name.source_loc };
 
         return error.UnexpectedType;
     }
 
-    if (variable.symbol.type.isAmbigiuous()) {
-        self.error_info = .{ .message = "cannot declare a variable with an ambigiuous type", .source_loc = variable.symbol.name.source_loc };
+    if (variable.type.isAmbigiuous()) {
+        self.error_info = .{ .message = "cannot declare a variable with an ambigiuous type", .source_loc = symbol.name.source_loc };
 
         return error.UnexpectedType;
     }
 
-    try self.scope.put(self.allocator, variable.symbol.name.buffer, variable);
+    try self.scope.put(self.allocator, symbol.name.buffer, variable);
 
-    try self.air.instructions.append(self.allocator, .{ .variable = variable.symbol });
+    try self.air.instructions.append(self.allocator, .{ .variable = .{
+        .name = symbol.name,
+        .type = variable.type,
+        .linkage = variable.linkage,
+    } });
 }
 
 fn analyzeExternal(self: *Sema, subsymbol: Sir.SubSymbol) Error!void {
     const symbol = try self.analyzeSubSymbol(subsymbol);
     if (self.scope.get(symbol.name.buffer) != null) return self.reportRedeclaration(symbol.name);
 
-    try self.scope.put(self.allocator, symbol.name.buffer, .{ .symbol = symbol });
+    try self.scope.put(self.allocator, symbol.name.buffer, .{ .type = symbol.type, .linkage = symbol.linkage });
 
     try self.air.instructions.append(self.allocator, .{ .external = symbol });
 }
@@ -1623,20 +1550,24 @@ fn analyzeTypeAlias(self: *Sema, subsymbol: Sir.SubSymbol) Error!void {
                 return self.reportRedeclaration(.{ .buffer = enum_field_entry, .source_loc = field.name.source_loc });
 
             try self.scope.put(self.allocator, enum_field_entry, .{
-                .symbol = undefined,
+                .type = enum_type,
+                .linkage = subsymbol.linkage,
                 .maybe_value = enum_field_typed_value,
                 .is_const = true,
                 .is_comptime = true,
             });
         }
 
-        const symbol_entry = try self.scope.getOrPut(self.allocator, subsymbol.name.buffer);
-        symbol_entry.value_ptr.is_type_alias = true;
-        symbol_entry.value_ptr.symbol = .{ .name = subsymbol.name, .type = enum_type, .linkage = subsymbol.linkage };
+        const variable_entry = try self.scope.getOrPut(self.allocator, subsymbol.name.buffer);
+        variable_entry.value_ptr.is_type_alias = true;
+        variable_entry.value_ptr.type = enum_type;
+        variable_entry.value_ptr.linkage = subsymbol.linkage;
     } else {
-        const symbol_entry = try self.scope.getOrPut(self.allocator, subsymbol.name.buffer);
-        symbol_entry.value_ptr.is_type_alias = true;
-        symbol_entry.value_ptr.symbol = try self.analyzeSubSymbol(subsymbol);
+        const variable_entry = try self.scope.getOrPut(self.allocator, subsymbol.name.buffer);
+        variable_entry.value_ptr.is_type_alias = true;
+        const symbol = try self.analyzeSubSymbol(subsymbol);
+        variable_entry.value_ptr.type = symbol.type;
+        variable_entry.value_ptr.linkage = symbol.linkage;
     }
 }
 
@@ -1644,24 +1575,32 @@ fn analyzeSet(self: *Sema, name: Name) Error!void {
     const variable = self.scope.getPtr(name.buffer) orelse return self.reportNotDeclared(name);
     if (variable.is_type_alias) return self.reportTypeNotExpression(name);
 
-    const value = self.stack.pop();
+    var value = self.stack.pop();
+
+    try self.checkRepresentability(value, variable.type, name.source_loc);
 
     if (variable.is_comptime and variable.maybe_value == null) {
+        if (!variable.type.isAmbigiuous()) {
+            switch (value) {
+                .int => |int| value = .{ .typed_int = .{ .type = variable.type, .value = int } },
+                .float => |float| value = .{ .typed_float = .{ .type = variable.type, .value = float } },
+                else => {},
+            }
+        }
+
+        _ = self.air.instructions.pop();
+
         variable.maybe_value = value;
     } else if (variable.is_const) {
         self.error_info = .{ .message = "cannot mutate the value of a constant", .source_loc = name.source_loc };
 
         return error.UnexpectedMutation;
-    } else if (variable.symbol.linkage == .global and value == .runtime and self.maybe_function == null) {
+    } else if (variable.linkage == .global and value == .runtime and self.maybe_function == null) {
         self.error_info = .{ .message = "expected global variable initializer to be compile time known", .source_loc = name.source_loc };
 
         return error.ExpectedCompiletimeConstant;
-    } else {
-        try self.checkRepresentability(value, variable.symbol.type, name.source_loc);
-
-        if (self.maybe_function != null) {
-            try self.air.instructions.append(self.allocator, .{ .set = name.buffer });
-        }
+    } else if (self.maybe_function != null) {
+        try self.air.instructions.append(self.allocator, .{ .set = name.buffer });
     }
 }
 
@@ -1673,21 +1612,22 @@ fn analyzeGet(self: *Sema, name: Name) Error!void {
         switch (value) {
             .string => |string| try self.air.instructions.append(self.allocator, .{ .string = string }),
             .int => |int| try self.air.instructions.append(self.allocator, .{ .int = int }),
-            .typed_int => |typed_int| try self.air.instructions.append(self.allocator, .{ .int = typed_int.value }),
             .float => |float| try self.air.instructions.append(self.allocator, .{ .float = float }),
+            .typed_int => |typed_int| try self.air.instructions.append(self.allocator, .{ .int = typed_int.value }),
+            .typed_float => |typed_float| try self.air.instructions.append(self.allocator, .{ .float = typed_float.value }),
             .boolean => |boolean| try self.air.instructions.append(self.allocator, .{ .boolean = boolean }),
             .runtime => unreachable,
         }
 
         try self.stack.append(self.allocator, value);
     } else {
-        if (variable.symbol.type.getFunction() != null) {
+        if (variable.type.getFunction() != null) {
             try self.air.instructions.append(self.allocator, .{ .get_ptr = name.buffer });
         } else {
             try self.air.instructions.append(self.allocator, .{ .get = name.buffer });
         }
 
-        try self.stack.append(self.allocator, .{ .runtime = .{ .type = variable.symbol.type, .data = .{ .name = variable.symbol.name } } });
+        try self.stack.append(self.allocator, .{ .runtime = variable.type });
     }
 }
 
