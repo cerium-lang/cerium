@@ -868,7 +868,23 @@ fn renderVariable(self: *LlvmBackend, symbol: Symbol) Error!void {
                 break :blk global_variable_pointer;
             },
 
-            .local => c.LLVMBuildAlloca(self.builder, llvm_type, ""),
+            .local => blk: {
+                const current_block = c.LLVMGetInsertBlock(self.builder);
+                const first_block = c.LLVMGetFirstBasicBlock(self.maybe_function.?);
+                const first_instruction = c.LLVMGetFirstInstruction(first_block);
+
+                if (first_instruction != null) {
+                    c.LLVMPositionBuilderBefore(self.builder, first_instruction);
+                } else {
+                    c.LLVMPositionBuilderAtEnd(self.builder, first_block);
+                }
+
+                const local_variable_pointer = c.LLVMBuildAlloca(self.builder, llvm_type, "");
+
+                c.LLVMPositionBuilderAtEnd(self.builder, current_block);
+
+                break :blk local_variable_pointer;
+            },
 
             .external => unreachable,
         };
