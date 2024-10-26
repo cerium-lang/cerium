@@ -90,10 +90,10 @@ pub fn put(self: *Compilation, file_path: []const u8) !void {
     const file = try std.fs.cwd().openFile(file_path, .{});
     defer file.close();
 
-    const input = try file.readToEndAllocOptions(self.allocator, std.math.maxInt(u32), null, @alignOf(u8), 0);
-    if (input.len == 0) return;
+    const buffer = try file.readToEndAllocOptions(self.allocator, std.math.maxInt(u32), null, @alignOf(u8), 0);
+    if (buffer.len == 0) return;
 
-    try self.pipeline.files.put(self.allocator, file_path, input);
+    try self.pipeline.files.put(self.allocator, file_path, buffer);
 }
 
 /// Start the compilation pipeline and make it run in parallel
@@ -104,22 +104,22 @@ pub fn start(self: *Compilation) !void {
 
     var wait_group: std.Thread.WaitGroup = .{};
 
-    for (self.pipeline.files.keys(), self.pipeline.files.values()) |file_path, input| {
-        thread_pool.spawnWg(&wait_group, compile, .{ self, file_path, input });
+    for (self.pipeline.files.keys(), self.pipeline.files.values()) |file_path, buffer| {
+        thread_pool.spawnWg(&wait_group, compile, .{ self, file_path, buffer });
     }
 
     thread_pool.waitAndWork(&wait_group);
 }
 
 /// Compile a file and append the result to the compilation pipeline's airs
-pub fn compile(self: *Compilation, file_path: []const u8, input: [:0]const u8) void {
+pub fn compile(self: *Compilation, file_path: []const u8, buffer: [:0]const u8) void {
     _ = blk: {
         // TODO: Sir is leaking memory..
-        const sir = self.parse(file_path, input) orelse break :blk null;
+        const sir = self.parse(file_path, buffer) orelse break :blk null;
 
         // TODO: Some of the strucures in Air depend on Sir memory allocated data, we can not free Sir memory here.
         // find a way to free Sir memory when we are done with it or do not depend on it anymore.
-        const air = self.analyze(file_path, sir) orelse break :blk null;
+        const air = self.analyze(file_path, buffer, sir) orelse break :blk null;
 
         self.pipeline.mutex.lock();
         defer self.pipeline.mutex.unlock();
@@ -149,8 +149,8 @@ pub fn finalize(self: Compilation) std.mem.Allocator.Error!Air {
 }
 
 /// Parse a file into an sir
-pub fn parse(self: Compilation, file_path: []const u8, input: [:0]const u8) ?Sir {
-    var sir_parser = Sir.Parser.init(self.allocator, self.env, input) catch |err| {
+pub fn parse(self: Compilation, file_path: []const u8, buffer: [:0]const u8) ?Sir {
+    var sir_parser = Sir.Parser.init(self.allocator, self.env, buffer) catch |err| {
         std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
 
         return null;
@@ -176,8 +176,8 @@ pub fn parse(self: Compilation, file_path: []const u8, input: [:0]const u8) ?Sir
 }
 
 /// Analyze Sir and lower it to Air
-pub fn analyze(self: Compilation, file_path: []const u8, sir: Sir) ?Air {
-    var sema = Sema.init(self.allocator, self.env, sir) catch |err| {
+pub fn analyze(self: Compilation, file_path: []const u8, buffer: []const u8, sir: Sir) ?Air {
+    var sema = Sema.init(self.allocator, buffer, self.env, sir) catch |err| {
         std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
 
         return null;

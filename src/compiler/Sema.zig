@@ -17,6 +17,8 @@ const Sema = @This();
 
 allocator: std.mem.Allocator,
 
+buffer: []const u8,
+
 env: Compilation.Environment,
 
 sir: Sir,
@@ -133,7 +135,7 @@ const Variable = struct {
     is_type_alias: bool = false,
 };
 
-fn checkRepresentability(self: *Sema, source_value: Value, destination_type: Type, source_loc: SourceLoc) Error!void {
+fn checkRepresentability(self: *Sema, source_value: Value, destination_type: Type, token_start: u32) Error!void {
     const source_type = source_value.getType();
 
     if (!source_value.canImplicitCast(destination_type)) {
@@ -141,7 +143,7 @@ fn checkRepresentability(self: *Sema, source_value: Value, destination_type: Typ
 
         try error_message_buf.writer(self.allocator).print("'{}' cannot be implicitly casted to '{}'", .{ source_type, destination_type });
 
-        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
 
         return error.MismatchedTypes;
     }
@@ -151,74 +153,74 @@ fn checkRepresentability(self: *Sema, source_value: Value, destination_type: Typ
 
         try error_message_buf.writer(self.allocator).print("'{}' cannot represent value '{}'", .{ destination_type, source_value });
 
-        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
 
         return error.TypeCannotRepresentValue;
     }
 }
 
-fn checkIntOrFloat(self: *Sema, provided_type: Type, source_loc: SourceLoc) Error!void {
+fn checkIntOrFloat(self: *Sema, provided_type: Type, token_start: u32) Error!void {
     if (!provided_type.isIntOrFloat()) {
         var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
         try error_message_buf.writer(self.allocator).print("'{}' is provided while expected an integer or float", .{provided_type});
-        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
 
         return error.MismatchedTypes;
     }
 }
 
-fn checkIntOrFloatOrPointer(self: *Sema, provided_type: Type, source_loc: SourceLoc) Error!void {
+fn checkIntOrFloatOrPointer(self: *Sema, provided_type: Type, token_start: u32) Error!void {
     if (!provided_type.isIntOrFloatOrPointer()) {
         var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
         try error_message_buf.writer(self.allocator).print("'{}' is provided while expected an integer or float or pointer", .{provided_type});
 
-        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
 
         return error.MismatchedTypes;
     }
 }
 
-fn checkInt(self: *Sema, provided_type: Type, source_loc: SourceLoc) Error!void {
+fn checkInt(self: *Sema, provided_type: Type, token_start: u32) Error!void {
     if (!provided_type.isInt()) {
         var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
         try error_message_buf.writer(self.allocator).print("'{}' is provided while expected an integer", .{provided_type});
 
-        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
 
         return error.MismatchedTypes;
     }
 }
 
-fn checkIntType(self: *Sema, provided_type: Type, source_loc: SourceLoc) Error!void {
+fn checkIntType(self: *Sema, provided_type: Type, token_start: u32) Error!void {
     if (!provided_type.isInt()) {
         var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
         try error_message_buf.writer(self.allocator).print("'{}' is provided while expected an integer type", .{provided_type});
 
-        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
 
         return error.MismatchedTypes;
     }
 }
 
-fn checkCanBeCompared(self: *Sema, provided_type: Type, source_loc: SourceLoc) Error!void {
+fn checkCanBeCompared(self: *Sema, provided_type: Type, token_start: u32) Error!void {
     if (provided_type.getPointer()) |pointer| {
         if (pointer.size == .many) {
             var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
             try error_message_buf.writer(self.allocator).print("'{}' cannot be compared", .{provided_type});
 
-            self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+            self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
 
             return error.MismatchedTypes;
         }
     }
 }
 
-fn checkStructOrStructPointer(self: *Sema, provided_type: Type, source_loc: SourceLoc) Error!void {
+fn checkStructOrStructPointer(self: *Sema, provided_type: Type, token_start: u32) Error!void {
     if (provided_type == .@"struct") return;
     if (provided_type.getPointer()) |pointer| if (pointer.child_type.* == .@"struct") return;
 
@@ -226,7 +228,7 @@ fn checkStructOrStructPointer(self: *Sema, provided_type: Type, source_loc: Sour
 
     try error_message_buf.writer(self.allocator).print("'{}' is not a struct nor a pointer to a struct", .{provided_type});
 
-    self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
 
     return error.MismatchedTypes;
 }
@@ -249,12 +251,12 @@ fn checkTypeCircularDependency(self: *Sema, type_name: Name, provided_subtype: S
     }
 }
 
-fn reportIncompatibleTypes(self: *Sema, lhs: Type, rhs: Type, source_loc: SourceLoc) Error!void {
+fn reportIncompatibleTypes(self: *Sema, lhs: Type, rhs: Type, token_start: u32) Error!void {
     var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
     try error_message_buf.writer(self.allocator).print("'{}' is not compatible with '{}'", .{ lhs, rhs });
 
-    self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
 
     return error.MismatchedTypes;
 }
@@ -264,7 +266,7 @@ fn reportNotDeclared(self: *Sema, name: Name) Error!void {
 
     try error_message_buf.writer(self.allocator).print("'{s}' is not declared", .{name.buffer});
 
-    self.error_info = .{ .message = error_message_buf.items, .source_loc = name.source_loc };
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, name.token_start) };
 
     return error.Undeclared;
 }
@@ -274,7 +276,7 @@ fn reportRedeclaration(self: *Sema, name: Name) Error!void {
 
     try error_message_buf.writer(self.allocator).print("redeclaration of '{s}'", .{name.buffer});
 
-    self.error_info = .{ .message = error_message_buf.items, .source_loc = name.source_loc };
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, name.token_start) };
 
     return error.Redeclared;
 }
@@ -284,7 +286,7 @@ fn reportTypeNotDeclared(self: *Sema, name: Name) Error!void {
 
     try error_message_buf.writer(self.allocator).print("type '{s}' is not declared", .{name.buffer});
 
-    self.error_info = .{ .message = error_message_buf.items, .source_loc = name.source_loc };
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, name.token_start) };
 
     return error.Undeclared;
 }
@@ -294,27 +296,27 @@ fn reportTypeNotExpression(self: *Sema, name: Name) Error!void {
 
     try error_message_buf.writer(self.allocator).print("'{s}' is a type not an expression", .{name.buffer});
 
-    self.error_info = .{ .message = error_message_buf.items, .source_loc = name.source_loc };
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, name.token_start) };
 
     return error.Undeclared;
 }
 
-fn reportNotPointer(self: *Sema, provided_type: Type, source_loc: SourceLoc) Error!void {
+fn reportNotPointer(self: *Sema, provided_type: Type, token_start: u32) Error!void {
     var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
     try error_message_buf.writer(self.allocator).print("'{}' is not a pointer", .{provided_type});
 
-    self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
 
     return error.MismatchedTypes;
 }
 
-fn reportNotIndexable(self: *Sema, provided_type: Type, source_loc: SourceLoc) Error!void {
+fn reportNotIndexable(self: *Sema, provided_type: Type, token_start: u32) Error!void {
     var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
     try error_message_buf.writer(self.allocator).print("'{}' does not support indexing", .{provided_type});
 
-    self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
 
     return error.UnexpectedType;
 }
@@ -324,12 +326,12 @@ fn reportCircularDependency(self: *Sema, name: Name) Error!void {
 
     try error_message_buf.writer(self.allocator).print("'{s}' is circularly dependent on itself", .{name.buffer});
 
-    self.error_info = .{ .message = error_message_buf.items, .source_loc = name.source_loc };
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, name.token_start) };
 
     return error.CircularDependency;
 }
 
-pub fn init(allocator: std.mem.Allocator, env: Compilation.Environment, sir: Sir) std.mem.Allocator.Error!Sema {
+pub fn init(allocator: std.mem.Allocator, buffer: []const u8, env: Compilation.Environment, sir: Sir) std.mem.Allocator.Error!Sema {
     var air: Air = .{};
 
     // Air instructions are always less than or equal to the Sir instructions length
@@ -337,6 +339,7 @@ pub fn init(allocator: std.mem.Allocator, env: Compilation.Environment, sir: Sir
 
     return Sema{
         .allocator = allocator,
+        .buffer = buffer,
         .env = env,
         .sir = sir,
         .air = air,
@@ -612,7 +615,7 @@ fn analyzeSubType(self: *Sema, subtype: Sir.SubType) Error!Type {
         },
 
         .@"enum" => |@"enum"| {
-            self.error_info = .{ .message = "enums should be in a type alias as they require a namespace", .source_loc = @"enum".source_loc };
+            self.error_info = .{ .message = "enums should be in a type alias as they require a namespace", .source_loc = SourceLoc.find(self.buffer, @"enum".token_start) };
 
             return error.UnexpectedType;
         },
@@ -639,32 +642,32 @@ fn analyzeInstruction(self: *Sema, instruction: Sir.Instruction) Error!void {
         .int => |int| try self.analyzeInt(int),
         .float => |float| try self.analyzeFloat(float),
 
-        .negate => |source_loc| try self.analyzeNegate(source_loc),
+        .negate => |token_start| try self.analyzeNegate(token_start),
 
-        .bool_not => |source_loc| try self.analyzeNot(.bool, source_loc),
-        .bit_not => |source_loc| try self.analyzeNot(.bit, source_loc),
+        .bool_not => |token_start| try self.analyzeNot(.bool, token_start),
+        .bit_not => |token_start| try self.analyzeNot(.bit, token_start),
 
-        .bit_and => |source_loc| try self.analyzeBitwiseArithmetic(.bit_and, source_loc),
-        .bit_or => |source_loc| try self.analyzeBitwiseArithmetic(.bit_or, source_loc),
-        .bit_xor => |source_loc| try self.analyzeBitwiseArithmetic(.bit_xor, source_loc),
+        .bit_and => |token_start| try self.analyzeBitwiseArithmetic(.bit_and, token_start),
+        .bit_or => |token_start| try self.analyzeBitwiseArithmetic(.bit_or, token_start),
+        .bit_xor => |token_start| try self.analyzeBitwiseArithmetic(.bit_xor, token_start),
 
-        .write => |source_loc| try self.analyzeWrite(source_loc),
-        .read => |source_loc| try self.analyzeRead(source_loc),
-        .get_element_ptr => |source_loc| try self.analyzeGetElementPtr(source_loc),
+        .write => |token_start| try self.analyzeWrite(token_start),
+        .read => |token_start| try self.analyzeRead(token_start),
+        .get_element_ptr => |token_start| try self.analyzeGetElementPtr(token_start),
         .get_field_ptr => |name| try self.analyzeGetFieldPtr(name),
-        .reference => |source_loc| try self.analyzeReference(source_loc),
+        .reference => |token_start| try self.analyzeReference(token_start),
 
-        .add => |source_loc| try self.analyzeArithmetic(.add, source_loc),
-        .sub => |source_loc| try self.analyzeArithmetic(.sub, source_loc),
-        .mul => |source_loc| try self.analyzeArithmetic(.mul, source_loc),
-        .div => |source_loc| try self.analyzeArithmetic(.div, source_loc),
+        .add => |token_start| try self.analyzeArithmetic(.add, token_start),
+        .sub => |token_start| try self.analyzeArithmetic(.sub, token_start),
+        .mul => |token_start| try self.analyzeArithmetic(.mul, token_start),
+        .div => |token_start| try self.analyzeArithmetic(.div, token_start),
 
-        .lt => |source_loc| try self.analyzeComparison(.lt, source_loc),
-        .gt => |source_loc| try self.analyzeComparison(.gt, source_loc),
-        .eql => |source_loc| try self.analyzeComparison(.eql, source_loc),
+        .lt => |token_start| try self.analyzeComparison(.lt, token_start),
+        .gt => |token_start| try self.analyzeComparison(.gt, token_start),
+        .eql => |token_start| try self.analyzeComparison(.eql, token_start),
 
-        .shl => |source_loc| try self.analyzeBitwiseShift(.left, source_loc),
-        .shr => |source_loc| try self.analyzeBitwiseShift(.right, source_loc),
+        .shl => |token_start| try self.analyzeBitwiseShift(.left, token_start),
+        .shr => |token_start| try self.analyzeBitwiseShift(.right, token_start),
 
         .cast => |cast| try self.analyzeCast(cast),
 
@@ -696,8 +699,8 @@ fn analyzeInstruction(self: *Sema, instruction: Sir.Instruction) Error!void {
         .start_scope => try self.modifyScope(true),
         .end_scope => try self.modifyScope(false),
 
-        .ret => |source_loc| try self.analyzeReturn(true, source_loc),
-        .ret_void => |source_loc| try self.analyzeReturn(false, source_loc),
+        .ret => |token_start| try self.analyzeReturn(true, token_start),
+        .ret_void => |token_start| try self.analyzeReturn(false, token_start),
     }
 }
 
@@ -737,7 +740,7 @@ fn analyzeFloat(self: *Sema, float: f64) Error!void {
     try self.air.instructions.append(self.allocator, .{ .float = float });
 }
 
-fn analyzeNegate(self: *Sema, source_loc: SourceLoc) Error!void {
+fn analyzeNegate(self: *Sema, token_start: u32) Error!void {
     const rhs = self.stack.pop();
 
     if (!rhs.getType().canBeNegative()) {
@@ -745,7 +748,7 @@ fn analyzeNegate(self: *Sema, source_loc: SourceLoc) Error!void {
 
         try error_message_buf.writer(self.allocator).print("'{}' cannot be negative", .{rhs.getType()});
 
-        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
 
         return error.MismatchedTypes;
     }
@@ -778,14 +781,14 @@ const NotOperation = enum {
     bit,
 };
 
-fn analyzeNot(self: *Sema, comptime operand: NotOperation, source_loc: SourceLoc) Error!void {
+fn analyzeNot(self: *Sema, comptime operand: NotOperation, token_start: u32) Error!void {
     const rhs = self.stack.pop();
     const rhs_type = rhs.getType();
 
     if (operand == .bool) {
-        try self.checkRepresentability(rhs, .bool, source_loc);
+        try self.checkRepresentability(rhs, .bool, token_start);
     } else if (operand == .bit) {
-        try self.checkInt(rhs_type, source_loc);
+        try self.checkInt(rhs_type, token_start);
     }
 
     switch (rhs) {
@@ -817,18 +820,18 @@ const BitwiseArithmeticOperation = enum {
     bit_xor,
 };
 
-fn analyzeBitwiseArithmetic(self: *Sema, comptime operation: BitwiseArithmeticOperation, source_loc: SourceLoc) Error!void {
+fn analyzeBitwiseArithmetic(self: *Sema, comptime operation: BitwiseArithmeticOperation, token_start: u32) Error!void {
     const rhs = self.stack.pop();
     const lhs = self.stack.pop();
 
     const lhs_type = lhs.getType();
     const rhs_type = rhs.getType();
 
-    try self.checkInt(lhs_type, source_loc);
-    try self.checkInt(rhs_type, source_loc);
+    try self.checkInt(lhs_type, token_start);
+    try self.checkInt(rhs_type, token_start);
 
     if (!lhs_type.eql(rhs_type) and !lhs_type.isAmbigiuous() and !rhs_type.isAmbigiuous()) {
-        return self.reportIncompatibleTypes(lhs_type, rhs_type, source_loc);
+        return self.reportIncompatibleTypes(lhs_type, rhs_type, token_start);
     }
 
     switch (operation) {
@@ -864,48 +867,48 @@ fn analyzeBitwiseArithmetic(self: *Sema, comptime operation: BitwiseArithmeticOp
     if (!lhs_type.isAmbigiuous()) {
         // Check if we can represent the rhs ambigiuous value as lhs type (e.g. x + 4)
         if (rhs_type.isAmbigiuous()) {
-            try self.checkRepresentability(rhs, lhs_type, source_loc);
+            try self.checkRepresentability(rhs, lhs_type, token_start);
         }
 
         try self.stack.append(self.allocator, .{ .runtime = lhs_type });
     } else {
         // Check if we can represent the lhs ambigiuous value as rhs type (e.g. 4 + x)
         if (!rhs_type.isAmbigiuous()) {
-            try self.checkRepresentability(lhs, rhs_type, source_loc);
+            try self.checkRepresentability(lhs, rhs_type, token_start);
         }
 
         try self.stack.append(self.allocator, .{ .runtime = rhs_type });
     }
 }
 
-fn analyzeWrite(self: *Sema, source_loc: SourceLoc) Error!void {
+fn analyzeWrite(self: *Sema, token_start: u32) Error!void {
     // Intentially swapped the order of operands so it can work with duplicate (i.e value first then duplicate then pointer)
     const lhs = self.stack.pop();
     const lhs_type = lhs.getType();
 
-    const lhs_pointer = lhs_type.getPointer() orelse return self.reportNotPointer(lhs_type, source_loc);
+    const lhs_pointer = lhs_type.getPointer() orelse return self.reportNotPointer(lhs_type, token_start);
 
     const rhs = self.stack.pop();
 
     if (lhs_pointer.is_const) {
-        self.error_info = .{ .message = "cannot mutate data pointed by this pointer, it points to read-only data", .source_loc = source_loc };
+        self.error_info = .{ .message = "cannot mutate data pointed by this pointer, it points to read-only data", .source_loc = SourceLoc.find(self.buffer, token_start) };
 
         return error.UnexpectedMutation;
     }
 
-    try self.checkRepresentability(rhs, lhs_pointer.child_type.*, source_loc);
+    try self.checkRepresentability(rhs, lhs_pointer.child_type.*, token_start);
 
     try self.air.instructions.append(self.allocator, .write);
 }
 
-fn analyzeRead(self: *Sema, source_loc: SourceLoc) Error!void {
+fn analyzeRead(self: *Sema, token_start: u32) Error!void {
     const rhs = self.stack.pop();
     const rhs_type = rhs.getType();
 
-    const rhs_pointer = rhs_type.getPointer() orelse return self.reportNotPointer(rhs_type, source_loc);
+    const rhs_pointer = rhs_type.getPointer() orelse return self.reportNotPointer(rhs_type, token_start);
 
     if (rhs_pointer.child_type.* == .function) {
-        self.error_info = .{ .message = "cannot read from a function pointer, it can only be called", .source_loc = source_loc };
+        self.error_info = .{ .message = "cannot read from a function pointer, it can only be called", .source_loc = SourceLoc.find(self.buffer, token_start) };
 
         return error.UnexpectedFunctionPointer;
     }
@@ -917,19 +920,19 @@ fn analyzeRead(self: *Sema, source_loc: SourceLoc) Error!void {
     try self.stack.append(self.allocator, .{ .runtime = result_type });
 }
 
-fn analyzeGetElementPtr(self: *Sema, source_loc: SourceLoc) Error!void {
+fn analyzeGetElementPtr(self: *Sema, token_start: u32) Error!void {
     const rhs = self.stack.pop();
 
     const lhs = self.stack.pop();
     const lhs_type = lhs.getType();
 
-    var lhs_pointer = lhs_type.getPointer() orelse return self.reportNotIndexable(lhs_type, source_loc);
+    var lhs_pointer = lhs_type.getPointer() orelse return self.reportNotIndexable(lhs_type, token_start);
 
-    if (lhs_pointer.size != .many) return try self.reportNotIndexable(lhs_type, source_loc);
+    if (lhs_pointer.size != .many) return try self.reportNotIndexable(lhs_type, token_start);
 
     const usize_type: Type = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.ptrBitWidth() } };
 
-    try self.checkRepresentability(rhs, usize_type, source_loc);
+    try self.checkRepresentability(rhs, usize_type, token_start);
 
     try self.air.instructions.append(self.allocator, .{ .get_element_ptr = lhs_pointer.child_type.* });
 
@@ -941,9 +944,9 @@ fn analyzeGetElementPtr(self: *Sema, source_loc: SourceLoc) Error!void {
 fn analyzeGetFieldPtr(self: *Sema, name: Name) Error!void {
     const rhs_type = self.stack.getLast().getType();
 
-    try self.checkStructOrStructPointer(rhs_type, name.source_loc);
+    try self.checkStructOrStructPointer(rhs_type, name.token_start);
 
-    if (rhs_type != .pointer) try self.analyzeReference(name.source_loc);
+    if (rhs_type != .pointer) try self.analyzeReference(name.token_start);
 
     const rhs = self.stack.pop();
 
@@ -983,12 +986,12 @@ fn analyzeGetFieldPtr(self: *Sema, name: Name) Error!void {
 
     try error_message_buf.writer(self.allocator).print("'{s}' is not a field in '{}'", .{ name.buffer, rhs.getType() });
 
-    self.error_info = .{ .message = error_message_buf.items, .source_loc = name.source_loc };
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, name.token_start) };
 
     return error.Undeclared;
 }
 
-fn analyzeReference(self: *Sema, source_loc: SourceLoc) Error!void {
+fn analyzeReference(self: *Sema, token_start: u32) Error!void {
     const rhs = self.stack.pop();
 
     const last_instruction = &self.air.instructions.items[self.air.instructions.items.len - 1];
@@ -998,7 +1001,7 @@ fn analyzeReference(self: *Sema, source_loc: SourceLoc) Error!void {
 
         try error_message_buf.writer(self.allocator).print("'{}' value cannot be referenced", .{rhs.getType()});
 
-        self.error_info = .{ .message = error_message_buf.items, .source_loc = source_loc };
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
 
         return error.MismatchedTypes;
     }
@@ -1031,7 +1034,7 @@ const ArithmeticOperation = enum {
     div,
 };
 
-fn analyzeArithmetic(self: *Sema, comptime operation: ArithmeticOperation, source_loc: SourceLoc) Error!void {
+fn analyzeArithmetic(self: *Sema, comptime operation: ArithmeticOperation, token_start: u32) Error!void {
     const rhs = self.stack.pop();
     const lhs = self.stack.pop();
 
@@ -1039,28 +1042,28 @@ fn analyzeArithmetic(self: *Sema, comptime operation: ArithmeticOperation, sourc
     const rhs_type = rhs.getType();
 
     if (operation == .add or operation == .sub) {
-        try self.checkIntOrFloatOrPointer(lhs_type, source_loc);
-        try self.checkIntOrFloatOrPointer(rhs_type, source_loc);
+        try self.checkIntOrFloatOrPointer(lhs_type, token_start);
+        try self.checkIntOrFloatOrPointer(rhs_type, token_start);
 
         const usize_type: Type = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.ptrBitWidth() } };
 
         if (lhs_type == .pointer) {
-            try self.checkRepresentability(rhs, usize_type, source_loc);
+            try self.checkRepresentability(rhs, usize_type, token_start);
         } else if (rhs_type == .pointer) {
-            try self.checkRepresentability(lhs, usize_type, source_loc);
+            try self.checkRepresentability(lhs, usize_type, token_start);
         } else if ((lhs_type.isInt() != rhs_type.isInt()) or
             (!lhs_type.eql(rhs_type) and !lhs_type.isAmbigiuous() and !rhs_type.isAmbigiuous()))
         {
-            return self.reportIncompatibleTypes(lhs_type, rhs_type, source_loc);
+            return self.reportIncompatibleTypes(lhs_type, rhs_type, token_start);
         }
     } else {
-        try self.checkIntOrFloat(lhs_type, source_loc);
-        try self.checkIntOrFloat(rhs_type, source_loc);
+        try self.checkIntOrFloat(lhs_type, token_start);
+        try self.checkIntOrFloat(rhs_type, token_start);
 
         if ((lhs_type.isInt() != rhs_type.isInt()) or
             (!lhs_type.eql(rhs_type) and !lhs_type.isAmbigiuous() and !rhs_type.isAmbigiuous()))
         {
-            return self.reportIncompatibleTypes(lhs_type, rhs_type, source_loc);
+            return self.reportIncompatibleTypes(lhs_type, rhs_type, token_start);
         }
     }
 
@@ -1117,14 +1120,14 @@ fn analyzeArithmetic(self: *Sema, comptime operation: ArithmeticOperation, sourc
     } else if (!lhs_type.isAmbigiuous()) {
         // Check if we can represent the rhs ambigiuous value as lhs type (e.g. x + 4)
         if (rhs_type.isAmbigiuous()) {
-            try self.checkRepresentability(rhs, lhs_type, source_loc);
+            try self.checkRepresentability(rhs, lhs_type, token_start);
         }
 
         try self.stack.append(self.allocator, .{ .runtime = lhs_type });
     } else {
         // Check if we can represent the lhs ambigiuous value as rhs type (e.g. 4 + x)
         if (!rhs_type.isAmbigiuous()) {
-            try self.checkRepresentability(lhs, rhs_type, source_loc);
+            try self.checkRepresentability(lhs, rhs_type, token_start);
         }
 
         try self.stack.append(self.allocator, .{ .runtime = rhs_type });
@@ -1152,7 +1155,7 @@ const ComparisonOperation = enum {
     eql,
 };
 
-fn analyzeComparison(self: *Sema, comptime operation: ComparisonOperation, source_loc: SourceLoc) Error!void {
+fn analyzeComparison(self: *Sema, comptime operation: ComparisonOperation, token_start: u32) Error!void {
     const rhs = self.stack.pop();
     const lhs = self.stack.pop();
 
@@ -1160,15 +1163,15 @@ fn analyzeComparison(self: *Sema, comptime operation: ComparisonOperation, sourc
     const rhs_type = rhs.getType();
 
     if (operation == .lt or operation == .gt) {
-        try self.checkIntOrFloat(lhs_type, source_loc);
-        try self.checkIntOrFloat(rhs_type, source_loc);
+        try self.checkIntOrFloat(lhs_type, token_start);
+        try self.checkIntOrFloat(rhs_type, token_start);
     }
 
-    try self.checkCanBeCompared(lhs_type, source_loc);
-    try self.checkCanBeCompared(rhs_type, source_loc);
+    try self.checkCanBeCompared(lhs_type, token_start);
+    try self.checkCanBeCompared(rhs_type, token_start);
 
-    try self.checkRepresentability(lhs, rhs_type, source_loc);
-    try self.checkRepresentability(rhs, lhs_type, source_loc);
+    try self.checkRepresentability(lhs, rhs_type, token_start);
+    try self.checkRepresentability(rhs, lhs_type, token_start);
 
     switch (lhs) {
         .int => |lhs_int| switch (rhs) {
@@ -1259,14 +1262,14 @@ const BitwiseShiftDirection = enum {
     right,
 };
 
-fn analyzeBitwiseShift(self: *Sema, comptime direction: BitwiseShiftDirection, source_loc: SourceLoc) Error!void {
+fn analyzeBitwiseShift(self: *Sema, comptime direction: BitwiseShiftDirection, token_start: u32) Error!void {
     const rhs = self.stack.pop();
     const lhs = self.stack.pop();
 
     const lhs_type = lhs.getType();
 
-    try self.checkInt(lhs_type, source_loc);
-    try self.checkRepresentability(rhs, .{ .int = .{ .signedness = .unsigned, .bits = 8 } }, source_loc);
+    try self.checkInt(lhs_type, token_start);
+    try self.checkRepresentability(rhs, .{ .int = .{ .signedness = .unsigned, .bits = 8 } }, token_start);
 
     if (lhs != .runtime and rhs != .runtime) {
         const lhs_int = lhs.int;
@@ -1275,7 +1278,7 @@ fn analyzeBitwiseShift(self: *Sema, comptime direction: BitwiseShiftDirection, s
         if (rhs_int > std.math.maxInt(u7)) {
             self.error_info = .{
                 .message = "cannot bit shift with a count more than '" ++ std.fmt.comptimePrint("{}", .{std.math.maxInt(u7)}) ++ "'",
-                .source_loc = source_loc,
+                .source_loc = SourceLoc.find(self.buffer, token_start),
             };
 
             return error.TypeCannotRepresentValue;
@@ -1310,27 +1313,27 @@ fn analyzeCast(self: *Sema, cast: Sir.Instruction.Cast) Error!void {
     const rhs = self.stack.pop();
 
     if (to == .void) {
-        self.error_info = .{ .message = "cannot cast to 'void' as it is not possible to represent a value of this type", .source_loc = cast.source_loc };
+        self.error_info = .{ .message = "cannot cast to 'void' as it is not possible to represent a value of this type", .source_loc = SourceLoc.find(self.buffer, cast.token_start) };
 
         return error.UnexpectedType;
     } else if (to == .function) {
-        self.error_info = .{ .message = "cannot cast to a function type as it should be always wrapped in a pointer", .source_loc = cast.source_loc };
+        self.error_info = .{ .message = "cannot cast to a function type as it should be always wrapped in a pointer", .source_loc = SourceLoc.find(self.buffer, cast.token_start) };
 
         return error.UnexpectedType;
     } else if (to == .@"struct" or from == .@"struct") {
-        self.error_info = .{ .message = "cannot cast from or to a struct as it has multiple fields that should be casted individually", .source_loc = cast.source_loc };
+        self.error_info = .{ .message = "cannot cast from or to a struct as it has multiple fields that should be casted individually", .source_loc = SourceLoc.find(self.buffer, cast.token_start) };
 
         return error.UnexpectedType;
     } else if (to == .pointer and from != .pointer) {
         const usize_type: Type = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.ptrBitWidth() } };
 
-        try self.checkRepresentability(rhs, usize_type, cast.source_loc);
+        try self.checkRepresentability(rhs, usize_type, cast.token_start);
     } else if (to == .bool) {
-        try self.checkInt(from, cast.source_loc);
+        try self.checkInt(from, cast.token_start);
     } else if (from == .bool) {
-        try self.checkInt(to, cast.source_loc);
+        try self.checkInt(to, cast.token_start);
     } else if (from.isFloat()) {
-        try self.checkIntOrFloat(to, cast.source_loc);
+        try self.checkIntOrFloat(to, cast.token_start);
     }
 
     try self.air.instructions.append(self.allocator, .{ .cast = .{ .from = from, .to = to } });
@@ -1381,7 +1384,7 @@ fn analyzeCall(self: *Sema, call: Sir.Instruction.Call) Error!void {
         if (function.parameter_types.len != call.arguments_count) {
             try error_message_buf.writer(self.allocator).print("expected {} argument(s) got {} argument(s)", .{ function.parameter_types.len, call.arguments_count });
 
-            self.error_info = .{ .message = error_message_buf.items, .source_loc = call.source_loc };
+            self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, call.token_start) };
 
             return error.UnexpectedArgumentsCount;
         }
@@ -1389,7 +1392,7 @@ fn analyzeCall(self: *Sema, call: Sir.Instruction.Call) Error!void {
         for (function.parameter_types) |parameter_type| {
             const argument = self.stack.pop();
 
-            try self.checkRepresentability(argument, parameter_type, call.source_loc);
+            try self.checkRepresentability(argument, parameter_type, call.token_start);
         }
 
         try self.air.instructions.append(self.allocator, .{ .call = function });
@@ -1398,7 +1401,7 @@ fn analyzeCall(self: *Sema, call: Sir.Instruction.Call) Error!void {
     } else {
         try error_message_buf.writer(self.allocator).print("'{}' is not a callable", .{callable_type});
 
-        self.error_info = .{ .message = error_message_buf.items, .source_loc = call.source_loc };
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, call.token_start) };
 
         return error.MismatchedTypes;
     }
@@ -1457,13 +1460,13 @@ fn analyzeConstant(self: *Sema, infer: bool, subsymbol: Sir.SubSymbol) Error!voi
     }
 
     if (variable.type == .void) {
-        self.error_info = .{ .message = "cannot declare a constant with type 'void'", .source_loc = symbol.name.source_loc };
+        self.error_info = .{ .message = "cannot declare a constant with type 'void'", .source_loc = SourceLoc.find(self.buffer, symbol.name.token_start) };
 
         return error.UnexpectedType;
     }
 
     if (value == .runtime) {
-        self.error_info = .{ .message = "expected the constant initializer to be compile time known", .source_loc = symbol.name.source_loc };
+        self.error_info = .{ .message = "expected the constant initializer to be compile time known", .source_loc = SourceLoc.find(self.buffer, symbol.name.token_start) };
 
         return error.ExpectedCompiletimeConstant;
     }
@@ -1486,13 +1489,13 @@ fn analyzeVariable(self: *Sema, infer: bool, subsymbol: Sir.SubSymbol) Error!voi
     }
 
     if (variable.type == .void) {
-        self.error_info = .{ .message = "cannot declare a variable with type 'void'", .source_loc = symbol.name.source_loc };
+        self.error_info = .{ .message = "cannot declare a variable with type 'void'", .source_loc = SourceLoc.find(self.buffer, symbol.name.token_start) };
 
         return error.UnexpectedType;
     }
 
     if (variable.type.isAmbigiuous()) {
-        self.error_info = .{ .message = "cannot declare a variable with an ambigiuous type", .source_loc = symbol.name.source_loc };
+        self.error_info = .{ .message = "cannot declare a variable with an ambigiuous type", .source_loc = SourceLoc.find(self.buffer, symbol.name.token_start) };
 
         return error.UnexpectedType;
     }
@@ -1524,13 +1527,13 @@ fn analyzeTypeAlias(self: *Sema, subsymbol: Sir.SubSymbol) Error!void {
         const @"enum" = subsymbol.subtype.@"enum";
         const enum_type = try self.analyzeSubType(@"enum".subtype.*);
 
-        try self.checkIntType(enum_type, @"enum".source_loc);
+        try self.checkIntType(enum_type, @"enum".token_start);
 
         if (enum_type.int.bits > 64) {
             // TODO: LLVM supports more than 64 bits but we don't currently expose this feature, sorry...
             self.error_info = .{
                 .message = "enum is backed by an integer that takes more than 64 bits in memory but it is not currently supported",
-                .source_loc = @"enum".source_loc,
+                .source_loc = SourceLoc.find(self.buffer, @"enum".token_start),
             };
 
             return error.UnexpectedType;
@@ -1539,14 +1542,14 @@ fn analyzeTypeAlias(self: *Sema, subsymbol: Sir.SubSymbol) Error!void {
         for (@"enum".fields) |field| {
             const enum_field_value: Value = .{ .int = field.value };
 
-            try self.checkRepresentability(enum_field_value, enum_type, field.name.source_loc);
+            try self.checkRepresentability(enum_field_value, enum_type, field.name.token_start);
 
             const enum_field_typed_value: Value = .{ .typed_int = .{ .type = enum_type, .value = field.value } };
 
             const enum_field_entry = try std.mem.concat(self.allocator, u8, &.{ subsymbol.name.buffer, "::", field.name.buffer });
 
             if (self.scope.get(enum_field_entry) != null)
-                return self.reportRedeclaration(.{ .buffer = enum_field_entry, .source_loc = field.name.source_loc });
+                return self.reportRedeclaration(.{ .buffer = enum_field_entry, .token_start = field.name.token_start });
 
             try self.scope.put(self.allocator, enum_field_entry, .{
                 .type = enum_type,
@@ -1576,7 +1579,7 @@ fn analyzeSet(self: *Sema, name: Name) Error!void {
 
     var value = self.stack.pop();
 
-    try self.checkRepresentability(value, variable.type, name.source_loc);
+    try self.checkRepresentability(value, variable.type, name.token_start);
 
     if (variable.is_comptime and variable.maybe_value == null) {
         if (!variable.type.isAmbigiuous()) {
@@ -1591,11 +1594,11 @@ fn analyzeSet(self: *Sema, name: Name) Error!void {
 
         variable.maybe_value = value;
     } else if (variable.is_const) {
-        self.error_info = .{ .message = "cannot mutate the value of a constant", .source_loc = name.source_loc };
+        self.error_info = .{ .message = "cannot mutate the value of a constant", .source_loc = SourceLoc.find(self.buffer, name.token_start) };
 
         return error.UnexpectedMutation;
     } else if (variable.linkage == .global and value == .runtime and self.maybe_function == null) {
-        self.error_info = .{ .message = "expected global variable initializer to be compile time known", .source_loc = name.source_loc };
+        self.error_info = .{ .message = "expected global variable initializer to be compile time known", .source_loc = SourceLoc.find(self.buffer, name.token_start) };
 
         return error.ExpectedCompiletimeConstant;
     } else if (self.maybe_function != null) {
@@ -1641,7 +1644,7 @@ fn analyzeBr(self: *Sema, br: Sir.Instruction.Br) Error!void {
 fn analyzeCondBr(self: *Sema, cond_br: Sir.Instruction.CondBr) Error!void {
     const condition = self.stack.pop();
 
-    try self.checkRepresentability(condition, .bool, cond_br.source_loc);
+    try self.checkRepresentability(condition, .bool, cond_br.token_start);
 
     switch (condition) {
         .boolean => |condition_boolean| {
@@ -1684,16 +1687,16 @@ fn modifyScope(self: *Sema, start: bool) Error!void {
     }
 }
 
-fn analyzeReturn(self: *Sema, with_value: bool, source_loc: SourceLoc) Error!void {
+fn analyzeReturn(self: *Sema, with_value: bool, token_start: u32) Error!void {
     std.debug.assert(self.maybe_function != null);
 
     const return_type = self.maybe_function.?.pointer.child_type.*.function.return_type.*;
 
     if (with_value) {
-        try self.checkRepresentability(self.stack.pop(), return_type, source_loc);
+        try self.checkRepresentability(self.stack.pop(), return_type, token_start);
     } else {
         if (return_type != .void) {
-            self.error_info = .{ .message = "function with non void return type returns void", .source_loc = source_loc };
+            self.error_info = .{ .message = "function with non void return type returns void", .source_loc = SourceLoc.find(self.buffer, token_start) };
 
             return error.ExpectedExplicitReturn;
         }
