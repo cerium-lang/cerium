@@ -1433,7 +1433,6 @@ fn analyzeParameters(self: *Sema, subsymbols: []const Sir.SubSymbol) Error!void 
         try self.scope.put(self.allocator, symbol.name.buffer, .{
             .type = symbol.type,
             .linkage = symbol.linkage,
-            .is_const = true,
         });
     }
 
