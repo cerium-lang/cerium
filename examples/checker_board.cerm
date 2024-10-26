@@ -1,0 +1,53 @@
+// TODO: We don't support slices yet
+fn strlen(str [*]const u8) usize {
+    var len usize = 0;
+
+    while str[len] != 0 as u8 {
+        len = len + 1 as usize;
+    }
+
+    return len;
+}
+
+// TODO: We don't support modulo yet
+fn rem(n i32, divisor i32) i32 {
+    return n - (n / divisor) * divisor;
+}
+
+const SYS_write = 1;
+
+fn syscall3(code usize, arg1 usize, arg2 usize, arg3 usize) usize {
+    return asm {
+        "syscall"
+        : "={rax}" (usize)
+        : "{rax}" (code),
+          "{rdi}" (arg1),
+          "{rsi}" (arg2),
+          "{rdx}" (arg3),
+        : "rcx", "r11", "memory"
+    };
+}
+
+const STDOUT = 1;
+
+fn print(str [*]const u8) {
+    syscall3(SYS_write, STDOUT, str as usize, strlen(str));
+}
+
+fn main() {
+    var i i32 = 0;
+
+    while (i = i + 1 as i32) < 9 as i32 {
+        var j i32 = 0;
+
+        while (j = j + 1 as i32) < 9 as i32 {
+            if rem(i + j, 2) == 0 as i32 {
+                print("\e[47m  \e[0m");
+            } else {
+                print("\e[100m  \e[0m");
+            }
+        }
+
+        print("\n");
+    }
+}
