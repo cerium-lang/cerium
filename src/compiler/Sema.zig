@@ -102,13 +102,7 @@ const Value = union(enum) {
             .typed_int => |typed_int| typed_int.type,
             .typed_float => |typed_float| typed_float.type,
             .boolean => .bool,
-            .string => Type{
-                .pointer = .{
-                    .size = .many,
-                    .is_const = true,
-                    .child_type = &.{ .int = .{ .signedness = .unsigned, .bits = 8 } },
-                },
-            },
+            .string => .string,
             .runtime => |runtime| runtime,
         };
     }
@@ -156,6 +150,60 @@ fn checkRepresentability(self: *Sema, source_value: Value, destination_type: Typ
         self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
 
         return error.TypeCannotRepresentValue;
+    }
+}
+
+fn checkBinaryImplicitCast(self: *Sema, lhs: *Value, rhs: *Value, token_start: u32) Error!void {
+    const lhs_type = lhs.getType();
+    const rhs_type = rhs.getType();
+
+    if (std.meta.activeTag(lhs_type) == std.meta.activeTag(rhs_type) and !lhs_type.isAmbigiuous()) {
+        if (lhs_type == .int and lhs_type.int.bits > rhs_type.int.bits or
+            lhs_type == .float and lhs_type.float.bits > rhs_type.float.bits)
+        {
+            // lhs as u64 > rhs as i8
+            // lhs as u64 > rhs as u16
+            // lhs as f64 > rhs as f32
+            try self.checkRepresentability(rhs.*, lhs_type, token_start);
+
+            rhs.* = lhs.*;
+        } else if (lhs_type == .int and lhs_type.int.bits < rhs_type.int.bits or
+            lhs_type == .float and lhs_type.float.bits < rhs_type.float.bits)
+        {
+            // lhs as i8 > rhs as u64
+            // lhs as u16 > rhs as u64
+            // lhs as f32 > rhs as f64
+            try self.checkRepresentability(lhs.*, rhs_type, token_start);
+
+            lhs.* = rhs.*;
+        } else if (lhs_type == .pointer) {
+            // lhs as *const u8 == rhs as *const u8
+            // lhs as *const u8 == rhs as *const u16
+            //
+            // Both are allowed since it is a pointer comparison which compares the addresses
+        }
+    } else if (lhs_type.isAmbigiuous()) {
+        // 4 > rhs as u64
+        // 4.0 > rhs as f64
+        try self.checkRepresentability(lhs.*, rhs_type, token_start);
+
+        if (lhs_type.isInt()) {
+            lhs.* = .{ .typed_int = .{ .type = rhs_type, .value = lhs.int } };
+        } else {
+            lhs.* = .{ .typed_float = .{ .type = rhs_type, .value = lhs.float } };
+        }
+    } else if (rhs_type.isAmbigiuous()) {
+        // lhs as u64 > 4
+        // lhs as f64 > 4.0
+        try self.checkRepresentability(rhs.*, lhs_type, token_start);
+
+        if (rhs_type.isInt()) {
+            rhs.* = .{ .typed_int = .{ .type = lhs_type, .value = rhs.int } };
+        } else {
+            rhs.* = .{ .typed_float = .{ .type = lhs_type, .value = rhs.float } };
+        }
+    } else {
+        try self.reportIncompatibleTypes(lhs_type, rhs_type, token_start);
     }
 }
 
@@ -207,16 +255,8 @@ fn checkIntType(self: *Sema, provided_type: Type, token_start: u32) Error!void {
 }
 
 fn checkCanBeCompared(self: *Sema, provided_type: Type, token_start: u32) Error!void {
-    if (provided_type.getPointer()) |pointer| {
-        if (pointer.size == .many) {
-            var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-            try error_message_buf.writer(self.allocator).print("'{}' cannot be compared", .{provided_type});
-
-            self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
-
-            return error.MismatchedTypes;
-        }
+    if (provided_type == .@"struct" or provided_type == .void or provided_type == .function) {
+        return self.reportNotComparable(provided_type, token_start);
     }
 }
 
@@ -319,6 +359,16 @@ fn reportNotIndexable(self: *Sema, provided_type: Type, token_start: u32) Error!
     self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
 
     return error.UnexpectedType;
+}
+
+fn reportNotComparable(self: *Sema, provided_type: Type, token_start: u32) Error!void {
+    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+    try error_message_buf.writer(self.allocator).print("'{}' does not support comparison", .{provided_type});
+
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
+
+    return error.MismatchedTypes;
 }
 
 fn reportCircularDependency(self: *Sema, name: Name) Error!void {
@@ -913,11 +963,9 @@ fn analyzeRead(self: *Sema, token_start: u32) Error!void {
         return error.UnexpectedFunctionPointer;
     }
 
-    const result_type = rhs_pointer.child_type.*;
+    try self.air.instructions.append(self.allocator, .read);
 
-    try self.air.instructions.append(self.allocator, .{ .read = result_type });
-
-    try self.stack.append(self.allocator, .{ .runtime = result_type });
+    try self.stack.append(self.allocator, .{ .runtime = rhs_pointer.child_type.* });
 }
 
 fn analyzeGetElementPtr(self: *Sema, token_start: u32) Error!void {
@@ -934,7 +982,7 @@ fn analyzeGetElementPtr(self: *Sema, token_start: u32) Error!void {
 
     try self.checkRepresentability(rhs, usize_type, token_start);
 
-    try self.air.instructions.append(self.allocator, .{ .get_element_ptr = lhs_pointer.child_type.* });
+    try self.air.instructions.append(self.allocator, .get_element_ptr);
 
     lhs_pointer.size = .one;
 
@@ -954,15 +1002,7 @@ fn analyzeGetFieldPtr(self: *Sema, name: Name) Error!void {
 
     for (rhs_struct.fields, 0..) |field, i| {
         if (std.mem.eql(u8, field.name, name.buffer)) {
-            try self.air.instructions.append(
-                self.allocator,
-                .{
-                    .get_field_ptr = .{
-                        .struct_type = .{ .@"struct" = rhs_struct },
-                        .index = @intCast(i),
-                    },
-                },
-            );
+            try self.air.instructions.append(self.allocator, .{ .get_field_ptr = @intCast(i) });
 
             const child_type_on_heap = try self.allocator.create(Type);
             child_type_on_heap.* = field.type;
@@ -1035,11 +1075,11 @@ const ArithmeticOperation = enum {
 };
 
 fn analyzeArithmetic(self: *Sema, comptime operation: ArithmeticOperation, token_start: u32) Error!void {
-    const rhs = self.stack.pop();
-    const lhs = self.stack.pop();
+    var rhs = self.stack.pop();
+    var lhs = self.stack.pop();
 
-    const lhs_type = lhs.getType();
-    const rhs_type = rhs.getType();
+    var lhs_type = lhs.getType();
+    var rhs_type = rhs.getType();
 
     if (operation == .add or operation == .sub) {
         try self.checkIntOrFloatOrPointer(lhs_type, token_start);
@@ -1047,25 +1087,24 @@ fn analyzeArithmetic(self: *Sema, comptime operation: ArithmeticOperation, token
 
         const usize_type: Type = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.ptrBitWidth() } };
 
-        if (lhs_type == .pointer) {
+        if (lhs_type == .pointer and rhs_type != .pointer) {
             try self.checkRepresentability(rhs, usize_type, token_start);
-        } else if (rhs_type == .pointer) {
+        } else if (rhs_type == .pointer and lhs_type != .pointer) {
             try self.checkRepresentability(lhs, usize_type, token_start);
-        } else if ((lhs_type.isInt() != rhs_type.isInt()) or
-            (!lhs_type.eql(rhs_type) and !lhs_type.isAmbigiuous() and !rhs_type.isAmbigiuous()))
-        {
-            return self.reportIncompatibleTypes(lhs_type, rhs_type, token_start);
+        } else if (lhs_type == .pointer and rhs_type == .pointer) {
+            try self.checkRepresentability(lhs, rhs_type, token_start);
+        } else {
+            try self.checkBinaryImplicitCast(&lhs, &rhs, token_start);
         }
     } else {
         try self.checkIntOrFloat(lhs_type, token_start);
         try self.checkIntOrFloat(rhs_type, token_start);
 
-        if ((lhs_type.isInt() != rhs_type.isInt()) or
-            (!lhs_type.eql(rhs_type) and !lhs_type.isAmbigiuous() and !rhs_type.isAmbigiuous()))
-        {
-            return self.reportIncompatibleTypes(lhs_type, rhs_type, token_start);
-        }
+        try self.checkBinaryImplicitCast(&lhs, &rhs, token_start);
     }
+
+    lhs_type = lhs.getType();
+    rhs_type = rhs.getType();
 
     switch (lhs) {
         .int => |lhs_int| switch (rhs) {
@@ -1117,35 +1156,15 @@ fn analyzeArithmetic(self: *Sema, comptime operation: ArithmeticOperation, token
         try self.stack.append(self.allocator, .{ .runtime = lhs_type });
     } else if (rhs_type == .pointer) {
         try self.stack.append(self.allocator, .{ .runtime = rhs_type });
-    } else if (!lhs_type.isAmbigiuous()) {
-        // Check if we can represent the rhs ambigiuous value as lhs type (e.g. x + 4)
-        if (rhs_type.isAmbigiuous()) {
-            try self.checkRepresentability(rhs, lhs_type, token_start);
-        }
-
-        try self.stack.append(self.allocator, .{ .runtime = lhs_type });
     } else {
-        // Check if we can represent the lhs ambigiuous value as rhs type (e.g. 4 + x)
-        if (!rhs_type.isAmbigiuous()) {
-            try self.checkRepresentability(lhs, rhs_type, token_start);
-        }
-
-        try self.stack.append(self.allocator, .{ .runtime = rhs_type });
+        try self.stack.append(self.allocator, .{ .runtime = lhs_type });
     }
 
     switch (operation) {
         .add => try self.air.instructions.append(self.allocator, .add),
         .sub => try self.air.instructions.append(self.allocator, .sub),
         .mul => try self.air.instructions.append(self.allocator, .mul),
-        .div => try self.air.instructions.append(
-            self.allocator,
-            if (lhs_type.isInt() and lhs_type.canBeNegative() and rhs_type.canBeNegative())
-                .sdiv
-            else if (lhs_type.isFloat())
-                .fdiv
-            else
-                .udiv,
-        ),
+        .div => try self.air.instructions.append(self.allocator, .div),
     }
 }
 
@@ -1156,11 +1175,11 @@ const ComparisonOperation = enum {
 };
 
 fn analyzeComparison(self: *Sema, comptime operation: ComparisonOperation, token_start: u32) Error!void {
-    const rhs = self.stack.pop();
-    const lhs = self.stack.pop();
+    var rhs = self.stack.pop();
+    var lhs = self.stack.pop();
 
-    const lhs_type = lhs.getType();
-    const rhs_type = rhs.getType();
+    var lhs_type = lhs.getType();
+    var rhs_type = rhs.getType();
 
     if (operation == .lt or operation == .gt) {
         try self.checkIntOrFloat(lhs_type, token_start);
@@ -1170,8 +1189,10 @@ fn analyzeComparison(self: *Sema, comptime operation: ComparisonOperation, token
     try self.checkCanBeCompared(lhs_type, token_start);
     try self.checkCanBeCompared(rhs_type, token_start);
 
-    try self.checkRepresentability(lhs, rhs_type, token_start);
-    try self.checkRepresentability(rhs, lhs_type, token_start);
+    try self.checkBinaryImplicitCast(&lhs, &rhs, token_start);
+
+    lhs_type = lhs.getType();
+    rhs_type = rhs.getType();
 
     switch (lhs) {
         .int => |lhs_int| switch (rhs) {
@@ -1238,20 +1259,9 @@ fn analyzeComparison(self: *Sema, comptime operation: ComparisonOperation, token
     }
 
     switch (operation) {
-        .lt => try self.air.instructions.append(self.allocator, if (lhs.getType().isInt())
-            .{ .icmp = if (lhs.getType().canBeNegative() and rhs.getType().canBeNegative()) .slt else .ult }
-        else
-            .{ .fcmp = .lt }),
-
-        .gt => try self.air.instructions.append(self.allocator, if (lhs.getType().isInt())
-            .{ .icmp = if (lhs.getType().canBeNegative() and rhs.getType().canBeNegative()) .sgt else .ugt }
-        else
-            .{ .fcmp = .gt }),
-
-        .eql => try self.air.instructions.append(self.allocator, if (lhs.getType().isInt() or lhs.getType() == .bool)
-            .{ .icmp = .eql }
-        else
-            .{ .fcmp = .eql }),
+        .lt => try self.air.instructions.append(self.allocator, .{ .cmp = .lt }),
+        .gt => try self.air.instructions.append(self.allocator, .{ .cmp = .gt }),
+        .eql => try self.air.instructions.append(self.allocator, .{ .cmp = .eql }),
     }
 
     try self.stack.append(self.allocator, .{ .runtime = .bool });
@@ -1267,21 +1277,19 @@ fn analyzeBitwiseShift(self: *Sema, comptime direction: BitwiseShiftDirection, t
     const lhs = self.stack.pop();
 
     const lhs_type = lhs.getType();
+    const rhs_type = rhs.getType();
 
     try self.checkInt(lhs_type, token_start);
-    try self.checkRepresentability(rhs, .{ .int = .{ .signedness = .unsigned, .bits = 8 } }, token_start);
+    try self.checkInt(rhs_type, token_start);
 
     if (lhs != .runtime and rhs != .runtime) {
         const lhs_int = lhs.int;
         const rhs_int = rhs.int;
 
         if (rhs_int > std.math.maxInt(u7)) {
-            self.error_info = .{
-                .message = "cannot bit shift with a count more than '" ++ std.fmt.comptimePrint("{}", .{std.math.maxInt(u7)}) ++ "'",
-                .source_loc = SourceLoc.find(self.buffer, token_start),
-            };
+            self.error_info = .{ .message = "cannot bit shift with a count more than '" ++ std.fmt.comptimePrint("{}", .{std.math.maxInt(u7)}) ++ "'", .source_loc = SourceLoc.find(self.buffer, token_start) };
 
-            return error.TypeCannotRepresentValue;
+            return error.UnexpectedType;
         }
 
         const result = switch (direction) {
@@ -1295,6 +1303,8 @@ fn analyzeBitwiseShift(self: *Sema, comptime direction: BitwiseShiftDirection, t
 
         self.air.instructions.items[self.air.instructions.items.len - 1] = .{ .int = result };
     } else {
+        try self.checkRepresentability(rhs, .{ .int = .{ .signedness = .unsigned, .bits = std.math.log2(lhs_type.int.bits) } }, token_start);
+
         switch (direction) {
             .left => try self.air.instructions.append(self.allocator, .shl),
             .right => try self.air.instructions.append(self.allocator, .shr),
@@ -1336,7 +1346,7 @@ fn analyzeCast(self: *Sema, cast: Sir.Instruction.Cast) Error!void {
         try self.checkIntOrFloat(to, cast.token_start);
     }
 
-    try self.air.instructions.append(self.allocator, .{ .cast = .{ .from = from, .to = to } });
+    try self.air.instructions.append(self.allocator, .{ .cast = to });
 
     try self.stack.append(self.allocator, .{ .runtime = to });
 }
@@ -1395,7 +1405,7 @@ fn analyzeCall(self: *Sema, call: Sir.Instruction.Call) Error!void {
             try self.checkRepresentability(argument, parameter_type, call.token_start);
         }
 
-        try self.air.instructions.append(self.allocator, .{ .call = function });
+        try self.air.instructions.append(self.allocator, .call);
 
         try self.stack.append(self.allocator, .{ .runtime = function.return_type.* });
     } else {
@@ -1413,12 +1423,7 @@ fn analyzeFunction(self: *Sema, subsymbol: Sir.SubSymbol) Error!void {
 
     self.maybe_function = symbol.type;
 
-    try self.air.instructions.append(self.allocator, .{
-        .function = .{
-            .name = symbol.name.buffer,
-            .type = symbol.type,
-        },
-    });
+    try self.air.instructions.append(self.allocator, .{ .function = symbol });
 
     try self.scope.put(self.allocator, symbol.name.buffer, .{ .type = symbol.type, .linkage = symbol.linkage });
 }
@@ -1623,11 +1628,7 @@ fn analyzeGet(self: *Sema, name: Name) Error!void {
 
         try self.stack.append(self.allocator, value);
     } else {
-        if (variable.type.getFunction() != null) {
-            try self.air.instructions.append(self.allocator, .{ .get_ptr = name.buffer });
-        } else {
-            try self.air.instructions.append(self.allocator, .{ .get = name.buffer });
-        }
+        try self.air.instructions.append(self.allocator, .{ .get = name.buffer });
 
         try self.stack.append(self.allocator, .{ .runtime = variable.type });
     }

@@ -40,41 +40,35 @@ pub const Instruction = union(enum) {
     /// Override the data that the pointer is pointing to
     write,
     /// Read the data that the pointer is pointing to
-    read: Type,
+    read,
     /// Calculate the pointer of an element in a "size many" pointer
-    get_element_ptr: Type,
+    get_element_ptr,
     /// Calculate the pointer of a field in a struct pointer
-    get_field_ptr: GetFieldPtr,
+    get_field_ptr: u32,
     /// Add two integers or floats on the top of the stack
     add,
     /// Subtract two integers or floats on the top of the stack
     sub,
     /// Multiply two integers or floats on the top of the stack
     mul,
-    /// Divide two floats on the top of the stack
-    fdiv,
-    /// Same as `fdiv` but for signed integers
-    sdiv,
-    /// Same as `fdiv` but for unsigned integers
-    udiv,
-    /// Compare between two integers on the stack
-    icmp: ICmp,
-    /// Compare between two floats on the stack
-    fcmp: FCmp,
+    /// Divide two integers or floats on the top of the stack
+    div,
+    /// Compare between two integers or floats on the top of the stack
+    cmp: Cmp,
     /// Shift to left the bits of lhs using rhs offset
     shl,
     /// Shift to right the bits of lhs using rhs offset
     shr,
     /// Cast a value to a different type
-    cast: Cast,
+    cast: Type,
     /// Place a machine-specific assembly in the output
     assembly: Assembly,
     /// Declare function parameters
     parameters: []const Symbol,
     /// Call a function pointer on top of the stack
-    call: Type.Function,
+    call,
     /// Declare a function
-    function: Function,
+    function: Symbol,
     /// Declare a variable using the specified name and type
     variable: Symbol,
     /// Same as `variable` but the variable is external
@@ -100,16 +94,6 @@ pub const Instruction = union(enum) {
     /// Return out of the function without a value
     ret_void,
 
-    pub const GetFieldPtr = struct {
-        struct_type: Type,
-        index: u32,
-    };
-
-    pub const Cast = struct {
-        from: Type,
-        to: Type,
-    };
-
     pub const Assembly = struct {
         content: []const u8,
         output_constraint: ?OutputConstraint,
@@ -120,11 +104,6 @@ pub const Instruction = union(enum) {
             register: []const u8,
             type: Type,
         };
-    };
-
-    pub const Function = struct {
-        name: []const u8,
-        type: Type,
     };
 
     pub const Block = struct {
@@ -140,15 +119,7 @@ pub const Instruction = union(enum) {
         false_id: u32,
     };
 
-    pub const ICmp = enum {
-        slt,
-        sgt,
-        ult,
-        ugt,
-        eql,
-    };
-
-    pub const FCmp = enum {
+    pub const Cmp = enum {
         lt,
         gt,
         eql,

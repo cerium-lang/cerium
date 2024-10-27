@@ -30,7 +30,7 @@ basic_blocks: std.AutoHashMapUnmanaged(u32, c.LLVMBasicBlockRef) = .{},
 
 strings: std.StringHashMapUnmanaged(c.LLVMValueRef) = .{},
 
-stack: std.ArrayListUnmanaged(c.LLVMValueRef) = .{},
+stack: std.ArrayListUnmanaged(Register) = .{},
 
 scope: *Scope(Variable) = undefined,
 scope_stack: std.ArrayListUnmanaged(Scope(Variable)) = .{},
@@ -41,6 +41,11 @@ pub const Variable = struct {
     pointer: c.LLVMValueRef,
     type: Type,
     linkage: Symbol.Linkage,
+};
+
+pub const Register = struct {
+    value: c.LLVMValueRef,
+    type: Type,
 };
 
 pub fn init(allocator: std.mem.Allocator, target: std.Target, air: Air) LlvmBackend {
@@ -380,7 +385,7 @@ pub fn render(self: *LlvmBackend) Error!void {
 fn renderInstruction(self: *LlvmBackend, air_instruction: Air.Instruction) Error!void {
     switch (air_instruction) {
         .duplicate => try self.stack.append(self.allocator, self.stack.getLast()),
-        .reverse => |count| std.mem.reverse(c.LLVMValueRef, self.stack.items[self.stack.items.len - count ..]),
+        .reverse => |count| std.mem.reverse(Register, self.stack.items[self.stack.items.len - count ..]),
         .pop => _ = self.stack.pop(),
 
         .string => |string| try self.renderString(string),
@@ -397,32 +402,29 @@ fn renderInstruction(self: *LlvmBackend, air_instruction: Air.Instruction) Error
         .bit_xor => try self.renderBitwiseArithmetic(.bit_xor),
 
         .write => try self.renderWrite(),
-        .read => |element_type| try self.renderRead(element_type),
-        .get_element_ptr => |element_type| try self.renderGetElementPtr(element_type),
+        .read => try self.renderRead(),
+        .get_element_ptr => try self.renderGetElementPtr(),
         .get_field_ptr => |field_index| try self.renderGetFieldPtr(field_index),
 
         .add => try self.renderArithmetic(.add),
         .sub => try self.renderArithmetic(.sub),
         .mul => try self.renderArithmetic(.mul),
-        .fdiv => try self.renderArithmetic(.fdiv),
-        .sdiv => try self.renderArithmetic(.sdiv),
-        .udiv => try self.renderArithmetic(.udiv),
+        .div => try self.renderArithmetic(.div),
 
-        .icmp => |operation| try self.renderIntComparison(operation),
-        .fcmp => |operation| try self.renderFloatComparison(operation),
+        .cmp => |operation| try self.renderComparison(operation),
 
         .shl => try self.renderBitwiseShift(.left),
         .shr => try self.renderBitwiseShift(.right),
 
-        .cast => |cast| try self.renderCast(cast),
+        .cast => |cast_to| try self.renderCast(cast_to),
 
         .assembly => |assembly| try self.renderAssembly(assembly),
 
-        .call => |function_type| try self.renderCall(function_type),
+        .call => try self.renderCall(),
 
-        .function => |function| try self.renderFunction(function),
+        .function => |symbol| try self.renderFunction(symbol),
 
-        .parameters => |parameters| try self.renderParameters(parameters),
+        .parameters => |symbols| try self.renderParameters(symbols),
 
         .variable => |symbol| try self.renderVariable(symbol),
         .external => |symbol| try self.renderExternal(symbol),
@@ -445,7 +447,7 @@ fn renderInstruction(self: *LlvmBackend, air_instruction: Air.Instruction) Error
 
 fn renderString(self: *LlvmBackend, string: []const u8) Error!void {
     if (self.strings.get(string)) |string_pointer| {
-        try self.stack.append(self.allocator, string_pointer);
+        try self.stack.append(self.allocator, .{ .value = string_pointer, .type = .string });
     } else {
         const string_pointer =
             c.LLVMBuildGlobalStringPtr(
@@ -456,7 +458,7 @@ fn renderString(self: *LlvmBackend, string: []const u8) Error!void {
 
         try self.strings.put(self.allocator, string, string_pointer);
 
-        try self.stack.append(self.allocator, string_pointer);
+        try self.stack.append(self.allocator, .{ .value = string_pointer, .type = .string });
     }
 }
 
@@ -466,30 +468,33 @@ fn renderInt(self: *LlvmBackend, int: i128) Error!void {
     const int_repr: c_ulonglong = @truncate(@as(u128, @bitCast(int)));
     const int_type = c.LLVMIntTypeInContext(self.context, std.math.clamp(bits, 1, 64));
 
-    try self.stack.append(self.allocator, c.LLVMConstInt(int_type, int_repr, 1));
+    try self.stack.append(self.allocator, .{ .value = c.LLVMConstInt(int_type, int_repr, 1), .type = .ambigiuous_int });
 }
 
 fn renderFloat(self: *LlvmBackend, float: f64) Error!void {
     const bits: c_uint = @intFromFloat(@ceil(@log2(float + 1)));
     const float_type = if (bits <= 32) c.LLVMFloatTypeInContext(self.context) else c.LLVMDoubleTypeInContext(self.context);
 
-    try self.stack.append(self.allocator, c.LLVMConstReal(float_type, float));
+    try self.stack.append(self.allocator, .{ .value = c.LLVMConstReal(float_type, float), .type = .ambigiuous_float });
 }
 
 fn renderBoolean(self: *LlvmBackend, boolean: bool) Error!void {
-    try self.stack.append(self.allocator, c.LLVMConstInt(try self.getLlvmType(.bool), @intFromBool(boolean), 0));
+    try self.stack.append(self.allocator, .{
+        .value = c.LLVMConstInt(try self.getLlvmType(.bool), @intFromBool(boolean), 0),
+        .type = .bool,
+    });
 }
 
 fn renderNegate(self: *LlvmBackend) Error!void {
     const rhs = self.stack.pop();
 
-    try self.stack.append(self.allocator, c.LLVMBuildNeg(self.builder, rhs, ""));
+    try self.stack.append(self.allocator, .{ .value = c.LLVMBuildNeg(self.builder, rhs.value, ""), .type = rhs.type });
 }
 
 fn renderNot(self: *LlvmBackend) Error!void {
     const rhs = self.stack.pop();
 
-    try self.stack.append(self.allocator, c.LLVMBuildNot(self.builder, rhs, ""));
+    try self.stack.append(self.allocator, .{ .value = c.LLVMBuildNot(self.builder, rhs.value, ""), .type = rhs.type });
 }
 
 const BitwiseArithmeticOperation = enum {
@@ -499,22 +504,34 @@ const BitwiseArithmeticOperation = enum {
 };
 
 fn renderBitwiseArithmetic(self: *LlvmBackend, comptime operation: BitwiseArithmeticOperation) Error!void {
-    const rhs = self.stack.pop();
-    const lhs = self.stack.pop();
+    var rhs = self.stack.pop();
+    var lhs = self.stack.pop();
+
+    if (lhs.type.isAmbigiuous()) {
+        lhs.value = c.LLVMBuildIntCast2(self.builder, lhs.value, try self.getLlvmType(rhs.type), @intFromBool(rhs.type.canBeNegative()), "");
+        lhs.type = rhs.type;
+    } else if (rhs.type.isAmbigiuous()) {
+        rhs.value = c.LLVMBuildIntCast2(self.builder, rhs.value, try self.getLlvmType(lhs.type), @intFromBool(lhs.type.canBeNegative()), "");
+        rhs.type = lhs.type;
+    }
 
     try self.stack.append(
         self.allocator,
-        switch (operation) {
-            .bit_and => c.LLVMBuildAnd(self.builder, lhs, rhs, ""),
-            .bit_or => c.LLVMBuildOr(self.builder, lhs, rhs, ""),
-            .bit_xor => c.LLVMBuildXor(self.builder, lhs, rhs, ""),
+        .{
+            .value = switch (operation) {
+                .bit_and => c.LLVMBuildAnd(self.builder, lhs.value, rhs.value, ""),
+                .bit_or => c.LLVMBuildOr(self.builder, lhs.value, rhs.value, ""),
+                .bit_xor => c.LLVMBuildXor(self.builder, lhs.value, rhs.value, ""),
+            },
+
+            .type = lhs.type,
         },
     );
 }
 
 fn renderWrite(self: *LlvmBackend) Error!void {
-    const write_pointer = self.stack.pop();
-    const write_value = self.stack.pop();
+    const write_pointer = self.stack.pop().value;
+    const write_value = self.stack.pop().value;
 
     _ = c.LLVMBuildStore(
         self.builder,
@@ -523,121 +540,200 @@ fn renderWrite(self: *LlvmBackend) Error!void {
     );
 }
 
-fn renderRead(self: *LlvmBackend, element_type: Type) Error!void {
+fn renderRead(self: *LlvmBackend) Error!void {
     const read_pointer = self.stack.pop();
+
+    const element_type = read_pointer.type.pointer.child_type.*;
 
     const read_value = c.LLVMBuildLoad2(
         self.builder,
         try self.getLlvmType(element_type),
-        read_pointer,
+        read_pointer.value,
         "",
     );
 
-    try self.stack.append(self.allocator, read_value);
+    try self.stack.append(self.allocator, .{ .value = read_value, .type = element_type });
 }
 
-fn renderGetElementPtr(self: *LlvmBackend, element_type: Type) Error!void {
-    var rhs = self.stack.pop();
-    const lhs = self.stack.pop();
+fn renderGetElementPtr(self: *LlvmBackend) Error!void {
+    const element_index = self.stack.pop();
+    var array_pointer = self.stack.pop();
+
+    const element_type = array_pointer.type.pointer.child_type.*;
+
+    array_pointer.type.pointer.size = .one;
 
     try self.stack.append(
         self.allocator,
-        c.LLVMBuildGEP2(
-            self.builder,
-            try self.getLlvmType(element_type),
-            lhs,
-            &rhs,
-            1,
-            "",
-        ),
+        .{
+            .value = c.LLVMBuildGEP2(
+                self.builder,
+                try self.getLlvmType(element_type),
+                element_index.value,
+                &array_pointer.value,
+                1,
+                "",
+            ),
+
+            .type = array_pointer.type,
+        },
     );
 }
 
-fn renderGetFieldPtr(self: *LlvmBackend, info: Air.Instruction.GetFieldPtr) Error!void {
-    const lhs = self.stack.pop();
+fn renderGetFieldPtr(self: *LlvmBackend, field_index: u32) Error!void {
+    const struct_pointer = self.stack.pop();
+    const struct_type = struct_pointer.type.pointer.child_type.*;
 
     try self.stack.append(
         self.allocator,
-        c.LLVMBuildStructGEP2(
-            self.builder,
-            try self.getLlvmType(info.struct_type),
-            lhs,
-            @intCast(info.index),
-            "",
-        ),
+        .{
+            .value = c.LLVMBuildStructGEP2(
+                self.builder,
+                try self.getLlvmType(struct_type),
+                struct_pointer.value,
+                @intCast(field_index),
+                "",
+            ),
+
+            .type = struct_pointer.type,
+        },
     );
+}
+
+fn binaryIntCast(self: *LlvmBackend, lhs: *Register, rhs: *Register) Error!void {
+    lhs.value = c.LLVMBuildIntCast2(self.builder, lhs.value, try self.getLlvmType(rhs.type), @intFromBool(rhs.type.canBeNegative()), "");
+    lhs.type = rhs.type;
+}
+
+fn binaryFloatCast(self: *LlvmBackend, lhs: *Register, rhs: *Register) Error!void {
+    lhs.value = c.LLVMBuildFPCast(self.builder, lhs.value, try self.getLlvmType(rhs.type), "");
+    lhs.type = rhs.type;
+}
+
+fn binaryImplicitCast(self: *LlvmBackend, lhs: *Register, rhs: *Register) Error!void {
+    if (!lhs.type.eql(rhs.type) and !lhs.type.isAmbigiuous() and !rhs.type.isAmbigiuous()) {
+        if (lhs.type == .int and lhs.type.int.bits > rhs.type.int.bits) {
+            // lhs as u64 > rhs as u16
+            try self.binaryIntCast(rhs, lhs);
+        } else if (lhs.type == .float and lhs.type.float.bits > rhs.type.float.bits) {
+            // lhs as f64 > rhs as f32
+            try self.binaryFloatCast(rhs, lhs);
+        } else if (lhs.type == .int and lhs.type.int.bits < rhs.type.int.bits) {
+            // lhs as u16 > rhs as u64
+            try self.binaryIntCast(lhs, rhs);
+        } else if (lhs.type == .float and lhs.type.float.bits < rhs.type.float.bits) {
+            // lhs as f32 > rhs as f64
+            try self.binaryFloatCast(lhs, rhs);
+        }
+    } else if (lhs.type.isAmbigiuous()) {
+        if (lhs.type == .ambigiuous_int) {
+            // 4 > rhs as u64
+            try self.binaryIntCast(lhs, rhs);
+        } else if (lhs.type == .ambigiuous_float) {
+            // 4.0 > rhs as f64
+            try self.binaryFloatCast(lhs, rhs);
+        }
+    } else if (rhs.type.isAmbigiuous()) {
+        if (rhs.type == .ambigiuous_int) {
+            // rhs as u64 > 4
+            try self.binaryIntCast(rhs, lhs);
+        } else if (rhs.type == .ambigiuous_float) {
+            // rhs as f64 > 4.0
+            try self.binaryFloatCast(rhs, lhs);
+        }
+    }
 }
 
 const ArithmeticOperation = enum {
     add,
     sub,
     mul,
-    fdiv,
-    udiv,
-    sdiv,
+    div,
 };
 
 fn renderArithmetic(self: *LlvmBackend, comptime operation: ArithmeticOperation) Error!void {
-    const rhs = self.stack.pop();
-    const lhs = self.stack.pop();
+    var rhs = self.stack.pop();
+    var lhs = self.stack.pop();
 
-    const lhs_type_kind = c.LLVMGetTypeKind(c.LLVMTypeOf(lhs));
+    const usize_type: Type = .{ .int = .{ .signedness = .unsigned, .bits = self.target.ptrBitWidth() } };
 
-    if (lhs_type_kind == c.LLVMIntegerTypeKind or lhs_type_kind == c.LLVMPointerTypeKind) {
+    if (lhs.type == .pointer and rhs.type != .pointer) {
+        rhs.value = c.LLVMBuildIntCast2(self.builder, rhs.value, try self.getLlvmType(usize_type), 0, "");
+        rhs.type = usize_type;
+    } else if (rhs.type == .pointer and lhs.type != .pointer) {
+        lhs.value = c.LLVMBuildIntCast2(self.builder, lhs.value, try self.getLlvmType(usize_type), 0, "");
+        lhs.type = usize_type;
+    } else {
+        try self.binaryImplicitCast(&lhs, &rhs);
+    }
+
+    if (lhs.type.isInt() or lhs.type == .pointer) {
         try self.stack.append(
             self.allocator,
-            switch (operation) {
-                .add => c.LLVMBuildAdd(self.builder, lhs, rhs, ""),
-                .sub => c.LLVMBuildSub(self.builder, lhs, rhs, ""),
-                .mul => c.LLVMBuildMul(self.builder, lhs, rhs, ""),
-                .fdiv => unreachable,
-                .udiv => c.LLVMBuildUDiv(self.builder, lhs, rhs, ""),
-                .sdiv => c.LLVMBuildSDiv(self.builder, lhs, rhs, ""),
+            .{
+                .value = switch (operation) {
+                    .add => c.LLVMBuildAdd(self.builder, lhs.value, rhs.value, ""),
+                    .sub => c.LLVMBuildSub(self.builder, lhs.value, rhs.value, ""),
+                    .mul => c.LLVMBuildMul(self.builder, lhs.value, rhs.value, ""),
+                    .div => if (lhs.type.canBeNegative())
+                        c.LLVMBuildSDiv(self.builder, lhs.value, rhs.value, "")
+                    else
+                        c.LLVMBuildUDiv(self.builder, lhs.value, rhs.value, ""),
+                },
+
+                .type = lhs.type,
             },
         );
     } else {
         try self.stack.append(
             self.allocator,
-            switch (operation) {
-                .add => c.LLVMBuildFAdd(self.builder, lhs, rhs, ""),
-                .sub => c.LLVMBuildFSub(self.builder, lhs, rhs, ""),
-                .mul => c.LLVMBuildFMul(self.builder, lhs, rhs, ""),
-                .fdiv => c.LLVMBuildFDiv(self.builder, lhs, rhs, ""),
-                .udiv => unreachable,
-                .sdiv => unreachable,
+            .{
+                .value = switch (operation) {
+                    .add => c.LLVMBuildFAdd(self.builder, lhs.value, rhs.value, ""),
+                    .sub => c.LLVMBuildFSub(self.builder, lhs.value, rhs.value, ""),
+                    .mul => c.LLVMBuildFMul(self.builder, lhs.value, rhs.value, ""),
+                    .div => c.LLVMBuildFDiv(self.builder, lhs.value, rhs.value, ""),
+                },
+
+                .type = lhs.type,
             },
         );
     }
 }
 
-fn renderIntComparison(self: *LlvmBackend, operation: Air.Instruction.ICmp) Error!void {
-    const rhs = self.stack.pop();
-    const lhs = self.stack.pop();
+fn renderComparison(self: *LlvmBackend, operation: Air.Instruction.Cmp) Error!void {
+    var rhs = self.stack.pop();
+    var lhs = self.stack.pop();
 
-    try self.stack.append(
-        self.allocator,
-        switch (operation) {
-            .slt => c.LLVMBuildICmp(self.builder, c.LLVMIntSLT, lhs, rhs, ""),
-            .sgt => c.LLVMBuildICmp(self.builder, c.LLVMIntSGT, lhs, rhs, ""),
-            .ult => c.LLVMBuildICmp(self.builder, c.LLVMIntULT, lhs, rhs, ""),
-            .ugt => c.LLVMBuildICmp(self.builder, c.LLVMIntUGT, lhs, rhs, ""),
-            .eql => c.LLVMBuildICmp(self.builder, c.LLVMIntEQ, lhs, rhs, ""),
-        },
-    );
-}
+    try self.binaryImplicitCast(&lhs, &rhs);
 
-fn renderFloatComparison(self: *LlvmBackend, operation: Air.Instruction.FCmp) Error!void {
-    const rhs = self.stack.pop();
-    const lhs = self.stack.pop();
+    if (lhs.type.isInt()) {
+        try self.stack.append(
+            self.allocator,
+            .{
+                .value = switch (operation) {
+                    .lt => c.LLVMBuildICmp(self.builder, if (lhs.type.canBeNegative()) c.LLVMIntSLT else c.LLVMIntULT, lhs.value, rhs.value, ""),
+                    .gt => c.LLVMBuildICmp(self.builder, if (lhs.type.canBeNegative()) c.LLVMIntSGT else c.LLVMIntUGT, lhs.value, rhs.value, ""),
+                    .eql => c.LLVMBuildICmp(self.builder, c.LLVMIntEQ, lhs.value, rhs.value, ""),
+                },
 
-    try self.stack.append(
-        self.allocator,
-        switch (operation) {
-            .lt => c.LLVMBuildFCmp(self.builder, c.LLVMRealOLT, lhs, rhs, ""),
-            .gt => c.LLVMBuildFCmp(self.builder, c.LLVMRealOGT, lhs, rhs, ""),
-            .eql => c.LLVMBuildFCmp(self.builder, c.LLVMRealOEQ, lhs, rhs, ""),
-        },
-    );
+                .type = lhs.type,
+            },
+        );
+    } else {
+        try self.stack.append(
+            self.allocator,
+            .{
+                .value = switch (operation) {
+                    .lt => c.LLVMBuildFCmp(self.builder, c.LLVMRealOLT, lhs.value, rhs.value, ""),
+                    .gt => c.LLVMBuildFCmp(self.builder, c.LLVMRealOGT, lhs.value, rhs.value, ""),
+                    .eql => c.LLVMBuildFCmp(self.builder, c.LLVMRealOEQ, lhs.value, rhs.value, ""),
+                },
+
+                .type = lhs.type,
+            },
+        );
+    }
 }
 
 const BitwiseShiftDirection = enum {
@@ -651,55 +747,67 @@ fn renderBitwiseShift(self: *LlvmBackend, comptime direction: BitwiseShiftDirect
 
     try self.stack.append(
         self.allocator,
-        switch (direction) {
-            .left => c.LLVMBuildShl(self.builder, lhs, rhs, ""),
-            .right => c.LLVMBuildAShr(self.builder, lhs, rhs, ""),
+        .{
+            .value = switch (direction) {
+                .left => c.LLVMBuildShl(self.builder, lhs.value, rhs.value, ""),
+                .right => c.LLVMBuildAShr(self.builder, lhs.value, rhs.value, ""),
+            },
+
+            .type = lhs.type,
         },
     );
 }
 
-fn renderCast(self: *LlvmBackend, cast: Air.Instruction.Cast) Error!void {
-    const cast_value = self.stack.pop();
-    const cast_to = try self.getLlvmType(cast.to);
+fn renderCast(self: *LlvmBackend, cast_to: Type) Error!void {
+    const lhs = self.stack.pop();
+
+    const cast_value = lhs.value;
+    const cast_from = lhs.type;
+
+    const llvm_cast_to = try self.getLlvmType(cast_to);
 
     try self.stack.append(
         self.allocator,
-        switch (cast.from) {
-            .int, .ambigiuous_int => switch (cast.to) {
-                .int, .bool => c.LLVMBuildIntCast2(self.builder, cast_value, cast_to, @intFromBool(cast.from.canBeNegative()), ""),
+        .{
+            .value = switch (cast_from) {
+                .int, .ambigiuous_int => switch (cast_to) {
+                    .int, .bool => c.LLVMBuildIntCast2(self.builder, cast_value, llvm_cast_to, @intFromBool(cast_from.canBeNegative()), ""),
 
-                .float => if (cast.from.canBeNegative())
-                    c.LLVMBuildSIToFP(self.builder, cast_value, cast_to, "")
-                else
-                    c.LLVMBuildUIToFP(self.builder, cast_value, cast_to, ""),
+                    .float => if (cast_from.canBeNegative())
+                        c.LLVMBuildSIToFP(self.builder, cast_value, llvm_cast_to, "")
+                    else
+                        c.LLVMBuildUIToFP(self.builder, cast_value, llvm_cast_to, ""),
 
-                .pointer => c.LLVMBuildIntToPtr(self.builder, cast_value, cast_to, ""),
+                    .pointer => c.LLVMBuildIntToPtr(self.builder, cast_value, llvm_cast_to, ""),
 
-                else => unreachable,
+                    else => unreachable,
+                },
+
+                .float, .ambigiuous_float => switch (cast_to) {
+                    .int => if (cast_to.canBeNegative())
+                        c.LLVMBuildFPToSI(self.builder, cast_value, llvm_cast_to, "")
+                    else
+                        c.LLVMBuildFPToUI(self.builder, cast_value, llvm_cast_to, ""),
+
+                    .float => c.LLVMBuildFPCast(self.builder, cast_value, llvm_cast_to, ""),
+
+                    else => unreachable,
+                },
+
+                .pointer => switch (cast_to) {
+                    .int => c.LLVMBuildPtrToInt(self.builder, cast_value, llvm_cast_to, ""),
+                    .pointer => c.LLVMBuildPointerCast(self.builder, cast_value, llvm_cast_to, ""),
+                    else => unreachable,
+                },
+
+                .bool => c.LLVMBuildZExt(self.builder, cast_value, llvm_cast_to, ""),
+
+                .void => unreachable,
+                .function => unreachable,
+                .@"struct" => unreachable,
             },
 
-            .float, .ambigiuous_float => switch (cast.to) {
-                .int => if (cast.to.canBeNegative())
-                    c.LLVMBuildFPToSI(self.builder, cast_value, cast_to, "")
-                else
-                    c.LLVMBuildFPToUI(self.builder, cast_value, cast_to, ""),
-
-                .float => c.LLVMBuildFPCast(self.builder, cast_value, cast_to, ""),
-
-                else => unreachable,
-            },
-
-            .pointer => switch (cast.to) {
-                .int => c.LLVMBuildPtrToInt(self.builder, cast_value, cast_to, ""),
-                .pointer => c.LLVMBuildPointerCast(self.builder, cast_value, cast_to, ""),
-                else => unreachable,
-            },
-
-            .bool => c.LLVMBuildZExt(self.builder, cast_value, cast_to, ""),
-
-            .void => unreachable,
-            .function => unreachable,
-            .@"struct" => unreachable,
+            .type = cast_to,
         },
     );
 }
@@ -715,7 +823,7 @@ fn renderAssembly(self: *LlvmBackend, assembly: Air.Instruction.Assembly) Error!
     }
 
     for (assembly.input_constraints, 0..) |register, i| {
-        assembly_inputs[i] = self.stack.pop();
+        assembly_inputs[i] = self.stack.pop().value;
 
         try assembly_constraints.appendSlice(self.allocator, register);
         if (assembly.clobbers.len != 0 or i != assembly.input_constraints.len - 1) try assembly_constraints.append(self.allocator, ',');
@@ -762,49 +870,55 @@ fn renderAssembly(self: *LlvmBackend, assembly: Air.Instruction.Assembly) Error!
         "",
     );
 
-    try self.stack.append(self.allocator, assembly_output);
+    if (assembly.output_constraint) |assembly_output_constraint| {
+        try self.stack.append(self.allocator, .{ .value = assembly_output, .type = assembly_output_constraint.type });
+    }
 }
 
-fn renderCall(self: *LlvmBackend, function_type: Type.Function) Error!void {
+fn renderCall(self: *LlvmBackend) Error!void {
     const function_pointer = self.stack.pop();
 
-    const call_arguments = try self.allocator.alloc(c.LLVMValueRef, function_type.parameter_types.len);
+    const function_type = function_pointer.type.pointer.child_type.*;
+    const function_parameters_len = function_type.function.parameter_types.len;
+    const function_return_type = function_type.function.return_type.*;
 
-    for (0..function_type.parameter_types.len) |i| {
-        const argument = self.stack.pop();
+    const call_arguments = try self.allocator.alloc(c.LLVMValueRef, function_parameters_len);
 
-        call_arguments[i] = argument;
+    for (0..function_parameters_len) |i| {
+        call_arguments[i] = self.stack.pop().value;
     }
 
     const call = c.LLVMBuildCall2(
         self.builder,
-        try self.getLlvmType(.{ .function = function_type }),
-        function_pointer,
+        try self.getLlvmType(function_type),
+        function_pointer.value,
         call_arguments.ptr,
         @intCast(call_arguments.len),
         "",
     );
 
-    try self.stack.append(self.allocator, call);
+    if (function_return_type != .void) {
+        try self.stack.append(self.allocator, .{ .value = call, .type = function_return_type });
+    }
 }
 
-fn renderFunction(self: *LlvmBackend, function: Air.Instruction.Function) Error!void {
-    const function_pointer = if (self.scope.get(function.name)) |function_variable|
+fn renderFunction(self: *LlvmBackend, symbol: Symbol) Error!void {
+    const function_pointer = if (self.scope.get(symbol.name.buffer)) |function_variable|
         function_variable.pointer
     else blk: {
         const function_pointer = c.LLVMAddFunction(
             self.module,
-            try self.allocator.dupeZ(u8, function.name),
-            try self.getLlvmType(function.type.pointer.child_type.*),
+            try self.allocator.dupeZ(u8, symbol.name.buffer),
+            try self.getLlvmType(symbol.type.pointer.child_type.*),
         );
 
         try self.scope.put(
             self.allocator,
-            function.name,
+            symbol.name.buffer,
             .{
                 .pointer = function_pointer,
-                .type = function.type,
-                .linkage = .global,
+                .type = symbol.type,
+                .linkage = symbol.linkage,
             },
         );
 
@@ -829,19 +943,19 @@ fn renderFunction(self: *LlvmBackend, function: Air.Instruction.Function) Error!
     }
 }
 
-fn renderParameters(self: *LlvmBackend, parameters: []const Symbol) Error!void {
-    for (parameters, 0..) |parameter, i| {
-        const parameter_pointer = c.LLVMBuildAlloca(self.builder, try self.getLlvmType(parameter.type), "");
+fn renderParameters(self: *LlvmBackend, symbols: []const Symbol) Error!void {
+    for (symbols, 0..) |symbol, i| {
+        const parameter_pointer = c.LLVMBuildAlloca(self.builder, try self.getLlvmType(symbol.type), "");
 
         _ = c.LLVMBuildStore(self.builder, c.LLVMGetParam(self.maybe_function.?, @intCast(i)), parameter_pointer);
 
         try self.scope.put(
             self.allocator,
-            parameter.name.buffer,
+            symbol.name.buffer,
             .{
                 .pointer = parameter_pointer,
-                .type = parameter.type,
-                .linkage = .local,
+                .type = symbol.type,
+                .linkage = symbol.linkage,
             },
         );
     }
@@ -852,7 +966,9 @@ fn renderVariable(self: *LlvmBackend, symbol: Symbol) Error!void {
 
     if (self.scope.get(symbol.name.buffer)) |variable| {
         if (variable.linkage == .global) {
-            _ = c.LLVMSetInitializer(variable.pointer, self.stack.popOrNull() orelse c.LLVMGetUndef(llvm_type));
+            const register = self.stack.popOrNull() orelse Register{ .value = c.LLVMGetUndef(llvm_type), .type = symbol.type };
+
+            _ = c.LLVMSetInitializer(variable.pointer, register.value);
         }
     } else {
         const variable_pointer = switch (symbol.linkage) {
@@ -863,7 +979,9 @@ fn renderVariable(self: *LlvmBackend, symbol: Symbol) Error!void {
                     try self.allocator.dupeZ(u8, symbol.name.buffer),
                 );
 
-                _ = c.LLVMSetInitializer(global_variable_pointer, self.stack.popOrNull() orelse c.LLVMGetUndef(llvm_type));
+                const register = self.stack.popOrNull() orelse Register{ .value = c.LLVMGetUndef(llvm_type), .type = symbol.type };
+
+                _ = c.LLVMSetInitializer(global_variable_pointer, register.value);
 
                 break :blk global_variable_pointer;
             },
@@ -936,7 +1054,7 @@ fn renderSet(self: *LlvmBackend, name: []const u8) Error!void {
 
     _ = c.LLVMBuildStore(
         self.builder,
-        self.stack.pop(),
+        self.stack.pop().value,
         variable.pointer,
     );
 }
@@ -944,25 +1062,35 @@ fn renderSet(self: *LlvmBackend, name: []const u8) Error!void {
 fn renderGet(self: *LlvmBackend, name: []const u8) Error!void {
     const variable = self.scope.get(name).?;
 
-    const variable_load = c.LLVMBuildLoad2(
-        self.builder,
-        try self.getLlvmType(variable.type),
-        variable.pointer,
-        "",
-    );
+    if (variable.type.getFunction() != null) {
+        try self.stack.append(self.allocator, .{ .value = variable.pointer, .type = variable.type });
+    } else {
+        const variable_load = c.LLVMBuildLoad2(
+            self.builder,
+            try self.getLlvmType(variable.type),
+            variable.pointer,
+            "",
+        );
 
-    try self.stack.append(
-        self.allocator,
-        variable_load,
-    );
+        try self.stack.append(self.allocator, .{ .value = variable_load, .type = variable.type });
+    }
 }
 
 fn renderGetPtr(self: *LlvmBackend, name: []const u8) Error!void {
-    const variable = self.scope.get(name).?;
+    const variable = self.scope.getPtr(name).?;
 
     try self.stack.append(
         self.allocator,
-        variable.pointer,
+        .{
+            .value = variable.pointer,
+            .type = .{
+                .pointer = .{
+                    .size = .one,
+                    .is_const = false,
+                    .child_type = &variable.type,
+                },
+            },
+        },
     );
 }
 
@@ -975,14 +1103,14 @@ fn renderBr(self: *LlvmBackend, br: Air.Instruction.Br) Error!void {
 }
 
 fn renderCondBr(self: *LlvmBackend, cond_br: Air.Instruction.CondBr) Error!void {
-    const condition = self.stack.pop();
+    const condition_value = self.stack.pop().value;
 
     const true_basic_block = self.basic_blocks.get(cond_br.true_id).?;
     const false_basic_block = self.basic_blocks.get(cond_br.false_id).?;
 
     _ = c.LLVMBuildCondBr(
         self.builder,
-        condition,
+        condition_value,
         true_basic_block,
         false_basic_block,
     );
@@ -1002,7 +1130,7 @@ fn modifyScope(self: *LlvmBackend, start: bool) Error!void {
 
 fn renderReturn(self: *LlvmBackend, with_value: bool) Error!void {
     if (with_value) {
-        const return_value = self.stack.pop();
+        const return_value = self.stack.pop().value;
 
         _ = c.LLVMBuildRet(self.builder, return_value);
     } else {

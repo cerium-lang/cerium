@@ -2,8 +2,8 @@
 fn strlen(str [*]const u8) usize {
     var len usize = 0;
 
-    while str[len] != 0 as u8 {
-        len = len + 1 as usize;
+    while str[len] != 0 {
+        len = len + 1;
     }
 
     return len;
@@ -37,11 +37,11 @@ fn print(str [*]const u8) {
 fn main() {
     var i i32 = 0;
 
-    while (i = i + 1 as i32) < 9 as i32 {
+    while (i = i + 1) < 9 {
         var j i32 = 0;
 
-        while (j = j + 1 as i32) < 9 as i32 {
-            if rem(i + j, 2) == 0 as i32 {
+        while (j = j + 1) < 9 {
+            if rem(i + j, 2) == 0 {
                 print("\e[47m  \e[0m");
             } else {
                 print("\e[100m  \e[0m");

@@ -65,6 +65,14 @@ pub const Type = union(enum) {
         };
     };
 
+    pub const string: Type = .{
+        .pointer = .{
+            .size = .many,
+            .is_const = true,
+            .child_type = &.{ .int = .{ .signedness = .unsigned, .bits = 8 } },
+        },
+    };
+
     pub fn isInt(self: Type) bool {
         return switch (self) {
             .ambigiuous_int, .int => true,
