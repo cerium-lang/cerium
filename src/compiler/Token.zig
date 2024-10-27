@@ -24,6 +24,7 @@ pub const Tag = enum(u8) {
     caret,
     comma,
     period,
+    percent,
     colon,
     semicolon,
     plus,

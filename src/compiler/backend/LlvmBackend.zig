@@ -410,6 +410,7 @@ fn renderInstruction(self: *LlvmBackend, air_instruction: Air.Instruction) Error
         .sub => try self.renderArithmetic(.sub),
         .mul => try self.renderArithmetic(.mul),
         .div => try self.renderArithmetic(.div),
+        .rem => try self.renderArithmetic(.rem),
 
         .cmp => |operation| try self.renderComparison(operation),
 
@@ -625,7 +626,7 @@ fn binaryImplicitCast(self: *LlvmBackend, lhs: *Register, rhs: *Register) Error!
             // lhs as f32 > rhs as f64
             try self.binaryFloatCast(lhs, rhs);
         }
-    } else if (lhs.type.isAmbigiuous()) {
+    } else if (lhs.type.isAmbigiuous() and !rhs.type.isAmbigiuous()) {
         if (lhs.type == .ambigiuous_int) {
             // 4 > rhs as u64
             try self.binaryIntCast(lhs, rhs);
@@ -633,7 +634,7 @@ fn binaryImplicitCast(self: *LlvmBackend, lhs: *Register, rhs: *Register) Error!
             // 4.0 > rhs as f64
             try self.binaryFloatCast(lhs, rhs);
         }
-    } else if (rhs.type.isAmbigiuous()) {
+    } else if (rhs.type.isAmbigiuous() and !lhs.type.isAmbigiuous()) {
         if (rhs.type == .ambigiuous_int) {
             // rhs as u64 > 4
             try self.binaryIntCast(rhs, lhs);
@@ -649,6 +650,7 @@ const ArithmeticOperation = enum {
     sub,
     mul,
     div,
+    rem,
 };
 
 fn renderArithmetic(self: *LlvmBackend, comptime operation: ArithmeticOperation) Error!void {
@@ -679,6 +681,10 @@ fn renderArithmetic(self: *LlvmBackend, comptime operation: ArithmeticOperation)
                         c.LLVMBuildSDiv(self.builder, lhs.value, rhs.value, "")
                     else
                         c.LLVMBuildUDiv(self.builder, lhs.value, rhs.value, ""),
+                    .rem => if (lhs.type.canBeNegative())
+                        c.LLVMBuildSRem(self.builder, lhs.value, rhs.value, "")
+                    else
+                        c.LLVMBuildURem(self.builder, lhs.value, rhs.value, ""),
                 },
 
                 .type = lhs.type,
@@ -693,6 +699,7 @@ fn renderArithmetic(self: *LlvmBackend, comptime operation: ArithmeticOperation)
                     .sub => c.LLVMBuildFSub(self.builder, lhs.value, rhs.value, ""),
                     .mul => c.LLVMBuildFMul(self.builder, lhs.value, rhs.value, ""),
                     .div => c.LLVMBuildFDiv(self.builder, lhs.value, rhs.value, ""),
+                    .rem => c.LLVMBuildFRem(self.builder, lhs.value, rhs.value, ""),
                 },
 
                 .type = lhs.type,

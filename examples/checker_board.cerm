@@ -9,11 +9,6 @@ fn strlen(str [*]const u8) usize {
     return len;
 }
 
-// TODO: We don't support modulo yet
-fn rem(n i32, divisor i32) i32 {
-    return n - (n / divisor) * divisor;
-}
-
 const SYS_write = 1;
 
 fn syscall3(code usize, arg1 usize, arg2 usize, arg3 usize) usize {
@@ -41,7 +36,7 @@ fn main() {
         var j i32 = 0;
 
         while (j = j + 1) < 9 {
-            if rem(i + j, 2) == 0 {
+            if (i + j) % 2 == 0 {
                 print("\e[47m  \e[0m");
             } else {
                 print("\e[100m  \e[0m");

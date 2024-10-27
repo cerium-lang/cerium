@@ -45,6 +45,7 @@ pub const Error = error{
     UnexpectedArgumentsCount,
     ExpectedExplicitReturn,
     UnexpectedMutation,
+    UnexpectedValue,
     TypeCannotRepresentValue,
     CircularDependency,
     UnexpectedType,
@@ -77,8 +78,8 @@ const Value = union(enum) {
 
         return (self == .int and to.isInt()) or
             (self == .float and to.isFloat()) or
-            (to == .ambigiuous_int and self_type.isInt()) or
-            (to == .ambigiuous_float and self_type.isFloat()) or
+            (self_type == .ambigiuous_int and to.isInt()) or
+            (self_type == .ambigiuous_float and to.isFloat()) or
             (self_type.isInt() and to.isInt() and
             self_type.maxInt() <= to.maxInt() and self_type.minInt() >= to.minInt() and
             self_type.canBeNegative() == to.canBeNegative()) or
@@ -711,6 +712,7 @@ fn analyzeInstruction(self: *Sema, instruction: Sir.Instruction) Error!void {
         .sub => |token_start| try self.analyzeArithmetic(.sub, token_start),
         .mul => |token_start| try self.analyzeArithmetic(.mul, token_start),
         .div => |token_start| try self.analyzeArithmetic(.div, token_start),
+        .rem => |token_start| try self.analyzeArithmetic(.rem, token_start),
 
         .lt => |token_start| try self.analyzeComparison(.lt, token_start),
         .gt => |token_start| try self.analyzeComparison(.gt, token_start),
@@ -1072,6 +1074,7 @@ const ArithmeticOperation = enum {
     sub,
     mul,
     div,
+    rem,
 };
 
 fn analyzeArithmetic(self: *Sema, comptime operation: ArithmeticOperation, token_start: u32) Error!void {
@@ -1109,11 +1112,18 @@ fn analyzeArithmetic(self: *Sema, comptime operation: ArithmeticOperation, token
     switch (lhs) {
         .int => |lhs_int| switch (rhs) {
             .int => |rhs_int| {
+                if (rhs_int == 0 and (operation == .div or operation == .rem)) {
+                    self.error_info = .{ .message = "division by zero", .source_loc = SourceLoc.find(self.buffer, token_start) };
+
+                    return error.UnexpectedValue;
+                }
+
                 const result = switch (operation) {
                     .add => lhs_int + rhs_int,
                     .sub => lhs_int - rhs_int,
                     .mul => lhs_int * rhs_int,
                     .div => @divFloor(lhs_int, rhs_int),
+                    .rem => @rem(lhs_int, rhs_int),
                 };
 
                 try self.stack.append(self.allocator, .{ .int = result });
@@ -1130,11 +1140,18 @@ fn analyzeArithmetic(self: *Sema, comptime operation: ArithmeticOperation, token
 
         .float => |lhs_float| switch (rhs) {
             .float => |rhs_float| {
+                if (rhs_float == 0 and (operation == .div or operation == .rem)) {
+                    self.error_info = .{ .message = "division by zero", .source_loc = SourceLoc.find(self.buffer, token_start) };
+
+                    return error.UnexpectedValue;
+                }
+
                 const result = switch (operation) {
                     .add => lhs_float + rhs_float,
                     .sub => lhs_float - rhs_float,
                     .mul => lhs_float * rhs_float,
                     .div => lhs_float / rhs_float,
+                    .rem => @rem(lhs_float, rhs_float),
                 };
 
                 try self.stack.append(self.allocator, .{ .float = result });
@@ -1165,6 +1182,7 @@ fn analyzeArithmetic(self: *Sema, comptime operation: ArithmeticOperation, token
         .sub => try self.air.instructions.append(self.allocator, .sub),
         .mul => try self.air.instructions.append(self.allocator, .mul),
         .div => try self.air.instructions.append(self.allocator, .div),
+        .rem => try self.air.instructions.append(self.allocator, .rem),
     }
 }
 

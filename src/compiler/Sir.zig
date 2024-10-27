@@ -132,6 +132,8 @@ pub const Instruction = union(enum) {
     mul: u32,
     /// Divide two integers or floats on the top of the stack
     div: u32,
+    /// Remainder of two integers or floats on the top of the stack
+    rem: u32,
     /// Compare between two integers or floats on the stack and check for order (in this case, lhs less than rhs)
     lt: u32,
     /// Compare between two integers or floats on the stack and check for order (in this case, lhs greater than rhs)
@@ -759,7 +761,7 @@ pub const Parser = struct {
                 .equal_sign => .assign,
                 .less_than, .greater_than, .double_equal_sign, .bang_equal_sign => .comparison,
                 .plus, .minus => .sum,
-                .star, .forward_slash => .product,
+                .star, .forward_slash, .percent => .product,
                 .ampersand => .bit_and,
                 .pipe => .bit_or,
                 .caret => .bit_xor,
@@ -1164,6 +1166,7 @@ pub const Parser = struct {
             .minus,
             .star,
             .forward_slash,
+            .percent,
             .equal_sign,
             .less_than,
             .greater_than,
@@ -1196,7 +1199,7 @@ pub const Parser = struct {
         const operator_token = self.nextToken();
 
         if (operator_token.tag != .equal_sign) {
-            try self.parseExpr(.lowest);
+            try self.parseExpr(Precedence.from(operator_token));
         }
 
         switch (operator_token.tag) {
@@ -1216,10 +1219,14 @@ pub const Parser = struct {
                 try self.sir.instructions.append(self.allocator, .{ .div = operator_token.range.start });
             },
 
+            .percent => {
+                try self.sir.instructions.append(self.allocator, .{ .rem = operator_token.range.start });
+            },
+
             .equal_sign => {
                 const last_instruction = self.sir.instructions.pop();
 
-                try self.parseExpr(.lowest);
+                try self.parseExpr(Precedence.from(operator_token));
 
                 if (last_instruction == .read) {
                     // 1:

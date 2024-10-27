@@ -53,6 +53,8 @@ pub const Instruction = union(enum) {
     mul,
     /// Divide two integers or floats on the top of the stack
     div,
+    /// Remainder of two integers or floats on the top of the stack
+    rem,
     /// Compare between two integers or floats on the top of the stack
     cmp: Cmp,
     /// Shift to left the bits of lhs using rhs offset
