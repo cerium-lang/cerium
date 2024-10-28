@@ -607,18 +607,25 @@ pub const Parser = struct {
         const end_block_id = self.block_id.?;
         self.block_id.? += 1;
 
+        try self.sir.instructions.append(self.allocator, .{ .br = .{ .id = self.block_id.? } });
+
         while (self.peekToken().tag == .keyword_if) {
             const if_keyword_start = self.nextToken().range.start;
+
+            try self.sir.instructions.append(self.allocator, .{ .block = .{ .id = self.block_id.? } });
+            self.block_id.? += 1;
 
             try self.parseExpr(.lowest);
 
             try self.sir.instructions.append(self.allocator, .{
                 .cond_br = .{
                     .true_id = self.block_id.?,
-                    .false_id = self.block_id.? + 1,
+                    .false_id = undefined,
                     .token_start = if_keyword_start,
                 },
             });
+
+            const cond_br_instruction = &self.sir.instructions.items[self.sir.instructions.items.len - 1].cond_br;
 
             try self.sir.instructions.append(self.allocator, .{ .block = .{ .id = self.block_id.? } });
             self.block_id.? += 1;
@@ -626,6 +633,8 @@ pub const Parser = struct {
             try self.sir.instructions.append(self.allocator, .start_scope);
 
             try self.parseBody();
+
+            cond_br_instruction.false_id = self.block_id.?;
 
             try self.sir.instructions.append(self.allocator, .end_scope);
 
