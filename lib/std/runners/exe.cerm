@@ -1,6 +1,8 @@
-const SYS_exit_group = 231;
+type SYS = enum usize {
+    exit_group = 231,
+};
 
-fn syscall1(code usize, arg1 usize) usize {
+fn syscall1(code SYS, arg1 usize) usize {
     return asm {
         "syscall"
         : "={rax}" (usize)
@@ -10,10 +12,13 @@ fn syscall1(code usize, arg1 usize) usize {
     };
 }
 
+fn exit(code u8) {
+    syscall1(SYS::exit_group, code);
+}
+
 extern fn main();
 
 fn _start() {
     main();
-
-    syscall1(SYS_exit_group, 0);
+    exit(0);
 }

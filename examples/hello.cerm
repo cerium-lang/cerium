@@ -1,6 +1,19 @@
-const SYS_write = 1;
+// TODO: We don't support slices yet
+fn strlen(str [*]const u8) usize {
+    var len usize = 0;
 
-fn syscall3(code usize, arg1 usize, arg2 usize, arg3 usize) usize {
+    while str[len] != 0 {
+        len = len + 1;
+    }
+
+    return len;
+}
+
+type SYS = enum usize {
+    write = 1,
+};
+
+fn syscall3(code SYS, arg1 usize, arg2 usize, arg3 usize) usize {
     return asm {
         "syscall"
         : "={rax}" (usize)
@@ -14,6 +27,10 @@ fn syscall3(code usize, arg1 usize, arg2 usize, arg3 usize) usize {
 
 const STDOUT = 1;
 
+fn print(str [*]const u8) {
+    syscall3(SYS::write, STDOUT, str as usize, strlen(str));
+}
+
 fn main() {
-    syscall3(SYS_write, STDOUT, "Hello, World!\n" as usize, 14);
+    print("Hello, World!\n");
 }
