@@ -244,7 +244,7 @@ pub const Type = union(enum) {
             .ambigiuous_int => try writer.writeAll("ambigiuous_int"),
             .ambigiuous_float => try writer.writeAll("ambigiuous_float"),
 
-            .int => |int| try writer.print("{c}{}", .{ if (int.signedness == .unsigned) @as(u8, 'u') else @as(u8, 'i'), int.bits }),
+            .int => |int| try writer.print("{c}{}", .{ if (int.signedness == .unsigned) @as(u8, 'u') else @as(u8, 's'), int.bits }),
             .float => |float| try writer.print("f{}", .{float.bits}),
         }
     }

@@ -523,22 +523,22 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
         .linkage = .global,
         .is_type_alias = true,
     });
-    self.scope.putAssumeCapacity("i8", .{
+    self.scope.putAssumeCapacity("s8", .{
         .type = .{ .int = .{ .signedness = .signed, .bits = 8 } },
         .linkage = .global,
         .is_type_alias = true,
     });
-    self.scope.putAssumeCapacity("i16", .{
+    self.scope.putAssumeCapacity("s16", .{
         .type = .{ .int = .{ .signedness = .signed, .bits = 16 } },
         .linkage = .global,
         .is_type_alias = true,
     });
-    self.scope.putAssumeCapacity("i32", .{
+    self.scope.putAssumeCapacity("s32", .{
         .type = .{ .int = .{ .signedness = .signed, .bits = 32 } },
         .linkage = .global,
         .is_type_alias = true,
     });
-    self.scope.putAssumeCapacity("i64", .{
+    self.scope.putAssumeCapacity("s64", .{
         .type = .{ .int = .{ .signedness = .signed, .bits = 64 } },
         .linkage = .global,
         .is_type_alias = true,

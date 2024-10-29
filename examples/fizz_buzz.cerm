@@ -32,7 +32,7 @@ fn print(str [*]const u8) {
 }
 
 fn main() {
-    var i i32 = 0;
+    var i s32 = 0;
 
     while (i = i + 1) < 16 {
         if i % 3 == 0 {
