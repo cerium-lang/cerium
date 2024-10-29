@@ -438,7 +438,7 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
         .linkage = .global,
         .is_type_alias = true,
     });
-    self.scope.putAssumeCapacity("isize", .{
+    self.scope.putAssumeCapacity("ssize", .{
         .type = .{ .int = .{ .signedness = .signed, .bits = self.env.target.ptrBitWidth() } },
         .linkage = .global,
         .is_type_alias = true,
