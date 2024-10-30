@@ -75,8 +75,6 @@ pub fn deinit(self: *LlvmBackend) void {
     c.LLVMShutdown();
 }
 
-/// Yoinked from the Zig compiler that is licensed under the MIT license.
-/// https://github.com/ziglang/zig/blob/master/src/codegen/llvm.zig
 fn subArchName(features: std.Target.Cpu.Feature.Set, arch: anytype, mappings: anytype) ?[]const u8 {
     inline for (mappings) |mapping| {
         if (arch.featureSetHas(features, mapping[0])) return mapping[1];
@@ -85,8 +83,6 @@ fn subArchName(features: std.Target.Cpu.Feature.Set, arch: anytype, mappings: an
     return null;
 }
 
-/// Yoinked from the Zig compiler that is licensed under the MIT license.
-/// https://github.com/ziglang/zig/blob/master/src/codegen/llvm.zig
 pub fn targetTriple(allocator: std.mem.Allocator, target: std.Target) ![]const u8 {
     var llvm_triple = std.ArrayList(u8).init(allocator);
     defer llvm_triple.deinit();
@@ -248,13 +244,7 @@ pub fn targetTriple(allocator: std.mem.Allocator, target: std.Target) ![]const u
         .serenity => "serenity",
         .vulkan => "vulkan",
 
-        .opengl,
-        .plan9,
-        .contiki,
-        .other,
-        => "unknown",
-
-        else => unreachable,
+        else => "unknown",
     };
     try llvm_triple.appendSlice(llvm_os);
 
@@ -294,6 +284,7 @@ pub fn targetTriple(allocator: std.mem.Allocator, target: std.Target) ![]const u
         .simulator => "simulator",
         .macabi => "macabi",
         .ohos => "ohos",
+        .ohoseabi => "ohoseabi",
     };
     try llvm_triple.appendSlice(llvm_abi);
 
