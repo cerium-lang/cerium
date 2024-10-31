@@ -1466,7 +1466,7 @@ pub const Parser = struct {
                 var fields_hashset = std.StringHashMapUnmanaged(void){};
                 defer fields_hashset.deinit(self.allocator);
 
-                var previous_value: i128 = 0;
+                var next_value: i128 = 0;
 
                 var max_value: i128 = 0;
                 var min_value: i128 = 0;
@@ -1496,9 +1496,9 @@ pub const Parser = struct {
                         try self.parseInt();
 
                         break :blk self.sir.instructions.pop().int;
-                    } else previous_value + 1;
+                    } else next_value;
 
-                    previous_value = value;
+                    next_value = value + 1;
 
                     if (value > max_value) max_value = value;
                     if (value < min_value) min_value = value;

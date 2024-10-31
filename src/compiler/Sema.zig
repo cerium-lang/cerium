@@ -188,7 +188,9 @@ fn checkBinaryImplicitCast(self: *Sema, lhs: *Value, rhs: *Value, token_start: u
         // 4.0 > rhs as f64
         try self.checkRepresentability(lhs.*, rhs_type, token_start);
 
-        if (lhs_type.isInt()) {
+        if (lhs.* == .runtime) {
+            lhs.runtime = rhs_type;
+        } else if (lhs_type.isInt()) {
             lhs.* = .{ .typed_int = .{ .type = rhs_type, .value = lhs.int } };
         } else {
             lhs.* = .{ .typed_float = .{ .type = rhs_type, .value = lhs.float } };
@@ -198,7 +200,9 @@ fn checkBinaryImplicitCast(self: *Sema, lhs: *Value, rhs: *Value, token_start: u
         // lhs as f64 > 4.0
         try self.checkRepresentability(rhs.*, lhs_type, token_start);
 
-        if (rhs_type.isInt()) {
+        if (rhs.* == .runtime) {
+            rhs.runtime = lhs_type;
+        } else if (rhs_type.isInt()) {
             rhs.* = .{ .typed_int = .{ .type = lhs_type, .value = rhs.int } };
         } else {
             rhs.* = .{ .typed_float = .{ .type = lhs_type, .value = rhs.float } };
