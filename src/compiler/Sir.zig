@@ -1364,7 +1364,7 @@ pub const Parser = struct {
     fn parseFieldAccess(self: *Parser) Error!void {
         const period_start = self.nextToken().range.start;
 
-        if (self.peekToken().tag == .star) {
+        if (self.eatToken(.star)) {
             try self.sir.instructions.append(self.allocator, .{ .read = period_start });
         } else {
             const name = try self.parseName();
