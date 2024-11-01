@@ -1669,29 +1669,15 @@ fn analyzeCondBr(self: *Sema, cond_br: Sir.Instruction.CondBr) Error!void {
 
     try self.checkRepresentability(condition, .bool, cond_br.token_start);
 
-    switch (condition) {
-        .boolean => |condition_boolean| {
-            _ = self.air.instructions.pop();
-
-            if (condition_boolean == false) {
-                try self.air.instructions.append(self.allocator, .{ .br = .{ .id = cond_br.false_id } });
-            } else {
-                try self.air.instructions.append(self.allocator, .{ .br = .{ .id = cond_br.true_id } });
-            }
+    try self.air.instructions.append(
+        self.allocator,
+        .{
+            .cond_br = .{
+                .true_id = cond_br.true_id,
+                .false_id = cond_br.false_id,
+            },
         },
-
-        else => {
-            try self.air.instructions.append(
-                self.allocator,
-                .{
-                    .cond_br = .{
-                        .true_id = cond_br.true_id,
-                        .false_id = cond_br.false_id,
-                    },
-                },
-            );
-        },
-    }
+    );
 }
 
 fn modifyScope(self: *Sema, start: bool) Error!void {

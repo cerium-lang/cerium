@@ -1,14 +1,3 @@
-// TODO: We don't support slices yet
-fn strlen(str [*]const u8) usize {
-    var len usize = 0;
-
-    while str[len] != 0 {
-        len = len + 1;
-    }
-
-    return len;
-}
-
 type SYS = enum usize {
     write = 1,
 };
@@ -23,6 +12,17 @@ fn syscall3(code SYS, arg1 usize, arg2 usize, arg3 usize) usize {
           "{rdx}" (arg3),
         : "rcx", "r11", "memory"
     };
+}
+
+// TODO: We don't support slices yet
+fn strlen(str [*]const u8) usize {
+    var len usize = 0;
+
+    while str[len] != 0 {
+        len = len + 1;
+    }
+
+    return len;
 }
 
 const STDOUT = 1;

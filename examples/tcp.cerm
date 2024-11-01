@@ -1,0 +1,231 @@
+type SYS = enum usize {
+    read,
+    write,
+    open,
+    close,
+    socket = 41,
+    connect,
+    accept,
+    bind = 49,
+    listen,
+    setsockopt = 54,
+};
+
+fn syscall1(code SYS, arg1 usize) usize {
+    return asm {
+        "syscall"
+        : "={rax}" (usize)
+        : "{rax}" (code),
+          "{rdi}" (arg1),
+        : "rcx", "r11", "memory"
+    };
+}
+
+fn syscall2(code SYS, arg1 usize, arg2 usize) usize {
+    return asm {
+        "syscall"
+        : "={rax}" (usize)
+        : "{rax}" (code),
+          "{rdi}" (arg1),
+          "{rsi}" (arg2),
+        : "rcx", "r11", "memory"
+    };
+}
+
+fn syscall3(code SYS, arg1 usize, arg2 usize, arg3 usize) usize {
+    return asm {
+        "syscall"
+        : "={rax}" (usize)
+        : "{rax}" (code),
+          "{rdi}" (arg1),
+          "{rsi}" (arg2),
+          "{rdx}" (arg3),
+        : "rcx", "r11", "memory"
+    };
+}
+
+fn syscall4(code SYS, arg1 usize, arg2 usize, arg3 usize, arg4 usize) usize {
+    return asm {
+        "syscall"
+        : "={rax}" (usize)
+        : "{rax}" (code),
+          "{rdi}" (arg1),
+          "{rsi}" (arg2),
+          "{rdx}" (arg3),
+          "{r10}" (arg4),
+        : "rcx", "r11", "memory"
+    };
+}
+
+fn syscall5(code SYS, arg1 usize, arg2 usize, arg3 usize, arg4 usize, arg5 usize) usize {
+    return asm {
+        "syscall"
+        : "={rax}" (usize)
+        : "{rax}" (code),
+          "{rdi}" (arg1),
+          "{rsi}" (arg2),
+          "{rdx}" (arg3),
+          "{r10}" (arg4),
+          "{r8}" (arg5),
+        : "rcx", "r11", "memory"
+    };
+}
+
+fn read(fd s32, bufptr usize, count usize) usize {
+    return syscall3(SYS::read, (&fd as *u32).* as usize, bufptr, count);
+}
+
+fn write(fd s32, bufptr usize, count usize) usize {
+    return syscall3(SYS::write, (&fd as *u32).* as usize, bufptr, count);
+}
+
+// TODO: We don't support slices yet
+fn strlen(str [*]const u8) usize {
+    var len usize = 0;
+
+    while str[len] != 0 {
+        len = len + 1;
+    }
+
+    return len;
+}
+
+fn printfd(fd s32, str [*]const u8) {
+    write(fd, str as usize, strlen(str));
+}
+
+const STDOUT = 1;
+
+fn print(str [*]const u8) {
+    printfd(STDOUT, str);
+}
+
+fn close(fd s32) usize {
+    return syscall1(SYS::close, (&fd as *u32).* as usize);
+}
+
+const AF_INET = 2;
+const SOCK_STREAM = 1;
+
+type sockaddr_in = struct {
+   sin_family u16,
+   sin_port u16,
+   sin_addr u32,
+   sin_zero u64,
+};
+
+// 16 bytes
+const sizeof_sockaddr_in = 16;
+
+// 4 bytes
+const sizeof_s32 = 4;
+
+fn socket(domain u32, type_ u32, protocol u32) s32 {
+    var servfd = syscall3(SYS::socket, domain, type_, protocol) as u32;
+    return (&servfd as *s32).*;
+}
+
+const SOL_SOCKET = 1;
+const SO_REUSEADDR = 2;
+const SO_REUSEPORT = 15;
+
+fn setsockopt(fd s32, level u32, optname u32, optvalptr usize, optlen usize) void {
+    syscall5(SYS::setsockopt, (&fd as *u32).* as usize, level, optname, optvalptr, optlen);
+}
+
+fn accept(fd s32, addrptr usize, addrlenptr usize) s32 {
+    var clientfd = syscall4(SYS::accept, (&fd as *u32).* as usize, addrptr, addrlenptr, 0) as u32;
+    return (&clientfd as *s32).*;
+}
+
+fn bind(fd s32, addrptr usize, addrlen u32) usize {
+    return syscall3(SYS::bind, (&fd as *u32).* as usize, addrptr, addrlen as usize);
+}
+
+fn listen(fd s32, backlog u32) usize {
+    return syscall2(SYS::listen, (&fd as *u32).* as usize, backlog);
+}
+
+fn http(clientfd s32) {
+    var ch u8 = 0;
+
+    while read(clientfd, &ch as usize, 1) == 1 {
+        if ch == '\n' {
+            read(clientfd, &ch as usize, 1);
+
+            if ch == '\r' {
+                read(clientfd, &ch as usize, 1);
+
+                break;
+            }
+        }
+    }
+
+    printfd(clientfd, "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: text/html\r\n\r\n<h1>Hello, World!</h1>\n");
+}
+
+fn echo(clientfd s32) {
+    var ch u8 = 0;
+
+    while read(clientfd, &ch as usize, 1) == 1 {
+        write(clientfd, &ch as usize, 1);
+    }
+}
+
+fn main() {
+    print("creating socket.. ");
+
+    var servfd = socket(AF_INET, SOCK_STREAM, 0);
+
+    if (servfd < 0) {
+        print("failure\n");
+        return;
+    } else {    
+        print("success\n");
+    }
+
+    var optlevel u32 = 1;
+    setsockopt(servfd, SOL_SOCKET, SO_REUSEADDR, &optlevel as usize, sizeof_s32);
+    setsockopt(servfd, SOL_SOCKET, SO_REUSEPORT, &optlevel as usize, sizeof_s32);
+
+    var servaddr sockaddr_in;
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_port = 0x901f;
+    servaddr.sin_addr = 0;
+    servaddr.sin_zero = 0;
+
+    print("binding.. ");
+
+    if (bind(servfd, &servaddr as usize, sizeof_sockaddr_in) != 0) {
+        print("failure\n");
+        return;
+    } else {
+        print("success\n");
+    }
+
+    print("listening.. ");
+
+    if (listen(servfd, 5) != 0) {
+        print("failure\n");
+        return;
+    } else {
+        print("success\n");
+    }
+
+    var clientaddr sockaddr_in;
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_port = 0;
+    servaddr.sin_addr = 0;
+    servaddr.sin_zero = 0;
+
+    var clientlen u32 = sizeof_sockaddr_in;
+
+    var clientfd s32;
+
+    while !((clientfd = accept(servfd, &clientaddr as usize, &clientlen as usize)) < 0) {
+        // http(clientfd);
+        // echo(clientfd);
+
+        close(clientfd);
+    }
+}
