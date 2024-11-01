@@ -213,11 +213,6 @@ fn main() {
     }
 
     var clientaddr sockaddr_in;
-    servaddr.sin_family = AF_INET;
-    servaddr.sin_port = 0;
-    servaddr.sin_addr = 0;
-    servaddr.sin_zero = 0;
-
     var clientlen u32 = sizeof_sockaddr_in;
 
     var clientfd s32;
