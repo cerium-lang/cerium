@@ -34,7 +34,7 @@ pub const Cli = struct {
                 \\  --output <output-file-path>    -- specify the output file path
                 \\  --emit <output-kind>           -- specify the output kind
                 \\                                    [assembly, object, executable (default), none (semantic analysis only)]
-                \\  --target <arch-os-abi>         -- specify the target triple
+                \\  --target <arch-os-abi>         -- specify the target query
                 \\
                 \\
             ;
@@ -112,7 +112,7 @@ pub const Cli = struct {
                         } else {
                             std.debug.print(Command.Compile.usage, .{self.program});
 
-                            std.debug.print("Error: expected an output file path\n", .{});
+                            std.debug.print("Error: expected output file path\n", .{});
 
                             return null;
                         }
@@ -136,13 +136,13 @@ pub const Cli = struct {
                         } else {
                             std.debug.print(Command.Compile.usage, .{self.program});
 
-                            std.debug.print("Error: expected an output kind\n", .{});
+                            std.debug.print("Error: expected output kind\n", .{});
 
                             return null;
                         }
                     } else if (std.mem.eql(u8, next_argument, "--target")) {
-                        if (argument_iterator.next()) |raw_target_triple| {
-                            const target_query = std.Target.Query.parse(.{ .arch_os_abi = raw_target_triple }) catch |err| {
+                        if (argument_iterator.next()) |raw_target_query| {
+                            const target_query = std.Target.Query.parse(.{ .arch_os_abi = raw_target_query }) catch |err| {
                                 std.debug.print("Error: could not parse target query: {s}\n", .{errorDescription(err)});
 
                                 return null;
@@ -156,7 +156,7 @@ pub const Cli = struct {
                         } else {
                             std.debug.print(Command.Compile.usage, .{self.program});
 
-                            std.debug.print("Error: expected a target triple\n", .{});
+                            std.debug.print("Error: expected target query\n", .{});
 
                             return null;
                         }
