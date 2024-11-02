@@ -22,7 +22,7 @@ pub const Cli = struct {
 
         const Compile = struct {
             input_file_path: []const u8,
-            output_file_path: []const u8,
+            maybe_output_file_path: ?[]const u8,
             output_kind: OutputKind,
             target: std.Target,
 
@@ -101,35 +101,33 @@ pub const Cli = struct {
                     return null;
                 };
 
-                var output_file_path = std.fs.path.stem(input_file_path);
+                var maybe_output_file_path: ?[]const u8 = null;
                 var output_kind: OutputKind = .executable;
                 var target: std.Target = builtin.target;
 
-                if (argument_iterator.next()) |next_argument| {
+                while (argument_iterator.next()) |next_argument| {
                     if (std.mem.eql(u8, next_argument, "--output")) {
-                        if (argument_iterator.next()) |raw_output_file_path| {
-                            output_file_path = raw_output_file_path;
-                        } else {
+                        maybe_output_file_path = argument_iterator.next() orelse {
                             std.debug.print(Command.Compile.usage, .{self.program});
 
                             std.debug.print("Error: expected output file path\n", .{});
 
                             return null;
-                        }
+                        };
                     } else if (std.mem.eql(u8, next_argument, "--emit")) {
-                        if (argument_iterator.next()) |raw_emit| {
-                            if (std.mem.eql(u8, raw_emit, "assembly")) {
+                        if (argument_iterator.next()) |raw_output_kind| {
+                            if (std.mem.eql(u8, raw_output_kind, "assembly")) {
                                 output_kind = .assembly;
-                            } else if (std.mem.eql(u8, raw_emit, "object")) {
+                            } else if (std.mem.eql(u8, raw_output_kind, "object")) {
                                 output_kind = .object;
-                            } else if (std.mem.eql(u8, raw_emit, "executable")) {
+                            } else if (std.mem.eql(u8, raw_output_kind, "executable")) {
                                 output_kind = .executable;
-                            } else if (std.mem.eql(u8, raw_emit, "none")) {
+                            } else if (std.mem.eql(u8, raw_output_kind, "none")) {
                                 output_kind = .none;
                             } else {
                                 std.debug.print(Command.Compile.usage, .{self.program});
 
-                                std.debug.print("Error: unrecognized output kind: {s}\n", .{raw_emit});
+                                std.debug.print("Error: unrecognized output kind: {s}\n", .{raw_output_kind});
 
                                 return null;
                             }
@@ -172,7 +170,7 @@ pub const Cli = struct {
                 self.command = .{
                     .compile = .{
                         .input_file_path = input_file_path,
-                        .output_file_path = output_file_path,
+                        .maybe_output_file_path = maybe_output_file_path,
                         .output_kind = output_kind,
                         .target = target,
                     },
@@ -242,11 +240,16 @@ pub const Cli = struct {
         };
 
         if (options.output_kind == .assembly) {
-            const assembly_file_path = std.fmt.allocPrintZ(self.allocator, "{s}.s", .{options.output_file_path}) catch |err| {
+            const assembly_file_path = std.fmt.allocPrintZ(self.allocator, "{s}{s}", .{
+                options.maybe_output_file_path orelse std.fs.path.stem(options.input_file_path),
+                if (options.maybe_output_file_path != null) "" else ".s",
+            }) catch |err| {
                 std.debug.print("Error: {s}\n", .{errorDescription(err)});
 
                 return 1;
             };
+
+            defer self.allocator.free(assembly_file_path);
 
             compilation.emit(lir, assembly_file_path, options.output_kind) catch |err| {
                 std.debug.print("Error: could not emit assembly file: {s}\n", .{errorDescription(err)});
@@ -255,13 +258,15 @@ pub const Cli = struct {
             };
         } else if (options.output_kind == .object or options.output_kind == .executable) {
             const object_file_path = std.fmt.allocPrintZ(self.allocator, "{s}{s}", .{
-                options.output_file_path,
-                options.target.ofmt.fileExt(options.target.cpu.arch),
+                options.maybe_output_file_path orelse std.fs.path.stem(options.input_file_path),
+                if (options.maybe_output_file_path != null) "" else options.target.ofmt.fileExt(options.target.cpu.arch),
             }) catch |err| {
                 std.debug.print("Error: {s}\n", .{errorDescription(err)});
 
                 return 1;
             };
+
+            defer self.allocator.free(object_file_path);
 
             compilation.emit(lir, object_file_path, options.output_kind) catch |err| {
                 std.debug.print("Error: could not emit object file: {s}\n", .{errorDescription(err)});
@@ -270,7 +275,7 @@ pub const Cli = struct {
             };
 
             if (options.output_kind == .executable) {
-                const linker_exit_code = compilation.link(object_file_path, options.output_file_path) catch |err| {
+                const linker_exit_code = compilation.link(object_file_path, options.maybe_output_file_path orelse std.fs.path.stem(options.input_file_path)) catch |err| {
                     std.debug.print("Error: could not link object file: {s}\n", .{errorDescription(err)});
 
                     return 1;
