@@ -202,13 +202,8 @@ pub fn analyze(self: Compilation, file_path: []const u8, buffer: []const u8, sir
     return sema.air;
 }
 
-pub const OutputKind = enum {
-    object,
-    assembly,
-};
-
 /// Emit Air to an object file or an assembly file
-pub fn emit(self: Compilation, air: Air, output_file_path: [:0]const u8, output_kind: OutputKind) std.mem.Allocator.Error!void {
+pub fn emit(self: Compilation, air: Air, output_file_path: [:0]const u8, output_kind: root.OutputKind) std.mem.Allocator.Error!void {
     var backend = LlvmBackend.init(self.allocator, self.env.target, air);
     defer backend.deinit();
 

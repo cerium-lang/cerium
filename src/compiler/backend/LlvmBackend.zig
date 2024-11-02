@@ -1,4 +1,5 @@
 const std = @import("std");
+const root = @import("root");
 
 const c = @cImport({
     @cInclude("llvm-c/Core.h");
@@ -291,7 +292,7 @@ pub fn targetTriple(allocator: std.mem.Allocator, target: std.Target) ![]const u
     return llvm_triple.toOwnedSlice();
 }
 
-pub fn emit(self: *LlvmBackend, output_file_path: [:0]const u8, output_kind: Compilation.OutputKind) Error!void {
+pub fn emit(self: *LlvmBackend, output_file_path: [:0]const u8, output_kind: root.OutputKind) Error!void {
     c.LLVMInitializeAllTargetInfos();
     c.LLVMInitializeAllTargets();
     c.LLVMInitializeAllTargetMCs();
@@ -322,7 +323,7 @@ pub fn emit(self: *LlvmBackend, output_file_path: [:0]const u8, output_kind: Com
         target_machine,
         self.module,
         output_file_path,
-        if (output_kind == .object) c.LLVMObjectFile else c.LLVMAssemblyFile,
+        if (output_kind == .object or output_kind == .executable) c.LLVMObjectFile else c.LLVMAssemblyFile,
         null,
     );
 }

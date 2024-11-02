@@ -3,6 +3,13 @@ const builtin = @import("builtin");
 
 const Compilation = @import("compiler/Compilation.zig");
 
+pub const OutputKind = enum {
+    assembly,
+    object,
+    executable,
+    none,
+};
+
 pub const Cli = struct {
     allocator: std.mem.Allocator,
 
@@ -16,25 +23,18 @@ pub const Cli = struct {
         const Compile = struct {
             input_file_path: []const u8,
             output_file_path: []const u8,
+            output_kind: OutputKind,
             target: std.Target,
-            emit: Emit,
-
-            const Emit = enum {
-                assembly,
-                object,
-                executable,
-                none,
-            };
 
             const usage =
                 \\Usage:
-                \\  {s} compile <file_path>
+                \\  {s} compile <input-file-path>
                 \\
                 \\Options:
-                \\  --output <file_path>    -- specify the output file path
-                \\  --target <arch-os-abi>  -- specify the target triple you want to compile to
-                \\  --emit <emit-type>      -- specify the type of output you want to emit
-                \\                             [assembly, object, executable (default), none (semantic analysis only)]
+                \\  --output <output-file-path>    -- specify the output file path
+                \\  --emit <output-kind>           -- specify the output kind
+                \\                                    [assembly, object, executable (default), none (semantic analysis only)]
+                \\  --target <arch-os-abi>         -- specify the target triple
                 \\
                 \\
             ;
@@ -46,8 +46,8 @@ pub const Cli = struct {
         \\  {s} <command> [arguments]
         \\
         \\Commands:
-        \\  compile <file_path>     -- compile certain file
-        \\  help                    -- print this help message
+        \\  compile <input-file-path>     -- compile certain file
+        \\  help                          -- print this help message
         \\
         \\
     ;
@@ -96,15 +96,14 @@ pub const Cli = struct {
                 const input_file_path = argument_iterator.next() orelse {
                     std.debug.print(Command.Compile.usage, .{self.program});
 
-                    std.debug.print("Error: expected a file path\n", .{});
+                    std.debug.print("Error: expected input file path\n", .{});
 
                     return null;
                 };
 
                 var output_file_path = std.fs.path.stem(input_file_path);
-
+                var output_kind: OutputKind = .executable;
                 var target: std.Target = builtin.target;
-                var emit: Command.Compile.Emit = .executable;
 
                 if (argument_iterator.next()) |next_argument| {
                     if (std.mem.eql(u8, next_argument, "--output")) {
@@ -114,6 +113,30 @@ pub const Cli = struct {
                             std.debug.print(Command.Compile.usage, .{self.program});
 
                             std.debug.print("Error: expected an output file path\n", .{});
+
+                            return null;
+                        }
+                    } else if (std.mem.eql(u8, next_argument, "--emit")) {
+                        if (argument_iterator.next()) |raw_emit| {
+                            if (std.mem.eql(u8, raw_emit, "assembly")) {
+                                output_kind = .assembly;
+                            } else if (std.mem.eql(u8, raw_emit, "object")) {
+                                output_kind = .object;
+                            } else if (std.mem.eql(u8, raw_emit, "executable")) {
+                                output_kind = .executable;
+                            } else if (std.mem.eql(u8, raw_emit, "none")) {
+                                output_kind = .none;
+                            } else {
+                                std.debug.print(Command.Compile.usage, .{self.program});
+
+                                std.debug.print("Error: unrecognized output kind: {s}\n", .{raw_emit});
+
+                                return null;
+                            }
+                        } else {
+                            std.debug.print(Command.Compile.usage, .{self.program});
+
+                            std.debug.print("Error: expected an output kind\n", .{});
 
                             return null;
                         }
@@ -137,30 +160,6 @@ pub const Cli = struct {
 
                             return null;
                         }
-                    } else if (std.mem.eql(u8, next_argument, "--emit")) {
-                        if (argument_iterator.next()) |raw_emit| {
-                            if (std.mem.eql(u8, raw_emit, "assembly")) {
-                                emit = .assembly;
-                            } else if (std.mem.eql(u8, raw_emit, "object")) {
-                                emit = .object;
-                            } else if (std.mem.eql(u8, raw_emit, "executable")) {
-                                emit = .executable;
-                            } else if (std.mem.eql(u8, raw_emit, "none")) {
-                                emit = .none;
-                            } else {
-                                std.debug.print(Command.Compile.usage, .{self.program});
-
-                                std.debug.print("Error: unrecognized emit type: {s}\n", .{raw_emit});
-
-                                return null;
-                            }
-                        } else {
-                            std.debug.print(Command.Compile.usage, .{self.program});
-
-                            std.debug.print("Error: expected an emit type\n", .{});
-
-                            return null;
-                        }
                     } else {
                         std.debug.print(Command.Compile.usage, .{self.program});
 
@@ -174,8 +173,8 @@ pub const Cli = struct {
                     .compile = .{
                         .input_file_path = input_file_path,
                         .output_file_path = output_file_path,
+                        .output_kind = output_kind,
                         .target = target,
-                        .emit = emit,
                     },
                 };
             } else if (std.mem.eql(u8, argument, "help")) {
@@ -242,19 +241,19 @@ pub const Cli = struct {
             return 1;
         };
 
-        if (options.emit == .assembly) {
+        if (options.output_kind == .assembly) {
             const assembly_file_path = std.fmt.allocPrintZ(self.allocator, "{s}.s", .{options.output_file_path}) catch |err| {
                 std.debug.print("Error: {s}\n", .{errorDescription(err)});
 
                 return 1;
             };
 
-            compilation.emit(lir, assembly_file_path, .assembly) catch |err| {
+            compilation.emit(lir, assembly_file_path, options.output_kind) catch |err| {
                 std.debug.print("Error: could not emit assembly file: {s}\n", .{errorDescription(err)});
 
                 return 1;
             };
-        } else if (options.emit == .object or options.emit == .executable) {
+        } else if (options.output_kind == .object or options.output_kind == .executable) {
             const object_file_path = std.fmt.allocPrintZ(self.allocator, "{s}{s}", .{
                 options.output_file_path,
                 options.target.ofmt.fileExt(options.target.cpu.arch),
@@ -264,13 +263,13 @@ pub const Cli = struct {
                 return 1;
             };
 
-            compilation.emit(lir, object_file_path, .object) catch |err| {
+            compilation.emit(lir, object_file_path, options.output_kind) catch |err| {
                 std.debug.print("Error: could not emit object file: {s}\n", .{errorDescription(err)});
 
                 return 1;
             };
 
-            if (options.emit == .executable) {
+            if (options.output_kind == .executable) {
                 const linker_exit_code = compilation.link(object_file_path, options.output_file_path) catch |err| {
                     std.debug.print("Error: could not link object file: {s}\n", .{errorDescription(err)});
 
