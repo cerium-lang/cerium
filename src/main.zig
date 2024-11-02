@@ -14,15 +14,28 @@ pub const Cli = struct {
         help,
 
         const Compile = struct {
-            file_path: []const u8,
+            input_file_path: []const u8,
+            output_file_path: []const u8,
             target: std.Target,
+            emit: Emit,
+
+            const Emit = enum {
+                assembly,
+                object,
+                executable,
+                none,
+            };
 
             const usage =
                 \\Usage:
                 \\  {s} compile <file_path>
                 \\
                 \\Options:
+                \\  --output <file_path>    -- specify the output file path
                 \\  --target <arch-os-abi>  -- specify the target triple you want to compile to
+                \\  --emit <emit-type>      -- specify the type of output you want to emit
+                \\                             [assembly, object, executable (default), none (semantic analysis only)]
+                \\
                 \\
             ;
         };
@@ -80,7 +93,7 @@ pub const Cli = struct {
 
         while (argument_iterator.next()) |argument| {
             if (std.mem.eql(u8, argument, "compile")) {
-                const file_path = argument_iterator.next() orelse {
+                const input_file_path = argument_iterator.next() orelse {
                     std.debug.print(Command.Compile.usage, .{self.program});
 
                     std.debug.print("Error: expected a file path\n", .{});
@@ -88,10 +101,23 @@ pub const Cli = struct {
                     return null;
                 };
 
+                var output_file_path = std.fs.path.stem(input_file_path);
+
                 var target: std.Target = builtin.target;
+                var emit: Command.Compile.Emit = .executable;
 
                 if (argument_iterator.next()) |next_argument| {
-                    if (std.mem.eql(u8, next_argument, "--target")) {
+                    if (std.mem.eql(u8, next_argument, "--output")) {
+                        if (argument_iterator.next()) |raw_output_file_path| {
+                            output_file_path = raw_output_file_path;
+                        } else {
+                            std.debug.print(Command.Compile.usage, .{self.program});
+
+                            std.debug.print("Error: expected an output file path\n", .{});
+
+                            return null;
+                        }
+                    } else if (std.mem.eql(u8, next_argument, "--target")) {
                         if (argument_iterator.next()) |raw_target_triple| {
                             const target_query = std.Target.Query.parse(.{ .arch_os_abi = raw_target_triple }) catch |err| {
                                 std.debug.print("Error: could not parse target query: {s}\n", .{errorDescription(err)});
@@ -111,6 +137,30 @@ pub const Cli = struct {
 
                             return null;
                         }
+                    } else if (std.mem.eql(u8, next_argument, "--emit")) {
+                        if (argument_iterator.next()) |raw_emit| {
+                            if (std.mem.eql(u8, raw_emit, "assembly")) {
+                                emit = .assembly;
+                            } else if (std.mem.eql(u8, raw_emit, "object")) {
+                                emit = .object;
+                            } else if (std.mem.eql(u8, raw_emit, "executable")) {
+                                emit = .executable;
+                            } else if (std.mem.eql(u8, raw_emit, "none")) {
+                                emit = .none;
+                            } else {
+                                std.debug.print(Command.Compile.usage, .{self.program});
+
+                                std.debug.print("Error: unrecognized emit type: {s}\n", .{raw_emit});
+
+                                return null;
+                            }
+                        } else {
+                            std.debug.print(Command.Compile.usage, .{self.program});
+
+                            std.debug.print("Error: expected an emit type\n", .{});
+
+                            return null;
+                        }
                     } else {
                         std.debug.print(Command.Compile.usage, .{self.program});
 
@@ -120,7 +170,14 @@ pub const Cli = struct {
                     }
                 }
 
-                self.command = .{ .compile = .{ .file_path = file_path, .target = target } };
+                self.command = .{
+                    .compile = .{
+                        .input_file_path = input_file_path,
+                        .output_file_path = output_file_path,
+                        .target = target,
+                        .emit = emit,
+                    },
+                };
             } else if (std.mem.eql(u8, argument, "help")) {
                 self.command = .help;
             } else {
@@ -154,18 +211,25 @@ pub const Cli = struct {
 
         var runner_file_path_buf: [std.fs.max_path_bytes]u8 = undefined;
 
-        const runner_file_path = cerium_lib_dir.realpath("std" ++ std.fs.path.sep_str ++ "runners" ++ std.fs.path.sep_str ++ "exe.cerm", &runner_file_path_buf) catch {
-            std.debug.print("Error: could not find the executable runner file path\n", .{});
+        const runner_file_path = cerium_lib_dir.realpath(
+            "std" ++ std.fs.path.sep_str ++ "runners" ++ std.fs.path.sep_str ++ "exe.cerm",
+            &runner_file_path_buf,
+        ) catch {
+            std.debug.print("Error: could not find executable runner file path\n", .{});
 
             return 1;
         };
 
-        var compilation = Compilation.init(self.allocator, .{ .cerium_lib_dir = cerium_lib_dir, .target = options.target });
+        var compilation = Compilation.init(self.allocator, .{
+            .cerium_lib_dir = cerium_lib_dir,
+            .target = options.target,
+        });
+
         defer compilation.deinit();
 
         const lir = blk: {
             compilation.put(runner_file_path) catch |err| break :blk err;
-            compilation.put(options.file_path) catch |err| break :blk err;
+            compilation.put(options.input_file_path) catch |err| break :blk err;
 
             compilation.start() catch |err| break :blk err;
 
@@ -178,25 +242,59 @@ pub const Cli = struct {
             return 1;
         };
 
-        const output_file_path = std.fs.path.stem(options.file_path);
+        if (options.emit == .assembly) {
+            const assembly_file_path = std.fmt.allocPrintZ(self.allocator, "{s}.s", .{options.output_file_path}) catch |err| {
+                std.debug.print("Error: {s}\n", .{errorDescription(err)});
 
-        const object_file_path = std.fmt.allocPrintZ(self.allocator, "{s}{s}", .{ output_file_path, options.target.ofmt.fileExt(options.target.cpu.arch) }) catch |err| {
-            std.debug.print("Error: {s}\n", .{errorDescription(err)});
+                return 1;
+            };
 
-            return 1;
-        };
+            compilation.emit(lir, assembly_file_path, .assembly) catch |err| {
+                std.debug.print("Error: could not emit assembly file: {s}\n", .{errorDescription(err)});
 
-        compilation.emit(lir, object_file_path, .object) catch |err| {
-            std.debug.print("Error: could not emit object file: {s}\n", .{errorDescription(err)});
+                return 1;
+            };
+        } else if (options.emit == .object or options.emit == .executable) {
+            const object_file_path = std.fmt.allocPrintZ(self.allocator, "{s}{s}", .{
+                options.output_file_path,
+                options.target.ofmt.fileExt(options.target.cpu.arch),
+            }) catch |err| {
+                std.debug.print("Error: {s}\n", .{errorDescription(err)});
 
-            return 1;
-        };
+                return 1;
+            };
 
-        return compilation.link(object_file_path, output_file_path) catch |err| {
-            std.debug.print("Error: could not link object file: {s}\n", .{errorDescription(err)});
+            compilation.emit(lir, object_file_path, .object) catch |err| {
+                std.debug.print("Error: could not emit object file: {s}\n", .{errorDescription(err)});
 
-            return 1;
-        };
+                return 1;
+            };
+
+            if (options.emit == .executable) {
+                const linker_exit_code = compilation.link(object_file_path, options.output_file_path) catch |err| {
+                    std.debug.print("Error: could not link object file: {s}\n", .{errorDescription(err)});
+
+                    return 1;
+                };
+
+                if (linker_exit_code != 0) {
+                    std.debug.print(
+                        "Error: could not link object file, linker exited with non-zero exit code: {}\n",
+                        .{linker_exit_code},
+                    );
+
+                    return linker_exit_code;
+                }
+
+                std.fs.cwd().deleteFile(object_file_path) catch |err| {
+                    std.debug.print("Error: could not delete object file: {s}\n", .{errorDescription(err)});
+
+                    return 1;
+                };
+            }
+        }
+
+        return 0;
     }
 
     fn executeHelpCommand(self: Cli) u8 {
