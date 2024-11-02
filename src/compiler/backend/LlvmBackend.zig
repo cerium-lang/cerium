@@ -84,7 +84,7 @@ fn subArchName(features: std.Target.Cpu.Feature.Set, arch: anytype, mappings: an
     return null;
 }
 
-pub fn targetTriple(allocator: std.mem.Allocator, target: std.Target) ![]const u8 {
+pub fn targetTripleZ(allocator: std.mem.Allocator, target: std.Target) ![:0]const u8 {
     var llvm_triple = std.ArrayList(u8).init(allocator);
     defer llvm_triple.deinit();
 
@@ -289,7 +289,7 @@ pub fn targetTriple(allocator: std.mem.Allocator, target: std.Target) ![]const u
     };
     try llvm_triple.appendSlice(llvm_abi);
 
-    return llvm_triple.toOwnedSlice();
+    return llvm_triple.toOwnedSliceSentinel(0);
 }
 
 pub fn emit(self: *LlvmBackend, output_file_path: [:0]const u8, output_kind: root.OutputKind) Error!void {
@@ -299,8 +299,7 @@ pub fn emit(self: *LlvmBackend, output_file_path: [:0]const u8, output_kind: roo
     c.LLVMInitializeAllAsmParsers();
     c.LLVMInitializeAllAsmPrinters();
 
-    const target_triple = try self.allocator.dupeZ(u8, try targetTriple(self.allocator, self.target));
-
+    const target_triple = try targetTripleZ(self.allocator, self.target);
     defer self.allocator.free(target_triple);
 
     _ = c.LLVMSetTarget(self.module, target_triple);
