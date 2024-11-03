@@ -314,7 +314,7 @@ pub fn emit(self: *LlvmBackend, output_file_path: [:0]const u8, output_kind: roo
         "generic",
         "",
         c.LLVMCodeGenLevelDefault,
-        c.LLVMRelocDefault,
+        c.LLVMRelocPIC,
         c.LLVMCodeModelDefault,
     );
 
