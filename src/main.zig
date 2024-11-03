@@ -10,6 +10,11 @@ pub const OutputKind = enum {
     none,
 };
 
+pub const RunnerKind = enum {
+    executable,
+    none,
+};
+
 pub const Cli = struct {
     allocator: std.mem.Allocator,
 
@@ -24,6 +29,7 @@ pub const Cli = struct {
             input_file_path: []const u8,
             maybe_output_file_path: ?[]const u8,
             output_kind: OutputKind,
+            runner_kind: RunnerKind,
             target: std.Target,
 
             const usage =
@@ -33,7 +39,9 @@ pub const Cli = struct {
                 \\Options:
                 \\  --output <output-file-path>    -- specify the output file path
                 \\  --emit <output-kind>           -- specify the output kind
-                \\                                    [assembly, object, executable (default), none (semantic analysis only)]
+                \\                                    [assembly, object, executable (default), none]
+                \\  --runner <runner-kind>         -- specify the runner kind
+                \\                                    [executable (default), none]
                 \\  --target <arch-os-abi>         -- specify the target query
                 \\
                 \\
@@ -103,6 +111,7 @@ pub const Cli = struct {
 
                 var maybe_output_file_path: ?[]const u8 = null;
                 var output_kind: OutputKind = .executable;
+                var runner_kind: RunnerKind = .executable;
                 var target: std.Target = builtin.target;
 
                 while (argument_iterator.next()) |next_argument| {
@@ -135,6 +144,26 @@ pub const Cli = struct {
                             std.debug.print(Command.Compile.usage, .{self.program});
 
                             std.debug.print("Error: expected output kind\n", .{});
+
+                            return null;
+                        }
+                    } else if (std.mem.eql(u8, next_argument, "--runner")) {
+                        if (argument_iterator.next()) |raw_runner_kind| {
+                            if (std.mem.eql(u8, raw_runner_kind, "executable")) {
+                                runner_kind = .executable;
+                            } else if (std.mem.eql(u8, raw_runner_kind, "none")) {
+                                runner_kind = .none;
+                            } else {
+                                std.debug.print(Command.Compile.usage, .{self.program});
+
+                                std.debug.print("Error: unrecognized runner kind: {s}\n", .{raw_runner_kind});
+
+                                return null;
+                            }
+                        } else {
+                            std.debug.print(Command.Compile.usage, .{self.program});
+
+                            std.debug.print("Error: expected runner kind\n", .{});
 
                             return null;
                         }
@@ -172,6 +201,7 @@ pub const Cli = struct {
                         .input_file_path = input_file_path,
                         .maybe_output_file_path = maybe_output_file_path,
                         .output_kind = output_kind,
+                        .runner_kind = runner_kind,
                         .target = target,
                     },
                 };
@@ -206,17 +236,6 @@ pub const Cli = struct {
             return 1;
         };
 
-        var runner_file_path_buf: [std.fs.max_path_bytes]u8 = undefined;
-
-        const runner_file_path = cerium_lib_dir.realpath(
-            "std" ++ std.fs.path.sep_str ++ "runners" ++ std.fs.path.sep_str ++ "exe.cerm",
-            &runner_file_path_buf,
-        ) catch {
-            std.debug.print("Error: could not find executable runner file path\n", .{});
-
-            return 1;
-        };
-
         var compilation = Compilation.init(self.allocator, .{
             .cerium_lib_dir = cerium_lib_dir,
             .target = options.target,
@@ -225,7 +244,21 @@ pub const Cli = struct {
         defer compilation.deinit();
 
         const lir = blk: {
-            compilation.put(runner_file_path) catch |err| break :blk err;
+            if (options.runner_kind == .executable) {
+                var runner_file_path_buf: [std.fs.max_path_bytes]u8 = undefined;
+
+                const runner_file_path = cerium_lib_dir.realpath(
+                    "std" ++ std.fs.path.sep_str ++ "runners" ++ std.fs.path.sep_str ++ "exe.cerm",
+                    &runner_file_path_buf,
+                ) catch {
+                    std.debug.print("Error: could not find executable runner file path\n", .{});
+
+                    return 1;
+                };
+
+                compilation.put(runner_file_path) catch |err| break :blk err;
+            }
+
             compilation.put(options.input_file_path) catch |err| break :blk err;
 
             compilation.start() catch |err| break :blk err;
