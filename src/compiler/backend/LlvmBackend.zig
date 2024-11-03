@@ -84,7 +84,7 @@ fn subArchName(features: std.Target.Cpu.Feature.Set, arch: anytype, mappings: an
     return null;
 }
 
-pub fn targetTripleZ(allocator: std.mem.Allocator, target: std.Target) ![:0]const u8 {
+pub fn targetTripleZ(allocator: std.mem.Allocator, target: std.Target) ![:0]u8 {
     var llvm_triple = std.ArrayList(u8).init(allocator);
     defer llvm_triple.deinit();
 
