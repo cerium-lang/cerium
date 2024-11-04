@@ -576,6 +576,9 @@ fn renderGetFieldPtr(self: *LlvmBackend, field_index: u32) Error!void {
     const struct_pointer = self.stack.pop();
     const struct_type = struct_pointer.type.pointer.child_type.*;
 
+    const field_type_on_heap = try self.allocator.create(Type);
+    field_type_on_heap.* = struct_type.@"struct".fields[field_index].type;
+
     try self.stack.append(
         self.allocator,
         .{
@@ -587,7 +590,13 @@ fn renderGetFieldPtr(self: *LlvmBackend, field_index: u32) Error!void {
                 "",
             ),
 
-            .type = struct_pointer.type,
+            .type = .{
+                .pointer = .{
+                    .size = .one,
+                    .is_const = false,
+                    .child_type = field_type_on_heap,
+                },
+            },
         },
     );
 }
