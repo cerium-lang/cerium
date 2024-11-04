@@ -53,6 +53,7 @@ pub const Type = union(enum) {
 
     pub const Function = struct {
         parameter_types: []const Type,
+        is_var_args: bool,
         return_type: *const Type,
     };
 

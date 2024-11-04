@@ -17,6 +17,8 @@ pub const State = enum {
     comment,
     equal_sign,
     bang,
+    period,
+    double_period,
     less_than,
     greater_than,
 };
@@ -161,9 +163,9 @@ pub fn next(self: *Lexer) Token {
 
             '.' => {
                 result.range.start = self.index;
-                self.index += 1;
-                result.range.end = self.index;
                 result.tag = .period;
+                self.index += 1;
+                continue :state .period;
             },
 
             '%' => {
@@ -357,6 +359,31 @@ pub fn next(self: *Lexer) Token {
                 self.index += 1;
                 result.range.end = self.index;
                 result.tag = .bang_equal_sign;
+            },
+
+            else => {
+                result.range.end = self.index;
+            },
+        },
+
+        .period => switch (self.buffer[self.index]) {
+            '.' => {
+                result.range.start = self.index;
+                result.tag = .double_period;
+                self.index += 1;
+                continue :state .double_period;
+            },
+
+            else => {
+                result.range.end = self.index;
+            },
+        },
+
+        .double_period => switch (self.buffer[self.index]) {
+            '.' => {
+                self.index += 1;
+                result.range.end = self.index;
+                result.tag = .triple_period;
             },
 
             else => {

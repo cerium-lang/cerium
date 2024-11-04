@@ -344,7 +344,7 @@ fn getLlvmType(self: *LlvmBackend, @"type": Type) Error!c.LLVMTypeRef {
 
             const return_type = try self.getLlvmType(function.return_type.*);
 
-            break :blk c.LLVMFunctionType(return_type, parameter_types.ptr, @intCast(parameter_types.len), 0);
+            break :blk c.LLVMFunctionType(return_type, parameter_types.ptr, @intCast(parameter_types.len), @intFromBool(function.is_var_args));
         },
 
         .@"struct" => |@"struct"| blk: {
@@ -412,7 +412,7 @@ fn renderInstruction(self: *LlvmBackend, air_instruction: Air.Instruction) Error
 
         .assembly => |assembly| try self.renderAssembly(assembly),
 
-        .call => try self.renderCall(),
+        .call => |arguments_count| try self.renderCall(arguments_count),
 
         .function => |symbol| try self.renderFunction(symbol),
 
@@ -873,25 +873,24 @@ fn renderAssembly(self: *LlvmBackend, assembly: Air.Instruction.Assembly) Error!
     }
 }
 
-fn renderCall(self: *LlvmBackend) Error!void {
+fn renderCall(self: *LlvmBackend, arguments_count: usize) Error!void {
     const function_pointer = self.stack.pop();
 
     const function_type = function_pointer.type.pointer.child_type.*;
-    const function_parameters_len = function_type.function.parameter_types.len;
     const function_return_type = function_type.function.return_type.*;
 
-    const call_arguments = try self.allocator.alloc(c.LLVMValueRef, function_parameters_len);
+    const arguments = try self.allocator.alloc(c.LLVMValueRef, arguments_count);
 
-    for (0..function_parameters_len) |i| {
-        call_arguments[i] = self.stack.pop().value;
+    for (0..arguments_count) |i| {
+        arguments[i] = self.stack.pop().value;
     }
 
     const call = c.LLVMBuildCall2(
         self.builder,
         try self.getLlvmType(function_type),
         function_pointer.value,
-        call_arguments.ptr,
-        @intCast(call_arguments.len),
+        arguments.ptr,
+        @intCast(arguments_count),
         "",
     );
 

@@ -57,6 +57,7 @@ pub const SubType = union(enum) {
 
     pub const Function = struct {
         parameter_subtypes: []const SubType,
+        is_var_args: bool,
         return_subtype: *const SubType,
     };
 
@@ -396,7 +397,9 @@ pub const Parser = struct {
 
         const name = try self.parseName();
 
-        const parameter_subsymbols = try self.parseFunctionParameters();
+        var is_var_args = false;
+
+        const parameter_subsymbols = try self.parseFunctionParameters(&is_var_args);
 
         const parameter_subtypes = try self.allocator.alloc(SubType, parameter_subsymbols.len);
 
@@ -415,6 +418,7 @@ pub const Parser = struct {
         const function_subtype: SubType = .{
             .function = .{
                 .parameter_subtypes = parameter_subtypes,
+                .is_var_args = is_var_args,
                 .return_subtype = return_subtype_on_heap,
             },
         };
@@ -471,7 +475,7 @@ pub const Parser = struct {
         try self.sir.instructions.append(self.allocator, .end_scope);
     }
 
-    fn parseFunctionParameters(self: *Parser) Error![]SubSymbol {
+    fn parseFunctionParameters(self: *Parser, is_var_args: *bool) Error![]SubSymbol {
         if (!self.eatToken(.open_paren)) {
             self.error_info = .{ .message = "expected a '('", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
 
@@ -485,6 +489,18 @@ pub const Parser = struct {
                 self.error_info = .{ .message = "expected a ')'", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
 
                 return error.UnexpectedToken;
+            }
+
+            if (self.eatToken(.triple_period)) {
+                is_var_args.* = true;
+
+                if (self.peekToken().tag != .close_paren) {
+                    self.error_info = .{ .message = "expected a ')'", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
+
+                    return error.UnexpectedToken;
+                }
+
+                continue;
             }
 
             try paramters.append(self.allocator, .{
@@ -1548,9 +1564,29 @@ pub const Parser = struct {
                     return error.UnexpectedToken;
                 }
 
+                var is_var_args = false;
+
                 var parameter_subtypes: std.ArrayListUnmanaged(SubType) = .{};
 
-                while (self.peekToken().tag != .eof and self.peekToken().tag != .close_paren) {
+                while (!self.eatToken(.close_paren)) {
+                    if (self.peekToken().tag == .eof) {
+                        self.error_info = .{ .message = "expected a ')'", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
+
+                        return error.UnexpectedToken;
+                    }
+
+                    if (self.eatToken(.triple_period)) {
+                        is_var_args = true;
+
+                        if (self.peekToken().tag != .close_paren) {
+                            self.error_info = .{ .message = "expected a ')'", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
+
+                            return error.UnexpectedToken;
+                        }
+
+                        continue;
+                    }
+
                     try parameter_subtypes.append(self.allocator, try self.parseSubType());
 
                     if (!self.eatToken(.comma) and self.peekToken().tag != .close_paren) {
@@ -1558,12 +1594,6 @@ pub const Parser = struct {
 
                         return error.UnexpectedToken;
                     }
-                }
-
-                if (!self.eatToken(.close_paren)) {
-                    self.error_info = .{ .message = "expected a ')'", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
-
-                    return error.UnexpectedToken;
                 }
 
                 const return_subtype = try self.parseSubType();
@@ -1574,6 +1604,7 @@ pub const Parser = struct {
                 return SubType{
                     .function = .{
                         .parameter_subtypes = try parameter_subtypes.toOwnedSlice(self.allocator),
+                        .is_var_args = is_var_args,
                         .return_subtype = return_subtype_on_heap,
                     },
                 };

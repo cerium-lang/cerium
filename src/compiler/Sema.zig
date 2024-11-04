@@ -617,6 +617,7 @@ fn analyzeSubType(self: *Sema, subtype: Sir.SubType) Error!Type {
             return Type{
                 .function = .{
                     .parameter_types = parameter_types,
+                    .is_var_args = function.is_var_args,
                     .return_type = return_type_on_heap,
                 },
             };
@@ -1413,7 +1414,9 @@ fn analyzeCall(self: *Sema, call: Sir.Instruction.Call) Error!void {
     var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
     if (callable_type.getFunction()) |function| {
-        if (function.parameter_types.len != call.arguments_count) {
+        if ((function.is_var_args and function.parameter_types.len > call.arguments_count) or
+            (!function.is_var_args and function.parameter_types.len != call.arguments_count))
+        {
             try error_message_buf.writer(self.allocator).print("expected {} argument(s) got {} argument(s)", .{ function.parameter_types.len, call.arguments_count });
 
             self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, call.token_start) };
@@ -1427,7 +1430,11 @@ fn analyzeCall(self: *Sema, call: Sir.Instruction.Call) Error!void {
             try self.checkRepresentability(argument, parameter_type, call.token_start);
         }
 
-        try self.air.instructions.append(self.allocator, .call);
+        if (function.is_var_args) {
+            self.stack.shrinkRetainingCapacity(self.stack.items.len - (call.arguments_count - function.parameter_types.len));
+        }
+
+        try self.air.instructions.append(self.allocator, .{ .call = call.arguments_count });
 
         try self.stack.append(self.allocator, .{ .runtime = function.return_type.* });
     } else {

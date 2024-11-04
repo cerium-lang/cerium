@@ -68,7 +68,7 @@ pub const Instruction = union(enum) {
     /// Declare function parameters
     parameters: []const Symbol,
     /// Call a function pointer on top of the stack
-    call,
+    call: usize,
     /// Declare a function
     function: Symbol,
     /// Declare a variable using the specified name and type
