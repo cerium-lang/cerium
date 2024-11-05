@@ -453,6 +453,11 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
         .linkage = .global,
         .is_type_alias = true,
     });
+    self.scope.putAssumeCapacity("c_uchar", .{
+        .type = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.cTypeBitSize(.char) } },
+        .linkage = .global,
+        .is_type_alias = true,
+    });
     self.scope.putAssumeCapacity("c_short", .{
         .type = .{ .int = .{ .signedness = .signed, .bits = self.env.target.cTypeBitSize(.short) } },
         .linkage = .global,
