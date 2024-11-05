@@ -1,0 +1,65 @@
+// A little raylib experiment to render random noise colors
+//
+// Compilation Guide:
+// 1. Get a Cerium compiler, compile the example into object file with the default runner being disabled
+//    i.e: `cerium compile examples/raylib.cerm --output raylib_example.o --emit object --runner none`
+// 2. Get a C compiler, use it to link the object file produced by Cerium
+//                      with Raylib and C runtime library and C math library
+//    i.e: `cc raylib_example.o -l:libraylib.a -lm -o raylib_example`
+
+extern fn InitWindow(width c_int, height c_int, title [*]const u8);
+extern fn CloseWindow();
+extern fn WindowShouldClose() bool;
+
+extern fn GetRenderWidth() c_int;
+extern fn GetRenderHeight() c_int;
+
+extern fn BeginDrawing();
+extern fn EndDrawing();
+
+type Color = struct {
+    r c_uchar,
+    g c_uchar,
+    b c_uchar,
+    a c_uchar,
+};
+
+extern fn SetRandomSeed(seed c_int);
+extern fn GetRandomValue(min c_int, max c_int) c_int;
+
+extern fn DrawPixel(posX c_int, posY c_int, color Color);
+
+fn main() u8 {
+    InitWindow(800, 600, "Hello, World!");
+
+    var color Color;
+
+    while !WindowShouldClose() {
+        BeginDrawing();
+
+        var x c_int = 0 as c_int;
+
+        while x < GetRenderWidth() {
+            var y c_int = 0 as c_int;
+
+            while y < GetRenderHeight() {
+                color.r = GetRandomValue(0, 255) as c_uchar;
+                color.g = GetRandomValue(0, 255) as c_uchar;
+                color.b = GetRandomValue(0, 255) as c_uchar;
+                color.a = GetRandomValue(0, 255) as c_uchar;
+
+                DrawPixel(x, y, color);
+
+                y = y + 1;
+            }
+
+            x = x + 1;
+        }
+
+        EndDrawing();
+    }
+
+    CloseWindow();
+
+    return 0;
+}
