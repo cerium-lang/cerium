@@ -1505,10 +1505,6 @@ fn analyzeConstant(self: *Sema, infer: bool, subsymbol: Sir.SubSymbol) Error!voi
         return error.ExpectedCompiletimeConstant;
     }
 
-    if (variable.linkage != .global) {
-        _ = self.air.instructions.pop();
-    }
-
     try self.scope.put(self.allocator, symbol.name.buffer, variable);
 }
 
