@@ -96,8 +96,8 @@ pub fn put(self: *Compilation, file_path: []const u8) !void {
     try self.pipeline.files.put(self.allocator, file_path, buffer);
 }
 
-/// Start the compilation pipeline and make it run in parallel
-pub fn start(self: *Compilation) !void {
+/// Compile all provided files
+pub fn compileAll(self: *Compilation) !void {
     var thread_pool: std.Thread.Pool = undefined;
     try thread_pool.init(.{ .allocator = self.allocator });
     defer thread_pool.deinit();
@@ -135,17 +135,6 @@ pub fn compile(self: *Compilation, file_path: []const u8, buffer: [:0]const u8) 
 
         self.pipeline.failed = true;
     };
-}
-
-/// Concatenate all the airs in the compilation pipeline and return the result
-pub fn finalize(self: Compilation) std.mem.Allocator.Error!Air {
-    var concatenated_air: Air = .{};
-
-    for (self.pipeline.airs.items) |air| {
-        try concatenated_air.instructions.appendSlice(self.allocator, air.instructions.items);
-    }
-
-    return concatenated_air;
 }
 
 /// Parse a file into an sir
@@ -202,12 +191,14 @@ pub fn analyze(self: Compilation, file_path: []const u8, buffer: []const u8, sir
     return sema.air;
 }
 
-/// Emit Air to an object file or an assembly file
-pub fn emit(self: Compilation, air: Air, output_file_path: [:0]const u8, output_kind: root.OutputKind) std.mem.Allocator.Error!void {
-    var backend = LlvmBackend.init(self.allocator, self.env.target, air);
+/// Emit to an object file or an assembly file
+pub fn emit(self: Compilation, output_file_path: [:0]const u8, output_kind: root.OutputKind) std.mem.Allocator.Error!void {
+    var backend = try LlvmBackend.init(self.allocator, self.env.target);
     defer backend.deinit();
 
-    try backend.render();
+    for (self.pipeline.airs.items) |air| {
+        try backend.render(air);
+    }
 
     try backend.emit(output_file_path, output_kind);
 }

@@ -19,9 +19,6 @@ allocator: std.mem.Allocator,
 
 target: std.Target,
 
-air: Air,
-counter: usize = 0,
-
 context: c.LLVMContextRef,
 module: c.LLVMModuleRef,
 builder: c.LLVMBuilderRef,
@@ -49,19 +46,24 @@ pub const Register = struct {
     type: Type,
 };
 
-pub fn init(allocator: std.mem.Allocator, target: std.Target, air: Air) LlvmBackend {
+pub fn init(allocator: std.mem.Allocator, target: std.Target) Error!LlvmBackend {
     const context = c.LLVMContextCreate();
     const module = c.LLVMModuleCreateWithNameInContext("module", context);
     const builder = c.LLVMCreateBuilderInContext(context);
 
-    return LlvmBackend{
+    var backend = LlvmBackend{
         .allocator = allocator,
         .target = target,
-        .air = air,
         .context = context,
         .module = module,
         .builder = builder,
     };
+
+    const global_scope = try backend.scope_stack.addOne(backend.allocator);
+    global_scope.* = .{};
+    backend.scope = global_scope;
+
+    return backend;
 }
 
 pub fn deinit(self: *LlvmBackend) void {
@@ -361,19 +363,17 @@ fn getLlvmType(self: *LlvmBackend, @"type": Type) Error!c.LLVMTypeRef {
     };
 }
 
-pub fn render(self: *LlvmBackend) Error!void {
-    const global_scope = try self.scope_stack.addOne(self.allocator);
-    global_scope.* = .{};
-    self.scope = global_scope;
-
-    for (self.air.instructions.items) |air_instruction| {
-        try self.renderInstruction(air_instruction);
-
-        self.counter += 1;
+pub fn render(self: *LlvmBackend, air: Air) Error!void {
+    for (air.instructions.items, 0..) |air_instruction, i| {
+        try self.renderInstruction(air_instruction, air.instructions.items[i..]);
     }
 }
 
-fn renderInstruction(self: *LlvmBackend, air_instruction: Air.Instruction) Error!void {
+fn renderInstruction(
+    self: *LlvmBackend,
+    air_instruction: Air.Instruction,
+    remainder_instructions: []const Air.Instruction,
+) Error!void {
     switch (air_instruction) {
         .duplicate => try self.stack.append(self.allocator, self.stack.getLast()),
         .reverse => |count| std.mem.reverse(Register, self.stack.items[self.stack.items.len - count ..]),
@@ -414,7 +414,7 @@ fn renderInstruction(self: *LlvmBackend, air_instruction: Air.Instruction) Error
 
         .call => |arguments_count| try self.renderCall(arguments_count),
 
-        .function => |symbol| try self.renderFunction(symbol),
+        .function => |symbol| try self.renderFunction(symbol, remainder_instructions),
 
         .parameters => |symbols| try self.renderParameters(symbols),
 
@@ -908,7 +908,7 @@ fn renderCall(self: *LlvmBackend, arguments_count: usize) Error!void {
     }
 }
 
-fn renderFunction(self: *LlvmBackend, symbol: Symbol) Error!void {
+fn renderFunction(self: *LlvmBackend, symbol: Symbol, remainder_instructions: []const Air.Instruction) Error!void {
     const function_pointer = if (self.scope.get(symbol.name.buffer)) |function_variable|
         function_variable.pointer
     else blk: {
@@ -935,7 +935,7 @@ fn renderFunction(self: *LlvmBackend, symbol: Symbol) Error!void {
 
     var scope_depth: usize = 0;
 
-    for (self.air.instructions.items[self.counter..]) |air_instruction| {
+    for (remainder_instructions) |air_instruction| {
         switch (air_instruction) {
             .block => |block| try self.basic_blocks.put(self.allocator, block.id, c.LLVMAppendBasicBlock(function_pointer, "")),
             .start_scope => scope_depth += 1,

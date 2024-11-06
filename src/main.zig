@@ -243,34 +243,38 @@ pub const Cli = struct {
 
         defer compilation.deinit();
 
-        const lir = blk: {
-            if (options.runner_kind == .executable) {
-                var runner_file_path_buf: [std.fs.max_path_bytes]u8 = undefined;
+        if (options.runner_kind == .executable) {
+            var runner_file_path_buf: [std.fs.max_path_bytes]u8 = undefined;
 
-                const runner_file_path = cerium_lib_dir.realpath(
-                    "std" ++ std.fs.path.sep_str ++ "runners" ++ std.fs.path.sep_str ++ "exe.cerm",
-                    &runner_file_path_buf,
-                ) catch {
-                    std.debug.print("Error: could not find executable runner file path\n", .{});
+            const runner_file_path = cerium_lib_dir.realpath(
+                "std" ++ std.fs.path.sep_str ++ "runners" ++ std.fs.path.sep_str ++ "exe.cerm",
+                &runner_file_path_buf,
+            ) catch {
+                std.debug.print("Error: could not find executable runner file path\n", .{});
 
-                    return 1;
-                };
+                return 1;
+            };
 
-                compilation.put(runner_file_path) catch |err| break :blk err;
-            }
+            compilation.put(runner_file_path) catch |err| {
+                std.debug.print("Error: {s}\n", .{errorDescription(err)});
 
-            compilation.put(options.input_file_path) catch |err| break :blk err;
+                return 1;
+            };
+        }
 
-            compilation.start() catch |err| break :blk err;
-
-            if (compilation.pipeline.failed) return 1;
-
-            break :blk compilation.finalize();
-        } catch |err| {
+        compilation.put(options.input_file_path) catch |err| {
             std.debug.print("Error: {s}\n", .{errorDescription(err)});
 
             return 1;
         };
+
+        compilation.compileAll() catch |err| {
+            std.debug.print("Error: {s}\n", .{errorDescription(err)});
+
+            return 1;
+        };
+
+        if (compilation.pipeline.failed) return 1;
 
         if (options.output_kind == .assembly) {
             const assembly_file_path = std.fmt.allocPrintZ(self.allocator, "{s}{s}", .{
@@ -284,7 +288,7 @@ pub const Cli = struct {
 
             defer self.allocator.free(assembly_file_path);
 
-            compilation.emit(lir, assembly_file_path, options.output_kind) catch |err| {
+            compilation.emit(assembly_file_path, options.output_kind) catch |err| {
                 std.debug.print("Error: could not emit assembly file: {s}\n", .{errorDescription(err)});
 
                 return 1;
@@ -301,7 +305,7 @@ pub const Cli = struct {
 
             defer self.allocator.free(object_file_path);
 
-            compilation.emit(lir, object_file_path, options.output_kind) catch |err| {
+            compilation.emit(object_file_path, options.output_kind) catch |err| {
                 std.debug.print("Error: could not emit object file: {s}\n", .{errorDescription(err)});
 
                 return 1;
