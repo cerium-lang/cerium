@@ -37,23 +37,17 @@ fn main() u8 {
     while !WindowShouldClose() {
         BeginDrawing();
 
-        var x c_int = 0 as c_int;
+        var i u8 = 0;
 
-        while x < GetRenderWidth() {
-            var y c_int = 0 as c_int;
+        while i < 255 {
+            color.r = GetRandomValue(0, 255) as c_uchar;
+            color.g = GetRandomValue(0, 255) as c_uchar;
+            color.b = GetRandomValue(0, 255) as c_uchar;
+            color.a = GetRandomValue(0, 255) as c_uchar;
 
-            while y < GetRenderHeight() {
-                color.r = GetRandomValue(0, 255) as c_uchar;
-                color.g = GetRandomValue(0, 255) as c_uchar;
-                color.b = GetRandomValue(0, 255) as c_uchar;
-                color.a = GetRandomValue(0, 255) as c_uchar;
+            DrawPixel(GetRandomValue(0, GetRenderWidth()), GetRandomValue(0, GetRenderHeight()), color);
 
-                DrawPixel(x, y, color);
-
-                y = y + 1;
-            }
-
-            x = x + 1;
+            i = i + 1;
         }
 
         EndDrawing();
