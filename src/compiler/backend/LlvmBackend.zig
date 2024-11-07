@@ -522,7 +522,7 @@ fn renderInt(self: *LlvmBackend, int: i128) Error!void {
     const bits = if (int >= 0) Type.intFittingRange(-int, int).int.bits else Type.intFittingRange(int, -int).int.bits;
 
     const int_repr: c_ulonglong = @truncate(@as(u128, @bitCast(int)));
-    const int_type = c.LLVMIntTypeInContext(self.context, std.math.clamp(bits, 1, 64));
+    const int_type = c.LLVMIntTypeInContext(self.context, bits);
 
     try self.stack.append(self.allocator, .{ .value = c.LLVMConstInt(int_type, int_repr, 1), .type = .ambigiuous_int });
 }
