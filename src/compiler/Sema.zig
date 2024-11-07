@@ -158,7 +158,7 @@ fn checkBinaryImplicitCast(self: *Sema, lhs: *Value, rhs: *Value, token_start: u
     const lhs_type = lhs.getType();
     const rhs_type = rhs.getType();
 
-    if (std.meta.activeTag(lhs_type) == std.meta.activeTag(rhs_type) and !lhs_type.isAmbigiuous()) {
+    if (std.meta.activeTag(lhs_type) == std.meta.activeTag(rhs_type) and !lhs_type.isAmbigiuous() and !rhs_type.isAmbigiuous()) {
         if (lhs_type == .int and lhs_type.int.bits > rhs_type.int.bits or
             lhs_type == .float and lhs_type.float.bits > rhs_type.float.bits)
         {
@@ -183,7 +183,7 @@ fn checkBinaryImplicitCast(self: *Sema, lhs: *Value, rhs: *Value, token_start: u
             //
             // Both are allowed since it is a pointer comparison which compares the addresses
         }
-    } else if (lhs_type.isAmbigiuous()) {
+    } else if (lhs_type.isAmbigiuous() and !rhs_type.isAmbigiuous()) {
         // 4 > rhs as u64
         // 4.0 > rhs as f64
         try self.checkRepresentability(lhs.*, rhs_type, token_start);
@@ -195,7 +195,7 @@ fn checkBinaryImplicitCast(self: *Sema, lhs: *Value, rhs: *Value, token_start: u
         } else {
             lhs.* = .{ .typed_float = .{ .type = rhs_type, .value = lhs.float } };
         }
-    } else if (rhs_type.isAmbigiuous()) {
+    } else if (rhs_type.isAmbigiuous() and !lhs_type.isAmbigiuous()) {
         // lhs as u64 > 4
         // lhs as f64 > 4.0
         try self.checkRepresentability(rhs.*, lhs_type, token_start);
@@ -207,7 +207,7 @@ fn checkBinaryImplicitCast(self: *Sema, lhs: *Value, rhs: *Value, token_start: u
         } else {
             rhs.* = .{ .typed_float = .{ .type = lhs_type, .value = rhs.float } };
         }
-    } else {
+    } else if (std.meta.activeTag(lhs_type) != std.meta.activeTag(rhs_type)) {
         try self.reportIncompatibleTypes(lhs_type, rhs_type, token_start);
     }
 }
