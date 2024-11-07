@@ -23,7 +23,9 @@ context: c.LLVMContextRef,
 module: c.LLVMModuleRef,
 builder: c.LLVMBuilderRef,
 
-maybe_function: ?c.LLVMValueRef = null,
+function_value: c.LLVMValueRef = undefined,
+function_type: Type = undefined,
+
 basic_blocks: std.AutoHashMapUnmanaged(u32, c.LLVMBasicBlockRef) = .{},
 
 strings: std.StringHashMapUnmanaged(c.LLVMValueRef) = .{},
@@ -363,6 +365,68 @@ fn getLlvmType(self: *LlvmBackend, @"type": Type) Error!c.LLVMTypeRef {
     };
 }
 
+fn unaryIntCast(self: *LlvmBackend, lhs: *Register, to: Type) Error!void {
+    lhs.value = c.LLVMBuildIntCast2(self.builder, lhs.value, try self.getLlvmType(to), @intFromBool(to.canBeNegative()), "");
+    lhs.type = to;
+}
+
+fn unaryFloatCast(self: *LlvmBackend, lhs: *Register, to: Type) Error!void {
+    lhs.value = c.LLVMBuildFPCast(self.builder, lhs.value, try self.getLlvmType(to), "");
+    lhs.type = to;
+}
+
+fn unaryImplicitCast(self: *LlvmBackend, lhs: *Register, to: Type) Error!void {
+    std.debug.assert(!to.isAmbigiuous());
+
+    if (lhs.type.eql(to)) return;
+
+    // var x u8 = 4;
+    // var y f32 = 4.0;
+    // var z u16 = x;
+
+    if (to == .int) {
+        try self.unaryIntCast(lhs, to);
+    } else if (to == .float) {
+        try self.unaryFloatCast(lhs, to);
+    }
+}
+
+fn binaryImplicitCast(self: *LlvmBackend, lhs: *Register, rhs: *Register) Error!void {
+    if (lhs.type.eql(rhs.type)) return;
+
+    if (!lhs.type.isAmbigiuous() and !rhs.type.isAmbigiuous()) {
+        if (lhs.type == .int and lhs.type.int.bits > rhs.type.int.bits) {
+            // lhs as u64 > rhs as u16
+            try self.unaryIntCast(rhs, lhs.type);
+        } else if (lhs.type == .float and lhs.type.float.bits > rhs.type.float.bits) {
+            // lhs as f64 > rhs as f32
+            try self.unaryFloatCast(rhs, lhs.type);
+        } else if (lhs.type == .int and lhs.type.int.bits < rhs.type.int.bits) {
+            // lhs as u16 > rhs as u64
+            try self.unaryIntCast(lhs, rhs.type);
+        } else if (lhs.type == .float and lhs.type.float.bits < rhs.type.float.bits) {
+            // lhs as f32 > rhs as f64
+            try self.unaryFloatCast(lhs, rhs.type);
+        }
+    } else if (lhs.type.isAmbigiuous() and !rhs.type.isAmbigiuous()) {
+        if (lhs.type == .ambigiuous_int) {
+            // 4 > rhs as u64
+            try self.unaryIntCast(lhs, rhs.type);
+        } else if (lhs.type == .ambigiuous_float) {
+            // 4.0 > rhs as f64
+            try self.unaryFloatCast(lhs, rhs.type);
+        }
+    } else if (rhs.type.isAmbigiuous() and !lhs.type.isAmbigiuous()) {
+        if (rhs.type == .ambigiuous_int) {
+            // rhs as u64 > 4
+            try self.unaryIntCast(rhs, lhs.type);
+        } else if (rhs.type == .ambigiuous_float) {
+            // rhs as f64 > 4.0
+            try self.unaryFloatCast(rhs, lhs.type);
+        }
+    }
+}
+
 pub fn render(self: *LlvmBackend, air: Air) Error!void {
     for (air.instructions.items, 0..) |air_instruction, i| {
         try self.renderInstruction(air_instruction, air.instructions.items[i..]);
@@ -522,14 +586,15 @@ fn renderBitwiseArithmetic(self: *LlvmBackend, comptime operation: BitwiseArithm
 }
 
 fn renderWrite(self: *LlvmBackend) Error!void {
-    const write_pointer = self.stack.pop().value;
-    const write_value = self.stack.pop().value;
+    const write_pointer = self.stack.pop();
 
-    _ = c.LLVMBuildStore(
-        self.builder,
-        write_value,
-        write_pointer,
-    );
+    const element_type = write_pointer.type.pointer.child_type.*;
+
+    var write_register = self.stack.pop();
+
+    try self.unaryImplicitCast(&write_register, element_type);
+
+    _ = c.LLVMBuildStore(self.builder, write_register.value, write_pointer.value);
 }
 
 fn renderRead(self: *LlvmBackend) Error!void {
@@ -544,7 +609,9 @@ fn renderRead(self: *LlvmBackend) Error!void {
         "",
     );
 
-    try self.stack.append(self.allocator, .{ .value = read_value, .type = element_type });
+    const read_register: Register = .{ .value = read_value, .type = element_type };
+
+    try self.stack.append(self.allocator, read_register);
 }
 
 fn renderGetElementPtr(self: *LlvmBackend) Error!void {
@@ -599,50 +666,6 @@ fn renderGetFieldPtr(self: *LlvmBackend, field_index: u32) Error!void {
             },
         },
     );
-}
-
-fn binaryIntCast(self: *LlvmBackend, lhs: *Register, rhs: *Register) Error!void {
-    lhs.value = c.LLVMBuildIntCast2(self.builder, lhs.value, try self.getLlvmType(rhs.type), @intFromBool(rhs.type.canBeNegative()), "");
-    lhs.type = rhs.type;
-}
-
-fn binaryFloatCast(self: *LlvmBackend, lhs: *Register, rhs: *Register) Error!void {
-    lhs.value = c.LLVMBuildFPCast(self.builder, lhs.value, try self.getLlvmType(rhs.type), "");
-    lhs.type = rhs.type;
-}
-
-fn binaryImplicitCast(self: *LlvmBackend, lhs: *Register, rhs: *Register) Error!void {
-    if (!lhs.type.eql(rhs.type) and !lhs.type.isAmbigiuous() and !rhs.type.isAmbigiuous()) {
-        if (lhs.type == .int and lhs.type.int.bits > rhs.type.int.bits) {
-            // lhs as u64 > rhs as u16
-            try self.binaryIntCast(rhs, lhs);
-        } else if (lhs.type == .float and lhs.type.float.bits > rhs.type.float.bits) {
-            // lhs as f64 > rhs as f32
-            try self.binaryFloatCast(rhs, lhs);
-        } else if (lhs.type == .int and lhs.type.int.bits < rhs.type.int.bits) {
-            // lhs as u16 > rhs as u64
-            try self.binaryIntCast(lhs, rhs);
-        } else if (lhs.type == .float and lhs.type.float.bits < rhs.type.float.bits) {
-            // lhs as f32 > rhs as f64
-            try self.binaryFloatCast(lhs, rhs);
-        }
-    } else if (lhs.type.isAmbigiuous() and !rhs.type.isAmbigiuous()) {
-        if (lhs.type == .ambigiuous_int) {
-            // 4 > rhs as u64
-            try self.binaryIntCast(lhs, rhs);
-        } else if (lhs.type == .ambigiuous_float) {
-            // 4.0 > rhs as f64
-            try self.binaryFloatCast(lhs, rhs);
-        }
-    } else if (rhs.type.isAmbigiuous() and !lhs.type.isAmbigiuous()) {
-        if (rhs.type == .ambigiuous_int) {
-            // rhs as u64 > 4
-            try self.binaryIntCast(rhs, lhs);
-        } else if (rhs.type == .ambigiuous_float) {
-            // rhs as f64 > 4.0
-            try self.binaryFloatCast(rhs, lhs);
-        }
-    }
 }
 
 const ArithmeticOperation = enum {
@@ -891,7 +914,13 @@ fn renderCall(self: *LlvmBackend, arguments_count: usize) Error!void {
     const arguments = try self.allocator.alloc(c.LLVMValueRef, arguments_count);
 
     for (0..arguments_count) |i| {
-        arguments[i] = self.stack.pop().value;
+        var argument = self.stack.pop();
+
+        if (i < function_type.function.parameter_types.len) {
+            try self.unaryImplicitCast(&argument, function_type.function.parameter_types[i]);
+        }
+
+        arguments[i] = argument.value;
     }
 
     const call = c.LLVMBuildCall2(
@@ -931,7 +960,8 @@ fn renderFunction(self: *LlvmBackend, symbol: Symbol, remainder_instructions: []
         break :blk function_pointer;
     };
 
-    self.maybe_function = function_pointer;
+    self.function_value = function_pointer;
+    self.function_type = symbol.type.pointer.child_type.*;
 
     var scope_depth: usize = 0;
 
@@ -953,7 +983,7 @@ fn renderParameters(self: *LlvmBackend, symbols: []const Symbol) Error!void {
     for (symbols, 0..) |symbol, i| {
         const parameter_pointer = c.LLVMBuildAlloca(self.builder, try self.getLlvmType(symbol.type), "");
 
-        _ = c.LLVMBuildStore(self.builder, c.LLVMGetParam(self.maybe_function.?, @intCast(i)), parameter_pointer);
+        _ = c.LLVMBuildStore(self.builder, c.LLVMGetParam(self.function_value, @intCast(i)), parameter_pointer);
 
         try self.scope.put(
             self.allocator,
@@ -972,7 +1002,9 @@ fn renderVariable(self: *LlvmBackend, symbol: Symbol) Error!void {
 
     if (self.scope.get(symbol.name.buffer)) |variable| {
         if (variable.linkage == .global) {
-            const register = self.stack.popOrNull() orelse Register{ .value = c.LLVMGetUndef(llvm_type), .type = symbol.type };
+            var register = self.stack.popOrNull() orelse Register{ .value = c.LLVMGetUndef(llvm_type), .type = symbol.type };
+
+            try self.unaryImplicitCast(&register, symbol.type);
 
             _ = c.LLVMSetInitializer(variable.pointer, register.value);
         }
@@ -985,7 +1017,9 @@ fn renderVariable(self: *LlvmBackend, symbol: Symbol) Error!void {
                     try self.allocator.dupeZ(u8, symbol.name.buffer),
                 );
 
-                const register = self.stack.popOrNull() orelse Register{ .value = c.LLVMGetUndef(llvm_type), .type = symbol.type };
+                var register = self.stack.popOrNull() orelse Register{ .value = c.LLVMGetUndef(llvm_type), .type = symbol.type };
+
+                try self.unaryImplicitCast(&register, symbol.type);
 
                 _ = c.LLVMSetInitializer(global_variable_pointer, register.value);
 
@@ -994,7 +1028,7 @@ fn renderVariable(self: *LlvmBackend, symbol: Symbol) Error!void {
 
             .local => blk: {
                 const current_block = c.LLVMGetInsertBlock(self.builder);
-                const first_block = c.LLVMGetFirstBasicBlock(self.maybe_function.?);
+                const first_block = c.LLVMGetFirstBasicBlock(self.function_value);
                 const first_instruction = c.LLVMGetFirstInstruction(first_block);
 
                 if (first_instruction != null) {
@@ -1058,11 +1092,11 @@ fn renderExternal(self: *LlvmBackend, symbol: Symbol) Error!void {
 fn renderSet(self: *LlvmBackend, name: []const u8) Error!void {
     const variable = self.scope.get(name).?;
 
-    _ = c.LLVMBuildStore(
-        self.builder,
-        self.stack.pop().value,
-        variable.pointer,
-    );
+    var register = self.stack.pop();
+
+    try self.unaryImplicitCast(&register, variable.type);
+
+    _ = c.LLVMBuildStore(self.builder, register.value, variable.pointer);
 }
 
 fn renderGet(self: *LlvmBackend, name: []const u8) Error!void {
@@ -1136,9 +1170,12 @@ fn modifyScope(self: *LlvmBackend, start: bool) Error!void {
 
 fn renderReturn(self: *LlvmBackend, with_value: bool) Error!void {
     if (with_value) {
-        const return_value = self.stack.pop().value;
+        var return_register = self.stack.pop();
+        const return_type = self.function_type.function.return_type.*;
 
-        _ = c.LLVMBuildRet(self.builder, return_value);
+        try self.unaryImplicitCast(&return_register, return_type);
+
+        _ = c.LLVMBuildRet(self.builder, return_register.value);
     } else {
         _ = c.LLVMBuildRetVoid(self.builder);
     }
