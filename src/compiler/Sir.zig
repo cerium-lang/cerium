@@ -157,8 +157,6 @@ pub const Instruction = union(enum) {
     parameters: []const SubSymbol,
     /// Declare a constant that is replaced at compile time and acts as a placeholder for a value
     constant: SubSymbol,
-    /// Same as `constant` but the type is unknown at the point of declaration
-    constant_infer: SubSymbol,
     /// Declare a variable that is only known at runtime and doesn't get replaced by the compiler
     variable: SubSymbol,
     /// Same as `variable` but the type is unknown at the point of declaration
@@ -526,7 +524,7 @@ pub const Parser = struct {
 
         const name = try self.parseName();
 
-        const maybe_subtype = if (self.peekToken().tag == .equal_sign)
+        const maybe_subtype = if (self.peekToken().tag == .equal_sign or is_const)
             null
         else
             try self.parseSubType();
@@ -557,25 +555,16 @@ pub const Parser = struct {
         try self.sir.instructions.append(
             self.allocator,
             if (maybe_subtype) |subtype|
-                if (is_const)
-                    .{
-                        .constant = .{
-                            .name = name,
-                            .subtype = subtype,
-                            .linkage = linkage,
-                        },
-                    }
-                else
-                    .{
-                        .variable = .{
-                            .name = name,
-                            .subtype = subtype,
-                            .linkage = linkage,
-                        },
-                    }
+                .{
+                    .variable = .{
+                        .name = name,
+                        .subtype = subtype,
+                        .linkage = linkage,
+                    },
+                }
             else if (is_const)
                 .{
-                    .constant_infer = .{
+                    .constant = .{
                         .name = name,
                         .subtype = .{ .pure = .void },
                         .linkage = linkage,

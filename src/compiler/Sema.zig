@@ -58,50 +58,16 @@ const Value = union(enum) {
     string: []const u8,
     int: i128,
     float: f64,
-    typed_int: TypedInt,
-    typed_float: TypedFloat,
     boolean: bool,
     runtime: Type,
 
-    const TypedInt = struct {
-        type: Type,
-        value: i128,
-    };
-
-    const TypedFloat = struct {
-        type: Type,
-        value: f64,
-    };
-
-    fn canImplicitCast(self: Value, to: Type) bool {
-        const self_type = self.getType();
-
-        return (self == .int and to.isInt()) or
-            (self == .float and to.isFloat()) or
-            (self_type == .ambigiuous_int and to.isInt()) or
-            (self_type == .ambigiuous_float and to.isFloat()) or
-            (self_type.isInt() and to.isInt() and
-            self_type.maxInt() <= to.maxInt() and self_type.minInt() >= to.minInt() and
-            self_type.canBeNegative() == to.canBeNegative()) or
-            (self_type.isFloat() and to.isFloat() and
-            self_type.maxFloat() <= to.maxFloat()) or
-            self_type.eql(to);
-    }
-
-    fn canBeRepresented(self: Value, as: Type) bool {
-        return (self == .int and self.int >= as.minInt() and
-            self == .int and self.int <= as.maxInt()) or
-            (self == .float and self.float >= -as.maxFloat() and
-            self == .float and self.float <= as.maxFloat()) or
-            (self != .int and self != .float);
-    }
-
     fn getType(self: Value) Type {
         return switch (self) {
-            .int => .ambigiuous_int,
-            .float => .ambigiuous_float,
-            .typed_int => |typed_int| typed_int.type,
-            .typed_float => |typed_float| typed_float.type,
+            .int => |int| Type.intFittingRange(int, int),
+            .float => |float| if (float > std.math.floatMax(f32) or (float < 0 and -float > std.math.floatMax(f32)))
+                .{ .float = .{ .bits = 64 } }
+            else
+                .{ .float = .{ .bits = 32 } },
             .boolean => .bool,
             .string => .string,
             .runtime => |runtime| runtime,
@@ -112,8 +78,6 @@ const Value = union(enum) {
         switch (self) {
             .int => |int| try writer.print("{}", .{int}),
             .float => |float| try writer.print("{d}", .{float}),
-            .typed_int => |typed_int| try writer.print("{}", .{typed_int.value}),
-            .typed_float => |typed_float| try writer.print("{d}", .{typed_float.value}),
             .boolean => |boolean| try writer.print("{}", .{boolean}),
             .string => |string| try writer.print("{s}", .{string}),
             .runtime => |runtime| try writer.print("<runtime value '{}'>", .{runtime}),
@@ -130,90 +94,67 @@ const Variable = struct {
     is_type_alias: bool = false,
 };
 
-fn checkRepresentability(self: *Sema, source_value: Value, destination_type: Type, token_start: u32) Error!void {
-    const source_type = source_value.getType();
+fn checkUnaryImplicitCast(self: *Sema, lhs: Value, to: Type, token_start: u32) Error!void {
+    const lhs_type = lhs.getType();
 
-    if (!source_value.canImplicitCast(destination_type)) {
+    if (!((lhs == .int and lhs.int >= to.minInt() and
+        lhs == .int and lhs.int <= to.maxInt()) or
+        (lhs == .float and lhs.float >= -to.maxFloat() and
+        lhs == .float and lhs.float <= to.maxFloat()) or
+        (lhs_type == .int and to == .int and
+        lhs_type.maxInt() <= to.maxInt() and lhs_type.minInt() >= to.minInt() and
+        lhs_type.canBeNegative() == to.canBeNegative()) or
+        (lhs_type == .float and to == .float and
+        lhs_type.maxFloat() <= to.maxFloat()) or
+        lhs_type.eql(to)))
+    {
         var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
-        try error_message_buf.writer(self.allocator).print("'{}' cannot be implicitly casted to '{}'", .{ source_type, destination_type });
+        try error_message_buf.writer(self.allocator).print("'{}' cannot be implicitly casted to '{}'", .{ lhs_type, to });
 
         self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
 
         return error.MismatchedTypes;
     }
-
-    if (!source_value.canBeRepresented(destination_type)) {
-        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-        try error_message_buf.writer(self.allocator).print("'{}' cannot represent value '{}'", .{ destination_type, source_value });
-
-        self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
-
-        return error.TypeCannotRepresentValue;
-    }
 }
 
-fn checkBinaryImplicitCast(self: *Sema, lhs: *Value, rhs: *Value, token_start: u32) Error!void {
-    const lhs_type = lhs.getType();
-    const rhs_type = rhs.getType();
-
-    if (std.meta.activeTag(lhs_type) == std.meta.activeTag(rhs_type) and !lhs_type.isAmbigiuous() and !rhs_type.isAmbigiuous()) {
-        if (lhs_type == .int and lhs_type.int.bits > rhs_type.int.bits or
-            lhs_type == .float and lhs_type.float.bits > rhs_type.float.bits)
+fn checkBinaryImplicitCast(self: *Sema, lhs: Value, rhs: Value, lhs_type: *Type, rhs_type: *Type, token_start: u32) Error!void {
+    if (std.meta.activeTag(lhs_type.*) == std.meta.activeTag(rhs_type.*)) {
+        if (lhs == .runtime and rhs == .runtime and
+            lhs_type.canBeNegative() != rhs_type.canBeNegative())
         {
-            // lhs as u64 > rhs as i8
+            try self.reportIncompatibleTypes(lhs_type.*, rhs_type.*, token_start);
+        }
+
+        if (lhs_type.* == .int and lhs_type.int.bits > rhs_type.int.bits or
+            lhs_type.* == .float and lhs_type.float.bits > rhs_type.float.bits)
+        {
             // lhs as u64 > rhs as u16
             // lhs as f64 > rhs as f32
-            try self.checkRepresentability(rhs.*, lhs_type, token_start);
+            try self.checkUnaryImplicitCast(rhs, lhs_type.*, token_start);
 
-            rhs.* = lhs.*;
-        } else if (lhs_type == .int and lhs_type.int.bits < rhs_type.int.bits or
-            lhs_type == .float and lhs_type.float.bits < rhs_type.float.bits)
+            rhs_type.* = lhs_type.*;
+        } else if (lhs_type.* == .int and lhs_type.int.bits < rhs_type.int.bits or
+            lhs_type.* == .float and lhs_type.float.bits < rhs_type.float.bits)
         {
-            // lhs as i8 > rhs as u64
             // lhs as u16 > rhs as u64
             // lhs as f32 > rhs as f64
-            try self.checkRepresentability(lhs.*, rhs_type, token_start);
+            try self.checkUnaryImplicitCast(lhs, rhs_type.*, token_start);
 
-            lhs.* = rhs.*;
-        } else if (lhs_type == .pointer) {
+            lhs_type.* = rhs_type.*;
+        } else if (lhs_type.* == .pointer) {
             // lhs as *const u8 == rhs as *const u8
             // lhs as *const u8 == rhs as *const u16
             //
             // Both are allowed since it is a pointer comparison which compares the addresses
         }
-    } else if (lhs_type.isAmbigiuous() and !rhs_type.isAmbigiuous()) {
-        // 4 > rhs as u64
-        // 4.0 > rhs as f64
-        try self.checkRepresentability(lhs.*, rhs_type, token_start);
-
-        if (lhs.* == .runtime) {
-            lhs.runtime = rhs_type;
-        } else if (lhs_type.isInt()) {
-            lhs.* = .{ .typed_int = .{ .type = rhs_type, .value = lhs.int } };
-        } else {
-            lhs.* = .{ .typed_float = .{ .type = rhs_type, .value = lhs.float } };
-        }
-    } else if (rhs_type.isAmbigiuous() and !lhs_type.isAmbigiuous()) {
-        // lhs as u64 > 4
-        // lhs as f64 > 4.0
-        try self.checkRepresentability(rhs.*, lhs_type, token_start);
-
-        if (rhs.* == .runtime) {
-            rhs.runtime = lhs_type;
-        } else if (rhs_type.isInt()) {
-            rhs.* = .{ .typed_int = .{ .type = lhs_type, .value = rhs.int } };
-        } else {
-            rhs.* = .{ .typed_float = .{ .type = lhs_type, .value = rhs.float } };
-        }
-    } else if (std.meta.activeTag(lhs_type) != std.meta.activeTag(rhs_type)) {
-        try self.reportIncompatibleTypes(lhs_type, rhs_type, token_start);
+    } else {
+        try self.reportIncompatibleTypes(lhs_type.*, rhs_type.*, token_start);
     }
 }
 
 fn checkIntOrFloat(self: *Sema, provided_type: Type, token_start: u32) Error!void {
-    if (!provided_type.isIntOrFloat()) {
+    if (provided_type != .int and provided_type != .float) {
         var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
         try error_message_buf.writer(self.allocator).print("'{}' is provided while expected an integer or float", .{provided_type});
@@ -224,7 +165,7 @@ fn checkIntOrFloat(self: *Sema, provided_type: Type, token_start: u32) Error!voi
 }
 
 fn checkIntOrFloatOrPointer(self: *Sema, provided_type: Type, token_start: u32) Error!void {
-    if (!provided_type.isIntOrFloatOrPointer()) {
+    if (provided_type != .int and provided_type != .float and provided_type != .pointer) {
         var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
         try error_message_buf.writer(self.allocator).print("'{}' is provided while expected an integer or float or pointer", .{provided_type});
@@ -236,7 +177,7 @@ fn checkIntOrFloatOrPointer(self: *Sema, provided_type: Type, token_start: u32) 
 }
 
 fn checkInt(self: *Sema, provided_type: Type, token_start: u32) Error!void {
-    if (!provided_type.isInt()) {
+    if (provided_type != .int) {
         var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
         try error_message_buf.writer(self.allocator).print("'{}' is provided while expected an integer", .{provided_type});
@@ -248,7 +189,7 @@ fn checkInt(self: *Sema, provided_type: Type, token_start: u32) Error!void {
 }
 
 fn checkIntType(self: *Sema, provided_type: Type, token_start: u32) Error!void {
-    if (!provided_type.isInt()) {
+    if (provided_type != .int) {
         var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
         try error_message_buf.writer(self.allocator).print("'{}' is provided while expected an integer type", .{provided_type});
@@ -575,7 +516,7 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
     });
 
     self.scope.putAssumeCapacity("builtin::target::os", .{
-        .type = .ambigiuous_int,
+        .type = .{ .int = .{ .signedness = .unsigned, .bits = @typeInfo(@typeInfo(std.Target.Os.Tag).@"enum".tag_type).int.bits } },
         .linkage = .global,
         .maybe_value = .{ .int = @intFromEnum(self.env.target.os.tag) },
         .is_const = true,
@@ -583,7 +524,7 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
     });
 
     self.scope.putAssumeCapacity("builtin::target::arch", .{
-        .type = .ambigiuous_int,
+        .type = .{ .int = .{ .signedness = .unsigned, .bits = @typeInfo(@typeInfo(std.Target.Cpu.Arch).@"enum".tag_type).int.bits } },
         .linkage = .global,
         .maybe_value = .{ .int = @intFromEnum(self.env.target.cpu.arch) },
         .is_const = true,
@@ -751,8 +692,7 @@ fn analyzeInstruction(self: *Sema, instruction: Sir.Instruction) Error!void {
 
         .parameters => |subsymbols| try self.analyzeParameters(subsymbols),
 
-        .constant => |subsymbol| try self.analyzeConstant(false, subsymbol),
-        .constant_infer => |subsymbol| try self.analyzeConstant(true, subsymbol),
+        .constant => |subsymbol| try self.analyzeConstant(subsymbol),
 
         .variable => |subsymbol| try self.analyzeVariable(false, subsymbol),
         .variable_infer => |subsymbol| try self.analyzeVariable(true, subsymbol),
@@ -815,7 +755,7 @@ fn analyzeFloat(self: *Sema, float: f64) Error!void {
 fn analyzeNegate(self: *Sema, token_start: u32) Error!void {
     const rhs = self.stack.pop();
 
-    if (!rhs.getType().canBeNegative()) {
+    if (!rhs.getType().canBeNegative() and rhs != .int) {
         var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
         try error_message_buf.writer(self.allocator).print("'{}' cannot be negative", .{rhs.getType()});
@@ -858,7 +798,7 @@ fn analyzeNot(self: *Sema, comptime operand: NotOperation, token_start: u32) Err
     const rhs_type = rhs.getType();
 
     if (operand == .bool) {
-        try self.checkRepresentability(rhs, .bool, token_start);
+        try self.checkUnaryImplicitCast(rhs, .bool, token_start);
     } else if (operand == .bit) {
         try self.checkInt(rhs_type, token_start);
     }
@@ -896,21 +836,13 @@ fn analyzeBitwiseArithmetic(self: *Sema, comptime operation: BitwiseArithmeticOp
     const rhs = self.stack.pop();
     const lhs = self.stack.pop();
 
-    const lhs_type = lhs.getType();
-    const rhs_type = rhs.getType();
+    var lhs_type = lhs.getType();
+    var rhs_type = rhs.getType();
 
     try self.checkInt(lhs_type, token_start);
     try self.checkInt(rhs_type, token_start);
 
-    if (!lhs_type.eql(rhs_type) and !lhs_type.isAmbigiuous() and !rhs_type.isAmbigiuous()) {
-        return self.reportIncompatibleTypes(lhs_type, rhs_type, token_start);
-    }
-
-    switch (operation) {
-        .bit_and => try self.air.instructions.append(self.allocator, .bit_and),
-        .bit_or => try self.air.instructions.append(self.allocator, .bit_or),
-        .bit_xor => try self.air.instructions.append(self.allocator, .bit_xor),
-    }
+    try self.checkBinaryImplicitCast(lhs, rhs, &lhs_type, &rhs_type, token_start);
 
     switch (lhs) {
         .int => |lhs_int| switch (rhs) {
@@ -936,21 +868,13 @@ fn analyzeBitwiseArithmetic(self: *Sema, comptime operation: BitwiseArithmeticOp
         else => {},
     }
 
-    if (!lhs_type.isAmbigiuous()) {
-        // Check if we can represent the rhs ambigiuous value as lhs type (e.g. x + 4)
-        if (rhs_type.isAmbigiuous()) {
-            try self.checkRepresentability(rhs, lhs_type, token_start);
-        }
-
-        try self.stack.append(self.allocator, .{ .runtime = lhs_type });
-    } else {
-        // Check if we can represent the lhs ambigiuous value as rhs type (e.g. 4 + x)
-        if (!rhs_type.isAmbigiuous()) {
-            try self.checkRepresentability(lhs, rhs_type, token_start);
-        }
-
-        try self.stack.append(self.allocator, .{ .runtime = rhs_type });
+    switch (operation) {
+        .bit_and => try self.air.instructions.append(self.allocator, .bit_and),
+        .bit_or => try self.air.instructions.append(self.allocator, .bit_or),
+        .bit_xor => try self.air.instructions.append(self.allocator, .bit_xor),
     }
+
+    try self.stack.append(self.allocator, .{ .runtime = lhs_type });
 }
 
 fn analyzeWrite(self: *Sema, token_start: u32) Error!void {
@@ -968,7 +892,7 @@ fn analyzeWrite(self: *Sema, token_start: u32) Error!void {
         return error.UnexpectedMutation;
     }
 
-    try self.checkRepresentability(rhs, lhs_pointer.child_type.*, token_start);
+    try self.checkUnaryImplicitCast(rhs, lhs_pointer.child_type.*, token_start);
 
     try self.air.instructions.append(self.allocator, .write);
 }
@@ -1002,7 +926,7 @@ fn analyzeGetElementPtr(self: *Sema, token_start: u32) Error!void {
 
     const usize_type: Type = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.ptrBitWidth() } };
 
-    try self.checkRepresentability(rhs, usize_type, token_start);
+    try self.checkUnaryImplicitCast(rhs, usize_type, token_start);
 
     try self.air.instructions.append(self.allocator, .get_element_ptr);
 
@@ -1098,8 +1022,8 @@ const ArithmeticOperation = enum {
 };
 
 fn analyzeArithmetic(self: *Sema, comptime operation: ArithmeticOperation, token_start: u32) Error!void {
-    var rhs = self.stack.pop();
-    var lhs = self.stack.pop();
+    const rhs = self.stack.pop();
+    const lhs = self.stack.pop();
 
     var lhs_type = lhs.getType();
     var rhs_type = rhs.getType();
@@ -1111,23 +1035,20 @@ fn analyzeArithmetic(self: *Sema, comptime operation: ArithmeticOperation, token
         const usize_type: Type = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.ptrBitWidth() } };
 
         if (lhs_type == .pointer and rhs_type != .pointer) {
-            try self.checkRepresentability(rhs, usize_type, token_start);
+            try self.checkUnaryImplicitCast(rhs, usize_type, token_start);
         } else if (rhs_type == .pointer and lhs_type != .pointer) {
-            try self.checkRepresentability(lhs, usize_type, token_start);
+            try self.checkUnaryImplicitCast(lhs, usize_type, token_start);
         } else if (lhs_type == .pointer and rhs_type == .pointer) {
-            try self.checkRepresentability(lhs, rhs_type, token_start);
+            try self.checkUnaryImplicitCast(lhs, rhs_type, token_start);
         } else {
-            try self.checkBinaryImplicitCast(&lhs, &rhs, token_start);
+            try self.checkBinaryImplicitCast(lhs, rhs, &lhs_type, &rhs_type, token_start);
         }
     } else {
         try self.checkIntOrFloat(lhs_type, token_start);
         try self.checkIntOrFloat(rhs_type, token_start);
 
-        try self.checkBinaryImplicitCast(&lhs, &rhs, token_start);
+        try self.checkBinaryImplicitCast(lhs, rhs, &lhs_type, &rhs_type, token_start);
     }
-
-    lhs_type = lhs.getType();
-    rhs_type = rhs.getType();
 
     switch (lhs) {
         .int => |lhs_int| switch (rhs) {
@@ -1213,8 +1134,8 @@ const ComparisonOperation = enum {
 };
 
 fn analyzeComparison(self: *Sema, comptime operation: ComparisonOperation, token_start: u32) Error!void {
-    var rhs = self.stack.pop();
-    var lhs = self.stack.pop();
+    const rhs = self.stack.pop();
+    const lhs = self.stack.pop();
 
     var lhs_type = lhs.getType();
     var rhs_type = rhs.getType();
@@ -1227,10 +1148,7 @@ fn analyzeComparison(self: *Sema, comptime operation: ComparisonOperation, token
     try self.checkCanBeCompared(lhs_type, token_start);
     try self.checkCanBeCompared(rhs_type, token_start);
 
-    try self.checkBinaryImplicitCast(&lhs, &rhs, token_start);
-
-    lhs_type = lhs.getType();
-    rhs_type = rhs.getType();
+    try self.checkBinaryImplicitCast(lhs, rhs, &lhs_type, &rhs_type, token_start);
 
     switch (lhs) {
         .int => |lhs_int| switch (rhs) {
@@ -1341,7 +1259,7 @@ fn analyzeBitwiseShift(self: *Sema, comptime direction: BitwiseShiftDirection, t
 
         self.air.instructions.items[self.air.instructions.items.len - 1] = .{ .int = result };
     } else {
-        try self.checkRepresentability(rhs, .{ .int = .{ .signedness = .unsigned, .bits = std.math.log2(lhs_type.int.bits) } }, token_start);
+        try self.checkUnaryImplicitCast(rhs, .{ .int = .{ .signedness = .unsigned, .bits = std.math.log2(lhs_type.int.bits) } }, token_start);
 
         switch (direction) {
             .left => try self.air.instructions.append(self.allocator, .shl),
@@ -1375,12 +1293,12 @@ fn analyzeCast(self: *Sema, cast: Sir.Instruction.Cast) Error!void {
     } else if (to == .pointer and from != .pointer) {
         const usize_type: Type = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.ptrBitWidth() } };
 
-        try self.checkRepresentability(rhs, usize_type, cast.token_start);
+        try self.checkUnaryImplicitCast(rhs, usize_type, cast.token_start);
     } else if (to == .bool) {
         try self.checkInt(from, cast.token_start);
     } else if (from == .bool) {
         try self.checkInt(to, cast.token_start);
-    } else if (from.isFloat()) {
+    } else if (from == .float) {
         try self.checkIntOrFloat(to, cast.token_start);
     }
 
@@ -1442,7 +1360,7 @@ fn analyzeCall(self: *Sema, call: Sir.Instruction.Call) Error!void {
         for (function.parameter_types) |parameter_type| {
             const argument = self.stack.pop();
 
-            try self.checkRepresentability(argument, parameter_type, call.token_start);
+            try self.checkUnaryImplicitCast(argument, parameter_type, call.token_start);
         }
 
         if (function.is_var_args) {
@@ -1491,7 +1409,7 @@ fn analyzeParameters(self: *Sema, subsymbols: []const Sir.SubSymbol) Error!void 
     try self.air.instructions.append(self.allocator, .{ .parameters = try symbols.toOwnedSlice(self.allocator) });
 }
 
-fn analyzeConstant(self: *Sema, infer: bool, subsymbol: Sir.SubSymbol) Error!void {
+fn analyzeConstant(self: *Sema, subsymbol: Sir.SubSymbol) Error!void {
     const symbol = try self.analyzeSubSymbol(subsymbol);
     if (self.scope.get(symbol.name.buffer) != null) return self.reportRedeclaration(symbol.name);
 
@@ -1504,15 +1422,7 @@ fn analyzeConstant(self: *Sema, infer: bool, subsymbol: Sir.SubSymbol) Error!voi
 
     var value = self.stack.getLast();
 
-    if (infer) {
-        variable.type = value.getType();
-    }
-
-    if (variable.type == .void) {
-        self.error_info = .{ .message = "cannot declare a constant with type 'void'", .source_loc = SourceLoc.find(self.buffer, symbol.name.token_start) };
-
-        return error.UnexpectedType;
-    }
+    variable.type = value.getType();
 
     if (value == .runtime) {
         self.error_info = .{ .message = "expected the constant initializer to be compile time known", .source_loc = SourceLoc.find(self.buffer, symbol.name.token_start) };
@@ -1535,12 +1445,6 @@ fn analyzeVariable(self: *Sema, infer: bool, subsymbol: Sir.SubSymbol) Error!voi
 
     if (variable.type == .void) {
         self.error_info = .{ .message = "cannot declare a variable with type 'void'", .source_loc = SourceLoc.find(self.buffer, symbol.name.token_start) };
-
-        return error.UnexpectedType;
-    }
-
-    if (variable.type.isAmbigiuous()) {
-        self.error_info = .{ .message = "cannot declare a variable with an ambigiuous type", .source_loc = SourceLoc.find(self.buffer, symbol.name.token_start) };
 
         return error.UnexpectedType;
     }
@@ -1587,9 +1491,7 @@ fn analyzeTypeAlias(self: *Sema, subsymbol: Sir.SubSymbol) Error!void {
         for (@"enum".fields) |field| {
             const enum_field_value: Value = .{ .int = field.value };
 
-            try self.checkRepresentability(enum_field_value, enum_type, field.name.token_start);
-
-            const enum_field_typed_value: Value = .{ .typed_int = .{ .type = enum_type, .value = field.value } };
+            try self.checkUnaryImplicitCast(enum_field_value, enum_type, field.name.token_start);
 
             const enum_field_entry = try std.mem.concat(self.allocator, u8, &.{ subsymbol.name.buffer, "::", field.name.buffer });
 
@@ -1599,7 +1501,7 @@ fn analyzeTypeAlias(self: *Sema, subsymbol: Sir.SubSymbol) Error!void {
             try self.scope.put(self.allocator, enum_field_entry, .{
                 .type = enum_type,
                 .linkage = subsymbol.linkage,
-                .maybe_value = enum_field_typed_value,
+                .maybe_value = enum_field_value,
                 .is_const = true,
                 .is_comptime = true,
             });
@@ -1622,19 +1524,11 @@ fn analyzeSet(self: *Sema, name: Name) Error!void {
     const variable = self.scope.getPtr(name.buffer) orelse return self.reportNotDeclared(name);
     if (variable.is_type_alias) return self.reportTypeNotExpression(name);
 
-    var value = self.stack.pop();
+    const value = self.stack.pop();
 
-    try self.checkRepresentability(value, variable.type, name.token_start);
+    try self.checkUnaryImplicitCast(value, variable.type, name.token_start);
 
     if (variable.is_comptime and variable.maybe_value == null) {
-        if (!variable.type.isAmbigiuous()) {
-            switch (value) {
-                .int => |int| value = .{ .typed_int = .{ .type = variable.type, .value = int } },
-                .float => |float| value = .{ .typed_float = .{ .type = variable.type, .value = float } },
-                else => {},
-            }
-        }
-
         _ = self.air.instructions.pop();
 
         variable.maybe_value = value;
@@ -1660,8 +1554,6 @@ fn analyzeGet(self: *Sema, name: Name) Error!void {
             .string => |string| try self.air.instructions.append(self.allocator, .{ .string = string }),
             .int => |int| try self.air.instructions.append(self.allocator, .{ .int = int }),
             .float => |float| try self.air.instructions.append(self.allocator, .{ .float = float }),
-            .typed_int => |typed_int| try self.air.instructions.append(self.allocator, .{ .int = typed_int.value }),
-            .typed_float => |typed_float| try self.air.instructions.append(self.allocator, .{ .float = typed_float.value }),
             .boolean => |boolean| try self.air.instructions.append(self.allocator, .{ .boolean = boolean }),
             .runtime => unreachable,
         }
@@ -1685,7 +1577,7 @@ fn analyzeBr(self: *Sema, br: Sir.Instruction.Br) Error!void {
 fn analyzeCondBr(self: *Sema, cond_br: Sir.Instruction.CondBr) Error!void {
     const condition = self.stack.pop();
 
-    try self.checkRepresentability(condition, .bool, cond_br.token_start);
+    try self.checkUnaryImplicitCast(condition, .bool, cond_br.token_start);
 
     try self.air.instructions.append(
         self.allocator,
@@ -1720,7 +1612,7 @@ fn analyzeReturn(self: *Sema, with_value: bool, token_start: u32) Error!void {
     const return_type = self.maybe_function.?.pointer.child_type.*.function.return_type.*;
 
     if (with_value) {
-        try self.checkRepresentability(self.stack.pop(), return_type, token_start);
+        try self.checkUnaryImplicitCast(self.stack.pop(), return_type, token_start);
     } else {
         if (return_type != .void) {
             self.error_info = .{ .message = "function with non void return type returns void", .source_loc = SourceLoc.find(self.buffer, token_start) };

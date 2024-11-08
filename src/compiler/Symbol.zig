@@ -18,8 +18,6 @@ pub const Linkage = enum {
 pub const Type = union(enum) {
     void,
     bool,
-    ambigiuous_int,
-    ambigiuous_float,
     int: Int,
     float: Float,
     pointer: Pointer,
@@ -74,36 +72,9 @@ pub const Type = union(enum) {
         },
     };
 
-    pub fn isInt(self: Type) bool {
-        return switch (self) {
-            .ambigiuous_int, .int => true,
-
-            else => false,
-        };
-    }
-
-    pub fn isFloat(self: Type) bool {
-        return switch (self) {
-            .ambigiuous_float, .float => true,
-
-            else => false,
-        };
-    }
-
-    pub fn isIntOrFloat(self: Type) bool {
-        return (self.isInt() or self.isFloat());
-    }
-
-    pub fn isIntOrFloatOrPointer(self: Type) bool {
-        return (self.isInt() or self.isFloat() or self == .pointer);
-    }
-
     pub fn minInt(self: Type) i128 {
         return switch (self) {
-            .ambigiuous_int => std.math.minInt(i128),
-
             .int => |int| {
-                std.debug.assert(int.bits <= 64);
                 if (int.signedness == .unsigned or int.bits == 0) return 0;
                 return -(@as(i128, 1) << @intCast(int.bits - 1));
             },
@@ -114,9 +85,7 @@ pub const Type = union(enum) {
 
     pub fn maxInt(self: Type) i128 {
         return switch (self) {
-            .ambigiuous_int => std.math.maxInt(i128),
             .int => |int| {
-                std.debug.assert(int.bits <= 64);
                 if (int.bits == 0) return 0;
                 return (@as(i128, 1) << @intCast(int.bits - @intFromBool(int.signedness == .signed))) - 1;
             },
@@ -127,7 +96,6 @@ pub const Type = union(enum) {
 
     pub fn maxFloat(self: Type) f64 {
         return switch (self) {
-            .ambigiuous_float => std.math.floatMax(f64),
             .float => |float| if (float.bits == 32) std.math.floatMax(f32) else if (float.bits == 64) std.math.floatMax(f64) else unreachable,
 
             else => unreachable,
@@ -155,17 +123,8 @@ pub const Type = union(enum) {
 
     pub fn canBeNegative(self: Type) bool {
         return switch (self) {
-            .ambigiuous_int, .ambigiuous_float => true,
             .float => true,
             .int => |int| int.signedness == .signed,
-
-            else => false,
-        };
-    }
-
-    pub fn isAmbigiuous(self: Type) bool {
-        return switch (self) {
-            .ambigiuous_int, .ambigiuous_float => true,
 
             else => false,
         };
@@ -241,9 +200,6 @@ pub const Type = union(enum) {
 
                 try writer.writeAll(" }");
             },
-
-            .ambigiuous_int => try writer.writeAll("ambigiuous_int"),
-            .ambigiuous_float => try writer.writeAll("ambigiuous_float"),
 
             .int => |int| try writer.print("{c}{}", .{ if (int.signedness == .unsigned) @as(u8, 'u') else @as(u8, 's'), int.bits }),
             .float => |float| try writer.print("f{}", .{float.bits}),

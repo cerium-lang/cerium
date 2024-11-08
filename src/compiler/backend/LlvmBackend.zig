@@ -108,7 +108,7 @@ pub fn targetTripleZ(allocator: std.mem.Allocator, target: std.Target) ![:0]u8 {
         .loongarch32 => "loongarch32",
         .loongarch64 => "loongarch64",
         .m68k => "m68k",
-        // MIPS sub-architectures are a bit irregular, so we handle them manually here.
+        // MIPS sub-architectures are a bit irregular, so we handle them manually here
         .mips => if (std.Target.mips.featureSetHas(features, .mips32r6)) "mipsisa32r6" else "mips",
         .mipsel => if (std.Target.mips.featureSetHas(features, .mips32r6)) "mipsisa32r6el" else "mipsel",
         .mips64 => if (std.Target.mips.featureSetHas(features, .mips64r6)) "mipsisa64r6" else "mips64",
@@ -156,9 +156,6 @@ pub fn targetTripleZ(allocator: std.mem.Allocator, target: std.Target) ![:0]u8 {
             .{ .v6kz, "v6kz" },
             .{ .v6m, "v6m" },
             .{ .v6t2, "v6t2" },
-            // v7k and v7s imply v7a so they have to be tested first.
-            .{ .v7k, "v7k" },
-            .{ .v7s, "v7s" },
             .{ .v7a, "v7a" },
             .{ .v7em, "v7em" },
             .{ .v7m, "v7m" },
@@ -203,7 +200,7 @@ pub fn targetTripleZ(allocator: std.mem.Allocator, target: std.Target) ![:0]u8 {
 
     if (llvm_sub_arch) |sub| try llvm_triple.appendSlice(sub);
 
-    // Unlike CPU backends, GPU backends actually care about the vendor tag.
+    // Unlike CPU backends, GPU backends actually care about the vendor tag
     try llvm_triple.appendSlice(switch (target.cpu.arch) {
         .amdgcn => if (target.os.tag == .mesa3d) "-mesa-" else "-amd-",
         .nvptx, .nvptx64 => "-nvidia-",
@@ -280,6 +277,8 @@ pub fn targetTripleZ(allocator: std.mem.Allocator, target: std.Target) ![:0]u8 {
         .android => "android",
         .androideabi => "androideabi",
         .musl => "musl",
+        .muslabin32 => "musl", // Should be "muslabin32" in LLVM 20 (I still use LLVM 17 btw)
+        .muslabi64 => "musl", // Should be "muslabi64" in LLVM 20 (I still use LLVM 17 btw)
         .musleabi => "musleabi",
         .musleabihf => "musleabihf",
         .muslx32 => "muslx32",
@@ -360,24 +359,45 @@ fn getLlvmType(self: *LlvmBackend, @"type": Type) Error!c.LLVMTypeRef {
 
             break :blk c.LLVMStructTypeInContext(self.context, element_types.ptr, @intCast(element_types.len), 0);
         },
-
-        else => unreachable,
     };
 }
 
-fn unaryIntCast(self: *LlvmBackend, lhs: *Register, to: Type) Error!void {
-    lhs.value = c.LLVMBuildIntCast2(self.builder, lhs.value, try self.getLlvmType(to), @intFromBool(to.canBeNegative()), "");
-    lhs.type = to;
+/// Use this instead of `c.LLVMBuildIntCast2`
+fn saneIntCast(self: *LlvmBackend, lhs: Register, to: Type) Error!c.LLVMValueRef {
+    std.debug.assert(to == .int);
+    std.debug.assert(lhs.type == .int or lhs.type == .bool);
+
+    const lhs_int = if (lhs.type == .int) lhs.type.int else Type.Int{ .signedness = .unsigned, .bits = 1 };
+    const to_int = to.int;
+
+    // u16 -> u8 (Regular IntCast)
+    // u8 -> s8 (Regular IntCast)
+    // s8 -> u16 (Regular IntCast)
+    // u8 -> s16 (ZExt)
+    // u8 -> u16 (ZExt)
+    // s8 -> s16 (SExt)
+
+    if (lhs_int.signedness == .unsigned) {
+        if (to_int.bits > lhs_int.bits) {
+            return c.LLVMBuildZExt(self.builder, lhs.value, try self.getLlvmType(to), "");
+        } else {
+            return c.LLVMBuildIntCast2(self.builder, lhs.value, try self.getLlvmType(to), @intFromEnum(to_int.signedness), "");
+        }
+    } else {
+        if (lhs_int.signedness == to_int.signedness and to_int.bits > lhs_int.bits) {
+            return c.LLVMBuildSExt(self.builder, lhs.value, try self.getLlvmType(to), "");
+        } else {
+            return c.LLVMBuildIntCast2(self.builder, lhs.value, try self.getLlvmType(to), @intFromEnum(to_int.signedness), "");
+        }
+    }
 }
 
-fn unaryFloatCast(self: *LlvmBackend, lhs: *Register, to: Type) Error!void {
-    lhs.value = c.LLVMBuildFPCast(self.builder, lhs.value, try self.getLlvmType(to), "");
-    lhs.type = to;
+/// Use this instead of `c.LLVMBuildFPCast`
+fn saneFloatCast(self: *LlvmBackend, lhs: Register, to: Type) Error!c.LLVMValueRef {
+    return c.LLVMBuildFPCast(self.builder, lhs.value, try self.getLlvmType(to), "");
 }
 
 fn unaryImplicitCast(self: *LlvmBackend, lhs: *Register, to: Type) Error!void {
-    std.debug.assert(!to.isAmbigiuous());
-
     if (lhs.type.eql(to)) return;
 
     // var x u8 = 4;
@@ -385,45 +405,33 @@ fn unaryImplicitCast(self: *LlvmBackend, lhs: *Register, to: Type) Error!void {
     // var z u16 = x;
 
     if (to == .int) {
-        try self.unaryIntCast(lhs, to);
+        lhs.value = try self.saneIntCast(lhs.*, to);
     } else if (to == .float) {
-        try self.unaryFloatCast(lhs, to);
+        lhs.value = try self.saneFloatCast(lhs.*, to);
     }
+
+    lhs.type = to;
 }
 
 fn binaryImplicitCast(self: *LlvmBackend, lhs: *Register, rhs: *Register) Error!void {
     if (lhs.type.eql(rhs.type)) return;
 
-    if (!lhs.type.isAmbigiuous() and !rhs.type.isAmbigiuous()) {
-        if (lhs.type == .int and lhs.type.int.bits > rhs.type.int.bits) {
-            // lhs as u64 > rhs as u16
-            try self.unaryIntCast(rhs, lhs.type);
-        } else if (lhs.type == .float and lhs.type.float.bits > rhs.type.float.bits) {
-            // lhs as f64 > rhs as f32
-            try self.unaryFloatCast(rhs, lhs.type);
-        } else if (lhs.type == .int and lhs.type.int.bits < rhs.type.int.bits) {
-            // lhs as u16 > rhs as u64
-            try self.unaryIntCast(lhs, rhs.type);
-        } else if (lhs.type == .float and lhs.type.float.bits < rhs.type.float.bits) {
-            // lhs as f32 > rhs as f64
-            try self.unaryFloatCast(lhs, rhs.type);
-        }
-    } else if (lhs.type.isAmbigiuous() and !rhs.type.isAmbigiuous()) {
-        if (lhs.type == .ambigiuous_int) {
-            // 4 > rhs as u64
-            try self.unaryIntCast(lhs, rhs.type);
-        } else if (lhs.type == .ambigiuous_float) {
-            // 4.0 > rhs as f64
-            try self.unaryFloatCast(lhs, rhs.type);
-        }
-    } else if (rhs.type.isAmbigiuous() and !lhs.type.isAmbigiuous()) {
-        if (rhs.type == .ambigiuous_int) {
-            // rhs as u64 > 4
-            try self.unaryIntCast(rhs, lhs.type);
-        } else if (rhs.type == .ambigiuous_float) {
-            // rhs as f64 > 4.0
-            try self.unaryFloatCast(rhs, lhs.type);
-        }
+    if ((lhs.type == .int and
+        lhs.type.int.bits > rhs.type.int.bits) or
+        (lhs.type == .float and
+        lhs.type.float.bits > rhs.type.float.bits))
+    {
+        // lhs as u64 > rhs as u16
+        // lhs as s64 > rhs as s16
+        try self.unaryImplicitCast(rhs, lhs.type);
+    } else if ((lhs.type == .int and
+        lhs.type.int.bits < rhs.type.int.bits) or
+        (lhs.type == .float and
+        lhs.type.float.bits < rhs.type.float.bits))
+    {
+        // lhs as u16 > rhs as u64
+        // lhs as s16 > rhs as s64
+        try self.unaryImplicitCast(lhs, rhs.type);
     }
 }
 
@@ -519,19 +527,25 @@ fn renderString(self: *LlvmBackend, string: []const u8) Error!void {
 }
 
 fn renderInt(self: *LlvmBackend, int: i128) Error!void {
-    const bits = if (int >= 0) Type.intFittingRange(-int, int).int.bits else Type.intFittingRange(int, -int).int.bits;
+    const int_type = Type.intFittingRange(int, int);
 
     const int_repr: c_ulonglong = @truncate(@as(u128, @bitCast(int)));
-    const int_type = c.LLVMIntTypeInContext(self.context, bits);
 
-    try self.stack.append(self.allocator, .{ .value = c.LLVMConstInt(int_type, int_repr, 1), .type = .ambigiuous_int });
+    const llvm_int_type = try self.getLlvmType(int_type);
+    const llvm_int_value = c.LLVMConstInt(llvm_int_type, int_repr, @intFromBool(int < 0));
+
+    try self.stack.append(self.allocator, .{ .value = llvm_int_value, .type = int_type });
 }
 
 fn renderFloat(self: *LlvmBackend, float: f64) Error!void {
     const bits: c_uint = @intFromFloat(@ceil(@log2(float + 1)));
-    const float_type = if (bits <= 32) c.LLVMFloatTypeInContext(self.context) else c.LLVMDoubleTypeInContext(self.context);
 
-    try self.stack.append(self.allocator, .{ .value = c.LLVMConstReal(float_type, float), .type = .ambigiuous_float });
+    const float_type: Type = if (bits > 32) .{ .float = .{ .bits = 64 } } else .{ .float = .{ .bits = 32 } };
+
+    const llvm_float_type = try self.getLlvmType(float_type);
+    const llvm_float_value = c.LLVMConstReal(llvm_float_type, float);
+
+    try self.stack.append(self.allocator, .{ .value = llvm_float_value, .type = float_type });
 }
 
 fn renderBoolean(self: *LlvmBackend, boolean: bool) Error!void {
@@ -563,13 +577,7 @@ fn renderBitwiseArithmetic(self: *LlvmBackend, comptime operation: BitwiseArithm
     var rhs = self.stack.pop();
     var lhs = self.stack.pop();
 
-    if (lhs.type.isAmbigiuous()) {
-        lhs.value = c.LLVMBuildIntCast2(self.builder, lhs.value, try self.getLlvmType(rhs.type), @intFromBool(rhs.type.canBeNegative()), "");
-        lhs.type = rhs.type;
-    } else if (rhs.type.isAmbigiuous()) {
-        rhs.value = c.LLVMBuildIntCast2(self.builder, rhs.value, try self.getLlvmType(lhs.type), @intFromBool(lhs.type.canBeNegative()), "");
-        rhs.type = lhs.type;
-    }
+    try self.binaryImplicitCast(&lhs, &rhs);
 
     try self.stack.append(
         self.allocator,
@@ -683,16 +691,16 @@ fn renderArithmetic(self: *LlvmBackend, comptime operation: ArithmeticOperation)
     const usize_type: Type = .{ .int = .{ .signedness = .unsigned, .bits = self.target.ptrBitWidth() } };
 
     if (lhs.type == .pointer and rhs.type != .pointer) {
-        rhs.value = c.LLVMBuildIntCast2(self.builder, rhs.value, try self.getLlvmType(usize_type), 0, "");
+        rhs.value = try self.saneIntCast(rhs, usize_type);
         rhs.type = usize_type;
     } else if (rhs.type == .pointer and lhs.type != .pointer) {
-        lhs.value = c.LLVMBuildIntCast2(self.builder, lhs.value, try self.getLlvmType(usize_type), 0, "");
+        lhs.value = try self.saneIntCast(lhs, usize_type);
         lhs.type = usize_type;
     } else {
         try self.binaryImplicitCast(&lhs, &rhs);
     }
 
-    if (lhs.type.isInt() or lhs.type == .pointer) {
+    if (lhs.type == .int or lhs.type == .pointer) {
         try self.stack.append(
             self.allocator,
             .{
@@ -737,7 +745,7 @@ fn renderComparison(self: *LlvmBackend, operation: Air.Instruction.Cmp) Error!vo
 
     try self.binaryImplicitCast(&lhs, &rhs);
 
-    if (lhs.type.isInt()) {
+    if (lhs.type == .int) {
         try self.stack.append(
             self.allocator,
             .{
@@ -800,8 +808,8 @@ fn renderCast(self: *LlvmBackend, cast_to: Type) Error!void {
         self.allocator,
         .{
             .value = switch (cast_from) {
-                .int, .ambigiuous_int => switch (cast_to) {
-                    .int, .bool => c.LLVMBuildIntCast2(self.builder, cast_value, llvm_cast_to, @intFromBool(cast_from.canBeNegative()), ""),
+                .int => switch (cast_to) {
+                    .int, .bool => try self.saneIntCast(lhs, cast_to),
 
                     .float => if (cast_from.canBeNegative())
                         c.LLVMBuildSIToFP(self.builder, cast_value, llvm_cast_to, "")
@@ -813,7 +821,7 @@ fn renderCast(self: *LlvmBackend, cast_to: Type) Error!void {
                     else => unreachable,
                 },
 
-                .float, .ambigiuous_float => switch (cast_to) {
+                .float => switch (cast_to) {
                     .int => if (cast_to.canBeNegative())
                         c.LLVMBuildFPToSI(self.builder, cast_value, llvm_cast_to, "")
                     else
@@ -827,6 +835,7 @@ fn renderCast(self: *LlvmBackend, cast_to: Type) Error!void {
                 .pointer => switch (cast_to) {
                     .int => c.LLVMBuildPtrToInt(self.builder, cast_value, llvm_cast_to, ""),
                     .pointer => c.LLVMBuildPointerCast(self.builder, cast_value, llvm_cast_to, ""),
+
                     else => unreachable,
                 },
 
