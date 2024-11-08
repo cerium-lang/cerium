@@ -46,7 +46,6 @@ pub const Error = error{
     ExpectedExplicitReturn,
     UnexpectedMutation,
     UnexpectedValue,
-    TypeCannotRepresentValue,
     CircularDependency,
     UnexpectedType,
     MismatchedTypes,
