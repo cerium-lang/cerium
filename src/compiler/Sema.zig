@@ -63,12 +63,7 @@ const Value = union(enum) {
     fn getType(self: Value) Type {
         return switch (self) {
             .int => |int| Type.intFittingRange(int, int),
-            .float => |float| if (float > std.math.floatMax(f32) or (float < 0 and -float > std.math.floatMax(f32)))
-                .{ .float = .{ .bits = 64 } }
-            else if (float > std.math.floatMax(f16) or (float < 0 and -float > std.math.floatMax(f16)))
-                .{ .float = .{ .bits = 32 } }
-            else
-                .{ .float = .{ .bits = 16 } },
+            .float => |float| Type.floatFittingRange(float, float),
             .boolean => .bool,
             .string => .string,
             .runtime => |runtime| runtime,

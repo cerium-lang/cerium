@@ -112,12 +112,12 @@ pub const Type = union(enum) {
     pub fn intFittingRange(from: i128, to: i128) Type {
         const signedness: Int.Signedness = @enumFromInt(@intFromBool(from < 0));
 
-        const largest_positive_integer = @max(if (from < 0) (-from) - 1 else from, to); // two's complement
+        const largest_positive_value = @max(if (from < 0) (-from) - 1 else from, to);
 
-        const base: u7 = @intFromFloat(@ceil(@log2(@as(f64, @floatFromInt(largest_positive_integer + 1)))));
+        const base: u7 = @intFromFloat(@ceil(@log2(@as(f64, @floatFromInt(largest_positive_value + 1)))));
         const upper = (@as(i128, 1) << base) - 1;
 
-        var magnitude_bits = if (upper >= largest_positive_integer) base else base + 1;
+        var magnitude_bits = if (upper >= largest_positive_value) base else base + 1;
         magnitude_bits += @intFromEnum(signedness);
 
         return Type{
@@ -126,6 +126,19 @@ pub const Type = union(enum) {
                 .bits = @intCast(magnitude_bits),
             },
         };
+    }
+
+    pub fn floatFittingRange(from: f64, to: f64) Type {
+        const largest_positive_value = @max(if (from < 0) (-from) - 1 else from, to);
+
+        const base = @ceil(@log2(largest_positive_value + 1));
+
+        return if (base <= 16)
+            Type{ .float = .{ .bits = 16 } }
+        else if (base <= 32)
+            Type{ .float = .{ .bits = 32 } }
+        else
+            Type{ .float = .{ .bits = 64 } };
     }
 
     pub fn canBeNegative(self: Type) bool {
