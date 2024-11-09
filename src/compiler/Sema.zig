@@ -350,135 +350,74 @@ pub fn deinit(self: *Sema) void {
 fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
     try self.scope.ensureTotalCapacity(self.allocator, 256);
 
-    self.scope.putAssumeCapacity("true", .{
-        .type = .bool,
-        .linkage = .global,
-        .maybe_value = .{ .boolean = true },
-        .is_const = true,
-        .is_comptime = true,
-    });
-
-    self.scope.putAssumeCapacity("false", .{
-        .type = .bool,
-        .linkage = .global,
-        .maybe_value = .{ .boolean = false },
-        .is_const = true,
-        .is_comptime = true,
-    });
-
-    self.scope.putAssumeCapacity("void", .{
-        .type = .void,
-        .linkage = .global,
-        .is_type_alias = true,
-    });
-
-    self.scope.putAssumeCapacity("bool", .{
-        .type = .bool,
-        .linkage = .global,
-        .is_type_alias = true,
-    });
-
-    self.scope.putAssumeCapacity("usize", .{
-        .type = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.ptrBitWidth() } },
-        .linkage = .global,
-        .is_type_alias = true,
-    });
-    self.scope.putAssumeCapacity("ssize", .{
-        .type = .{ .int = .{ .signedness = .signed, .bits = self.env.target.ptrBitWidth() } },
-        .linkage = .global,
-        .is_type_alias = true,
-    });
-
-    self.scope.putAssumeCapacity("c_char", .{
-        .type = .{
-            .int = .{
-                .signedness = if (self.env.target.charSignedness() == .signed) .signed else .unsigned,
-                .bits = self.env.target.cTypeBitSize(.char),
-            },
-        },
-        .linkage = .global,
-        .is_type_alias = true,
-    });
-    self.scope.putAssumeCapacity("c_schar", .{
-        .type = .{ .int = .{ .signedness = .signed, .bits = self.env.target.cTypeBitSize(.char) } },
-        .linkage = .global,
-        .is_type_alias = true,
-    });
-    self.scope.putAssumeCapacity("c_uchar", .{
-        .type = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.cTypeBitSize(.char) } },
-        .linkage = .global,
-        .is_type_alias = true,
-    });
-    self.scope.putAssumeCapacity("c_short", .{
-        .type = .{ .int = .{ .signedness = .signed, .bits = self.env.target.cTypeBitSize(.short) } },
-        .linkage = .global,
-        .is_type_alias = true,
-    });
-    self.scope.putAssumeCapacity("c_ushort", .{
-        .type = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.cTypeBitSize(.ushort) } },
-        .linkage = .global,
-        .is_type_alias = true,
-    });
-    self.scope.putAssumeCapacity("c_int", .{
-        .type = .{ .int = .{ .signedness = .signed, .bits = self.env.target.cTypeBitSize(.int) } },
-        .linkage = .global,
-        .is_type_alias = true,
-    });
-    self.scope.putAssumeCapacity("c_uint", .{
-        .type = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.cTypeBitSize(.uint) } },
-        .linkage = .global,
-        .is_type_alias = true,
-    });
-    self.scope.putAssumeCapacity("c_long", .{
-        .type = .{ .int = .{ .signedness = .signed, .bits = self.env.target.cTypeBitSize(.long) } },
-        .linkage = .global,
-        .is_type_alias = true,
-    });
-    self.scope.putAssumeCapacity("c_ulong", .{
-        .type = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.cTypeBitSize(.ulong) } },
-        .linkage = .global,
-        .is_type_alias = true,
-    });
-    self.scope.putAssumeCapacity("c_longlong", .{
-        .type = .{ .int = .{ .signedness = .signed, .bits = self.env.target.cTypeBitSize(.longlong) } },
-        .linkage = .global,
-        .is_type_alias = true,
-    });
-    self.scope.putAssumeCapacity("c_ulonglong", .{
-        .type = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.cTypeBitSize(.ulonglong) } },
-        .linkage = .global,
-        .is_type_alias = true,
-    });
-
-    self.scope.putAssumeCapacity("c_float", .{
-        .type = .{ .float = .{ .bits = self.env.target.cTypeBitSize(.float) } },
-        .linkage = .global,
-        .is_type_alias = true,
-    });
-    self.scope.putAssumeCapacity("c_double", .{
-        .type = .{ .float = .{ .bits = self.env.target.cTypeBitSize(.double) } },
-        .linkage = .global,
-        .is_type_alias = true,
-    });
-
-    // TODO: Type `c_longdouble` requires `f80` and `f128` to be supported.
-
-    // TODO: Find a better way to do this, this is very verbose and doesn't scale well for bigger arbitrary sized integer types
     {
-        const unsigned_ints = [_][]const u8{ "u0", "u1", "u2", "u3", "u4", "u5", "u6", "u7", "u8", "u9", "u10", "u11", "u12", "u13", "u14", "u15", "u16", "u17", "u18", "u19", "u20", "u21", "u22", "u23", "u24", "u25", "u26", "u27", "u28", "u29", "u30", "u31", "u32", "u33", "u34", "u35", "u36", "u37", "u38", "u39", "u40", "u41", "u42", "u43", "u44", "u45", "u46", "u47", "u48", "u49", "u50", "u51", "u52", "u53", "u54", "u55", "u56", "u57", "u58", "u59", "u60", "u61", "u62", "u63", "u64" };
+        const c_char_bits = self.env.target.cTypeBitSize(.char);
+        const c_short_bits = self.env.target.cTypeBitSize(.short);
+        const c_ushort_bits = self.env.target.cTypeBitSize(.ushort);
+        const c_int_bits = self.env.target.cTypeBitSize(.int);
+        const c_uint_bits = self.env.target.cTypeBitSize(.uint);
+        const c_long_bits = self.env.target.cTypeBitSize(.long);
+        const c_ulong_bits = self.env.target.cTypeBitSize(.ulong);
+        const c_longlong_bits = self.env.target.cTypeBitSize(.longlong);
+        const c_ulonglong_bits = self.env.target.cTypeBitSize(.ulonglong);
 
-        for (unsigned_ints, 0..) |unsigned_int, i| {
-            self.scope.putAssumeCapacity(unsigned_int, .{
+        self.scope.putAssumeCapacity("c_char", .{
+            .type = .{
+                .int = .{
+                    .signedness = if (self.env.target.charSignedness() == .signed) .signed else .unsigned,
+                    .bits = c_char_bits,
+                },
+            },
+            .linkage = .global,
+            .is_type_alias = true,
+        });
+
+        inline for (.{ "c_schar", "c_short", "c_int", "c_long", "c_longlong" }, .{ c_char_bits, c_short_bits, c_int_bits, c_long_bits, c_longlong_bits }) |c_int_type_name, bits| {
+            self.scope.putAssumeCapacity(c_int_type_name, .{
+                .type = .{ .int = .{ .signedness = .signed, .bits = @intCast(bits) } },
+                .linkage = .global,
+                .is_type_alias = true,
+            });
+        }
+
+        inline for (.{ "c_uchar", "c_ushort", "c_uint", "c_ulong", "c_ulonglong" }, .{ c_char_bits, c_ushort_bits, c_uint_bits, c_ulong_bits, c_ulonglong_bits }) |c_int_type_name, bits| {
+            self.scope.putAssumeCapacity(c_int_type_name, .{
+                .type = .{ .int = .{ .signedness = .unsigned, .bits = @intCast(bits) } },
+                .linkage = .global,
+                .is_type_alias = true,
+            });
+        }
+    }
+
+    {
+        const usize_type: Type = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.ptrBitWidth() } };
+        const ssize_type: Type = .{ .int = .{ .signedness = .signed, .bits = self.env.target.ptrBitWidth() } };
+
+        inline for (.{ "void", "bool", "usize", "ssize" }, .{ .void, .bool, usize_type, ssize_type }) |builtin_type_name, builtin_type_value| {
+            self.scope.putAssumeCapacity(builtin_type_name, .{
+                .type = builtin_type_value,
+                .linkage = .global,
+                .is_type_alias = true,
+            });
+        }
+    }
+
+    // TODO: Find a better way, this is very verbose and doesn't scale well for bigger arbitrary sized integer types
+    {
+        const unsigned_int_types = [_][]const u8{ "u0", "u1", "u2", "u3", "u4", "u5", "u6", "u7", "u8", "u9", "u10", "u11", "u12", "u13", "u14", "u15", "u16", "u17", "u18", "u19", "u20", "u21", "u22", "u23", "u24", "u25", "u26", "u27", "u28", "u29", "u30", "u31", "u32", "u33", "u34", "u35", "u36", "u37", "u38", "u39", "u40", "u41", "u42", "u43", "u44", "u45", "u46", "u47", "u48", "u49", "u50", "u51", "u52", "u53", "u54", "u55", "u56", "u57", "u58", "u59", "u60", "u61", "u62", "u63", "u64" };
+
+        for (unsigned_int_types, 0..) |unsigned_int_type, i| {
+            self.scope.putAssumeCapacity(unsigned_int_type, .{
                 .type = .{ .int = .{ .signedness = .unsigned, .bits = @intCast(i) } },
                 .linkage = .global,
                 .is_type_alias = true,
             });
         }
 
-        const signed_ints = [_][]const u8{ "s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12", "s13", "s14", "s15", "s16", "s17", "s18", "s19", "s20", "s21", "s22", "s23", "s24", "s25", "s26", "s27", "s28", "s29", "s30", "s31", "s32", "s33", "s34", "s35", "s36", "s37", "s38", "s39", "s40", "s41", "s42", "s43", "s44", "s45", "s46", "s47", "s48", "s49", "s50", "s51", "s52", "s53", "s54", "s55", "s56", "s57", "s58", "s59", "s60", "s61", "s62", "s63", "s64" };
+        const signed_int_types = [_][]const u8{ "s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12", "s13", "s14", "s15", "s16", "s17", "s18", "s19", "s20", "s21", "s22", "s23", "s24", "s25", "s26", "s27", "s28", "s29", "s30", "s31", "s32", "s33", "s34", "s35", "s36", "s37", "s38", "s39", "s40", "s41", "s42", "s43", "s44", "s45", "s46", "s47", "s48", "s49", "s50", "s51", "s52", "s53", "s54", "s55", "s56", "s57", "s58", "s59", "s60", "s61", "s62", "s63", "s64" };
 
-        for (signed_ints, 0..) |signed_int, i| {
-            self.scope.putAssumeCapacity(signed_int, .{
+        for (signed_int_types, 0..) |signed_int_type, i| {
+            self.scope.putAssumeCapacity(signed_int_type, .{
                 .type = .{ .int = .{ .signedness = .signed, .bits = @intCast(i) } },
                 .linkage = .global,
                 .is_type_alias = true,
@@ -486,37 +425,46 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
         }
     }
 
-    self.scope.putAssumeCapacity("f16", .{
-        .type = .{ .float = .{ .bits = 16 } },
-        .linkage = .global,
-        .is_type_alias = true,
-    });
-    self.scope.putAssumeCapacity("f32", .{
-        .type = .{ .float = .{ .bits = 32 } },
-        .linkage = .global,
-        .is_type_alias = true,
-    });
-    self.scope.putAssumeCapacity("f64", .{
-        .type = .{ .float = .{ .bits = 64 } },
-        .linkage = .global,
-        .is_type_alias = true,
-    });
+    {
+        const c_float_bits = self.env.target.cTypeBitSize(.float);
+        const c_double_bits = self.env.target.cTypeBitSize(.double);
+        // TODO: Type `c_longdouble` requires `f80` and `f128` to be supported.
 
-    self.scope.putAssumeCapacity("builtin::target::os", .{
-        .type = .{ .int = .{ .signedness = .unsigned, .bits = @typeInfo(@typeInfo(std.Target.Os.Tag).@"enum".tag_type).int.bits } },
-        .linkage = .global,
-        .maybe_value = .{ .int = @intFromEnum(self.env.target.os.tag) },
-        .is_const = true,
-        .is_comptime = true,
-    });
+        inline for (.{ "f16", "f32", "f64", "c_float", "c_double" }, .{ 16, 32, 64, c_float_bits, c_double_bits }) |float_type, i| {
+            self.scope.putAssumeCapacity(float_type, .{
+                .type = .{ .float = .{ .bits = @intCast(i) } },
+                .linkage = .global,
+                .is_type_alias = true,
+            });
+        }
+    }
 
-    self.scope.putAssumeCapacity("builtin::target::arch", .{
-        .type = .{ .int = .{ .signedness = .unsigned, .bits = @typeInfo(@typeInfo(std.Target.Cpu.Arch).@"enum".tag_type).int.bits } },
-        .linkage = .global,
-        .maybe_value = .{ .int = @intFromEnum(self.env.target.cpu.arch) },
-        .is_const = true,
-        .is_comptime = true,
-    });
+    {
+        const builtin_target_os = @intFromEnum(self.env.target.os.tag);
+        const builtin_target_arch = @intFromEnum(self.env.target.cpu.arch);
+
+        inline for (.{ "builtin::target::os", "builtin::target::arch" }, .{ builtin_target_os, builtin_target_arch }) |builtin_name, builtin_value| {
+            self.scope.putAssumeCapacity(builtin_name, .{
+                .type = Type.intFittingRange(builtin_value, builtin_value),
+                .linkage = .global,
+                .maybe_value = .{ .int = builtin_value },
+                .is_const = true,
+                .is_comptime = true,
+            });
+        }
+    }
+
+    {
+        inline for (.{ "true", "false" }, .{ true, false }) |boolean_name, boolean_value| {
+            self.scope.putAssumeCapacity(boolean_name, .{
+                .type = .bool,
+                .linkage = .global,
+                .maybe_value = .{ .boolean = boolean_value },
+                .is_const = true,
+                .is_comptime = true,
+            });
+        }
+    }
 }
 
 pub fn analyze(self: *Sema, sir: Sir) Error!void {
