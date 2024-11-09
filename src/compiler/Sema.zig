@@ -348,7 +348,7 @@ pub fn deinit(self: *Sema) void {
 }
 
 fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
-    try self.scope.ensureTotalCapacity(self.allocator, 65);
+    try self.scope.ensureTotalCapacity(self.allocator, 256);
 
     self.scope.putAssumeCapacity("true", .{
         .type = .bool,
@@ -463,46 +463,28 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
 
     // TODO: Type `c_longdouble` requires `f80` and `f128` to be supported.
 
-    self.scope.putAssumeCapacity("u8", .{
-        .type = .{ .int = .{ .signedness = .unsigned, .bits = 8 } },
-        .linkage = .global,
-        .is_type_alias = true,
-    });
-    self.scope.putAssumeCapacity("u16", .{
-        .type = .{ .int = .{ .signedness = .unsigned, .bits = 16 } },
-        .linkage = .global,
-        .is_type_alias = true,
-    });
-    self.scope.putAssumeCapacity("u32", .{
-        .type = .{ .int = .{ .signedness = .unsigned, .bits = 32 } },
-        .linkage = .global,
-        .is_type_alias = true,
-    });
-    self.scope.putAssumeCapacity("u64", .{
-        .type = .{ .int = .{ .signedness = .unsigned, .bits = 64 } },
-        .linkage = .global,
-        .is_type_alias = true,
-    });
-    self.scope.putAssumeCapacity("s8", .{
-        .type = .{ .int = .{ .signedness = .signed, .bits = 8 } },
-        .linkage = .global,
-        .is_type_alias = true,
-    });
-    self.scope.putAssumeCapacity("s16", .{
-        .type = .{ .int = .{ .signedness = .signed, .bits = 16 } },
-        .linkage = .global,
-        .is_type_alias = true,
-    });
-    self.scope.putAssumeCapacity("s32", .{
-        .type = .{ .int = .{ .signedness = .signed, .bits = 32 } },
-        .linkage = .global,
-        .is_type_alias = true,
-    });
-    self.scope.putAssumeCapacity("s64", .{
-        .type = .{ .int = .{ .signedness = .signed, .bits = 64 } },
-        .linkage = .global,
-        .is_type_alias = true,
-    });
+    // TODO: Find a better way to do this, this is very verbose and doesn't scale well for bigger arbitrary sized integer types
+    {
+        const unsigned_ints = [_][]const u8{ "u0", "u1", "u2", "u3", "u4", "u5", "u6", "u7", "u8", "u9", "u10", "u11", "u12", "u13", "u14", "u15", "u16", "u17", "u18", "u19", "u20", "u21", "u22", "u23", "u24", "u25", "u26", "u27", "u28", "u29", "u30", "u31", "u32", "u33", "u34", "u35", "u36", "u37", "u38", "u39", "u40", "u41", "u42", "u43", "u44", "u45", "u46", "u47", "u48", "u49", "u50", "u51", "u52", "u53", "u54", "u55", "u56", "u57", "u58", "u59", "u60", "u61", "u62", "u63", "u64" };
+
+        for (unsigned_ints, 0..) |unsigned_int, i| {
+            self.scope.putAssumeCapacity(unsigned_int, .{
+                .type = .{ .int = .{ .signedness = .unsigned, .bits = @intCast(i) } },
+                .linkage = .global,
+                .is_type_alias = true,
+            });
+        }
+
+        const signed_ints = [_][]const u8{ "s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12", "s13", "s14", "s15", "s16", "s17", "s18", "s19", "s20", "s21", "s22", "s23", "s24", "s25", "s26", "s27", "s28", "s29", "s30", "s31", "s32", "s33", "s34", "s35", "s36", "s37", "s38", "s39", "s40", "s41", "s42", "s43", "s44", "s45", "s46", "s47", "s48", "s49", "s50", "s51", "s52", "s53", "s54", "s55", "s56", "s57", "s58", "s59", "s60", "s61", "s62", "s63", "s64" };
+
+        for (signed_ints, 0..) |signed_int, i| {
+            self.scope.putAssumeCapacity(signed_int, .{
+                .type = .{ .int = .{ .signedness = .signed, .bits = @intCast(i) } },
+                .linkage = .global,
+                .is_type_alias = true,
+            });
+        }
+    }
 
     self.scope.putAssumeCapacity("f16", .{
         .type = .{ .float = .{ .bits = 16 } },

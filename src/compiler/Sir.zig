@@ -1529,7 +1529,7 @@ pub const Parser = struct {
                 const subtype = if (maybe_subtype) |subtype|
                     subtype
                 else blk: {
-                    break :blk SubType{ .pure = .intFittingRange(min_value, max_value) };
+                    break :blk SubType{ .pure = Type.intFittingRange(min_value, max_value) };
                 };
 
                 const subtype_on_heap = try self.allocator.create(SubType);
