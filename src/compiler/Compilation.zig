@@ -166,7 +166,7 @@ pub fn parse(self: Compilation, file_path: []const u8, buffer: [:0]const u8) ?Si
 
 /// Analyze Sir and lower it to Air
 pub fn analyze(self: Compilation, file_path: []const u8, buffer: []const u8, sir: Sir) ?Air {
-    var sema = Sema.init(self.allocator, buffer, self.env, sir) catch |err| {
+    var sema = Sema.init(self.allocator, buffer, self.env) catch |err| {
         std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
 
         return null;
@@ -174,7 +174,7 @@ pub fn analyze(self: Compilation, file_path: []const u8, buffer: []const u8, sir
 
     defer sema.deinit();
 
-    sema.analyze() catch |err| switch (err) {
+    sema.analyze(sir) catch |err| switch (err) {
         error.OutOfMemory => {
             std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
 

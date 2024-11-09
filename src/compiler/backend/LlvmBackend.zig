@@ -32,7 +32,7 @@ strings: std.StringHashMapUnmanaged(c.LLVMValueRef) = .{},
 
 stack: std.ArrayListUnmanaged(Register) = .{},
 
-scope: *Scope(Variable) = undefined,
+scope: *Scope(Variable),
 scope_stack: std.ArrayListUnmanaged(Scope(Variable)) = .{},
 
 pub const Error = std.mem.Allocator.Error;
@@ -53,19 +53,20 @@ pub fn init(allocator: std.mem.Allocator, target: std.Target) Error!LlvmBackend 
     const module = c.LLVMModuleCreateWithNameInContext("module", context);
     const builder = c.LLVMCreateBuilderInContext(context);
 
-    var backend = LlvmBackend{
+    var scope_stack: @FieldType(LlvmBackend, "scope_stack") = .{};
+
+    const global_scope = try scope_stack.addOne(allocator);
+    global_scope.* = .{};
+
+    return LlvmBackend{
         .allocator = allocator,
         .target = target,
         .context = context,
         .module = module,
         .builder = builder,
+        .scope = global_scope,
+        .scope_stack = scope_stack,
     };
-
-    const global_scope = try backend.scope_stack.addOne(backend.allocator);
-    global_scope.* = .{};
-    backend.scope = global_scope;
-
-    return backend;
 }
 
 pub fn deinit(self: *LlvmBackend) void {
@@ -1174,7 +1175,7 @@ fn modifyScope(self: *LlvmBackend, start: bool) Error!void {
         local_scope.* = .{ .maybe_parent = self.scope };
         self.scope = local_scope;
     } else {
-        self.scope.clearAndFree(self.allocator);
+        self.scope.deinit(self.allocator);
         self.scope = self.scope.maybe_parent.?;
         _ = self.scope_stack.pop();
     }

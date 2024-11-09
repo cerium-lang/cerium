@@ -21,16 +21,14 @@ buffer: []const u8,
 
 env: Compilation.Environment,
 
-sir: Sir,
-
-air: Air,
+air: Air = .{},
 
 maybe_function: ?Type = null,
 
 stack: std.ArrayListUnmanaged(Value) = .{},
 
-scope: *Scope(Variable) = undefined,
-scope_stack: std.ArrayListUnmanaged(Scope(Variable)) = .{},
+scope: *Scope(Variable),
+scope_stack: std.ArrayListUnmanaged(Scope(Variable)),
 
 error_info: ?ErrorInfo = null,
 
@@ -325,19 +323,23 @@ fn reportCircularDependency(self: *Sema, name: Name) Error!void {
     return error.CircularDependency;
 }
 
-pub fn init(allocator: std.mem.Allocator, buffer: []const u8, env: Compilation.Environment, sir: Sir) std.mem.Allocator.Error!Sema {
-    var air: Air = .{};
+pub fn init(allocator: std.mem.Allocator, buffer: []const u8, env: Compilation.Environment) std.mem.Allocator.Error!Sema {
+    var scope_stack: @FieldType(Sema, "scope_stack") = .{};
 
-    // Air instructions are always less than or equal to the Sir instructions length
-    try air.instructions.ensureTotalCapacity(allocator, sir.instructions.items.len);
+    const global_scope = try scope_stack.addOne(allocator);
+    global_scope.* = .{};
 
-    return Sema{
+    var sema: Sema = .{
         .allocator = allocator,
         .buffer = buffer,
         .env = env,
-        .sir = sir,
-        .air = air,
+        .scope = global_scope,
+        .scope_stack = scope_stack,
     };
+
+    try sema.putBuiltinConstants();
+
+    return sema;
 }
 
 pub fn deinit(self: *Sema) void {
@@ -535,14 +537,10 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
     });
 }
 
-pub fn analyze(self: *Sema) Error!void {
-    const global_scope = try self.scope_stack.addOne(self.allocator);
-    global_scope.* = .{};
-    self.scope = global_scope;
+pub fn analyze(self: *Sema, sir: Sir) Error!void {
+    try self.air.instructions.ensureUnusedCapacity(self.allocator, sir.instructions.items.len);
 
-    try self.putBuiltinConstants();
-
-    for (self.sir.instructions.items) |instruction| {
+    for (sir.instructions.items) |instruction| {
         try self.analyzeInstruction(instruction);
     }
 }
@@ -1601,7 +1599,7 @@ fn modifyScope(self: *Sema, start: bool) Error!void {
 
         try self.air.instructions.append(self.allocator, .start_scope);
     } else {
-        self.scope.clearAndFree(self.allocator);
+        self.scope.deinit(self.allocator);
         self.scope = self.scope.maybe_parent.?;
         _ = self.scope_stack.pop();
 

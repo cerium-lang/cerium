@@ -270,6 +270,10 @@ pub fn Scope(comptime V: type) type {
 
         items: std.StringHashMapUnmanaged(V) = .{},
 
+        pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+            self.items.deinit(allocator);
+        }
+
         pub fn put(self: *Self, allocator: std.mem.Allocator, name: []const u8, value: V) std.mem.Allocator.Error!void {
             try self.items.put(allocator, name, value);
         }
@@ -304,10 +308,6 @@ pub fn Scope(comptime V: type) type {
 
         pub fn getOrPut(self: *Self, allocator: std.mem.Allocator, name: []const u8) std.mem.Allocator.Error!std.StringHashMapUnmanaged(V).GetOrPutResult {
             return self.items.getOrPut(allocator, name);
-        }
-
-        pub fn clearAndFree(self: *Self, allocator: std.mem.Allocator) void {
-            self.items.clearAndFree(allocator);
         }
 
         pub fn ensureTotalCapacity(self: *Self, allocator: std.mem.Allocator, new_capacity: u32) std.mem.Allocator.Error!void {

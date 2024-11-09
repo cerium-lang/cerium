@@ -18,6 +18,7 @@ fn main() {
     var m u8 = 4;
     var n u8 = 4;
 
+    // Too much nesting produces a lot of unexpected behaviours by the compiler
     if (a == b) {
         if (c == d) {
             if (e == f) {
@@ -25,12 +26,75 @@ fn main() {
                     if (i == j) {
                         if (k == l) {
                             if (m == n) {
-                                // FIXME: Semantic analysis triggers segmentation fault consistently on this line
+                                if (c == d) {
+                                    if (e == f) {
+                                        if (g == h) {
+                                            if (i == j) {
+                                                if (k == l) {
+                                                    if (m == n) {
+                                                        if (a == b) {
+                                                            if (c == d) {
+                                                                if (e == f) {
+                                                                    if (g == h) {
+                                                                        if (i == j) {
+                                                                            if (k == l) {
+                                                                                if (m == n) {
+                                                                                    if (c == d) {
+                                                                                        if (e == f) {
+                                                                                            if (g == h) {
+                                                                                                if (i == j) {
+                                                                                                    if (k == l) {
+                                                                                                        if (m == n) {
+                                                                                                        } else {
+                                                                                                        }
+                                                                                                    } else {
+                                                                                                    }
+                                                                                                } else {
+                                                                                                }
+                                                                                            } else {
+                                                                                            }
+                                                                                        } else {
+                                                                                        }
+                                                                                    } else {
+                                                                                    }
+                                                                                } else {
+                                                                                }
+                                                                            } else {
+                                                                            }
+                                                                        } else {
+                                                                        }
+                                                                    } else {
+                                                                    }
+                                                                } else {
+                                                                }
+                                                            } else {
+                                                            }
+                                                        } else {
+                                                        }
+                                                    } else {
+                                                    }
+                                                } else {
+                                                }
+                                            } else {
+                                            }
+                                        } else {
+                                        }
+                                    } else {
+                                    }
+                                } else {
+                                }
+                            } else {
                             }
+                        } else {
                         }
+                    } else {
                     }
+                } else {
                 }
+            } else {
             }
+        } else {
         }
+    } else {
     }
 }
