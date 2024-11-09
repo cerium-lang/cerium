@@ -335,7 +335,12 @@ fn getLlvmType(self: *LlvmBackend, @"type": Type) Error!c.LLVMTypeRef {
         .void => c.LLVMVoidTypeInContext(self.context),
         .bool => c.LLVMIntTypeInContext(self.context, 1),
         .int => |int| c.LLVMIntTypeInContext(self.context, int.bits),
-        .float => |float| if (float.bits == 32) c.LLVMFloatTypeInContext(self.context) else c.LLVMDoubleTypeInContext(self.context),
+        .float => |float| if (float.bits == 16)
+            c.LLVMHalfTypeInContext(self.context)
+        else if (float.bits == 32)
+            c.LLVMFloatTypeInContext(self.context)
+        else
+            c.LLVMDoubleTypeInContext(self.context),
         .pointer => c.LLVMPointerTypeInContext(self.context, 1),
 
         .function => |function| blk: {
@@ -540,7 +545,12 @@ fn renderInt(self: *LlvmBackend, int: i128) Error!void {
 fn renderFloat(self: *LlvmBackend, float: f64) Error!void {
     const bits: c_uint = @intFromFloat(@ceil(@log2(float + 1)));
 
-    const float_type: Type = if (bits > 32) .{ .float = .{ .bits = 64 } } else .{ .float = .{ .bits = 32 } };
+    const float_type: Type = if (bits <= 16)
+        .{ .float = .{ .bits = 16 } }
+    else if (bits <= 32)
+        .{ .float = .{ .bits = 32 } }
+    else
+        .{ .float = .{ .bits = 64 } };
 
     const llvm_float_type = try self.getLlvmType(float_type);
     const llvm_float_value = c.LLVMConstReal(llvm_float_type, float);

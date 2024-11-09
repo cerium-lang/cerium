@@ -65,8 +65,10 @@ const Value = union(enum) {
             .int => |int| Type.intFittingRange(int, int),
             .float => |float| if (float > std.math.floatMax(f32) or (float < 0 and -float > std.math.floatMax(f32)))
                 .{ .float = .{ .bits = 64 } }
+            else if (float > std.math.floatMax(f16) or (float < 0 and -float > std.math.floatMax(f16)))
+                .{ .float = .{ .bits = 32 } }
             else
-                .{ .float = .{ .bits = 32 } },
+                .{ .float = .{ .bits = 16 } },
             .boolean => .bool,
             .string => .string,
             .runtime => |runtime| runtime,
@@ -130,6 +132,7 @@ fn checkBinaryImplicitCast(self: *Sema, lhs: Value, rhs: Value, lhs_type: *Type,
         {
             // lhs as u64 > rhs as u16
             // lhs as f64 > rhs as f32
+            // lhs as f64 > rhs as f16
             try self.checkUnaryImplicitCast(rhs, lhs_type.*, token_start);
 
             rhs_type.* = lhs_type.*;
@@ -138,6 +141,7 @@ fn checkBinaryImplicitCast(self: *Sema, lhs: Value, rhs: Value, lhs_type: *Type,
         {
             // lhs as u16 > rhs as u64
             // lhs as f32 > rhs as f64
+            // lhs as f16 > rhs as f64
             try self.checkUnaryImplicitCast(lhs, rhs_type.*, token_start);
 
             lhs_type.* = rhs_type.*;
@@ -503,6 +507,11 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
         .is_type_alias = true,
     });
 
+    self.scope.putAssumeCapacity("f16", .{
+        .type = .{ .float = .{ .bits = 16 } },
+        .linkage = .global,
+        .is_type_alias = true,
+    });
     self.scope.putAssumeCapacity("f32", .{
         .type = .{ .float = .{ .bits = 32 } },
         .linkage = .global,

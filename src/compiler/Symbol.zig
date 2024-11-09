@@ -96,7 +96,14 @@ pub const Type = union(enum) {
 
     pub fn maxFloat(self: Type) f64 {
         return switch (self) {
-            .float => |float| if (float.bits == 32) std.math.floatMax(f32) else if (float.bits == 64) std.math.floatMax(f64) else unreachable,
+            .float => |float| if (float.bits == 16)
+                std.math.floatMax(f16)
+            else if (float.bits == 32)
+                std.math.floatMax(f32)
+            else if (float.bits == 64)
+                std.math.floatMax(f64)
+            else
+                unreachable,
 
             else => unreachable,
         };
