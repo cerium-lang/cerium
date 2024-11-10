@@ -30,7 +30,7 @@ extern fn GetRandomValue(min c_int, max c_int) c_int;
 extern fn DrawPixel(posX c_int, posY c_int, color Color);
 
 fn main() u8 {
-    InitWindow(800, 600, "Hello, World!");
+    InitWindow(800, 600, "Raylib Example");
 
     var color Color;
 
