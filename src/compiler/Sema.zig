@@ -91,10 +91,10 @@ const Variable = struct {
 fn checkUnaryImplicitCast(self: *Sema, lhs: Value, to: Type, token_start: u32) Error!void {
     const lhs_type = lhs.getType();
 
-    if (!((lhs == .int and lhs.int >= to.minInt() and
-        lhs == .int and lhs.int <= to.maxInt()) or
-        (lhs == .float and lhs.float >= -to.maxFloat() and
-        lhs == .float and lhs.float <= to.maxFloat()) or
+    if (!((lhs == .int and to == .int and lhs.int >= to.minInt() and
+        lhs == .int and to == .int and lhs.int <= to.maxInt()) or
+        (lhs == .float and to == .float and lhs.float >= -to.maxFloat() and
+        lhs == .float and to == .float and lhs.float <= to.maxFloat()) or
         (lhs_type == .int and to == .int and
         lhs_type.maxInt() <= to.maxInt() and lhs_type.minInt() >= to.minInt() and
         lhs_type.canBeNegative() == to.canBeNegative()) or
