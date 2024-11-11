@@ -442,6 +442,30 @@ fn binaryImplicitCast(self: *LlvmBackend, lhs: *Register, rhs: *Register) Error!
 }
 
 pub fn render(self: *LlvmBackend, air: Air) Error!void {
+    for (air.instructions.items) |air_instruction| {
+        switch (air_instruction) {
+            .function => |symbol| {
+                const function_pointer = c.LLVMAddFunction(
+                    self.module,
+                    try self.allocator.dupeZ(u8, symbol.name.buffer),
+                    try self.getLlvmType(symbol.type.pointer.child_type.*),
+                );
+
+                try self.scope.put(
+                    self.allocator,
+                    symbol.name.buffer,
+                    .{
+                        .pointer = function_pointer,
+                        .type = symbol.type,
+                        .linkage = symbol.linkage,
+                    },
+                );
+            },
+
+            else => {},
+        }
+    }
+
     for (air.instructions.items, 0..) |air_instruction, i| {
         try self.renderInstruction(air_instruction, air.instructions.items[i..]);
     }
@@ -951,27 +975,8 @@ fn renderCall(self: *LlvmBackend, arguments_count: usize) Error!void {
 }
 
 fn renderFunction(self: *LlvmBackend, symbol: Symbol, remainder_instructions: []const Air.Instruction) Error!void {
-    const function_pointer = if (self.scope.get(symbol.name.buffer)) |function_variable|
-        function_variable.pointer
-    else blk: {
-        const function_pointer = c.LLVMAddFunction(
-            self.module,
-            try self.allocator.dupeZ(u8, symbol.name.buffer),
-            try self.getLlvmType(symbol.type.pointer.child_type.*),
-        );
-
-        try self.scope.put(
-            self.allocator,
-            symbol.name.buffer,
-            .{
-                .pointer = function_pointer,
-                .type = symbol.type,
-                .linkage = symbol.linkage,
-            },
-        );
-
-        break :blk function_pointer;
-    };
+    // Should already be in scope because it is hoisted in the first pass in `render`
+    const function_pointer = self.scope.get(symbol.name.buffer).?.pointer;
 
     self.function_value = function_pointer;
     self.function_type = symbol.type.pointer.child_type.*;

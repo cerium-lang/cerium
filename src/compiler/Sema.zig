@@ -88,241 +88,6 @@ const Variable = struct {
     is_type_alias: bool = false,
 };
 
-fn checkUnaryImplicitCast(self: *Sema, lhs: Value, to: Type, token_start: u32) Error!void {
-    const lhs_type = lhs.getType();
-
-    if (!((lhs == .int and to == .int and lhs.int >= to.minInt() and
-        lhs == .int and to == .int and lhs.int <= to.maxInt()) or
-        (lhs == .float and to == .float and lhs.float >= -to.maxFloat() and
-        lhs == .float and to == .float and lhs.float <= to.maxFloat()) or
-        (lhs_type == .int and to == .int and
-        lhs_type.maxInt() <= to.maxInt() and lhs_type.minInt() >= to.minInt() and
-        lhs_type.canBeNegative() == to.canBeNegative()) or
-        (lhs_type == .float and to == .float and
-        lhs_type.maxFloat() <= to.maxFloat()) or
-        lhs_type.eql(to)))
-    {
-        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-        try error_message_buf.writer(self.allocator).print("'{}' cannot be implicitly casted to '{}'", .{ lhs_type, to });
-
-        self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
-
-        return error.MismatchedTypes;
-    }
-}
-
-fn checkBinaryImplicitCast(self: *Sema, lhs: Value, rhs: Value, lhs_type: *Type, rhs_type: *Type, token_start: u32) Error!void {
-    if (std.meta.activeTag(lhs_type.*) == std.meta.activeTag(rhs_type.*)) {
-        if (lhs == .runtime and rhs == .runtime and
-            lhs_type.canBeNegative() != rhs_type.canBeNegative())
-        {
-            try self.reportIncompatibleTypes(lhs_type.*, rhs_type.*, token_start);
-        }
-
-        if (lhs_type.* == .int and lhs_type.int.bits > rhs_type.int.bits or
-            lhs_type.* == .float and lhs_type.float.bits > rhs_type.float.bits)
-        {
-            // lhs as u64 > rhs as u16
-            // lhs as f64 > rhs as f32
-            // lhs as f64 > rhs as f16
-            try self.checkUnaryImplicitCast(rhs, lhs_type.*, token_start);
-
-            rhs_type.* = lhs_type.*;
-        } else if (lhs_type.* == .int and lhs_type.int.bits < rhs_type.int.bits or
-            lhs_type.* == .float and lhs_type.float.bits < rhs_type.float.bits)
-        {
-            // lhs as u16 > rhs as u64
-            // lhs as f32 > rhs as f64
-            // lhs as f16 > rhs as f64
-            try self.checkUnaryImplicitCast(lhs, rhs_type.*, token_start);
-
-            lhs_type.* = rhs_type.*;
-        } else if (lhs_type.* == .pointer) {
-            // lhs as *const u8 == rhs as *const u8
-            // lhs as *const u8 == rhs as *const u16
-            //
-            // Both are allowed since it is a pointer comparison which compares the addresses
-        }
-    } else {
-        try self.reportIncompatibleTypes(lhs_type.*, rhs_type.*, token_start);
-    }
-}
-
-fn checkIntOrFloat(self: *Sema, provided_type: Type, token_start: u32) Error!void {
-    if (provided_type != .int and provided_type != .float) {
-        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-        try error_message_buf.writer(self.allocator).print("'{}' is provided while expected an integer or float", .{provided_type});
-        self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
-
-        return error.MismatchedTypes;
-    }
-}
-
-fn checkIntOrFloatOrPointer(self: *Sema, provided_type: Type, token_start: u32) Error!void {
-    if (provided_type != .int and provided_type != .float and provided_type != .pointer) {
-        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-        try error_message_buf.writer(self.allocator).print("'{}' is provided while expected an integer or float or pointer", .{provided_type});
-
-        self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
-
-        return error.MismatchedTypes;
-    }
-}
-
-fn checkInt(self: *Sema, provided_type: Type, token_start: u32) Error!void {
-    if (provided_type != .int) {
-        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-        try error_message_buf.writer(self.allocator).print("'{}' is provided while expected an integer", .{provided_type});
-
-        self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
-
-        return error.MismatchedTypes;
-    }
-}
-
-fn checkIntType(self: *Sema, provided_type: Type, token_start: u32) Error!void {
-    if (provided_type != .int) {
-        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-        try error_message_buf.writer(self.allocator).print("'{}' is provided while expected an integer type", .{provided_type});
-
-        self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
-
-        return error.MismatchedTypes;
-    }
-}
-
-fn checkCanBeCompared(self: *Sema, provided_type: Type, token_start: u32) Error!void {
-    if (provided_type == .@"struct" or provided_type == .void or provided_type == .function) {
-        return self.reportNotComparable(provided_type, token_start);
-    }
-}
-
-fn checkStructOrStructPointer(self: *Sema, provided_type: Type, token_start: u32) Error!void {
-    if (provided_type == .@"struct") return;
-    if (provided_type.getPointer()) |pointer| if (pointer.child_type.* == .@"struct") return;
-
-    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-    try error_message_buf.writer(self.allocator).print("'{}' is not a struct nor a pointer to a struct", .{provided_type});
-
-    self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
-
-    return error.MismatchedTypes;
-}
-
-fn checkTypeCircularDependency(self: *Sema, type_name: Name, provided_subtype: Sir.SubType) Error!void {
-    switch (provided_subtype) {
-        .name => |referenced_name| {
-            if (std.mem.eql(u8, type_name.buffer, referenced_name.buffer)) {
-                return self.reportCircularDependency(referenced_name);
-            }
-        },
-
-        .@"struct" => |referenced_struct| {
-            for (referenced_struct.subsymbols) |subsymbol| {
-                try self.checkTypeCircularDependency(type_name, subsymbol.subtype);
-            }
-        },
-
-        else => {},
-    }
-}
-
-fn reportIncompatibleTypes(self: *Sema, lhs: Type, rhs: Type, token_start: u32) Error!void {
-    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-    try error_message_buf.writer(self.allocator).print("'{}' is not compatible with '{}'", .{ lhs, rhs });
-
-    self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
-
-    return error.MismatchedTypes;
-}
-
-fn reportNotDeclared(self: *Sema, name: Name) Error!void {
-    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-    try error_message_buf.writer(self.allocator).print("'{s}' is not declared", .{name.buffer});
-
-    self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, name.token_start) };
-
-    return error.Undeclared;
-}
-
-fn reportRedeclaration(self: *Sema, name: Name) Error!void {
-    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-    try error_message_buf.writer(self.allocator).print("redeclaration of '{s}'", .{name.buffer});
-
-    self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, name.token_start) };
-
-    return error.Redeclared;
-}
-
-fn reportTypeNotDeclared(self: *Sema, name: Name) Error!void {
-    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-    try error_message_buf.writer(self.allocator).print("type '{s}' is not declared", .{name.buffer});
-
-    self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, name.token_start) };
-
-    return error.Undeclared;
-}
-
-fn reportTypeNotExpression(self: *Sema, name: Name) Error!void {
-    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-    try error_message_buf.writer(self.allocator).print("'{s}' is a type not an expression", .{name.buffer});
-
-    self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, name.token_start) };
-
-    return error.Undeclared;
-}
-
-fn reportNotPointer(self: *Sema, provided_type: Type, token_start: u32) Error!void {
-    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-    try error_message_buf.writer(self.allocator).print("'{}' is not a pointer", .{provided_type});
-
-    self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
-
-    return error.MismatchedTypes;
-}
-
-fn reportNotIndexable(self: *Sema, provided_type: Type, token_start: u32) Error!void {
-    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-    try error_message_buf.writer(self.allocator).print("'{}' does not support indexing", .{provided_type});
-
-    self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
-
-    return error.UnexpectedType;
-}
-
-fn reportNotComparable(self: *Sema, provided_type: Type, token_start: u32) Error!void {
-    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-    try error_message_buf.writer(self.allocator).print("'{}' does not support comparison", .{provided_type});
-
-    self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
-
-    return error.MismatchedTypes;
-}
-
-fn reportCircularDependency(self: *Sema, name: Name) Error!void {
-    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-    try error_message_buf.writer(self.allocator).print("'{s}' is circularly dependent on itself", .{name.buffer});
-
-    self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, name.token_start) };
-
-    return error.CircularDependency;
-}
-
 pub fn init(allocator: std.mem.Allocator, buffer: []const u8, env: Compilation.Environment) std.mem.Allocator.Error!Sema {
     var scope_stack: @FieldType(Sema, "scope_stack") = .{};
 
@@ -468,109 +233,154 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
 pub fn analyze(self: *Sema, sir: Sir) Error!void {
     try self.air.instructions.ensureUnusedCapacity(self.allocator, sir.instructions.items.len);
 
-    for (sir.instructions.items) |instruction| {
-        try self.analyzeInstruction(instruction);
-    }
-}
+    var type_aliases: std.StringHashMapUnmanaged(Sir.SubSymbol) = .{};
+    defer type_aliases.deinit(self.allocator);
 
-fn analyzeSubType(self: *Sema, subtype: Sir.SubType) Error!Type {
-    switch (subtype) {
-        .name => |name| {
-            if (self.scope.get(name.buffer)) |variable| {
-                if (variable.is_type_alias) {
-                    return variable.type;
-                }
-            }
+    var externals: std.ArrayListUnmanaged(Sir.SubSymbol) = .{};
+    defer externals.deinit(self.allocator);
 
-            try self.reportTypeNotDeclared(name);
+    var functions: std.ArrayListUnmanaged(struct { Sir.SubSymbol, []const Sir.Instruction }) = .{};
+    defer functions.deinit(self.allocator);
 
-            unreachable;
-        },
+    var global_instructions: std.ArrayListUnmanaged(Sir.Instruction) = .{};
+    defer global_instructions.deinit(self.allocator);
 
-        .function => |function| {
-            const parameter_types = try self.allocator.alloc(Type, function.parameter_subtypes.len);
+    try global_instructions.ensureTotalCapacity(self.allocator, sir.instructions.items.len);
 
-            for (function.parameter_subtypes, 0..) |parameter_subtype, i| {
-                parameter_types[i] = try self.analyzeSubType(parameter_subtype);
-            }
+    var counter: u32 = 0;
 
-            const return_type = try self.analyzeSubType(function.return_subtype.*);
+    while (counter < sir.instructions.items.len) : (counter += 1) {
+        const sir_instruction = sir.instructions.items[counter];
 
-            const return_type_on_heap = try self.allocator.create(Type);
-            return_type_on_heap.* = return_type;
+        switch (sir_instruction) {
+            .type_alias => |subsymbol| try type_aliases.put(self.allocator, subsymbol.name.buffer, subsymbol),
+            .external => |subsymbol| try externals.append(self.allocator, subsymbol),
 
-            return Type{
-                .function = .{
-                    .parameter_types = parameter_types,
-                    .is_var_args = function.is_var_args,
-                    .return_type = return_type_on_heap,
-                },
-            };
-        },
+            .function => |subsymbol| {
+                const start = counter + 1;
+                var end = counter + 1;
 
-        .pointer => |pointer| {
-            if (pointer.child_subtype.* == .name) {
-                const child_subtype_name = pointer.child_subtype.name;
+                var scope_depth: usize = 0;
 
-                if (self.scope.getPtr(child_subtype_name.buffer)) |child_subtype_variable| {
-                    if (child_subtype_variable.is_type_alias) {
-                        return Type{
-                            .pointer = .{
-                                .size = pointer.size,
-                                .is_const = pointer.is_const,
-                                .child_type = &child_subtype_variable.type,
-                            },
-                        };
+                for (sir.instructions.items[start..]) |function_instruction| {
+                    end += 1;
+                    counter += 1;
+
+                    switch (function_instruction) {
+                        .start_scope => scope_depth += 1,
+                        .end_scope => {
+                            scope_depth -= 1;
+                            if (scope_depth == 0) break;
+                        },
+
+                        else => {},
                     }
                 }
 
-                try self.reportTypeNotDeclared(child_subtype_name);
+                try functions.append(self.allocator, .{ subsymbol, sir.instructions.items[start..end] });
+            },
 
-                unreachable;
-            } else {
-                const child_type = try self.analyzeSubType(pointer.child_subtype.*);
-
-                const child_type_on_heap = try self.allocator.create(Type);
-                child_type_on_heap.* = child_type;
-
-                return Type{
-                    .pointer = .{
-                        .size = pointer.size,
-                        .is_const = pointer.is_const,
-                        .child_type = child_type_on_heap,
-                    },
-                };
-            }
-        },
-
-        .@"struct" => |@"struct"| {
-            var fields = try self.allocator.alloc(Type.Struct.Field, @"struct".subsymbols.len);
-
-            for (@"struct".subsymbols, 0..) |subsymbol, i| {
-                const symbol = try self.analyzeSubSymbol(subsymbol);
-
-                fields[i] = .{ .name = symbol.name.buffer, .type = symbol.type };
-            }
-
-            return Type{ .@"struct" = .{ .fields = fields } };
-        },
-
-        .@"enum" => |@"enum"| {
-            self.error_info = .{ .message = "enums should be in a type alias as they require a namespace", .source_loc = SourceLoc.find(self.buffer, @"enum".token_start) };
-
-            return error.UnexpectedType;
-        },
-
-        .pure => |pure| return pure,
+            else => global_instructions.appendAssumeCapacity(sir_instruction),
+        }
     }
-}
 
-fn analyzeSubSymbol(self: *Sema, subsymbol: Sir.SubSymbol) Error!Symbol {
-    return Symbol{
-        .name = subsymbol.name,
-        .type = try self.analyzeSubType(subsymbol.subtype),
-        .linkage = subsymbol.linkage,
-    };
+    {
+        var type_alias_iterator = type_aliases.valueIterator();
+
+        while (type_alias_iterator.next()) |type_alias| {
+            if (self.scope.get(type_alias.name.buffer) != null) return self.reportRedeclaration(type_alias.name);
+            try self.scope.put(self.allocator, type_alias.name.buffer, .{
+                .type = undefined,
+                .linkage = type_alias.linkage,
+                .is_type_alias = true,
+            });
+        }
+
+        type_alias_iterator = type_aliases.valueIterator();
+
+        while (type_alias_iterator.next()) |type_alias| {
+            const variable = self.scope.getPtr(type_alias.name.buffer).?;
+
+            try self.checkTypeAliasCircular(type_alias.name, type_alias.subtype, &type_aliases);
+
+            if (type_alias.subtype == .@"enum") {
+                const @"enum" = type_alias.subtype.@"enum";
+                const enum_type = try self.analyzeSubType(@"enum".subtype.*);
+
+                try self.checkIntType(enum_type, @"enum".token_start);
+
+                for (@"enum".fields) |field| {
+                    const enum_field_value: Value = .{ .int = field.value };
+
+                    try self.checkUnaryImplicitCast(enum_field_value, enum_type, field.name.token_start);
+
+                    const enum_field_entry = try std.mem.concat(self.allocator, u8, &.{ type_alias.name.buffer, "::", field.name.buffer });
+
+                    if (self.scope.get(enum_field_entry) != null)
+                        return self.reportRedeclaration(.{ .buffer = enum_field_entry, .token_start = field.name.token_start });
+
+                    try self.scope.put(self.allocator, enum_field_entry, .{
+                        .type = enum_type,
+                        .linkage = type_alias.linkage,
+                        .maybe_value = enum_field_value,
+                        .is_const = true,
+                        .is_comptime = true,
+                    });
+                }
+
+                variable.type = enum_type;
+                variable.linkage = type_alias.linkage;
+            } else {
+                const symbol = try self.analyzeSubSymbol(type_alias.*);
+                variable.type = symbol.type;
+                variable.linkage = symbol.linkage;
+            }
+        }
+    }
+
+    for (global_instructions.items) |global_instruction| {
+        try self.analyzeInstruction(global_instruction);
+    }
+
+    for (externals.items) |external| {
+        if (self.scope.get(external.name.buffer) != null) return self.reportRedeclaration(external.name);
+
+        const symbol = try self.analyzeSubSymbol(external);
+
+        try self.scope.put(self.allocator, external.name.buffer, .{
+            .type = symbol.type,
+            .linkage = symbol.linkage,
+        });
+
+        try self.air.instructions.append(self.allocator, .{ .external = symbol });
+    }
+
+    for (functions.items) |function| {
+        const subsymbol, _ = function;
+
+        if (self.scope.get(subsymbol.name.buffer) != null) return self.reportRedeclaration(subsymbol.name);
+
+        const symbol = try self.analyzeSubSymbol(subsymbol);
+
+        try self.scope.put(self.allocator, symbol.name.buffer, .{
+            .type = symbol.type,
+            .linkage = symbol.linkage,
+        });
+    }
+
+    for (functions.items) |function| {
+        const subsymbol, const sir_instructions = function;
+
+        const symbol = try self.analyzeSubSymbol(subsymbol);
+
+        try self.air.instructions.append(self.allocator, .{ .function = symbol });
+
+        self.maybe_function = symbol.type;
+
+        for (sir_instructions) |sir_instruction| {
+            try self.analyzeInstruction(sir_instruction);
+        }
+    }
 }
 
 fn analyzeInstruction(self: *Sema, instruction: Sir.Instruction) Error!void {
@@ -617,18 +427,12 @@ fn analyzeInstruction(self: *Sema, instruction: Sir.Instruction) Error!void {
 
         .call => |call| try self.analyzeCall(call),
 
-        .function => |subsymbol| try self.analyzeFunction(subsymbol),
-
         .parameters => |subsymbols| try self.analyzeParameters(subsymbols),
 
         .constant => |subsymbol| try self.analyzeConstant(subsymbol),
 
         .variable => |subsymbol| try self.analyzeVariable(false, subsymbol),
         .variable_infer => |subsymbol| try self.analyzeVariable(true, subsymbol),
-
-        .external => |subsymbol| try self.analyzeExternal(subsymbol),
-
-        .type_alias => |subsymbol| try self.analyzeTypeAlias(subsymbol),
 
         .set => |name| try self.analyzeSet(name),
         .get => |name| try self.analyzeGet(name),
@@ -642,6 +446,8 @@ fn analyzeInstruction(self: *Sema, instruction: Sir.Instruction) Error!void {
 
         .ret => |token_start| try self.analyzeReturn(true, token_start),
         .ret_void => |token_start| try self.analyzeReturn(false, token_start),
+
+        else => {},
     }
 }
 
@@ -1308,17 +1114,6 @@ fn analyzeCall(self: *Sema, call: Sir.Instruction.Call) Error!void {
     }
 }
 
-fn analyzeFunction(self: *Sema, subsymbol: Sir.SubSymbol) Error!void {
-    const symbol = try self.analyzeSubSymbol(subsymbol);
-    if (self.scope.get(symbol.name.buffer) != null) return self.reportRedeclaration(symbol.name);
-
-    self.maybe_function = symbol.type;
-
-    try self.air.instructions.append(self.allocator, .{ .function = symbol });
-
-    try self.scope.put(self.allocator, symbol.name.buffer, .{ .type = symbol.type, .linkage = symbol.linkage });
-}
-
 fn analyzeParameters(self: *Sema, subsymbols: []const Sir.SubSymbol) Error!void {
     var symbols: std.ArrayListUnmanaged(Symbol) = .{};
     try symbols.ensureTotalCapacity(self.allocator, subsymbols.len);
@@ -1394,59 +1189,6 @@ fn analyzeExternal(self: *Sema, subsymbol: Sir.SubSymbol) Error!void {
     try self.scope.put(self.allocator, symbol.name.buffer, .{ .type = symbol.type, .linkage = symbol.linkage });
 
     try self.air.instructions.append(self.allocator, .{ .external = symbol });
-}
-
-fn analyzeTypeAlias(self: *Sema, subsymbol: Sir.SubSymbol) Error!void {
-    if (self.scope.get(subsymbol.name.buffer) != null) return self.reportRedeclaration(subsymbol.name);
-
-    try self.checkTypeCircularDependency(subsymbol.name, subsymbol.subtype);
-
-    if (subsymbol.subtype == .@"enum") {
-        const @"enum" = subsymbol.subtype.@"enum";
-        const enum_type = try self.analyzeSubType(@"enum".subtype.*);
-
-        try self.checkIntType(enum_type, @"enum".token_start);
-
-        if (enum_type.int.bits > 64) {
-            // TODO: LLVM supports more than 64 bits but we don't currently expose this feature, sorry...
-            self.error_info = .{
-                .message = "enum is backed by an integer that takes more than 64 bits in memory but it is not currently supported",
-                .source_loc = SourceLoc.find(self.buffer, @"enum".token_start),
-            };
-
-            return error.UnexpectedType;
-        }
-
-        for (@"enum".fields) |field| {
-            const enum_field_value: Value = .{ .int = field.value };
-
-            try self.checkUnaryImplicitCast(enum_field_value, enum_type, field.name.token_start);
-
-            const enum_field_entry = try std.mem.concat(self.allocator, u8, &.{ subsymbol.name.buffer, "::", field.name.buffer });
-
-            if (self.scope.get(enum_field_entry) != null)
-                return self.reportRedeclaration(.{ .buffer = enum_field_entry, .token_start = field.name.token_start });
-
-            try self.scope.put(self.allocator, enum_field_entry, .{
-                .type = enum_type,
-                .linkage = subsymbol.linkage,
-                .maybe_value = enum_field_value,
-                .is_const = true,
-                .is_comptime = true,
-            });
-        }
-
-        const variable_entry = try self.scope.getOrPut(self.allocator, subsymbol.name.buffer);
-        variable_entry.value_ptr.is_type_alias = true;
-        variable_entry.value_ptr.type = enum_type;
-        variable_entry.value_ptr.linkage = subsymbol.linkage;
-    } else {
-        const variable_entry = try self.scope.getOrPut(self.allocator, subsymbol.name.buffer);
-        variable_entry.value_ptr.is_type_alias = true;
-        const symbol = try self.analyzeSubSymbol(subsymbol);
-        variable_entry.value_ptr.type = symbol.type;
-        variable_entry.value_ptr.linkage = symbol.linkage;
-    }
 }
 
 fn analyzeSet(self: *Sema, name: Name) Error!void {
@@ -1551,4 +1293,354 @@ fn analyzeReturn(self: *Sema, with_value: bool, token_start: u32) Error!void {
     }
 
     try self.air.instructions.append(self.allocator, if (with_value) .ret else .ret_void);
+}
+
+fn analyzeSubType(self: *Sema, subtype: Sir.SubType) Error!Type {
+    switch (subtype) {
+        .name => |name| {
+            if (self.scope.get(name.buffer)) |variable| {
+                if (variable.is_type_alias) {
+                    return variable.type;
+                }
+            }
+
+            try self.reportTypeNotDeclared(name);
+
+            unreachable;
+        },
+
+        .function => |function| {
+            const parameter_types = try self.allocator.alloc(Type, function.parameter_subtypes.len);
+
+            for (function.parameter_subtypes, 0..) |parameter_subtype, i| {
+                parameter_types[i] = try self.analyzeSubType(parameter_subtype);
+            }
+
+            const return_type = try self.analyzeSubType(function.return_subtype.*);
+
+            const return_type_on_heap = try self.allocator.create(Type);
+            return_type_on_heap.* = return_type;
+
+            return Type{
+                .function = .{
+                    .parameter_types = parameter_types,
+                    .is_var_args = function.is_var_args,
+                    .return_type = return_type_on_heap,
+                },
+            };
+        },
+
+        .pointer => |pointer| {
+            if (pointer.child_subtype.* == .name) {
+                const child_subtype_name = pointer.child_subtype.name;
+
+                if (self.scope.getPtr(child_subtype_name.buffer)) |child_subtype_variable| {
+                    if (child_subtype_variable.is_type_alias) {
+                        return Type{
+                            .pointer = .{
+                                .size = pointer.size,
+                                .is_const = pointer.is_const,
+                                .child_type = &child_subtype_variable.type,
+                            },
+                        };
+                    }
+                }
+
+                try self.reportTypeNotDeclared(child_subtype_name);
+
+                unreachable;
+            } else {
+                const child_type = try self.analyzeSubType(pointer.child_subtype.*);
+
+                const child_type_on_heap = try self.allocator.create(Type);
+                child_type_on_heap.* = child_type;
+
+                return Type{
+                    .pointer = .{
+                        .size = pointer.size,
+                        .is_const = pointer.is_const,
+                        .child_type = child_type_on_heap,
+                    },
+                };
+            }
+        },
+
+        .@"struct" => |@"struct"| {
+            var fields = try self.allocator.alloc(Type.Struct.Field, @"struct".subsymbols.len);
+
+            for (@"struct".subsymbols, 0..) |subsymbol, i| {
+                const symbol = try self.analyzeSubSymbol(subsymbol);
+
+                fields[i] = .{ .name = symbol.name.buffer, .type = symbol.type };
+            }
+
+            return Type{ .@"struct" = .{ .fields = fields } };
+        },
+
+        .@"enum" => |@"enum"| {
+            self.error_info = .{ .message = "enums should be in a type alias as they require a namespace", .source_loc = SourceLoc.find(self.buffer, @"enum".token_start) };
+
+            return error.UnexpectedType;
+        },
+
+        .pure => |pure| return pure,
+    }
+}
+
+fn analyzeSubSymbol(self: *Sema, subsymbol: Sir.SubSymbol) Error!Symbol {
+    return Symbol{
+        .name = subsymbol.name,
+        .type = try self.analyzeSubType(subsymbol.subtype),
+        .linkage = subsymbol.linkage,
+    };
+}
+
+fn checkTypeAliasCircular(self: *Sema, target: Name, subtype: Sir.SubType, type_aliases: *std.StringHashMapUnmanaged(Sir.SubSymbol)) Error!void {
+    switch (subtype) {
+        .name => |name| {
+            // type I = I;
+            //
+            // type T = J;
+            // type J = T;
+            if (std.mem.eql(u8, name.buffer, target.buffer)) {
+                return self.reportCircularDependency(target);
+            } else if (type_aliases.get(name.buffer)) |type_alias| {
+                try self.checkTypeAliasCircular(target, type_alias.subtype, type_aliases);
+            }
+        },
+
+        .@"struct" => |@"struct"| {
+            // type T = struct { t T };
+            //
+            // type I = struct { j J };
+            // type J = struct { i I };
+            for (@"struct".subsymbols) |field_subsymbol| {
+                try self.checkTypeAliasCircular(target, field_subsymbol.subtype, type_aliases);
+            }
+        },
+
+        .@"enum" => |@"enum"| {
+            // type T = enum T {};
+            try self.checkTypeAliasCircular(target, @"enum".subtype.*, type_aliases);
+        },
+
+        else => {},
+    }
+}
+
+fn checkUnaryImplicitCast(self: *Sema, lhs: Value, to: Type, token_start: u32) Error!void {
+    const lhs_type = lhs.getType();
+
+    if (!((lhs == .int and to == .int and lhs.int >= to.minInt() and
+        lhs == .int and to == .int and lhs.int <= to.maxInt()) or
+        (lhs == .float and to == .float and lhs.float >= -to.maxFloat() and
+        lhs == .float and to == .float and lhs.float <= to.maxFloat()) or
+        (lhs_type == .int and to == .int and
+        lhs_type.maxInt() <= to.maxInt() and lhs_type.minInt() >= to.minInt() and
+        lhs_type.canBeNegative() == to.canBeNegative()) or
+        (lhs_type == .float and to == .float and
+        lhs_type.maxFloat() <= to.maxFloat()) or
+        lhs_type.eql(to)))
+    {
+        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+        try error_message_buf.writer(self.allocator).print("'{}' cannot be implicitly casted to '{}'", .{ lhs_type, to });
+
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
+
+        return error.MismatchedTypes;
+    }
+}
+
+fn checkBinaryImplicitCast(self: *Sema, lhs: Value, rhs: Value, lhs_type: *Type, rhs_type: *Type, token_start: u32) Error!void {
+    if (std.meta.activeTag(lhs_type.*) == std.meta.activeTag(rhs_type.*)) {
+        if (lhs == .runtime and rhs == .runtime and
+            lhs_type.canBeNegative() != rhs_type.canBeNegative())
+        {
+            try self.reportIncompatibleTypes(lhs_type.*, rhs_type.*, token_start);
+        }
+
+        if (lhs_type.* == .int and lhs_type.int.bits > rhs_type.int.bits or
+            lhs_type.* == .float and lhs_type.float.bits > rhs_type.float.bits)
+        {
+            // lhs as u64 > rhs as u16
+            // lhs as f64 > rhs as f32
+            // lhs as f64 > rhs as f16
+            try self.checkUnaryImplicitCast(rhs, lhs_type.*, token_start);
+
+            rhs_type.* = lhs_type.*;
+        } else if (lhs_type.* == .int and lhs_type.int.bits < rhs_type.int.bits or
+            lhs_type.* == .float and lhs_type.float.bits < rhs_type.float.bits)
+        {
+            // lhs as u16 > rhs as u64
+            // lhs as f32 > rhs as f64
+            // lhs as f16 > rhs as f64
+            try self.checkUnaryImplicitCast(lhs, rhs_type.*, token_start);
+
+            lhs_type.* = rhs_type.*;
+        } else if (lhs_type.* == .pointer) {
+            // lhs as *const u8 == rhs as *const u8
+            // lhs as *const u8 == rhs as *const u16
+            //
+            // Both are allowed since it is a pointer comparison which compares the addresses
+        }
+    } else {
+        try self.reportIncompatibleTypes(lhs_type.*, rhs_type.*, token_start);
+    }
+}
+
+fn checkIntOrFloat(self: *Sema, provided_type: Type, token_start: u32) Error!void {
+    if (provided_type != .int and provided_type != .float) {
+        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+        try error_message_buf.writer(self.allocator).print("'{}' is provided while expected an integer or float", .{provided_type});
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
+
+        return error.MismatchedTypes;
+    }
+}
+
+fn checkIntOrFloatOrPointer(self: *Sema, provided_type: Type, token_start: u32) Error!void {
+    if (provided_type != .int and provided_type != .float and provided_type != .pointer) {
+        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+        try error_message_buf.writer(self.allocator).print("'{}' is provided while expected an integer or float or pointer", .{provided_type});
+
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
+
+        return error.MismatchedTypes;
+    }
+}
+
+fn checkInt(self: *Sema, provided_type: Type, token_start: u32) Error!void {
+    if (provided_type != .int) {
+        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+        try error_message_buf.writer(self.allocator).print("'{}' is provided while expected an integer", .{provided_type});
+
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
+
+        return error.MismatchedTypes;
+    }
+}
+
+fn checkIntType(self: *Sema, provided_type: Type, token_start: u32) Error!void {
+    if (provided_type != .int) {
+        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+        try error_message_buf.writer(self.allocator).print("'{}' is provided while expected an integer type", .{provided_type});
+
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
+
+        return error.MismatchedTypes;
+    }
+}
+
+fn checkCanBeCompared(self: *Sema, provided_type: Type, token_start: u32) Error!void {
+    if (provided_type == .@"struct" or provided_type == .void or provided_type == .function) {
+        return self.reportNotComparable(provided_type, token_start);
+    }
+}
+
+fn checkStructOrStructPointer(self: *Sema, provided_type: Type, token_start: u32) Error!void {
+    if (provided_type == .@"struct") return;
+    if (provided_type.getPointer()) |pointer| if (pointer.child_type.* == .@"struct") return;
+
+    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+    try error_message_buf.writer(self.allocator).print("'{}' is not a struct nor a pointer to a struct", .{provided_type});
+
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
+
+    return error.MismatchedTypes;
+}
+
+fn reportIncompatibleTypes(self: *Sema, lhs: Type, rhs: Type, token_start: u32) Error!void {
+    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+    try error_message_buf.writer(self.allocator).print("'{}' is not compatible with '{}'", .{ lhs, rhs });
+
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
+
+    return error.MismatchedTypes;
+}
+
+fn reportNotDeclared(self: *Sema, name: Name) Error!void {
+    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+    try error_message_buf.writer(self.allocator).print("'{s}' is not declared", .{name.buffer});
+
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, name.token_start) };
+
+    return error.Undeclared;
+}
+
+fn reportRedeclaration(self: *Sema, name: Name) Error!void {
+    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+    try error_message_buf.writer(self.allocator).print("redeclaration of '{s}'", .{name.buffer});
+
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, name.token_start) };
+
+    return error.Redeclared;
+}
+
+fn reportTypeNotDeclared(self: *Sema, name: Name) Error!void {
+    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+    try error_message_buf.writer(self.allocator).print("type '{s}' is not declared", .{name.buffer});
+
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, name.token_start) };
+
+    return error.Undeclared;
+}
+
+fn reportTypeNotExpression(self: *Sema, name: Name) Error!void {
+    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+    try error_message_buf.writer(self.allocator).print("'{s}' is a type not an expression", .{name.buffer});
+
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, name.token_start) };
+
+    return error.Undeclared;
+}
+
+fn reportNotPointer(self: *Sema, provided_type: Type, token_start: u32) Error!void {
+    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+    try error_message_buf.writer(self.allocator).print("'{}' is not a pointer", .{provided_type});
+
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
+
+    return error.MismatchedTypes;
+}
+
+fn reportNotIndexable(self: *Sema, provided_type: Type, token_start: u32) Error!void {
+    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+    try error_message_buf.writer(self.allocator).print("'{}' does not support indexing", .{provided_type});
+
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
+
+    return error.UnexpectedType;
+}
+
+fn reportNotComparable(self: *Sema, provided_type: Type, token_start: u32) Error!void {
+    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+    try error_message_buf.writer(self.allocator).print("'{}' does not support comparison", .{provided_type});
+
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
+
+    return error.MismatchedTypes;
+}
+
+fn reportCircularDependency(self: *Sema, name: Name) Error!void {
+    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+    try error_message_buf.writer(self.allocator).print("'{s}' is circularly dependent on itself", .{name.buffer});
+
+    self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, name.token_start) };
+
+    return error.CircularDependency;
 }

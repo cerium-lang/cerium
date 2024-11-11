@@ -326,7 +326,7 @@ pub const Parser = struct {
 
             .keyword_const, .keyword_var => try self.parseVariableDeclaration(.global),
 
-            .keyword_type => try self.parseTypeAlias(.global),
+            .keyword_type => try self.parseTypeAlias(),
 
             else => {
                 self.error_info = .{ .message = "expected a top level declaration", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
@@ -345,8 +345,6 @@ pub const Parser = struct {
     fn parseStmt(self: *Parser) Error!void {
         switch (self.peekToken().tag) {
             .keyword_const, .keyword_var => try self.parseVariableDeclaration(.local),
-
-            .keyword_type => try self.parseTypeAlias(.local),
 
             .keyword_if => return self.parseConditional(),
 
@@ -583,7 +581,7 @@ pub const Parser = struct {
         if (has_initializer) try self.sir.instructions.append(self.allocator, .{ .set = name });
     }
 
-    fn parseTypeAlias(self: *Parser, linkage: Symbol.Linkage) Error!void {
+    fn parseTypeAlias(self: *Parser) Error!void {
         _ = self.nextToken();
 
         const name = try self.parseName();
@@ -602,7 +600,7 @@ pub const Parser = struct {
                 .type_alias = .{
                     .name = name,
                     .subtype = subtype,
-                    .linkage = linkage,
+                    .linkage = .global,
                 },
             },
         );
