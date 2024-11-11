@@ -247,24 +247,24 @@ pub fn analyze(self: *Sema, sir: Sir) Error!void {
 
     try global_instructions.ensureTotalCapacity(self.allocator, sir.instructions.items.len);
 
-    var counter: u32 = 0;
+    var i: usize = 0;
 
-    while (counter < sir.instructions.items.len) : (counter += 1) {
-        const sir_instruction = sir.instructions.items[counter];
+    while (i < sir.instructions.items.len) : (i += 1) {
+        const sir_instruction = sir.instructions.items[i];
 
         switch (sir_instruction) {
             .type_alias => |subsymbol| try type_aliases.put(self.allocator, subsymbol.name.buffer, subsymbol),
             .external => |subsymbol| try externals.append(self.allocator, subsymbol),
 
             .function => |subsymbol| {
-                const start = counter + 1;
-                var end = counter + 1;
+                const start = i + 1;
+                var end = i + 1;
 
                 var scope_depth: usize = 0;
 
                 for (sir.instructions.items[start..]) |function_instruction| {
                     end += 1;
-                    counter += 1;
+                    i += 1;
 
                     switch (function_instruction) {
                         .start_scope => scope_depth += 1,
