@@ -445,6 +445,8 @@ pub fn render(self: *LlvmBackend, air: Air) Error!void {
     for (air.instructions.items) |air_instruction| {
         switch (air_instruction) {
             .function => |symbol| {
+                if (self.scope.get(symbol.name.buffer) != null) continue;
+
                 const function_pointer = c.LLVMAddFunction(
                     self.module,
                     try self.allocator.dupeZ(u8, symbol.name.buffer),

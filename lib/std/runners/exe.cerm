@@ -1,3 +1,9 @@
+fn _start() {
+    main();
+
+    exit(0);
+}
+
 type SYS = enum usize {
     exit_group = 231,
 };
@@ -18,7 +24,3 @@ fn exit(code u8) {
 
 extern fn main();
 
-fn _start() {
-    main();
-    exit(0);
-}

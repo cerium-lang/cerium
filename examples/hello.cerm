@@ -1,3 +1,7 @@
+fn main() {
+    print("Hello, World!\n");
+}
+
 type SYS = enum usize {
     write = 1,
 };
@@ -31,6 +35,3 @@ fn print(str [*]const u8) {
     syscall3(SYS::write, STDOUT, str as usize, strlen(str));
 }
 
-fn main() {
-    print("Hello, World!\n");
-}

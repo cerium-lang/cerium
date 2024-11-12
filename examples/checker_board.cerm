@@ -1,3 +1,21 @@
+fn main() {
+    var i s32 = 0;
+
+    while (i = i + 1) < 9 {
+        var j s32 = 0;
+
+        while (j = j + 1) < 9 {
+            if (i + j) % 2 == 0 {
+                print("\e[47m  \e[0m");
+            } else {
+                print("\e[100m  \e[0m");
+            }
+        }
+
+        print("\n");
+    }
+}
+
 type SYS = enum usize {
     write = 1,
 };
@@ -31,20 +49,3 @@ fn print(str [*]const u8) {
     syscall3(SYS::write, STDOUT, str as usize, strlen(str));
 }
 
-fn main() {
-    var i s32 = 0;
-
-    while (i = i + 1) < 9 {
-        var j s32 = 0;
-
-        while (j = j + 1) < 9 {
-            if (i + j) % 2 == 0 {
-                print("\e[47m  \e[0m");
-            } else {
-                print("\e[100m  \e[0m");
-            }
-        }
-
-        print("\n");
-    }
-}

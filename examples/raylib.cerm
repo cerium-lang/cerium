@@ -7,28 +7,6 @@
 //                      with Raylib and C runtime library and C math library
 //    i.e: `cc raylib_example.o -l:libraylib.a -lm -o raylib_example`
 
-extern fn InitWindow(width c_int, height c_int, title [*]const u8);
-extern fn CloseWindow();
-extern fn WindowShouldClose() bool;
-
-extern fn GetRenderWidth() c_int;
-extern fn GetRenderHeight() c_int;
-
-extern fn BeginDrawing();
-extern fn EndDrawing();
-
-type Color = struct {
-    r c_uchar,
-    g c_uchar,
-    b c_uchar,
-    a c_uchar,
-};
-
-extern fn SetRandomSeed(seed c_int);
-extern fn GetRandomValue(min c_int, max c_int) c_int;
-
-extern fn DrawPixel(posX c_int, posY c_int, color Color);
-
 fn main() u8 {
     InitWindow(800, 600, "Raylib Example");
 
@@ -57,3 +35,26 @@ fn main() u8 {
 
     return 0;
 }
+
+extern fn InitWindow(width c_int, height c_int, title [*]const u8);
+extern fn CloseWindow();
+extern fn WindowShouldClose() bool;
+
+extern fn GetRenderWidth() c_int;
+extern fn GetRenderHeight() c_int;
+
+extern fn BeginDrawing();
+extern fn EndDrawing();
+
+type Color = struct {
+    r c_uchar,
+    g c_uchar,
+    b c_uchar,
+    a c_uchar,
+};
+
+extern fn SetRandomSeed(seed c_int);
+extern fn GetRandomValue(min c_int, max c_int) c_int;
+
+extern fn DrawPixel(posX c_int, posY c_int, color Color);
+
