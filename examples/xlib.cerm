@@ -1,0 +1,82 @@
+// A little x11 experiment to render random noise colors
+//
+// Compilation Guide:
+// 1. Get a Cerium compiler, compile the example into object file with the default runner being disabled
+//    i.e: `cerium compile examples/xlib.cerm --output xlib_example.o --emit object --runner none`
+// 2. Get a C compiler, use it to link the object file produced by Cerium
+//                      with xlib and C runtime library and C math library
+//    i.e: `cc xlib_example.o -lX11 -o xlib_example`
+
+fn main() u8 {
+    var display = XOpenDisplay(0 as [*]const u8);
+
+    if (display as usize == 0) {
+        printf("failed to open display\n");
+        return 1;
+    }
+
+    var root = XDefaultRootWindow(display);
+    var screen = XDefaultScreen(display);
+    var gc = XDefaultGC(display, screen);
+
+    var x c_int = 0;
+    var y c_int = 0;
+    var width c_uint = 800;
+    var height c_uint = 600;
+    var border_width c_uint = 0;
+    var depth c_uint;
+
+    var window = XCreateSimpleWindow(display, XDefaultRootWindow(display), x, y, width, height, border_width, 0, XBlackPixel(display, screen));
+
+    XMapWindow(display, window);
+
+    srand(time(0 as *c_int));
+
+    while true {
+        XGetGeometry(display, window, &root, &x, &y, &width, &height, &border_width, &depth);
+
+        XSetForeground(display, gc, (rand() % 0xFFFFFF) as c_ulong);
+
+        var i u16 = 0;
+        
+        while (i < 255 * 2) {
+            XDrawPoint(display, window, gc, rand() % width as c_int, rand() % height as c_int);
+
+            i = i + 1;
+        }
+
+        XFlush(display);
+    }
+
+    return 0;
+}
+
+type XDisplay = struct {};
+type XGraphicsContext = struct {};
+
+type XID = c_ulong;
+type XWindow = XID;
+type XDrawable = XID;
+
+extern fn XOpenDisplay(display_name [*]const u8) *XDisplay;
+extern fn XCloseDisplay(display *XDisplay);
+extern fn XFlush(display *XDisplay);
+
+extern fn XBlackPixel(display *XDisplay, screen c_int) c_ulong;
+
+extern fn XDefaultScreen(display *XDisplay) c_int;
+extern fn XDefaultRootWindow(display *XDisplay) XWindow;
+extern fn XCreateSimpleWindow(display *XDisplay, parent XWindow, x c_int, y c_int, width c_uint, height c_uint, border_width c_uint, border c_ulong, background c_ulong) XWindow;
+extern fn XDestroyWindow(display *XDisplay, window XWindow);
+extern fn XMapWindow(display *XDisplay, window XWindow);
+
+extern fn XDefaultGC(display *XDisplay, screen c_int) *XGraphicsContext;
+extern fn XSetForeground(display *XDisplay, gc *XGraphicsContext, foreground c_ulong);
+extern fn XSetBackground(display *XDisplay, gc *XGraphicsContext, background c_ulong);
+extern fn XDrawPoint(display *XDisplay, drawable XDrawable, gc *XGraphicsContext, x c_int, y c_int);
+extern fn XGetGeometry(display *XDisplay, drawable XDrawable, root_return *XWindow, x_return *c_int, y_return *c_int, width_return *c_uint, height_return *c_uint, border_width_return *c_uint, depth_return *c_uint);
+
+extern fn printf(format [*]const u8, ...);
+extern fn time(ptr *c_int) c_int;
+extern fn srand(seed c_int);
+extern fn rand() c_int;

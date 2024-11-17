@@ -23,7 +23,7 @@ env: Compilation.Environment,
 
 air: Air = .{},
 
-maybe_function: ?Type = null,
+maybe_function_type: ?Type = null,
 
 stack: std.ArrayListUnmanaged(Value) = .{},
 
@@ -375,7 +375,7 @@ pub fn analyze(self: *Sema, sir: Sir) Error!void {
 
         try self.air.instructions.append(self.allocator, .{ .function = symbol });
 
-        self.maybe_function = symbol.type;
+        self.maybe_function_type = symbol.type;
 
         for (sir_instructions) |sir_instruction| {
             try self.analyzeInstruction(sir_instruction);
@@ -1207,11 +1207,11 @@ fn analyzeSet(self: *Sema, name: Name) Error!void {
         self.error_info = .{ .message = "cannot mutate the value of a constant", .source_loc = SourceLoc.find(self.buffer, name.token_start) };
 
         return error.UnexpectedMutation;
-    } else if (variable.linkage == .global and value == .runtime and self.maybe_function == null) {
+    } else if (variable.linkage == .global and value == .runtime and self.maybe_function_type == null) {
         self.error_info = .{ .message = "expected global variable initializer to be compile time known", .source_loc = SourceLoc.find(self.buffer, name.token_start) };
 
         return error.ExpectedCompiletimeConstant;
-    } else if (self.maybe_function != null) {
+    } else if (self.maybe_function_type != null) {
         try self.air.instructions.append(self.allocator, .{ .set = name.buffer });
     }
 }
@@ -1278,9 +1278,9 @@ fn modifyScope(self: *Sema, start: bool) Error!void {
 }
 
 fn analyzeReturn(self: *Sema, with_value: bool, token_start: u32) Error!void {
-    std.debug.assert(self.maybe_function != null);
+    std.debug.assert(self.maybe_function_type != null);
 
-    const return_type = self.maybe_function.?.pointer.child_type.*.function.return_type.*;
+    const return_type = self.maybe_function_type.?.pointer.child_type.*.function.return_type.*;
 
     if (with_value) {
         try self.checkUnaryImplicitCast(self.stack.pop(), return_type, token_start);
