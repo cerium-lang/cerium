@@ -225,14 +225,14 @@ pub fn link(self: Compilation, object_file_path: []const u8, output_file_path: [
         @compileError("TODO: use lld library if spawning is not supported");
     }
 
-    const lld_process = try std.process.Child.run(.{
-        .allocator = self.allocator,
-        .argv = &lld_argv,
-    });
+    var lld_process = std.process.Child.init(&lld_argv, self.allocator);
+    lld_process.stdin_behavior = .Inherit;
+    lld_process.stdout_behavior = .Inherit;
+    lld_process.stderr_behavior = .Inherit;
 
-    std.debug.print("{s}", .{lld_process.stderr});
+    const termination = try lld_process.spawnAndWait();
 
-    switch (lld_process.term) {
+    switch (termination) {
         .Exited => |code| return code,
 
         else => return 1,

@@ -494,14 +494,16 @@ pub const Cli = struct {
 
         defer self.allocator.free(exe_process_argv);
 
-        const exe_process = std.process.Child.run(.{ .allocator = self.allocator, .argv = exe_process_argv }) catch |err| {
+        var exe_process = std.process.Child.init(exe_process_argv, self.allocator);
+        exe_process.stdin_behavior = .Inherit;
+        exe_process.stdout_behavior = .Inherit;
+        exe_process.stderr_behavior = .Inherit;
+
+        const termination = exe_process.spawnAndWait() catch |err| {
             std.debug.print("Error: could not run executable: {s}\n", .{errorDescription(err)});
 
             return 1;
         };
-
-        std.debug.print("{s}", .{exe_process.stdout});
-        std.debug.print("{s}", .{exe_process.stderr});
 
         std.fs.cwd().deleteFile(output_file_path) catch |err| {
             std.debug.print("Error: could not delete output file: {s}\n", .{errorDescription(err)});
@@ -509,7 +511,7 @@ pub const Cli = struct {
             return 1;
         };
 
-        switch (exe_process.term) {
+        switch (termination) {
             .Exited => |code| return code,
 
             else => return 1,
