@@ -404,8 +404,8 @@ fn analyzeInstruction(self: *Sema, instruction: Sir.Instruction) Error!void {
 
         .write => |token_start| try self.analyzeWrite(token_start),
         .read => |token_start| try self.analyzeRead(token_start),
-        .get_element_ptr => |token_start| try self.analyzeGetElementPtr(token_start),
-        .get_field_ptr => |name| try self.analyzeGetFieldPtr(name),
+        .element => |token_start| try self.analyzeElement(token_start),
+        .field => |name| try self.analyzeField(name),
         .reference => |token_start| try self.analyzeReference(token_start),
 
         .add => |token_start| try self.analyzeArithmetic(.add, token_start),
@@ -649,13 +649,13 @@ fn analyzeRead(self: *Sema, token_start: u32) Error!void {
     try self.stack.append(self.allocator, .{ .runtime = rhs_pointer.child_type.* });
 }
 
-fn analyzeGetElementPtr(self: *Sema, token_start: u32) Error!void {
+fn analyzeElement(self: *Sema, token_start: u32) Error!void {
     const rhs = self.stack.pop();
 
     const lhs = self.stack.pop();
     const lhs_type = lhs.getType();
 
-    var lhs_pointer = lhs_type.getPointer() orelse return self.reportNotIndexable(lhs_type, token_start);
+    const lhs_pointer = lhs_type.getPointer() orelse return self.reportNotIndexable(lhs_type, token_start);
 
     if (lhs_pointer.size != .many) return try self.reportNotIndexable(lhs_type, token_start);
 
@@ -664,13 +664,12 @@ fn analyzeGetElementPtr(self: *Sema, token_start: u32) Error!void {
     try self.checkUnaryImplicitCast(rhs, usize_type, token_start);
 
     try self.air.instructions.append(self.allocator, .get_element_ptr);
+    try self.air.instructions.append(self.allocator, .read);
 
-    lhs_pointer.size = .one;
-
-    try self.stack.append(self.allocator, .{ .runtime = .{ .pointer = lhs_pointer } });
+    try self.stack.append(self.allocator, .{ .runtime = lhs_pointer.child_type.* });
 }
 
-fn analyzeGetFieldPtr(self: *Sema, name: Name) Error!void {
+fn analyzeField(self: *Sema, name: Name) Error!void {
     const rhs_type = self.stack.getLast().getType();
 
     try self.checkStructOrStructPointer(rhs_type, name.token_start);
@@ -684,22 +683,9 @@ fn analyzeGetFieldPtr(self: *Sema, name: Name) Error!void {
     for (rhs_struct.fields, 0..) |field, i| {
         if (std.mem.eql(u8, field.name, name.buffer)) {
             try self.air.instructions.append(self.allocator, .{ .get_field_ptr = @intCast(i) });
+            try self.air.instructions.append(self.allocator, .read);
 
-            const child_type_on_heap = try self.allocator.create(Type);
-            child_type_on_heap.* = field.type;
-
-            return self.stack.append(
-                self.allocator,
-                .{
-                    .runtime = .{
-                        .pointer = .{
-                            .size = .one,
-                            .is_const = false,
-                            .child_type = child_type_on_heap,
-                        },
-                    },
-                },
-            );
+            return self.stack.append(self.allocator, .{ .runtime = field.type });
         }
     }
 
@@ -714,10 +700,48 @@ fn analyzeGetFieldPtr(self: *Sema, name: Name) Error!void {
 
 fn analyzeReference(self: *Sema, token_start: u32) Error!void {
     const rhs = self.stack.pop();
+    const rhs_type = rhs.getType();
 
+    const before_last_instruction = self.air.instructions.items[self.air.instructions.items.len - 2];
     const last_instruction = &self.air.instructions.items[self.air.instructions.items.len - 1];
 
-    if (last_instruction.* != .get) {
+    if (last_instruction.* == .read and
+        (before_last_instruction == .get_element_ptr or before_last_instruction == .get_field_ptr))
+    {
+        _ = self.air.instructions.pop();
+
+        const child_on_heap = try self.allocator.create(Type);
+        child_on_heap.* = rhs_type;
+
+        try self.stack.append(self.allocator, .{
+            .runtime = .{
+                .pointer = .{
+                    .size = .one,
+                    .is_const = false,
+                    .child_type = child_on_heap,
+                },
+            },
+        });
+    } else if (last_instruction.* == .get) {
+        const rhs_name = last_instruction.get;
+
+        last_instruction.* = .{ .get_ptr = rhs_name };
+
+        const rhs_variable = self.scope.get(rhs_name).?;
+
+        const child_on_heap = try self.allocator.create(Type);
+        child_on_heap.* = rhs_type;
+
+        try self.stack.append(self.allocator, .{
+            .runtime = .{
+                .pointer = .{
+                    .size = .one,
+                    .is_const = rhs_variable.is_const,
+                    .child_type = child_on_heap,
+                },
+            },
+        });
+    } else {
         var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
         try error_message_buf.writer(self.allocator).print("'{}' value cannot be referenced", .{rhs.getType()});
@@ -726,26 +750,6 @@ fn analyzeReference(self: *Sema, token_start: u32) Error!void {
 
         return error.MismatchedTypes;
     }
-
-    const rhs_name = last_instruction.get;
-    const rhs_type = rhs.getType();
-
-    last_instruction.* = .{ .get_ptr = rhs_name };
-
-    const rhs_variable = self.scope.get(rhs_name).?;
-
-    const child_on_heap = try self.allocator.create(Type);
-    child_on_heap.* = rhs_type;
-
-    try self.stack.append(self.allocator, .{
-        .runtime = .{
-            .pointer = .{
-                .size = .one,
-                .is_const = rhs_variable.is_const,
-                .child_type = child_on_heap,
-            },
-        },
-    });
 }
 
 const ArithmeticOperation = enum {

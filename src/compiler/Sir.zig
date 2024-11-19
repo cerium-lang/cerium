@@ -121,10 +121,10 @@ pub const Instruction = union(enum) {
     write: u32,
     /// Read the data that the pointer is pointing to
     read: u32,
-    /// Calculate the pointer of an element in an "size many" pointer
-    get_element_ptr: u32,
-    /// Calculate the pointer of a field in a struct (convert to struct pointer if needed)
-    get_field_ptr: Name,
+    /// Get an element in a "size many" pointer
+    element: u32,
+    /// Get a field in a struct
+    field: Name,
     /// Add two integers or floats or pointers on the top of the stack
     add: u32,
     /// Subtract two integers or floats or pointers on the top of the stack
@@ -1158,14 +1158,7 @@ pub const Parser = struct {
             },
 
             .ampersand => {
-                if (self.sir.instructions.items[self.sir.instructions.items.len - 1] == .read and
-                    (self.sir.instructions.items[self.sir.instructions.items.len - 2] == .get_element_ptr or
-                    self.sir.instructions.items[self.sir.instructions.items.len - 2] == .get_field_ptr))
-                {
-                    _ = self.sir.instructions.pop();
-                } else {
-                    try self.sir.instructions.append(self.allocator, .{ .reference = operator_token.range.start });
-                }
+                try self.sir.instructions.append(self.allocator, .{ .reference = operator_token.range.start });
             },
 
             else => unreachable,
@@ -1238,31 +1231,24 @@ pub const Parser = struct {
             .equal_sign => {
                 const last_instruction = self.sir.instructions.pop();
 
-                try self.parseExpr(Precedence.from(operator_token));
-
                 if (last_instruction == .read) {
-                    // 1:
-                    // lhs
-                    // rhs
-                    //
-                    // 2:
-                    // lhs
-                    // rhs
-                    // rhs
-                    //
-                    // 3:
-                    // rhs
-                    // rhs
-                    // lhs
-
+                    try self.parseExpr(Precedence.from(operator_token));
+                    try self.sir.instructions.append(self.allocator, .duplicate);
+                    try self.sir.instructions.append(self.allocator, .{ .reverse = 3 });
+                    try self.sir.instructions.append(self.allocator, .{ .write = operator_token.range.start });
+                } else if (last_instruction == .element or last_instruction == .field) {
+                    try self.sir.instructions.append(self.allocator, last_instruction);
+                    try self.sir.instructions.append(self.allocator, .{ .reference = operator_token.range.start });
+                    try self.parseExpr(Precedence.from(operator_token));
                     try self.sir.instructions.append(self.allocator, .duplicate);
                     try self.sir.instructions.append(self.allocator, .{ .reverse = 3 });
                     try self.sir.instructions.append(self.allocator, .{ .write = operator_token.range.start });
                 } else if (last_instruction == .get) {
+                    try self.parseExpr(Precedence.from(operator_token));
                     try self.sir.instructions.append(self.allocator, .duplicate);
                     try self.sir.instructions.append(self.allocator, .{ .set = last_instruction.get });
                 } else {
-                    self.error_info = .{ .message = "expected an identifier or a pointer dereference", .source_loc = SourceLoc.find(self.buffer, operator_token.range.start) };
+                    self.error_info = .{ .message = "cannot assign to value", .source_loc = SourceLoc.find(self.buffer, operator_token.range.start) };
 
                     return error.UnexpectedExpression;
                 }
@@ -1360,8 +1346,7 @@ pub const Parser = struct {
             return error.UnexpectedToken;
         }
 
-        try self.sir.instructions.append(self.allocator, .{ .get_element_ptr = open_bracket_start });
-        try self.sir.instructions.append(self.allocator, .{ .read = open_bracket_start });
+        try self.sir.instructions.append(self.allocator, .{ .element = open_bracket_start });
     }
 
     fn parseFieldAccess(self: *Parser) Error!void {
@@ -1372,14 +1357,7 @@ pub const Parser = struct {
         } else {
             const name = try self.parseName();
 
-            if (self.sir.instructions.items[self.sir.instructions.items.len - 1] == .read and
-                self.sir.instructions.items[self.sir.instructions.items.len - 2] == .get_field_ptr)
-            {
-                _ = self.sir.instructions.pop();
-            }
-
-            try self.sir.instructions.append(self.allocator, .{ .get_field_ptr = name });
-            try self.sir.instructions.append(self.allocator, .{ .read = name.token_start });
+            try self.sir.instructions.append(self.allocator, .{ .field = name });
         }
     }
 
