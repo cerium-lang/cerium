@@ -178,9 +178,9 @@ pub const Instruction = union(enum) {
     /// Get a value of a variable
     get: Name,
     /// Make a new block out of instructions
-    block: Block,
+    block: u32,
     /// Unconditionally branch to a block
-    br: Br,
+    br: u32,
     /// Conditionally branch to a block, condition is on the stack
     cond_br: CondBr,
     /// Start a new scope
@@ -213,14 +213,6 @@ pub const Instruction = union(enum) {
     pub const Call = struct {
         arguments_count: usize,
         token_start: u32,
-    };
-
-    pub const Block = struct {
-        id: u32,
-    };
-
-    pub const Br = struct {
-        id: u32,
     };
 
     pub const CondBr = struct {
@@ -456,7 +448,7 @@ pub const Parser = struct {
             },
         });
 
-        try self.sir.instructions.append(self.allocator, .{ .block = .{ .id = 0 } });
+        try self.sir.instructions.append(self.allocator, .{ .block = 0 });
 
         self.block_id = 1;
         defer self.block_id = null;
@@ -618,12 +610,12 @@ pub const Parser = struct {
         const end_block_id = self.block_id.?;
         self.block_id.? += 1;
 
-        try self.sir.instructions.append(self.allocator, .{ .br = .{ .id = self.block_id.? } });
+        try self.sir.instructions.append(self.allocator, .{ .br = self.block_id.? });
 
         while (self.peekToken().tag == .keyword_if) {
             const if_keyword_start = self.nextToken().range.start;
 
-            try self.sir.instructions.append(self.allocator, .{ .block = .{ .id = self.block_id.? } });
+            try self.sir.instructions.append(self.allocator, .{ .block = self.block_id.? });
             self.block_id.? += 1;
 
             try self.parseExpr(.lowest);
@@ -638,7 +630,7 @@ pub const Parser = struct {
 
             const cond_br_instruction = &self.sir.instructions.items[self.sir.instructions.items.len - 1].cond_br;
 
-            try self.sir.instructions.append(self.allocator, .{ .block = .{ .id = self.block_id.? } });
+            try self.sir.instructions.append(self.allocator, .{ .block = self.block_id.? });
             self.block_id.? += 1;
 
             try self.sir.instructions.append(self.allocator, .start_scope);
@@ -649,12 +641,12 @@ pub const Parser = struct {
 
             try self.sir.instructions.append(self.allocator, .end_scope);
 
-            try self.sir.instructions.append(self.allocator, .{ .br = .{ .id = end_block_id } });
+            try self.sir.instructions.append(self.allocator, .{ .br = end_block_id });
 
             if (self.eatToken(.keyword_else)) {
                 if (self.peekToken().tag == .keyword_if) continue;
 
-                try self.sir.instructions.append(self.allocator, .{ .block = .{ .id = self.block_id.? } });
+                try self.sir.instructions.append(self.allocator, .{ .block = self.block_id.? });
                 self.block_id.? += 1;
 
                 try self.sir.instructions.append(self.allocator, .start_scope);
@@ -663,18 +655,18 @@ pub const Parser = struct {
 
                 try self.sir.instructions.append(self.allocator, .end_scope);
 
-                try self.sir.instructions.append(self.allocator, .{ .br = .{ .id = end_block_id } });
+                try self.sir.instructions.append(self.allocator, .{ .br = end_block_id });
             } else {
-                try self.sir.instructions.append(self.allocator, .{ .block = .{ .id = self.block_id.? } });
+                try self.sir.instructions.append(self.allocator, .{ .block = self.block_id.? });
                 self.block_id.? += 1;
 
-                try self.sir.instructions.append(self.allocator, .{ .br = .{ .id = end_block_id } });
+                try self.sir.instructions.append(self.allocator, .{ .br = end_block_id });
             }
 
             break;
         }
 
-        try self.sir.instructions.append(self.allocator, .{ .block = .{ .id = end_block_id } });
+        try self.sir.instructions.append(self.allocator, .{ .block = end_block_id });
     }
 
     var maybe_header_block_id: ?u32 = null;
@@ -700,9 +692,9 @@ pub const Parser = struct {
         maybe_end_block_id = end_block_id;
         defer maybe_end_block_id = previous_end_block_id;
 
-        try self.sir.instructions.append(self.allocator, .{ .br = .{ .id = header_block_id } });
+        try self.sir.instructions.append(self.allocator, .{ .br = header_block_id });
 
-        try self.sir.instructions.append(self.allocator, .{ .block = .{ .id = header_block_id } });
+        try self.sir.instructions.append(self.allocator, .{ .block = header_block_id });
 
         try self.parseExpr(.lowest);
 
@@ -712,7 +704,7 @@ pub const Parser = struct {
             .token_start = while_keyword_start,
         } });
 
-        try self.sir.instructions.append(self.allocator, .{ .block = .{ .id = body_block_id } });
+        try self.sir.instructions.append(self.allocator, .{ .block = body_block_id });
 
         try self.sir.instructions.append(self.allocator, .start_scope);
 
@@ -720,16 +712,16 @@ pub const Parser = struct {
 
         try self.sir.instructions.append(self.allocator, .end_scope);
 
-        try self.sir.instructions.append(self.allocator, .{ .br = .{ .id = header_block_id } });
+        try self.sir.instructions.append(self.allocator, .{ .br = header_block_id });
 
-        try self.sir.instructions.append(self.allocator, .{ .block = .{ .id = end_block_id } });
+        try self.sir.instructions.append(self.allocator, .{ .block = end_block_id });
     }
 
     fn parseContinue(self: *Parser) Error!void {
         const continue_keyword_start = self.nextToken().range.start;
 
         if (maybe_header_block_id) |header_block_id| {
-            return self.sir.instructions.append(self.allocator, .{ .br = .{ .id = header_block_id } });
+            return self.sir.instructions.append(self.allocator, .{ .br = header_block_id });
         }
 
         self.error_info = .{ .message = "expected the continue statement to be inside a loop", .source_loc = SourceLoc.find(self.buffer, continue_keyword_start) };
@@ -741,7 +733,7 @@ pub const Parser = struct {
         const break_keyword_start = self.nextToken().range.start;
 
         if (maybe_end_block_id) |end_block_id| {
-            return self.sir.instructions.append(self.allocator, .{ .br = .{ .id = end_block_id } });
+            return self.sir.instructions.append(self.allocator, .{ .br = end_block_id });
         }
 
         self.error_info = .{ .message = "expected the break statement to be inside a loop", .source_loc = SourceLoc.find(self.buffer, break_keyword_start) };

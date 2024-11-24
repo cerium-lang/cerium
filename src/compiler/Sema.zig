@@ -1268,12 +1268,12 @@ fn analyzeGet(self: *Sema, name: Name) Error!void {
     }
 }
 
-fn analyzeBlock(self: *Sema, block: Sir.Instruction.Block) Error!void {
-    try self.air.instructions.append(self.allocator, .{ .block = .{ .id = block.id } });
+fn analyzeBlock(self: *Sema, id: u32) Error!void {
+    try self.air.instructions.append(self.allocator, .{ .block = id });
 }
 
-fn analyzeBr(self: *Sema, br: Sir.Instruction.Br) Error!void {
-    try self.air.instructions.append(self.allocator, .{ .br = .{ .id = br.id } });
+fn analyzeBr(self: *Sema, id: u32) Error!void {
+    try self.air.instructions.append(self.allocator, .{ .br = id });
 }
 
 fn analyzeCondBr(self: *Sema, cond_br: Sir.Instruction.CondBr) Error!void {

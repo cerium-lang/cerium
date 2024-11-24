@@ -82,9 +82,9 @@ pub const Instruction = union(enum) {
     /// Calculate the pointer of a field in a struct pointer
     get_field_ptr: u32,
     /// Make a new block out of instructions
-    block: Block,
+    block: u32,
     /// Unconditionally branch to a block
-    br: Br,
+    br: u32,
     /// Conditionally branch to a block, condition is on the stack
     cond_br: CondBr,
     /// Start a new scope
@@ -106,14 +106,6 @@ pub const Instruction = union(enum) {
             register: []const u8,
             type: Type,
         };
-    };
-
-    pub const Block = struct {
-        id: u32,
-    };
-
-    pub const Br = struct {
-        id: u32,
     };
 
     pub const CondBr = struct {

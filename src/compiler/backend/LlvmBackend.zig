@@ -1005,7 +1005,7 @@ fn renderFunction(self: *LlvmBackend, symbol: Symbol, remainder_instructions: []
 
     for (remainder_instructions) |air_instruction| {
         switch (air_instruction) {
-            .block => |block| try self.basic_blocks.put(self.allocator, block.id, c.LLVMAppendBasicBlock(function_pointer, "")),
+            .block => |id| try self.basic_blocks.put(self.allocator, id, c.LLVMAppendBasicBlock(function_pointer, "")),
             .start_scope => scope_depth += 1,
             .end_scope => {
                 scope_depth -= 1;
@@ -1148,12 +1148,12 @@ fn renderGetVariablePtr(self: *LlvmBackend, name: []const u8) Error!void {
     }
 }
 
-fn renderBlock(self: *LlvmBackend, block: Air.Instruction.Block) Error!void {
-    c.LLVMPositionBuilderAtEnd(self.builder, self.basic_blocks.get(block.id).?);
+fn renderBlock(self: *LlvmBackend, id: u32) Error!void {
+    c.LLVMPositionBuilderAtEnd(self.builder, self.basic_blocks.get(id).?);
 }
 
-fn renderBr(self: *LlvmBackend, br: Air.Instruction.Br) Error!void {
-    _ = c.LLVMBuildBr(self.builder, self.basic_blocks.get(br.id).?);
+fn renderBr(self: *LlvmBackend, id: u32) Error!void {
+    _ = c.LLVMBuildBr(self.builder, self.basic_blocks.get(id).?);
 }
 
 fn renderCondBr(self: *LlvmBackend, cond_br: Air.Instruction.CondBr) Error!void {
