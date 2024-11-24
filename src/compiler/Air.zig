@@ -51,8 +51,12 @@ pub const Instruction = union(enum) {
     div,
     /// Remainder of two integers or floats on the top of the stack
     rem,
-    /// Compare between two integers or floats on the top of the stack
-    cmp: Cmp,
+    /// Compare between two integers or floats on the stack and check for order (in this case, lhs less than rhs)
+    lt,
+    /// Compare between two integers or floats on the stack and check for order (in this case, lhs greater than rhs)
+    gt,
+    /// Compare between two values on the stack and check for equality
+    eql,
     /// Shift to left the bits of lhs using rhs offset
     shl,
     /// Shift to right the bits of lhs using rhs offset
@@ -115,11 +119,5 @@ pub const Instruction = union(enum) {
     pub const CondBr = struct {
         true_id: u32,
         false_id: u32,
-    };
-
-    pub const Cmp = enum {
-        lt,
-        gt,
-        eql,
     };
 };

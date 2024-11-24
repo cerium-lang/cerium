@@ -972,9 +972,9 @@ fn analyzeComparison(self: *Sema, comptime operation: ComparisonOperation, token
     }
 
     switch (operation) {
-        .lt => try self.air.instructions.append(self.allocator, .{ .cmp = .lt }),
-        .gt => try self.air.instructions.append(self.allocator, .{ .cmp = .gt }),
-        .eql => try self.air.instructions.append(self.allocator, .{ .cmp = .eql }),
+        .lt => try self.air.instructions.append(self.allocator, .lt),
+        .gt => try self.air.instructions.append(self.allocator, .gt),
+        .eql => try self.air.instructions.append(self.allocator, .eql),
     }
 
     try self.stack.append(self.allocator, .{ .runtime = .bool });

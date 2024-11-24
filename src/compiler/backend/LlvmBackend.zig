@@ -506,7 +506,9 @@ fn renderInstruction(
         .div => try self.renderArithmetic(.div),
         .rem => try self.renderArithmetic(.rem),
 
-        .cmp => |operation| try self.renderComparison(operation),
+        .lt => try self.renderComparison(.lt),
+        .gt => try self.renderComparison(.gt),
+        .eql => try self.renderComparison(.eql),
 
         .shl => try self.renderBitwiseShift(.left),
         .shr => try self.renderBitwiseShift(.right),
@@ -778,7 +780,13 @@ fn renderArithmetic(self: *LlvmBackend, comptime operation: ArithmeticOperation)
     }
 }
 
-fn renderComparison(self: *LlvmBackend, operation: Air.Instruction.Cmp) Error!void {
+const ComparisonOperation = enum {
+    lt,
+    gt,
+    eql,
+};
+
+fn renderComparison(self: *LlvmBackend, comptime operation: ComparisonOperation) Error!void {
     var rhs = self.stack.pop();
     var lhs = self.stack.pop();
 
