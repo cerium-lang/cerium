@@ -63,7 +63,7 @@ const Value = union(enum) {
             .int => |int| Type.intFittingRange(int, int),
             .float => |float| Type.floatFittingRange(float, float),
             .boolean => .bool,
-            .string => .string,
+            .string => |string| Type.string(string.len + 1), // +1 for the null termination
             .runtime => |runtime| runtime,
         };
     }
@@ -73,7 +73,7 @@ const Value = union(enum) {
             .int => |int| try writer.print("{}", .{int}),
             .float => |float| try writer.print("{d}", .{float}),
             .boolean => |boolean| try writer.print("{}", .{boolean}),
-            .string => |string| try writer.print("{s}", .{string}),
+            .string => |string| try writer.print("\"{s}\"", .{string}),
             .runtime => |runtime| try writer.print("<runtime value '{}'>", .{runtime}),
         }
     }
@@ -404,6 +404,7 @@ fn analyzeInstruction(self: *Sema, instruction: Sir.Instruction) Error!void {
 
         .write => |token_start| try self.analyzeWrite(token_start),
         .read => |token_start| try self.analyzeRead(token_start),
+        .pre_element => |token_start| try self.analyzePreElement(token_start),
         .element => |token_start| try self.analyzeElement(token_start),
         .field => |name| try self.analyzeField(name),
         .reference => |token_start| try self.analyzeReference(token_start),
@@ -613,7 +614,6 @@ fn analyzeBitwiseArithmetic(self: *Sema, comptime operation: BitwiseArithmeticOp
 }
 
 fn analyzeWrite(self: *Sema, token_start: u32) Error!void {
-    // Intentially swapped the order of operands so it can work with duplicate (i.e value first then duplicate then pointer)
     const lhs = self.stack.pop();
     const lhs_type = lhs.getType();
 
@@ -649,49 +649,83 @@ fn analyzeRead(self: *Sema, token_start: u32) Error!void {
     try self.stack.append(self.allocator, .{ .runtime = rhs_pointer.child_type.* });
 }
 
+fn analyzePreElement(self: *Sema, token_start: u32) Error!void {
+    const lhs = self.stack.getLast();
+    const lhs_type = lhs.getType();
+
+    if (lhs_type == .array) {
+        return self.analyzeReference(token_start);
+    } else if (lhs_type == .pointer and lhs_type.pointer.size != .many and lhs_type.pointer.child_type.* != .array) {
+        return self.reportNotIndexable(lhs_type, token_start);
+    }
+}
+
 fn analyzeElement(self: *Sema, token_start: u32) Error!void {
     const rhs = self.stack.pop();
 
     const lhs = self.stack.pop();
     const lhs_type = lhs.getType();
 
-    const lhs_pointer = lhs_type.getPointer() orelse return self.reportNotIndexable(lhs_type, token_start);
-
-    if (lhs_pointer.size != .many) return try self.reportNotIndexable(lhs_type, token_start);
-
     const usize_type: Type = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.ptrBitWidth() } };
 
     try self.checkUnaryImplicitCast(rhs, usize_type, token_start);
 
+    if (rhs == .int and lhs_type.pointer.child_type.* == .array and
+        rhs.int >= lhs_type.pointer.child_type.array.len)
+    {
+        self.error_info = .{ .message = "index out of bounds", .source_loc = SourceLoc.find(self.buffer, token_start) };
+
+        return error.UnexpectedValue;
+    }
+
     try self.air.instructions.append(self.allocator, .get_element_ptr);
     try self.air.instructions.append(self.allocator, .read);
 
-    try self.stack.append(self.allocator, .{ .runtime = lhs_pointer.child_type.* });
+    if (lhs_type.pointer.child_type.* == .array) {
+        try self.stack.append(self.allocator, .{ .runtime = lhs_type.pointer.child_type.array.child_type.* });
+    } else {
+        try self.stack.append(self.allocator, .{ .runtime = lhs_type.pointer.child_type.* });
+    }
 }
 
 fn analyzeField(self: *Sema, name: Name) Error!void {
     const rhs_type = self.stack.getLast().getType();
 
-    try self.checkStructOrStructPointer(rhs_type, name.token_start);
-
-    if (rhs_type != .pointer) try self.analyzeReference(name.token_start);
+    if (rhs_type == .@"struct") {
+        try self.analyzeReference(name.token_start);
+    }
 
     const rhs = self.stack.pop();
 
-    const rhs_struct = if (rhs_type.getPointer()) |pointer| pointer.child_type.@"struct" else rhs_type.@"struct";
+    if (rhs_type == .array or
+        (rhs_type == .pointer and rhs_type.pointer.child_type.* == .array))
+    {
+        if (std.mem.eql(u8, name.buffer, "len")) {
+            const rhs_array = if (rhs_type.getPointer()) |pointer| pointer.child_type.array else rhs_type.array;
 
-    for (rhs_struct.fields, 0..) |field, i| {
-        if (std.mem.eql(u8, field.name, name.buffer)) {
-            try self.air.instructions.append(self.allocator, .{ .get_field_ptr = @intCast(i) });
-            try self.air.instructions.append(self.allocator, .read);
+            try self.air.instructions.append(self.allocator, .pop);
+            try self.air.instructions.append(self.allocator, .{ .int = @intCast(rhs_array.len) });
 
-            return self.stack.append(self.allocator, .{ .runtime = field.type });
+            return self.stack.append(self.allocator, .{ .int = @intCast(rhs_array.len) });
+        }
+    } else if (rhs_type == .@"struct" or
+        (rhs_type == .pointer and rhs_type.pointer.child_type.* == .@"struct"))
+    {
+        const rhs_struct = if (rhs_type.getPointer()) |pointer| pointer.child_type.@"struct" else rhs_type.@"struct";
+
+        for (rhs_struct.fields, 0..) |field, i| {
+            if (std.mem.eql(u8, field.name, name.buffer)) {
+                try self.air.instructions.append(self.allocator, .{ .get_field_ptr = @intCast(i) });
+                try self.air.instructions.append(self.allocator, .read);
+
+                return self.stack.append(self.allocator, .{ .runtime = field.type });
+            }
         }
     }
 
     var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
-    try error_message_buf.writer(self.allocator).print("'{s}' is not a field in '{}'", .{ name.buffer, rhs.getType() });
+    try error_message_buf.writer(self.allocator).print("'{s}' is not a field in '{}'", .{ name.buffer, rhs });
 
     self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, name.token_start) };
 
@@ -702,32 +736,16 @@ fn analyzeReference(self: *Sema, token_start: u32) Error!void {
     const rhs = self.stack.pop();
     const rhs_type = rhs.getType();
 
+    const last_instruction = self.air.instructions.items[self.air.instructions.items.len - 1];
     const before_last_instruction = self.air.instructions.items[self.air.instructions.items.len - 2];
-    const last_instruction = &self.air.instructions.items[self.air.instructions.items.len - 1];
 
-    if (last_instruction.* == .read and
-        (before_last_instruction == .get_element_ptr or before_last_instruction == .get_field_ptr))
-    {
+    if (last_instruction == .read) {
         _ = self.air.instructions.pop();
 
-        const child_on_heap = try self.allocator.create(Type);
-        child_on_heap.* = rhs_type;
-
-        try self.stack.append(self.allocator, .{
-            .runtime = .{
-                .pointer = .{
-                    .size = .one,
-                    .is_const = false,
-                    .child_type = child_on_heap,
-                },
-            },
-        });
-    } else if (last_instruction.* == .get) {
-        const rhs_name = last_instruction.get;
-
-        last_instruction.* = .{ .get_ptr = rhs_name };
-
-        const rhs_variable = self.scope.get(rhs_name).?;
+        const is_const = if (before_last_instruction == .get_variable_ptr)
+            self.scope.get(before_last_instruction.get_variable_ptr).?.is_const
+        else
+            false;
 
         const child_on_heap = try self.allocator.create(Type);
         child_on_heap.* = rhs_type;
@@ -736,7 +754,7 @@ fn analyzeReference(self: *Sema, token_start: u32) Error!void {
             .runtime = .{
                 .pointer = .{
                     .size = .one,
-                    .is_const = rhs_variable.is_const,
+                    .is_const = is_const,
                     .child_type = child_on_heap,
                 },
             },
@@ -744,7 +762,7 @@ fn analyzeReference(self: *Sema, token_start: u32) Error!void {
     } else {
         var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
-        try error_message_buf.writer(self.allocator).print("'{}' value cannot be referenced", .{rhs.getType()});
+        try error_message_buf.writer(self.allocator).print("cannot get a pointer to '{}'", .{rhs});
 
         self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
 
@@ -1026,7 +1044,11 @@ fn analyzeCast(self: *Sema, cast: Sir.Instruction.Cast) Error!void {
 
         return error.UnexpectedType;
     } else if (to == .@"struct" or from == .@"struct") {
-        self.error_info = .{ .message = "cannot cast from or to a struct as it has multiple fields that should be casted individually", .source_loc = SourceLoc.find(self.buffer, cast.token_start) };
+        self.error_info = .{ .message = "cannot cast from or to a struct", .source_loc = SourceLoc.find(self.buffer, cast.token_start) };
+
+        return error.UnexpectedType;
+    } else if (to == .array or from == .array) {
+        self.error_info = .{ .message = "cannot cast from or to an array", .source_loc = SourceLoc.find(self.buffer, cast.token_start) };
 
         return error.UnexpectedType;
     } else if (to == .pointer and from != .pointer) {
@@ -1216,7 +1238,8 @@ fn analyzeSet(self: *Sema, name: Name) Error!void {
 
         return error.ExpectedCompiletimeConstant;
     } else if (self.maybe_function_type != null) {
-        try self.air.instructions.append(self.allocator, .{ .set = name.buffer });
+        try self.air.instructions.append(self.allocator, .{ .get_variable_ptr = name.buffer });
+        try self.air.instructions.append(self.allocator, .write);
     }
 }
 
@@ -1235,7 +1258,11 @@ fn analyzeGet(self: *Sema, name: Name) Error!void {
 
         try self.stack.append(self.allocator, value);
     } else {
-        try self.air.instructions.append(self.allocator, .{ .get = name.buffer });
+        try self.air.instructions.append(self.allocator, .{ .get_variable_ptr = name.buffer });
+
+        if (variable.type.getFunction() == null) {
+            try self.air.instructions.append(self.allocator, .read);
+        }
 
         try self.stack.append(self.allocator, .{ .runtime = variable.type });
     }
@@ -1387,6 +1414,20 @@ fn analyzeSubType(self: *Sema, subtype: Sir.SubType) Error!Type {
             return error.UnexpectedType;
         },
 
+        .array => |array| {
+            const child_type = try self.analyzeSubType(array.child_subtype.*);
+
+            const child_type_on_heap = try self.allocator.create(Type);
+            child_type_on_heap.* = child_type;
+
+            return Type{
+                .array = .{
+                    .len = array.len,
+                    .child_type = child_type_on_heap,
+                },
+            };
+        },
+
         .pure => |pure| return pure,
     }
 }
@@ -1435,7 +1476,8 @@ fn checkTypeAliasCircular(self: *Sema, target: Name, subtype: Sir.SubType, type_
 fn checkUnaryImplicitCast(self: *Sema, lhs: Value, to: Type, token_start: u32) Error!void {
     const lhs_type = lhs.getType();
 
-    if (!((lhs == .int and to == .int and lhs.int >= to.minInt() and
+    if (!(lhs_type.eql(to) or
+        (lhs == .int and to == .int and lhs.int >= to.minInt() and
         lhs == .int and to == .int and lhs.int <= to.maxInt()) or
         (lhs == .float and to == .float and lhs.float >= -to.maxFloat() and
         lhs == .float and to == .float and lhs.float <= to.maxFloat()) or
@@ -1444,7 +1486,9 @@ fn checkUnaryImplicitCast(self: *Sema, lhs: Value, to: Type, token_start: u32) E
         lhs_type.canBeNegative() == to.canBeNegative()) or
         (lhs_type == .float and to == .float and
         lhs_type.maxFloat() <= to.maxFloat()) or
-        lhs_type.eql(to)))
+        (lhs_type == .pointer and to == .pointer and
+        lhs_type.pointer.child_type.* == .array and to.pointer.size == .many and
+        lhs_type.pointer.child_type.array.child_type.eql(to.pointer.child_type.*))))
     {
         var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
@@ -1544,19 +1588,6 @@ fn checkCanBeCompared(self: *Sema, provided_type: Type, token_start: u32) Error!
     if (provided_type == .@"struct" or provided_type == .void or provided_type == .function) {
         return self.reportNotComparable(provided_type, token_start);
     }
-}
-
-fn checkStructOrStructPointer(self: *Sema, provided_type: Type, token_start: u32) Error!void {
-    if (provided_type == .@"struct") return;
-    if (provided_type.getPointer()) |pointer| if (pointer.child_type.* == .@"struct") return;
-
-    var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-    try error_message_buf.writer(self.allocator).print("'{}' is not a struct nor a pointer to a struct", .{provided_type});
-
-    self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
-
-    return error.MismatchedTypes;
 }
 
 fn reportIncompatibleTypes(self: *Sema, lhs: Type, rhs: Type, token_start: u32) Error!void {

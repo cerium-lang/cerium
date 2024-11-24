@@ -343,6 +343,7 @@ fn getLlvmType(self: *LlvmBackend, @"type": Type) Error!c.LLVMTypeRef {
         else
             c.LLVMDoubleTypeInContext(self.context),
         .pointer => c.LLVMPointerTypeInContext(self.context, 1),
+        .array => |array| c.LLVMArrayType2(try self.getLlvmType(array.child_type.*), array.len),
 
         .function => |function| blk: {
             const parameter_types = try self.allocator.alloc(c.LLVMTypeRef, function.parameter_types.len);
@@ -498,8 +499,6 @@ fn renderInstruction(
 
         .write => try self.renderWrite(),
         .read => try self.renderRead(),
-        .get_element_ptr => try self.renderGetElementPtr(),
-        .get_field_ptr => |field_index| try self.renderGetFieldPtr(field_index),
 
         .add => try self.renderArithmetic(.add),
         .sub => try self.renderArithmetic(.sub),
@@ -525,9 +524,9 @@ fn renderInstruction(
         .variable => |symbol| try self.renderVariable(symbol),
         .external => |symbol| try self.renderExternal(symbol),
 
-        .set => |name| try self.renderSet(name),
-        .get => |name| try self.renderGet(name),
-        .get_ptr => |name| try self.renderGetPtr(name),
+        .get_variable_ptr => |name| try self.renderGetVariablePtr(name),
+        .get_element_ptr => try self.renderGetElementPtr(),
+        .get_field_ptr => |field_index| try self.renderGetFieldPtr(field_index),
 
         .block => |block| try self.renderBlock(block),
         .br => |br| try self.renderBr(br),
@@ -542,8 +541,10 @@ fn renderInstruction(
 }
 
 fn renderString(self: *LlvmBackend, string: []const u8) Error!void {
+    const string_type = Type.string(string.len + 1); // +1 for the null termination
+
     if (self.strings.get(string)) |string_pointer| {
-        try self.stack.append(self.allocator, .{ .value = string_pointer, .type = .string });
+        try self.stack.append(self.allocator, .{ .value = string_pointer, .type = string_type });
     } else {
         const string_pointer =
             c.LLVMBuildGlobalStringPtr(
@@ -554,7 +555,7 @@ fn renderString(self: *LlvmBackend, string: []const u8) Error!void {
 
         try self.strings.put(self.allocator, string, string_pointer);
 
-        try self.stack.append(self.allocator, .{ .value = string_pointer, .type = .string });
+        try self.stack.append(self.allocator, .{ .value = string_pointer, .type = string_type });
     }
 }
 
@@ -653,19 +654,27 @@ fn renderRead(self: *LlvmBackend) Error!void {
 }
 
 fn renderGetElementPtr(self: *LlvmBackend) Error!void {
-    const element_index = self.stack.pop();
+    var element_index = self.stack.pop();
     var array_pointer = self.stack.pop();
 
-    const element_type = array_pointer.type.pointer.child_type.*;
+    const usize_type: Type = .{ .int = .{ .signedness = .unsigned, .bits = self.target.ptrBitWidth() } };
 
-    array_pointer.type.pointer.size = .one;
+    try self.unaryImplicitCast(&element_index, usize_type);
+
+    if (array_pointer.type.pointer.size == .one) {
+        array_pointer.type.pointer.child_type = array_pointer.type.pointer.child_type.array.child_type;
+    } else {
+        array_pointer.type.pointer.size = .one;
+    }
+
+    const element_llvm_type = try self.getLlvmType(array_pointer.type.pointer.child_type.*);
 
     try self.stack.append(
         self.allocator,
         .{
             .value = c.LLVMBuildGEP2(
                 self.builder,
-                try self.getLlvmType(element_type),
+                element_llvm_type,
                 element_index.value,
                 &array_pointer.value,
                 1,
@@ -874,6 +883,7 @@ fn renderCast(self: *LlvmBackend, cast_to: Type) Error!void {
                 .void => unreachable,
                 .function => unreachable,
                 .@"struct" => unreachable,
+                .array => unreachable,
             },
 
             .type = cast_to,
@@ -1051,11 +1061,10 @@ fn renderVariable(self: *LlvmBackend, symbol: Symbol) Error!void {
                 const first_block = c.LLVMGetFirstBasicBlock(self.function_value);
                 const first_instruction = c.LLVMGetFirstInstruction(first_block);
 
-                if (first_instruction != null) {
-                    c.LLVMPositionBuilderBefore(self.builder, first_instruction);
-                } else {
+                if (first_instruction != null)
+                    c.LLVMPositionBuilderBefore(self.builder, first_instruction)
+                else
                     c.LLVMPositionBuilderAtEnd(self.builder, first_block);
-                }
 
                 const local_variable_pointer = c.LLVMBuildAlloca(self.builder, llvm_type, "");
 
@@ -1109,49 +1118,26 @@ fn renderExternal(self: *LlvmBackend, symbol: Symbol) Error!void {
     );
 }
 
-fn renderSet(self: *LlvmBackend, name: []const u8) Error!void {
-    const variable = self.scope.get(name).?;
-
-    var register = self.stack.pop();
-
-    try self.unaryImplicitCast(&register, variable.type);
-
-    _ = c.LLVMBuildStore(self.builder, register.value, variable.pointer);
-}
-
-fn renderGet(self: *LlvmBackend, name: []const u8) Error!void {
-    const variable = self.scope.get(name).?;
+fn renderGetVariablePtr(self: *LlvmBackend, name: []const u8) Error!void {
+    const variable = self.scope.getPtr(name).?;
 
     if (variable.type.getFunction() != null) {
         try self.stack.append(self.allocator, .{ .value = variable.pointer, .type = variable.type });
     } else {
-        const variable_load = c.LLVMBuildLoad2(
-            self.builder,
-            try self.getLlvmType(variable.type),
-            variable.pointer,
-            "",
-        );
-
-        try self.stack.append(self.allocator, .{ .value = variable_load, .type = variable.type });
-    }
-}
-
-fn renderGetPtr(self: *LlvmBackend, name: []const u8) Error!void {
-    const variable = self.scope.getPtr(name).?;
-
-    try self.stack.append(
-        self.allocator,
-        .{
-            .value = variable.pointer,
-            .type = .{
-                .pointer = .{
-                    .size = .one,
-                    .is_const = false,
-                    .child_type = &variable.type,
+        try self.stack.append(
+            self.allocator,
+            .{
+                .value = variable.pointer,
+                .type = .{
+                    .pointer = .{
+                        .size = .one,
+                        .is_const = false,
+                        .child_type = &variable.type,
+                    },
                 },
             },
-        },
-    );
+        );
+    }
 }
 
 fn renderBlock(self: *LlvmBackend, block: Air.Instruction.Block) Error!void {

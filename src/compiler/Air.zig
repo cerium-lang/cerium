@@ -41,10 +41,6 @@ pub const Instruction = union(enum) {
     write,
     /// Read the data that the pointer is pointing to
     read,
-    /// Calculate the pointer of an element in a "size many" pointer
-    get_element_ptr,
-    /// Calculate the pointer of a field in a struct pointer
-    get_field_ptr: u32,
     /// Add two integers or floats on the top of the stack
     add,
     /// Subtract two integers or floats on the top of the stack
@@ -75,12 +71,12 @@ pub const Instruction = union(enum) {
     variable: Symbol,
     /// Same as `variable` but the variable is external
     external: Symbol,
-    /// Set a variable with a value on top of the stack
-    set: []const u8,
-    /// Get a value of a variable
-    get: []const u8,
     /// Get a pointer to variable
-    get_ptr: []const u8,
+    get_variable_ptr: []const u8,
+    /// Calculate the pointer of an element in a "size many" pointer
+    get_element_ptr,
+    /// Calculate the pointer of a field in a struct pointer
+    get_field_ptr: u32,
     /// Make a new block out of instructions
     block: Block,
     /// Unconditionally branch to a block

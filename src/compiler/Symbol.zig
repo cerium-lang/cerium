@@ -23,6 +23,7 @@ pub const Type = union(enum) {
     pointer: Pointer,
     function: Function,
     @"struct": Struct,
+    array: Array,
 
     pub const Int = struct {
         signedness: Signedness,
@@ -64,12 +65,9 @@ pub const Type = union(enum) {
         };
     };
 
-    pub const string: Type = .{
-        .pointer = .{
-            .size = .many,
-            .is_const = true,
-            .child_type = &.{ .int = .{ .signedness = .unsigned, .bits = 8 } },
-        },
+    pub const Array = struct {
+        len: usize,
+        child_type: *const Type,
     };
 
     pub fn minInt(self: Type) i128 {
@@ -141,6 +139,34 @@ pub const Type = union(enum) {
             Type{ .float = .{ .bits = 64 } };
     }
 
+    var string_array_types: std.AutoHashMapUnmanaged(usize, Type) = .{};
+
+    pub fn string(len: usize) Type {
+        const array_type_on_heap = blk: {
+            const array_type_entry = string_array_types.getOrPutValue(
+                std.heap.page_allocator, // We use page allocator beacuse passing an allocator in here
+                // would break in multiple places, and painful to fix
+                len,
+                .{
+                    .array = .{
+                        .len = len,
+                        .child_type = &.{ .int = .{ .signedness = .unsigned, .bits = 8 } },
+                    },
+                },
+            ) catch @panic("OOM"); // This is not ideal to handle out of memory
+
+            break :blk array_type_entry.value_ptr;
+        };
+
+        return Type{
+            .pointer = .{
+                .size = .one,
+                .is_const = true,
+                .child_type = array_type_on_heap,
+            },
+        };
+    }
+
     pub fn canBeNegative(self: Type) bool {
         return switch (self) {
             .float => true,
@@ -156,6 +182,14 @@ pub const Type = union(enum) {
         }
 
         return self.pointer;
+    }
+
+    pub fn getArray(self: Type) ?Type.Array {
+        if (self != .array) {
+            return null;
+        }
+
+        return self.array;
     }
 
     pub fn getFunction(self: Type) ?Type.Function {
@@ -178,6 +212,11 @@ pub const Type = union(enum) {
         switch (self) {
             .void => try writer.writeAll("void"),
             .bool => try writer.writeAll("bool"),
+
+            .int => |int| try writer.print("{c}{}", .{ if (int.signedness == .unsigned) @as(u8, 'u') else @as(u8, 's'), int.bits }),
+            .float => |float| try writer.print("f{}", .{float.bits}),
+
+            .array => |array| try writer.print("[{}]{}", .{ array.len, array.child_type }),
 
             .pointer => |pointer| {
                 if (pointer.size == .one) {
@@ -220,9 +259,6 @@ pub const Type = union(enum) {
 
                 try writer.writeAll(" }");
             },
-
-            .int => |int| try writer.print("{c}{}", .{ if (int.signedness == .unsigned) @as(u8, 'u') else @as(u8, 's'), int.bits }),
-            .float => |float| try writer.print("f{}", .{float.bits}),
         }
     }
 
@@ -230,32 +266,23 @@ pub const Type = union(enum) {
         if (self.getPointer()) |pointer| {
             const other_pointer = other.getPointer() orelse return false;
 
-            if (!pointer.child_type.eql(other_pointer.child_type.*) or
-                (pointer.is_const and !other_pointer.is_const) or
-                pointer.size != other_pointer.size)
-            {
-                return false;
-            }
-
-            return true;
+            return ((!pointer.is_const and other_pointer.is_const) or pointer.is_const == other_pointer.is_const) and
+                pointer.size == other_pointer.size and
+                pointer.child_type.eql(other_pointer.child_type.*);
         } else if (self.getFunction()) |function| {
             const other_function = other.getFunction() orelse return false;
 
-            if (function.parameter_types.len != other_function.parameter_types.len) {
-                return false;
-            }
+            if (function.parameter_types.len != other_function.parameter_types.len) return false;
 
-            for (function.parameter_types, other_function.parameter_types) |parameter, other_parameter| {
-                if (!parameter.eql(other_parameter)) {
-                    return false;
-                }
-            }
+            for (function.parameter_types, other_function.parameter_types) |parameter, other_parameter|
+                if (!parameter.eql(other_parameter)) return false;
 
-            if (!function.return_type.eql(other_function.return_type.*)) {
-                return false;
-            }
+            return function.return_type.eql(other_function.return_type.*);
+        } else if (self.getArray()) |array| {
+            const other_array = other.getArray() orelse return false;
 
-            return true;
+            return array.len == other_array.len and
+                array.child_type.eql(other_array.child_type.*);
         } else {
             return std.meta.eql(self, other);
         }

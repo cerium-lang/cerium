@@ -53,6 +53,7 @@ pub const SubType = union(enum) {
     pointer: Pointer,
     @"struct": Struct,
     @"enum": Enum,
+    array: Array,
     pure: Type,
 
     pub const Function = struct {
@@ -80,6 +81,11 @@ pub const SubType = union(enum) {
             name: Name,
             value: i128,
         };
+    };
+
+    pub const Array = struct {
+        len: usize,
+        child_subtype: *const SubType,
     };
 };
 
@@ -121,6 +127,8 @@ pub const Instruction = union(enum) {
     write: u32,
     /// Read the data that the pointer is pointing to
     read: u32,
+    ///  Should be used before parsing the index of element access (i.e array[index])
+    pre_element: u32,
     /// Get an element in a "size many" pointer
     element: u32,
     /// Get a field in a struct
@@ -1338,6 +1346,8 @@ pub const Parser = struct {
     fn parseSubscript(self: *Parser) Error!void {
         const open_bracket_start = self.nextToken().range.start;
 
+        try self.sir.instructions.append(self.allocator, .{ .pre_element = open_bracket_start });
+
         try self.parseExpr(.subscript);
 
         if (!self.eatToken(.close_bracket)) {
@@ -1597,32 +1607,60 @@ pub const Parser = struct {
             .open_bracket => {
                 _ = self.nextToken();
 
-                if (!self.eatToken(.star)) {
-                    self.error_info = .{ .message = "expected a '*'", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
+                if (self.eatToken(.star)) {
+                    if (!self.eatToken(.close_bracket)) {
+                        self.error_info = .{ .message = "expected a ']'", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
+
+                        return error.UnexpectedToken;
+                    }
+
+                    const is_const = self.eatToken(.keyword_const);
+
+                    const child = try self.parseSubType();
+
+                    const child_on_heap = try self.allocator.create(SubType);
+                    child_on_heap.* = child;
+
+                    return SubType{
+                        .pointer = .{
+                            .size = .many,
+                            .is_const = is_const,
+                            .child_subtype = child_on_heap,
+                        },
+                    };
+                } else if (self.peekToken().tag == .int) {
+                    try self.parseInt();
+
+                    const len = self.sir.instructions.pop().int;
+
+                    if (len > std.math.maxInt(usize)) {
+                        self.error_info = .{ .message = "array length is too large", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
+
+                        return error.UnexpectedToken;
+                    }
+
+                    if (!self.eatToken(.close_bracket)) {
+                        self.error_info = .{ .message = "expected a ']'", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
+
+                        return error.UnexpectedToken;
+                    }
+
+                    const child = try self.parseSubType();
+
+                    const child_on_heap = try self.allocator.create(SubType);
+                    child_on_heap.* = child;
+
+                    return SubType{
+                        .array = .{
+                            .len = @intCast(len),
+                            .child_subtype = child_on_heap,
+                        },
+                    };
+                } else {
+                    self.error_info = .{ .message = "expected a '*' or an integer", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
 
                     return error.UnexpectedToken;
                 }
-
-                if (!self.eatToken(.close_bracket)) {
-                    self.error_info = .{ .message = "expected a ']'", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
-
-                    return error.UnexpectedToken;
-                }
-
-                const is_const = self.eatToken(.keyword_const);
-
-                const child = try self.parseSubType();
-
-                const child_on_heap = try self.allocator.create(SubType);
-                child_on_heap.* = child;
-
-                return SubType{
-                    .pointer = .{
-                        .size = .many,
-                        .is_const = is_const,
-                        .child_subtype = child_on_heap,
-                    },
-                };
             },
 
             else => {},
