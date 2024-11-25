@@ -121,8 +121,12 @@ pub const Instruction = union(enum) {
     bit_or: u32,
     /// Perform bitwise XOR operation on the bits of lhs and rhs
     bit_xor: u32,
-    /// Get a pointer of a value on the stack
-    reference: u32,
+    /// Reference a value on the stack
+    /// 1. If the value is a comptime value, it will be hoisted into a global variable and then the pointer of the global variable
+    /// will be on the stack
+    /// 2. If the value is a runtime value, it will be in a local variable and then the pointer of the local variable will be on the stack
+    /// 3. If the previous instruction is a `read` air instruction, it will be removed and the pointer of the value will be on the stack
+    reference,
     /// Override the data that the pointer is pointing to
     write: u32,
     /// Read the data that the pointer is pointing to
@@ -1158,7 +1162,7 @@ pub const Parser = struct {
             },
 
             .ampersand => {
-                try self.sir.instructions.append(self.allocator, .{ .reference = operator_token.range.start });
+                try self.sir.instructions.append(self.allocator, .reference);
             },
 
             else => unreachable,
@@ -1238,7 +1242,7 @@ pub const Parser = struct {
                     try self.sir.instructions.append(self.allocator, .{ .write = operator_token.range.start });
                 } else if (last_instruction == .element or last_instruction == .field) {
                     try self.sir.instructions.append(self.allocator, last_instruction);
-                    try self.sir.instructions.append(self.allocator, .{ .reference = operator_token.range.start });
+                    try self.sir.instructions.append(self.allocator, .reference);
                     try self.parseExpr(Precedence.from(operator_token));
                     try self.sir.instructions.append(self.allocator, .duplicate);
                     try self.sir.instructions.append(self.allocator, .{ .reverse = 3 });

@@ -33,7 +33,7 @@ strings: std.StringHashMapUnmanaged(c.LLVMValueRef) = .{},
 stack: std.ArrayListUnmanaged(Register) = .{},
 
 scope: *Scope(Variable),
-scope_stack: std.ArrayListUnmanaged(Scope(Variable)) = .{},
+scopes: std.ArrayListUnmanaged(Scope(Variable)) = .{},
 
 pub const Error = std.mem.Allocator.Error;
 
@@ -53,9 +53,9 @@ pub fn init(allocator: std.mem.Allocator, target: std.Target) Error!LlvmBackend 
     const module = c.LLVMModuleCreateWithNameInContext("module", context);
     const builder = c.LLVMCreateBuilderInContext(context);
 
-    var scope_stack: @FieldType(LlvmBackend, "scope_stack") = .{};
+    var scopes: @FieldType(LlvmBackend, "scopes") = .{};
 
-    const global_scope = try scope_stack.addOne(allocator);
+    const global_scope = try scopes.addOne(allocator);
     global_scope.* = .{};
 
     return LlvmBackend{
@@ -65,7 +65,7 @@ pub fn init(allocator: std.mem.Allocator, target: std.Target) Error!LlvmBackend 
         .module = module,
         .builder = builder,
         .scope = global_scope,
-        .scope_stack = scope_stack,
+        .scopes = scopes,
     };
 }
 
@@ -73,7 +73,7 @@ pub fn deinit(self: *LlvmBackend) void {
     self.basic_blocks.deinit(self.allocator);
     self.strings.deinit(self.allocator);
     self.stack.deinit(self.allocator);
-    self.scope_stack.deinit(self.allocator);
+    self.scopes.deinit(self.allocator);
 
     c.LLVMDisposeModule(self.module);
     c.LLVMDisposeBuilder(self.builder);
@@ -331,6 +331,42 @@ pub fn emit(self: *LlvmBackend, output_file_path: [:0]const u8, output_kind: roo
     );
 }
 
+pub fn render(self: *LlvmBackend, airs: []const Air) Error!void {
+    for (airs) |air| {
+        for (air.instructions.items) |air_instruction| {
+            switch (air_instruction) {
+                .function => |symbol| {
+                    if (self.scope.get(symbol.name.buffer) != null) continue;
+
+                    const function_pointer = c.LLVMAddFunction(
+                        self.module,
+                        try self.allocator.dupeZ(u8, symbol.name.buffer),
+                        try self.getLlvmType(symbol.type.pointer.child_type.*),
+                    );
+
+                    try self.scope.put(
+                        self.allocator,
+                        symbol.name.buffer,
+                        .{
+                            .pointer = function_pointer,
+                            .type = symbol.type,
+                            .linkage = symbol.linkage,
+                        },
+                    );
+                },
+
+                else => {},
+            }
+        }
+    }
+
+    for (airs) |air| {
+        for (air.instructions.items, 0..) |air_instruction, i| {
+            try self.renderInstruction(air_instruction, air.instructions.items[i..]);
+        }
+    }
+}
+
 fn getLlvmType(self: *LlvmBackend, @"type": Type) Error!c.LLVMTypeRef {
     return switch (@"type") {
         .void => c.LLVMVoidTypeInContext(self.context),
@@ -439,38 +475,6 @@ fn binaryImplicitCast(self: *LlvmBackend, lhs: *Register, rhs: *Register) Error!
         // lhs as u16 > rhs as u64
         // lhs as s16 > rhs as s64
         try self.unaryImplicitCast(lhs, rhs.type);
-    }
-}
-
-pub fn render(self: *LlvmBackend, air: Air) Error!void {
-    for (air.instructions.items) |air_instruction| {
-        switch (air_instruction) {
-            .function => |symbol| {
-                if (self.scope.get(symbol.name.buffer) != null) continue;
-
-                const function_pointer = c.LLVMAddFunction(
-                    self.module,
-                    try self.allocator.dupeZ(u8, symbol.name.buffer),
-                    try self.getLlvmType(symbol.type.pointer.child_type.*),
-                );
-
-                try self.scope.put(
-                    self.allocator,
-                    symbol.name.buffer,
-                    .{
-                        .pointer = function_pointer,
-                        .type = symbol.type,
-                        .linkage = symbol.linkage,
-                    },
-                );
-            },
-
-            else => {},
-        }
-    }
-
-    for (air.instructions.items, 0..) |air_instruction, i| {
-        try self.renderInstruction(air_instruction, air.instructions.items[i..]);
     }
 }
 
@@ -1039,61 +1043,65 @@ fn renderVariable(self: *LlvmBackend, symbol: Symbol) Error!void {
     const llvm_type = try self.getLlvmType(symbol.type);
 
     if (self.scope.get(symbol.name.buffer)) |variable| {
-        if (variable.linkage == .global) {
+        // If the variable is an external variable that is already declared, this would happen if
+        // there is an `extern var x u8;` in a file and then a `var x u8 = 0;` in another file
+        if (variable.linkage == .external) {
             var register = self.stack.popOrNull() orelse Register{ .value = c.LLVMGetUndef(llvm_type), .type = symbol.type };
 
             try self.unaryImplicitCast(&register, symbol.type);
 
             _ = c.LLVMSetInitializer(variable.pointer, register.value);
+
+            return;
         }
-    } else {
-        const variable_pointer = switch (symbol.linkage) {
-            .global => blk: {
-                const global_variable_pointer = c.LLVMAddGlobal(
-                    self.module,
-                    llvm_type,
-                    try self.allocator.dupeZ(u8, symbol.name.buffer),
-                );
-
-                var register = self.stack.popOrNull() orelse Register{ .value = c.LLVMGetUndef(llvm_type), .type = symbol.type };
-
-                try self.unaryImplicitCast(&register, symbol.type);
-
-                _ = c.LLVMSetInitializer(global_variable_pointer, register.value);
-
-                break :blk global_variable_pointer;
-            },
-
-            .local => blk: {
-                const current_block = c.LLVMGetInsertBlock(self.builder);
-                const first_block = c.LLVMGetFirstBasicBlock(self.function_value);
-                const first_instruction = c.LLVMGetFirstInstruction(first_block);
-
-                if (first_instruction != null)
-                    c.LLVMPositionBuilderBefore(self.builder, first_instruction)
-                else
-                    c.LLVMPositionBuilderAtEnd(self.builder, first_block);
-
-                const local_variable_pointer = c.LLVMBuildAlloca(self.builder, llvm_type, "");
-
-                c.LLVMPositionBuilderAtEnd(self.builder, current_block);
-
-                break :blk local_variable_pointer;
-            },
-
-            .external => unreachable,
-        };
-
-        try self.scope.put(
-            self.allocator,
-            symbol.name.buffer,
-            .{
-                .pointer = variable_pointer,
-                .type = symbol.type,
-                .linkage = symbol.linkage,
-            },
-        );
     }
+
+    const variable_pointer = switch (symbol.linkage) {
+        .global => blk: {
+            const global_variable_pointer = c.LLVMAddGlobal(
+                self.module,
+                llvm_type,
+                try self.allocator.dupeZ(u8, symbol.name.buffer),
+            );
+
+            var register = self.stack.popOrNull() orelse Register{ .value = c.LLVMGetUndef(llvm_type), .type = symbol.type };
+
+            try self.unaryImplicitCast(&register, symbol.type);
+
+            _ = c.LLVMSetInitializer(global_variable_pointer, register.value);
+
+            break :blk global_variable_pointer;
+        },
+
+        .local => blk: {
+            const current_block = c.LLVMGetInsertBlock(self.builder);
+            const first_block = c.LLVMGetFirstBasicBlock(self.function_value);
+            const first_instruction = c.LLVMGetFirstInstruction(first_block);
+
+            if (first_instruction != null)
+                c.LLVMPositionBuilderBefore(self.builder, first_instruction)
+            else
+                c.LLVMPositionBuilderAtEnd(self.builder, first_block);
+
+            const local_variable_pointer = c.LLVMBuildAlloca(self.builder, llvm_type, "");
+
+            c.LLVMPositionBuilderAtEnd(self.builder, current_block);
+
+            break :blk local_variable_pointer;
+        },
+
+        .external => unreachable,
+    };
+
+    try self.scope.put(
+        self.allocator,
+        symbol.name.buffer,
+        .{
+            .pointer = variable_pointer,
+            .type = symbol.type,
+            .linkage = symbol.linkage,
+        },
+    );
 }
 
 fn renderExternal(self: *LlvmBackend, symbol: Symbol) Error!void {
@@ -1172,13 +1180,13 @@ fn renderCondBr(self: *LlvmBackend, cond_br: Air.Instruction.CondBr) Error!void 
 
 fn modifyScope(self: *LlvmBackend, start: bool) Error!void {
     if (start) {
-        const local_scope = try self.scope_stack.addOne(self.allocator);
+        const local_scope = try self.scopes.addOne(self.allocator);
         local_scope.* = .{ .maybe_parent = self.scope };
         self.scope = local_scope;
     } else {
         self.scope.deinit(self.allocator);
         self.scope = self.scope.maybe_parent.?;
-        _ = self.scope_stack.pop();
+        _ = self.scopes.pop();
     }
 }
 

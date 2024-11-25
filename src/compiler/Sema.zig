@@ -21,14 +21,15 @@ buffer: []const u8,
 
 env: Compilation.Environment,
 
-air: Air = .{},
+airs: std.ArrayListUnmanaged(Air) = .{},
+air: *Air = undefined,
 
 maybe_function_type: ?Type = null,
 
 stack: std.ArrayListUnmanaged(Value) = .{},
 
 scope: *Scope(Variable),
-scope_stack: std.ArrayListUnmanaged(Scope(Variable)),
+scopes: std.ArrayListUnmanaged(Scope(Variable)),
 
 error_info: ?ErrorInfo = null,
 
@@ -89,9 +90,9 @@ const Variable = struct {
 };
 
 pub fn init(allocator: std.mem.Allocator, buffer: []const u8, env: Compilation.Environment) std.mem.Allocator.Error!Sema {
-    var scope_stack: @FieldType(Sema, "scope_stack") = .{};
+    var scopes: @FieldType(Sema, "scopes") = .{};
 
-    const global_scope = try scope_stack.addOne(allocator);
+    const global_scope = try scopes.addOne(allocator);
     global_scope.* = .{};
 
     var sema: Sema = .{
@@ -99,7 +100,7 @@ pub fn init(allocator: std.mem.Allocator, buffer: []const u8, env: Compilation.E
         .buffer = buffer,
         .env = env,
         .scope = global_scope,
-        .scope_stack = scope_stack,
+        .scopes = scopes,
     };
 
     try sema.putBuiltinConstants();
@@ -109,7 +110,7 @@ pub fn init(allocator: std.mem.Allocator, buffer: []const u8, env: Compilation.E
 
 pub fn deinit(self: *Sema) void {
     self.stack.deinit(self.allocator);
-    self.scope_stack.deinit(self.allocator);
+    self.scopes.deinit(self.allocator);
 }
 
 fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
@@ -231,8 +232,6 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
 }
 
 pub fn analyze(self: *Sema, sir: Sir) Error!void {
-    try self.air.instructions.ensureUnusedCapacity(self.allocator, sir.instructions.items.len);
-
     var type_aliases: std.StringHashMapUnmanaged(Sir.SubSymbol) = .{};
     defer type_aliases.deinit(self.allocator);
 
@@ -338,6 +337,10 @@ pub fn analyze(self: *Sema, sir: Sir) Error!void {
         }
     }
 
+    const global_air = try self.airs.addOne(self.allocator);
+    global_air.* = .{};
+    self.air = global_air;
+
     for (global_instructions.items) |global_instruction| {
         try self.analyzeInstruction(global_instruction);
     }
@@ -367,6 +370,10 @@ pub fn analyze(self: *Sema, sir: Sir) Error!void {
             .linkage = symbol.linkage,
         });
     }
+
+    const functions_air = try self.airs.addOne(self.allocator);
+    functions_air.* = .{};
+    self.air = functions_air;
 
     for (functions.items) |function| {
         const subsymbol, const sir_instructions = function;
@@ -407,7 +414,7 @@ fn analyzeInstruction(self: *Sema, instruction: Sir.Instruction) Error!void {
         .pre_element => |token_start| try self.analyzePreElement(token_start),
         .element => |token_start| try self.analyzeElement(token_start),
         .field => |name| try self.analyzeField(name),
-        .reference => |token_start| try self.analyzeReference(token_start),
+        .reference => try self.analyzeReference(),
 
         .add => |token_start| try self.analyzeArithmetic(.add, token_start),
         .sub => |token_start| try self.analyzeArithmetic(.sub, token_start),
@@ -654,7 +661,7 @@ fn analyzePreElement(self: *Sema, token_start: u32) Error!void {
     const lhs_type = lhs.getType();
 
     if (lhs_type == .array) {
-        return self.analyzeReference(token_start);
+        return self.analyzeReference();
     } else if (lhs_type == .pointer and lhs_type.pointer.size != .many and lhs_type.pointer.child_type.* != .array) {
         return self.reportNotIndexable(lhs_type, token_start);
     }
@@ -691,9 +698,7 @@ fn analyzeElement(self: *Sema, token_start: u32) Error!void {
 fn analyzeField(self: *Sema, name: Name) Error!void {
     const rhs_type = self.stack.getLast().getType();
 
-    if (rhs_type == .@"struct") {
-        try self.analyzeReference(name.token_start);
-    }
+    if (rhs_type == .@"struct") try self.analyzeReference();
 
     const rhs = self.stack.pop();
 
@@ -732,42 +737,76 @@ fn analyzeField(self: *Sema, name: Name) Error!void {
     return error.Undeclared;
 }
 
-fn analyzeReference(self: *Sema, token_start: u32) Error!void {
+threadlocal var prng = std.Random.DefaultPrng.init(0);
+
+fn analyzeReference(self: *Sema) Error!void {
     const rhs = self.stack.pop();
     const rhs_type = rhs.getType();
 
     const last_instruction = self.air.instructions.items[self.air.instructions.items.len - 1];
     const before_last_instruction = self.air.instructions.items[self.air.instructions.items.len - 2];
 
-    if (last_instruction == .read) {
+    if (last_instruction == .read or rhs != .runtime) {
         _ = self.air.instructions.pop();
-
-        const is_const = if (before_last_instruction == .get_variable_ptr)
-            self.scope.get(before_last_instruction.get_variable_ptr).?.is_const
-        else
-            false;
-
-        const child_on_heap = try self.allocator.create(Type);
-        child_on_heap.* = rhs_type;
-
-        try self.stack.append(self.allocator, .{
-            .runtime = .{
-                .pointer = .{
-                    .size = .one,
-                    .is_const = is_const,
-                    .child_type = child_on_heap,
-                },
-            },
-        });
-    } else {
-        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-        try error_message_buf.writer(self.allocator).print("cannot get a pointer to '{}'", .{rhs});
-
-        self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
-
-        return error.MismatchedTypes;
     }
+
+    if (last_instruction != .read) {
+        const anon_var_name = try std.fmt.allocPrint(self.allocator, "compiler::__anon_{}", .{prng.random().int(u32)});
+
+        if (rhs == .runtime) {
+            try self.air.instructions.append(
+                self.allocator,
+                .{
+                    .variable = .{
+                        .name = .{ .buffer = anon_var_name, .token_start = 0 },
+                        .type = rhs_type,
+                        .linkage = .local,
+                    },
+                },
+            );
+
+            try self.air.instructions.append(self.allocator, .{ .get_variable_ptr = anon_var_name });
+            try self.air.instructions.append(self.allocator, .duplicate);
+            try self.air.instructions.append(self.allocator, .{ .reverse = 3 });
+            try self.air.instructions.append(self.allocator, .{ .reverse = 2 });
+            try self.air.instructions.append(self.allocator, .write);
+        } else {
+            const global_air = &self.airs.items[0];
+
+            try global_air.instructions.append(self.allocator, last_instruction);
+
+            try global_air.instructions.append(
+                self.allocator,
+                .{
+                    .variable = .{
+                        .name = .{ .buffer = anon_var_name, .token_start = 0 },
+                        .type = rhs_type,
+                        .linkage = .global,
+                    },
+                },
+            );
+
+            try self.air.instructions.append(self.allocator, .{ .get_variable_ptr = anon_var_name });
+        }
+    }
+
+    const is_const = if (before_last_instruction == .get_variable_ptr)
+        self.scope.get(before_last_instruction.get_variable_ptr).?.is_const
+    else
+        false;
+
+    const child_on_heap = try self.allocator.create(Type);
+    child_on_heap.* = rhs_type;
+
+    try self.stack.append(self.allocator, .{
+        .runtime = .{
+            .pointer = .{
+                .size = .one,
+                .is_const = is_const,
+                .child_type = child_on_heap,
+            },
+        },
+    });
 }
 
 const ArithmeticOperation = enum {
@@ -1294,7 +1333,7 @@ fn analyzeCondBr(self: *Sema, cond_br: Sir.Instruction.CondBr) Error!void {
 
 fn modifyScope(self: *Sema, start: bool) Error!void {
     if (start) {
-        const local_scope = try self.scope_stack.addOne(self.allocator);
+        const local_scope = try self.scopes.addOne(self.allocator);
         local_scope.* = .{ .maybe_parent = self.scope };
         self.scope = local_scope;
 
@@ -1302,7 +1341,7 @@ fn modifyScope(self: *Sema, start: bool) Error!void {
     } else {
         self.scope.deinit(self.allocator);
         self.scope = self.scope.maybe_parent.?;
-        _ = self.scope_stack.pop();
+        _ = self.scopes.pop();
 
         try self.air.instructions.append(self.allocator, .end_scope);
     }

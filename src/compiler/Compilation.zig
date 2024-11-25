@@ -119,12 +119,12 @@ pub fn compile(self: *Compilation, file_path: []const u8, buffer: [:0]const u8) 
 
         // TODO: Some of the strucures in Air depend on Sir memory allocated data, we can not free Sir memory here.
         // find a way to free Sir memory when we are done with it or do not depend on it anymore.
-        const air = self.analyze(file_path, buffer, sir) orelse break :blk null;
+        const airs = self.analyze(file_path, buffer, sir) orelse break :blk null;
 
         self.pipeline.mutex.lock();
         defer self.pipeline.mutex.unlock();
 
-        self.pipeline.airs.append(self.allocator, air) catch |err| {
+        self.pipeline.airs.appendSlice(self.allocator, airs) catch |err| {
             std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
 
             break :blk null;
@@ -165,7 +165,7 @@ pub fn parse(self: Compilation, file_path: []const u8, buffer: [:0]const u8) ?Si
 }
 
 /// Analyze Sir and lower it to Air
-pub fn analyze(self: Compilation, file_path: []const u8, buffer: []const u8, sir: Sir) ?Air {
+pub fn analyze(self: Compilation, file_path: []const u8, buffer: []const u8, sir: Sir) ?[]Air {
     var sema = Sema.init(self.allocator, buffer, self.env) catch |err| {
         std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
 
@@ -188,7 +188,7 @@ pub fn analyze(self: Compilation, file_path: []const u8, buffer: []const u8, sir
         },
     };
 
-    return sema.air;
+    return sema.airs.items;
 }
 
 /// Emit to an object file or an assembly file
@@ -196,9 +196,7 @@ pub fn emit(self: Compilation, output_file_path: [:0]const u8, output_kind: root
     var backend = try LlvmBackend.init(self.allocator, self.env.target);
     defer backend.deinit();
 
-    for (self.pipeline.airs.items) |air| {
-        try backend.render(air);
-    }
+    try backend.render(self.pipeline.airs.items);
 
     try backend.emit(output_file_path, output_kind);
 }
