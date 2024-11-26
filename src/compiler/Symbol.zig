@@ -177,19 +177,18 @@ pub const Type = union(enum) {
     }
 
     pub fn getPointer(self: Type) ?Type.Pointer {
-        if (self != .pointer) {
-            return null;
-        }
-
+        if (self != .pointer) return null;
         return self.pointer;
     }
 
     pub fn getArray(self: Type) ?Type.Array {
-        if (self != .array) {
-            return null;
-        }
-
+        if (self != .array) return null;
         return self.array;
+    }
+
+    pub fn getStruct(self: Type) ?Type.Struct {
+        if (self != .@"struct") return null;
+        return self.@"struct";
     }
 
     pub fn getFunction(self: Type) ?Type.Function {
@@ -250,7 +249,7 @@ pub const Type = union(enum) {
                 try writer.writeAll("struct { ");
 
                 for (@"struct".fields, 0..) |field, i| {
-                    try writer.print("{}", .{field.type});
+                    try writer.print("{s} {}", .{ field.name, field.type });
 
                     if (i < @"struct".fields.len - 1) {
                         try writer.writeAll(", ");
@@ -283,6 +282,15 @@ pub const Type = union(enum) {
 
             return array.len == other_array.len and
                 array.child_type.eql(other_array.child_type.*);
+        } else if (self.getStruct()) |@"struct"| {
+            const other_struct = other.getStruct() orelse return false;
+
+            if (@"struct".fields.len != other_struct.fields.len) return false;
+
+            for (@"struct".fields, other_struct.fields) |field, other_field|
+                if (!field.type.eql(other_field.type)) return false;
+
+            return true;
         } else {
             return std.meta.eql(self, other);
         }
