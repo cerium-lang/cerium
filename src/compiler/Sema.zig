@@ -286,10 +286,11 @@ pub fn analyze(self: *Sema, sir: Sir) Error!void {
     {
         var type_alias_iterator = type_aliases.valueIterator();
 
+        // First Type Alias Pass: put type aliases in scope
         while (type_alias_iterator.next()) |type_alias| {
             if (self.scope.get(type_alias.name.buffer) != null) return self.reportRedeclaration(type_alias.name);
             try self.scope.put(self.allocator, type_alias.name.buffer, .{
-                .type = undefined,
+                .type = .void,
                 .linkage = type_alias.linkage,
                 .is_type_alias = true,
             });
@@ -297,43 +298,66 @@ pub fn analyze(self: *Sema, sir: Sir) Error!void {
 
         type_alias_iterator = type_aliases.valueIterator();
 
+        // Second Type Alias Pass: analyze type aliases that don't point to others
         while (type_alias_iterator.next()) |type_alias| {
-            const variable = self.scope.getPtr(type_alias.name.buffer).?;
+            if (type_alias.subtype == .@"enum" or
+                checkTypeAliasPointsToOthers(type_alias.subtype, &type_aliases)) continue;
 
             try self.checkTypeAliasCircular(type_alias.name, type_alias.subtype, &type_aliases);
 
-            if (type_alias.subtype == .@"enum") {
-                const @"enum" = type_alias.subtype.@"enum";
-                const enum_type = try self.analyzeSubType(@"enum".subtype.*);
+            const variable = self.scope.getPtr(type_alias.name.buffer).?;
+            variable.type = try self.analyzeSubType(type_alias.subtype);
+            variable.linkage = type_alias.linkage;
+        }
 
-                try self.checkIntType(enum_type, @"enum".token_start);
+        type_alias_iterator = type_aliases.valueIterator();
 
-                for (@"enum".fields) |field| {
-                    const enum_field_value: Value = .{ .int = field.value };
+        // Third Type Alias Pass: analyze enums
+        while (type_alias_iterator.next()) |type_alias| {
+            if (type_alias.subtype != .@"enum") continue;
 
-                    try self.checkUnaryImplicitCast(enum_field_value, enum_type, field.name.token_start);
+            try self.checkTypeAliasCircular(type_alias.name, type_alias.subtype, &type_aliases);
 
-                    const enum_field_entry = try std.mem.concat(self.allocator, u8, &.{ type_alias.name.buffer, "::", field.name.buffer });
+            const @"enum" = type_alias.subtype.@"enum";
+            const enum_type = try self.analyzeSubType(@"enum".subtype.*);
 
-                    if (self.scope.get(enum_field_entry) != null)
-                        return self.reportRedeclaration(.{ .buffer = enum_field_entry, .token_start = field.name.token_start });
+            try self.checkIntType(enum_type, @"enum".token_start);
 
-                    try self.scope.put(self.allocator, enum_field_entry, .{
-                        .type = enum_type,
-                        .linkage = type_alias.linkage,
-                        .maybe_value = enum_field_value,
-                        .is_const = true,
-                        .is_comptime = true,
-                    });
-                }
+            for (@"enum".fields) |field| {
+                const enum_field_value: Value = .{ .int = field.value };
 
-                variable.type = enum_type;
-                variable.linkage = type_alias.linkage;
-            } else {
-                const symbol = try self.analyzeSubSymbol(type_alias.*);
-                variable.type = symbol.type;
-                variable.linkage = symbol.linkage;
+                try self.checkUnaryImplicitCast(enum_field_value, enum_type, field.name.token_start);
+
+                const enum_field_entry = try std.mem.concat(self.allocator, u8, &.{ type_alias.name.buffer, "::", field.name.buffer });
+
+                if (self.scope.get(enum_field_entry) != null)
+                    return self.reportRedeclaration(.{ .buffer = enum_field_entry, .token_start = field.name.token_start });
+
+                try self.scope.put(self.allocator, enum_field_entry, .{
+                    .type = enum_type,
+                    .linkage = type_alias.linkage,
+                    .maybe_value = enum_field_value,
+                    .is_const = true,
+                    .is_comptime = true,
+                });
             }
+
+            const variable = self.scope.getPtr(type_alias.name.buffer).?;
+            variable.type = enum_type;
+            variable.linkage = type_alias.linkage;
+        }
+
+        type_alias_iterator = type_aliases.valueIterator();
+
+        // Fourth Type Alias Pass: analyze type aliases that isn't an enum
+        while (type_alias_iterator.next()) |type_alias| {
+            if (type_alias.subtype == .@"enum") continue;
+
+            try self.checkTypeAliasCircular(type_alias.name, type_alias.subtype, &type_aliases);
+
+            const variable = self.scope.getPtr(type_alias.name.buffer).?;
+            variable.type = try self.analyzeSubType(type_alias.subtype);
+            variable.linkage = type_alias.linkage;
         }
     }
 
@@ -1435,6 +1459,39 @@ fn analyzeSubType(self: *Sema, subtype: Sir.SubType) Error!Type {
             }
         },
 
+        .array => |array| {
+            if (array.child_subtype.* == .name) {
+                const child_subtype_name = array.child_subtype.name;
+
+                if (self.scope.getPtr(child_subtype_name.buffer)) |child_subtype_variable| {
+                    if (child_subtype_variable.is_type_alias) {
+                        return Type{
+                            .array = .{
+                                .len = array.len,
+                                .child_type = &child_subtype_variable.type,
+                            },
+                        };
+                    }
+                }
+
+                try self.reportTypeNotDeclared(child_subtype_name);
+
+                unreachable;
+            } else {
+                const child_type = try self.analyzeSubType(array.child_subtype.*);
+
+                const child_type_on_heap = try self.allocator.create(Type);
+                child_type_on_heap.* = child_type;
+
+                return Type{
+                    .array = .{
+                        .len = array.len,
+                        .child_type = child_type_on_heap,
+                    },
+                };
+            }
+        },
+
         .@"struct" => |@"struct"| {
             var fields = try self.allocator.alloc(Type.Struct.Field, @"struct".subsymbols.len);
 
@@ -1451,20 +1508,6 @@ fn analyzeSubType(self: *Sema, subtype: Sir.SubType) Error!Type {
             self.error_info = .{ .message = "enums should be in a type alias as they require a namespace", .source_loc = SourceLoc.find(self.buffer, @"enum".token_start) };
 
             return error.UnexpectedType;
-        },
-
-        .array => |array| {
-            const child_type = try self.analyzeSubType(array.child_subtype.*);
-
-            const child_type_on_heap = try self.allocator.create(Type);
-            child_type_on_heap.* = child_type;
-
-            return Type{
-                .array = .{
-                    .len = array.len,
-                    .child_type = child_type_on_heap,
-                },
-            };
         },
 
         .pure => |pure| return pure,
@@ -1510,6 +1553,33 @@ fn checkTypeAliasCircular(self: *Sema, target: Name, subtype: Sir.SubType, type_
 
         else => {},
     }
+}
+
+fn checkTypeAliasPointsToOthers(subtype: Sir.SubType, type_aliases: *std.StringHashMapUnmanaged(Sir.SubSymbol)) bool {
+    return switch (subtype) {
+        // Pointers or Arrays
+        .pure, .pointer, .array => false,
+
+        .name => |name| type_aliases.get(name.buffer) != null,
+
+        .@"enum" => |@"enum"| checkTypeAliasPointsToOthers(@"enum".subtype.*, type_aliases),
+
+        .function => |function| blk: {
+            for (function.parameter_subtypes) |parameter_subtype|
+                if (checkTypeAliasPointsToOthers(parameter_subtype, type_aliases))
+                    break :blk true;
+
+            break :blk checkTypeAliasPointsToOthers(function.return_subtype.*, type_aliases);
+        },
+
+        .@"struct" => |@"struct"| blk: {
+            for (@"struct".subsymbols) |field_subsymbol|
+                if (checkTypeAliasPointsToOthers(field_subsymbol.subtype, type_aliases))
+                    break :blk true;
+
+            break :blk false;
+        },
+    };
 }
 
 fn checkUnaryImplicitCast(self: *Sema, lhs: Value, to: Type, token_start: u32) Error!void {
