@@ -407,11 +407,11 @@ fn getLlvmType(self: *LlvmBackend, @"type": Type) Error!c.LLVMTypeRef {
 
 /// Use this instead of `c.LLVMBuildIntCast2`
 fn saneIntCast(self: *LlvmBackend, lhs: Register, to: Type) Error!c.LLVMValueRef {
-    std.debug.assert(to == .int);
+    std.debug.assert(to == .int or to == .bool);
     std.debug.assert(lhs.type == .int or lhs.type == .bool);
 
     const lhs_int = if (lhs.type == .int) lhs.type.int else Type.Int{ .signedness = .unsigned, .bits = 1 };
-    const to_int = to.int;
+    const to_int = if (to == .int) to.int else Type.Int{ .signedness = .unsigned, .bits = 1 };
 
     // u16 -> u8 (Regular IntCast)
     // u8 -> s8 (Regular IntCast)
@@ -595,7 +595,13 @@ fn renderBoolean(self: *LlvmBackend, boolean: bool) Error!void {
 fn renderNegate(self: *LlvmBackend) Error!void {
     const rhs = self.stack.pop();
 
-    try self.stack.append(self.allocator, .{ .value = c.LLVMBuildNeg(self.builder, rhs.value, ""), .type = rhs.type });
+    try self.stack.append(self.allocator, .{
+        .value = if (rhs.type == .int)
+            c.LLVMBuildNeg(self.builder, rhs.value, "")
+        else
+            c.LLVMBuildFNeg(self.builder, rhs.value, ""),
+        .type = rhs.type,
+    });
 }
 
 fn renderNot(self: *LlvmBackend) Error!void {
