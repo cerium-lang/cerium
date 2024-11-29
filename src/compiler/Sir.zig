@@ -771,6 +771,7 @@ pub const Parser = struct {
         prefix,
         call,
         subscript,
+        field,
 
         fn from(token: Token) Precedence {
             return switch (token.tag) {
@@ -785,7 +786,7 @@ pub const Parser = struct {
                 .keyword_as => .cast,
                 .open_paren => .call,
                 .open_bracket => .subscript,
-                .period => .subscript,
+                .period => .field,
 
                 else => .lowest,
             };
