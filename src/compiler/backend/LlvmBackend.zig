@@ -278,8 +278,8 @@ pub fn targetTripleZ(allocator: std.mem.Allocator, target: std.Target) ![:0]u8 {
         .android => "android",
         .androideabi => "androideabi",
         .musl => "musl",
-        .muslabin32 => "musl", // Should be "muslabin32" in LLVM 20 (I still use LLVM 17 btw)
-        .muslabi64 => "musl", // Should be "muslabi64" in LLVM 20 (I still use LLVM 17 btw)
+        .muslabin32 => "musl", // Should be "muslabin32" in LLVM 20
+        .muslabi64 => "musl", // Should be "muslabi64" in LLVM 20
         .musleabi => "musleabi",
         .musleabihf => "musleabihf",
         .muslx32 => "muslx32",
