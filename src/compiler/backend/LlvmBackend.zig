@@ -1167,10 +1167,18 @@ fn renderBlock(self: *LlvmBackend, id: u32) Error!void {
 }
 
 fn renderBr(self: *LlvmBackend, id: u32) Error!void {
+    const current_block = c.LLVMGetInsertBlock(self.builder);
+    const previous_terminator = c.LLVMGetBasicBlockTerminator(current_block);
+    if (previous_terminator != null) return;
+
     _ = c.LLVMBuildBr(self.builder, self.basic_blocks.get(id).?);
 }
 
 fn renderCondBr(self: *LlvmBackend, cond_br: Air.Instruction.CondBr) Error!void {
+    const current_block = c.LLVMGetInsertBlock(self.builder);
+    const previous_terminator = c.LLVMGetBasicBlockTerminator(current_block);
+    if (previous_terminator != null) return;
+
     const condition_value = self.stack.pop().value;
 
     const true_basic_block = self.basic_blocks.get(cond_br.true_id).?;
@@ -1197,6 +1205,10 @@ fn modifyScope(self: *LlvmBackend, start: bool) Error!void {
 }
 
 fn renderReturn(self: *LlvmBackend, with_value: bool) Error!void {
+    const current_block = c.LLVMGetInsertBlock(self.builder);
+    const previous_terminator = c.LLVMGetBasicBlockTerminator(current_block);
+    if (previous_terminator != null) return;
+
     if (with_value) {
         var return_register = self.stack.pop();
         const return_type = self.function_type.function.return_type.*;
