@@ -378,7 +378,7 @@ fn getLlvmType(self: *LlvmBackend, @"type": Type) Error!c.LLVMTypeRef {
             c.LLVMFloatTypeInContext(self.context)
         else
             c.LLVMDoubleTypeInContext(self.context),
-        .pointer => c.LLVMPointerTypeInContext(self.context, 1),
+        .pointer => c.LLVMPointerTypeInContext(self.context, 0),
         .array => |array| c.LLVMArrayType2(try self.getLlvmType(array.child_type.*), array.len),
 
         .function => |function| blk: {
