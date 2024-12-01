@@ -6,7 +6,7 @@ pub fn build(b: *std.Build) void {
 
     const exe = b.addExecutable(.{
         .name = "cerium",
-        .root_source_file = b.path("src/main.zig"),
+        .root_source_file = b.path("bootstrap/main.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -29,7 +29,7 @@ pub fn build(b: *std.Build) void {
 
     const exe_check = b.addExecutable(.{
         .name = "cerium",
-        .root_source_file = b.path("src/main.zig"),
+        .root_source_file = b.path("bootstrap/main.zig"),
         .target = target,
         .optimize = optimize,
     });
