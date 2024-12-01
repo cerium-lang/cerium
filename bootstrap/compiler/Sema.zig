@@ -1139,7 +1139,9 @@ fn analyzeCast(self: *Sema, cast: Sir.Instruction.Cast) Error!void {
 
         try self.checkUnaryImplicitCast(rhs, usize_type, cast.token_start);
     } else if (to == .bool) {
-        try self.checkInt(from, cast.token_start);
+        self.error_info = .{ .message = "cannot cast to a boolean, use comparison instead", .source_loc = SourceLoc.find(self.buffer, cast.token_start) };
+
+        return error.UnexpectedType;
     } else if (from == .bool) {
         try self.checkInt(to, cast.token_start);
     } else if (from == .float) {

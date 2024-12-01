@@ -407,11 +407,11 @@ fn getLlvmType(self: *LlvmBackend, @"type": Type) Error!c.LLVMTypeRef {
 
 /// Use this instead of `c.LLVMBuildIntCast2`
 fn saneIntCast(self: *LlvmBackend, lhs: Register, to: Type) Error!c.LLVMValueRef {
-    std.debug.assert(to == .int or to == .bool);
+    std.debug.assert(to == .int);
     std.debug.assert(lhs.type == .int or lhs.type == .bool);
 
     const lhs_int = if (lhs.type == .int) lhs.type.int else Type.Int{ .signedness = .unsigned, .bits = 1 };
-    const to_int = if (to == .int) to.int else Type.Int{ .signedness = .unsigned, .bits = 1 };
+    const to_int = to.int;
 
     // u16 -> u8 (Regular IntCast)
     // u8 -> s8 (Regular IntCast)
@@ -866,7 +866,7 @@ fn renderCast(self: *LlvmBackend, cast_to: Type) Error!void {
         .{
             .value = switch (cast_from) {
                 .int => switch (cast_to) {
-                    .int, .bool => try self.saneIntCast(lhs, cast_to),
+                    .int => try self.saneIntCast(lhs, cast_to),
 
                     .float => if (cast_from.canBeNegative())
                         c.LLVMBuildSIToFP(self.builder, cast_value, llvm_cast_to, "")
