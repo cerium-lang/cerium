@@ -62,19 +62,19 @@ type Lexer::State = enum {
 };
 
 fn Lexer::is_whitespace(ch u8) bool {
-    return ((ch == ' ') as u1 | (ch == '\r') as u1 | (ch == '\n') as u1 | (ch == '\t') as u1) as bool;
+    return (ch == ' ') | (ch == '\r') | (ch == '\n') | (ch == '\t');
 }
 
 fn Lexer::is_identifier(ch u8) bool {
-    return ((!(ch < 'a') as u1 & !(ch > 'z') as u1) | (!(ch < 'A') as u1 & !(ch > 'Z') as u1) | (ch == '_') as u1) as bool;
+    return (!(ch < 'a') & !(ch > 'z')) | (!(ch < 'A') & !(ch > 'Z')) | (ch == '_');
 }
 
 fn Lexer::is_number(ch u8) bool {
-    return (!(ch < '0') as u1 & !(ch > '9') as u1) as bool;
+    return !(ch < '0') & !(ch > '9');
 }
 
 fn Lexer::is_identifier_continue(ch u8) bool {
-    return (Lexer::is_identifier(ch) as u1 | Lexer::is_number(ch) as u1 | (ch == ':') as u1) as bool;
+    return Lexer::is_identifier(ch) | Lexer::is_number(ch) | (ch == ':');
 }
 
 fn Lexer::next(self *Lexer) Token {
@@ -152,7 +152,7 @@ fn Lexer::next(self *Lexer) Token {
                 break;
             }
         } else if state == Lexer::State::string_literal {
-            if ((ch == 0) as u1 | (ch == '\n') as u1) as bool {
+            if (ch == 0) | (ch == '\n') {
                 result.tag = Token::Tag::invalid;
                 result.range.start = self.index;
                 self.index = self.index + 1;
@@ -168,7 +168,7 @@ fn Lexer::next(self *Lexer) Token {
                 break;
             }
         } else if state == Lexer::State::string_literal_back_slash {
-            if ((ch == 0) as u1 | (ch == '\n') as u1) as bool {
+            if (ch == 0) | (ch == '\n') {
                 result.tag = Token::Tag::invalid;
                 result.range.start = self.index;
                 self.index = self.index + 1;

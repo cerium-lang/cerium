@@ -606,8 +606,8 @@ fn analyzeBitwiseArithmetic(self: *Sema, comptime operation: BitwiseArithmeticOp
     var lhs_type = lhs.getType();
     var rhs_type = rhs.getType();
 
-    try self.checkInt(lhs_type, token_start);
-    try self.checkInt(rhs_type, token_start);
+    try self.checkIntOrBool(lhs_type, token_start);
+    try self.checkIntOrBool(rhs_type, token_start);
 
     try self.checkBinaryImplicitCast(lhs, rhs, &lhs_type, &rhs_type, token_start);
 
@@ -625,6 +625,58 @@ fn analyzeBitwiseArithmetic(self: *Sema, comptime operation: BitwiseArithmeticOp
                 _ = self.air.instructions.pop();
 
                 self.air.instructions.items[self.air.instructions.items.len - 1] = .{ .int = result };
+
+                return;
+            },
+
+            .boolean => |rhs_boolean| {
+                const result = switch (operation) {
+                    .bit_and => lhs_int & @intFromBool(rhs_boolean),
+                    .bit_or => lhs_int | @intFromBool(rhs_boolean),
+                    .bit_xor => lhs_int ^ @intFromBool(rhs_boolean),
+                } == 1;
+
+                try self.stack.append(self.allocator, .{ .boolean = result });
+
+                _ = self.air.instructions.pop();
+
+                self.air.instructions.items[self.air.instructions.items.len - 1] = .{ .boolean = result };
+
+                return;
+            },
+
+            else => {},
+        },
+
+        .boolean => |lhs_boolean| switch (rhs) {
+            .int => |rhs_int| {
+                const result = switch (operation) {
+                    .bit_and => @intFromBool(lhs_boolean) & rhs_int,
+                    .bit_or => @intFromBool(lhs_boolean) | rhs_int,
+                    .bit_xor => @intFromBool(lhs_boolean) ^ rhs_int,
+                } == 1;
+
+                try self.stack.append(self.allocator, .{ .boolean = result });
+
+                _ = self.air.instructions.pop();
+
+                self.air.instructions.items[self.air.instructions.items.len - 1] = .{ .boolean = result };
+
+                return;
+            },
+
+            .boolean => |rhs_boolean| {
+                const result = switch (operation) {
+                    .bit_and => @intFromBool(lhs_boolean) & @intFromBool(rhs_boolean),
+                    .bit_or => @intFromBool(lhs_boolean) | @intFromBool(rhs_boolean),
+                    .bit_xor => @intFromBool(lhs_boolean) ^ @intFromBool(rhs_boolean),
+                } == 1;
+
+                try self.stack.append(self.allocator, .{ .boolean = result });
+
+                _ = self.air.instructions.pop();
+
+                self.air.instructions.items[self.air.instructions.items.len - 1] = .{ .boolean = result };
 
                 return;
             },
@@ -1643,6 +1695,17 @@ fn checkBinaryImplicitCast(self: *Sema, lhs: Value, rhs: Value, lhs_type: *Type,
         }
     } else {
         try self.reportIncompatibleTypes(lhs_type.*, rhs_type.*, token_start);
+    }
+}
+
+fn checkIntOrBool(self: *Sema, provided_type: Type, token_start: u32) Error!void {
+    if (provided_type != .int and provided_type != .bool) {
+        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+        try error_message_buf.writer(self.allocator).print("'{}' is provided while expected an integer or boolean", .{provided_type});
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
+
+        return error.MismatchedTypes;
     }
 }
 
