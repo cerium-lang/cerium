@@ -11,6 +11,12 @@ type Token::Tag = enum {
     float,
     string_literal,
     char_literal,
+    open_paren,
+    close_paren,
+    open_brace,
+    close_brace,
+    open_bracket,
+    close_bracket,
     forward_slash,
     equal_sign,
     double_equal_sign,
@@ -30,6 +36,18 @@ fn Token::Tag::to_string(self Token::Tag) [*]const u8 {
         return "string_literal";
     } else if self == Token::Tag::char_literal {
         return "char_literal";
+    } else if self == Token::Tag::open_paren {
+        return "open_paren";
+    } else if self == Token::Tag::close_paren {
+        return "close_paren";
+    } else if self == Token::Tag::open_brace {
+        return "open_brace";
+    } else if self == Token::Tag::close_brace {
+        return "close_brace";
+    } else if self == Token::Tag::open_bracket {
+        return "open_bracket";
+    } else if self == Token::Tag::close_bracket {
+        return "close_bracket";
     } else if self == Token::Tag::forward_slash {
         return "forward_slash";
     } else if self == Token::Tag::equal_sign {
@@ -109,6 +127,48 @@ fn Lexer::next(self *Lexer) Token {
             } else if ch == 0 {
                 result.tag = Token::Tag::eof;
                 result.range.start = self.index;
+                result.range.end = self.index;
+
+                break;
+            } else if ch == '(' {
+                result.tag = Token::Tag::open_paren;
+                result.range.start = self.index;
+                self.index = self.index + 1;
+                result.range.end = self.index;
+
+                break;
+            } else if ch == ')' {
+                result.tag = Token::Tag::close_paren;
+                result.range.start = self.index;
+                self.index = self.index + 1;
+                result.range.end = self.index;
+
+                break;
+            } else if ch == '{' {
+                result.tag = Token::Tag::open_brace;
+                result.range.start = self.index;
+                self.index = self.index + 1;
+                result.range.end = self.index;
+
+                break;
+            } else if ch == '}' {
+                result.tag = Token::Tag::close_brace;
+                result.range.start = self.index;
+                self.index = self.index + 1;
+                result.range.end = self.index;
+
+                break;
+            } else if ch == '[' {
+                result.tag = Token::Tag::open_bracket;
+                result.range.start = self.index;
+                self.index = self.index + 1;
+                result.range.end = self.index;
+
+                break;
+            } else if ch == ']' {
+                result.tag = Token::Tag::close_bracket;
+                result.range.start = self.index;
+                self.index = self.index + 1;
                 result.range.end = self.index;
 
                 break;
@@ -281,7 +341,7 @@ fn main() {
     var lexer Lexer;
 
     lexer.index = 0;
-    lexer.buffer = "var Hello::World = 'h';";
+    lexer.buffer = "([{(}])";
 
     print("buffer: ");
     print(lexer.buffer);
