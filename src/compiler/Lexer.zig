@@ -367,6 +367,12 @@ pub fn next(self: *Lexer) Token {
         },
 
         .comment => switch (self.buffer[self.index]) {
+            0 => {
+                result.tag = .eof;
+                result.range.start = self.index;
+                result.range.end = self.index;
+            },
+
             '\n' => {
                 self.index += 1;
                 continue :state .start;
