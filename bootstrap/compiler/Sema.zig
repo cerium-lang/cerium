@@ -629,42 +629,10 @@ fn analyzeBitwiseArithmetic(self: *Sema, comptime operation: BitwiseArithmeticOp
                 return;
             },
 
-            .boolean => |rhs_boolean| {
-                const result = switch (operation) {
-                    .bit_and => lhs_int & @intFromBool(rhs_boolean),
-                    .bit_or => lhs_int | @intFromBool(rhs_boolean),
-                    .bit_xor => lhs_int ^ @intFromBool(rhs_boolean),
-                } == 1;
-
-                try self.stack.append(self.allocator, .{ .boolean = result });
-
-                _ = self.air.instructions.pop();
-
-                self.air.instructions.items[self.air.instructions.items.len - 1] = .{ .boolean = result };
-
-                return;
-            },
-
             else => {},
         },
 
         .boolean => |lhs_boolean| switch (rhs) {
-            .int => |rhs_int| {
-                const result = switch (operation) {
-                    .bit_and => @intFromBool(lhs_boolean) & rhs_int,
-                    .bit_or => @intFromBool(lhs_boolean) | rhs_int,
-                    .bit_xor => @intFromBool(lhs_boolean) ^ rhs_int,
-                } == 1;
-
-                try self.stack.append(self.allocator, .{ .boolean = result });
-
-                _ = self.air.instructions.pop();
-
-                self.air.instructions.items[self.air.instructions.items.len - 1] = .{ .boolean = result };
-
-                return;
-            },
-
             .boolean => |rhs_boolean| {
                 const result = switch (operation) {
                     .bit_and => @intFromBool(lhs_boolean) & @intFromBool(rhs_boolean),
