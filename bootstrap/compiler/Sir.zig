@@ -886,6 +886,10 @@ pub const Parser = struct {
                             output.appendAssumeCapacity('"');
                         },
 
+                        '\'' => {
+                            output.appendAssumeCapacity('\'');
+                        },
+
                         else => return error.InvalidEscapeCharacter,
                     }
                 },

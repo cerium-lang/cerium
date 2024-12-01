@@ -10,6 +10,7 @@ type Token::Tag = enum {
     int,
     float,
     string_literal,
+    char_literal,
     forward_slash,
     equal_sign,
     double_equal_sign,
@@ -27,6 +28,8 @@ fn Token::Tag::to_string(self Token::Tag) [*]const u8 {
         return "float";
     } else if self == Token::Tag::string_literal {
         return "string_literal";
+    } else if self == Token::Tag::char_literal {
+        return "char_literal";
     } else if self == Token::Tag::forward_slash {
         return "forward_slash";
     } else if self == Token::Tag::equal_sign {
@@ -56,6 +59,8 @@ type Lexer::State = enum {
     number,
     string_literal,
     string_literal_back_slash,
+    char_literal,
+    char_literal_back_slash,
     forward_slash,
     comment,
     equal_sign,
@@ -119,6 +124,11 @@ fn Lexer::next(self *Lexer) Token {
                 result.range.start = self.index;
                 
                 state = Lexer::State::string_literal;
+            } else if ch == '\'' {
+                result.tag = Token::Tag::char_literal;
+                result.range.start = self.index;
+                
+                state = Lexer::State::char_literal;
             } else if ch == '/' {
                 result.tag = Token::Tag::forward_slash;
                 result.range.start = self.index;
@@ -177,6 +187,33 @@ fn Lexer::next(self *Lexer) Token {
                 break;
             } else {
                 state = Lexer::State::string_literal;
+            }
+        } else if state == Lexer::State::char_literal {
+            if (ch == 0) | (ch == '\n') {
+                result.tag = Token::Tag::invalid;
+                result.range.start = self.index;
+                self.index = self.index + 1;
+                result.range.end = self.index;
+
+                break;
+            } else if ch == '\\' {
+                state = Lexer::State::char_literal_back_slash;
+            } else if ch == '\'' {
+                result.range.end = self.index;
+                self.index = self.index + 1;
+
+                break;
+            }
+        } else if state == Lexer::State::char_literal_back_slash {
+            if (ch == 0) | (ch == '\n') {
+                result.tag = Token::Tag::invalid;
+                result.range.start = self.index;
+                self.index = self.index + 1;
+                result.range.end = self.index;
+
+                break;
+            } else {
+                state = Lexer::State::char_literal;
             }
         } else if state == Lexer::State::forward_slash {
             if ch == '/' {
@@ -244,7 +281,7 @@ fn main() {
     var lexer Lexer;
 
     lexer.index = 0;
-    lexer.buffer = "var Hello::World = \"\\\"\";";
+    lexer.buffer = "var Hello::World = 'h';";
 
     print("buffer: ");
     print(lexer.buffer);
