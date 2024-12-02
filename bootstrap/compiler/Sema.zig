@@ -1138,6 +1138,24 @@ fn analyzeCast(self: *Sema, cast: Sir.Instruction.Cast) Error!void {
         const usize_type: Type = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.ptrBitWidth() } };
 
         try self.checkUnaryImplicitCast(rhs, usize_type, cast.token_start);
+    } else if (from == .pointer and to != .pointer) {
+        const usize_type: Type = .{ .int = .{ .signedness = .unsigned, .bits = self.env.target.ptrBitWidth() } };
+
+        if (!to.eql(usize_type)) {
+            var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+            // zig fmt: off
+            try error_message_buf.writer(self.allocator).print(
+                "cannot cast from a pointer to '{}', pointers can only cast to '{}' in this target " ++
+                "(note: you should use 'usize' as it is an alias for '{}' in cross compilable manner as the size is different in other targets)",
+                .{ to, usize_type, usize_type },
+            );
+            // zig fmt: on
+
+            self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, cast.token_start) };
+
+            return error.UnexpectedType;
+        }
     } else if (to == .bool) {
         self.error_info = .{ .message = "cannot cast to a boolean, use comparison instead", .source_loc = SourceLoc.find(self.buffer, cast.token_start) };
 
