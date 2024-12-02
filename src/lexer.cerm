@@ -315,26 +315,57 @@ fn Lexer::next(self *Lexer) Token {
     return result;
 }
 
-// Debugging the Lexer, we still don't have a module system to refactor this stuff into main.cerm
+// TODO: We still don't have a module system to refactor this stuff into main.cerm
 
-fn print(str [*]const u8) {
+type SYS = enum usize {
+    write = 1,
+};
+
+fn syscall3(code SYS, arg1 usize, arg2 usize, arg3 usize) usize {
+    return asm {
+        "syscall"
+        : "={rax}" (usize)
+        : "{rax}" (code),
+          "{rdi}" (arg1),
+          "{rsi}" (arg2),
+          "{rdx}" (arg3),
+        : "rcx", "r11", "memory"
+    };
+}
+
+// TODO: We don't support slices yet
+fn strlen(str [*]const u8) usize {
     var len usize = 0;
 
-    // This should be replaced with a simple str.len if we implement slices, as it is not a good idea to use a loop to get the length of a string
     while str[len] != 0 {
         len = len + 1;
     }
 
-    // This should be refactored into the Standard Library as a write into the stdout file descriptor (or "handle" in Windows)
-    asm {
-        "syscall"
-        :
-        : "{rax}" (1 as usize),
-          "{rdi}" (1 as usize),
-          "{rsi}" (str as usize),
-          "{rdx}" (len),
-        : "rcx", "r11", "memory"
-    };
+    return len;
+}
+
+const STDOUT = 1;
+
+fn printc(c u8) {
+    var cbuf [1]u8;
+    cbuf[0] = c;
+
+    syscall3(SYS::write, STDOUT, &cbuf as usize, cbuf.len);
+}
+
+fn prints(str [*]const u8) {
+    syscall3(SYS::write, STDOUT, str as usize, strlen(str));
+}
+
+
+fn printu(n usize) {
+    if n > 9 {
+        var a = n / 10;
+        n = n - a * 10;
+        printu(a);
+    }
+
+    printc((n + '0') as u8);
 }
 
 fn main() {
@@ -343,16 +374,21 @@ fn main() {
     lexer.index = 0;
     lexer.buffer = "([{(}])";
 
-    print("buffer: ");
-    print(lexer.buffer);
-    print("\n");
+    prints("buffer: ");
+    prints(lexer.buffer);
+    printc('\n');
 
     while true {
         var token = Lexer::next(&lexer);
 
-        print("token tag: ");
-        print(Token::Tag::to_string(token.tag));
-        print("\n");
+        prints("token tag: ");
+        prints(Token::Tag::to_string(token.tag));
+        prints(", ");
+        prints("token range: ");
+        printu(token.range.start);
+        prints("..");
+        printu(token.range.end);
+        printc('\n');
 
         if token.tag == Token::Tag::eof {
             break;
