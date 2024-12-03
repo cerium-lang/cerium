@@ -71,10 +71,6 @@ type Lexer::State = enum {
     equal_sign,
 };
 
-fn Lexer::is_whitespace(ch u8) bool {
-    return (ch == ' ') | (ch == '\r') | (ch == '\n') | (ch == '\t');
-}
-
 fn Lexer::is_identifier(ch u8) bool {
     return (!(ch < 'a') & !(ch > 'z')) | (!(ch < 'A') & !(ch > 'Z')) | (ch == '_');
 }
@@ -108,6 +104,8 @@ fn Lexer::next(self *Lexer) Token {
 
                     break;
                 },
+
+                ' ', '\r', '\n', '\t' => {},
 
                 '(' => {
                     result.tag = Token::Tag::open_paren;
@@ -211,7 +209,7 @@ fn Lexer::next(self *Lexer) Token {
                         result.range.start = self.index;
                         
                         state = Lexer::State::number;
-                    } else if !Lexer::is_whitespace(ch) {
+                    } else {
                         result.tag = Token::Tag::invalid;
                         result.range.start = self.index;
                         self.index = self.index + 1;
@@ -243,16 +241,7 @@ fn Lexer::next(self *Lexer) Token {
             },
 
             Lexer::State::string_literal => switch (ch) {
-                0 => {
-                    result.tag = Token::Tag::invalid;
-                    result.range.start = self.index;
-                    self.index = self.index + 1;
-                    result.range.end = self.index;
-
-                    break;
-                },
-
-                '\n' => {
+                0, '\n' => {
                     result.tag = Token::Tag::invalid;
                     result.range.start = self.index;
                     self.index = self.index + 1;
@@ -276,16 +265,7 @@ fn Lexer::next(self *Lexer) Token {
             },
 
             Lexer::State::string_literal_back_slash => switch (ch) {
-                0 => {
-                    result.tag = Token::Tag::invalid;
-                    result.range.start = self.index;
-                    self.index = self.index + 1;
-                    result.range.end = self.index;
-
-                    break;
-                },
-
-                '\n' => {
+                0, '\n' => {
                     result.tag = Token::Tag::invalid;
                     result.range.start = self.index;
                     self.index = self.index + 1;
@@ -300,22 +280,13 @@ fn Lexer::next(self *Lexer) Token {
             },
             
             Lexer::State::char_literal => switch (ch) {
-                0 => {
+                0, '\n' => {
                     result.tag = Token::Tag::invalid;
                     result.range.start = self.index;
                     self.index = self.index + 1;
                     result.range.end = self.index;
-                    
+
                     break;
-                },
-
-                '\n' => {
-                    result.tag = Token::Tag::invalid;
-                    result.range.start = self.index;
-                    self.index = self.index + 1;
-                    result.range.end = self.index;
-
-                    break; 
                 },
 
                 '\\' => {
@@ -334,22 +305,13 @@ fn Lexer::next(self *Lexer) Token {
 
 
             Lexer::State::char_literal_back_slash => switch (ch) {
-                0 => {
+                0, '\n' => {
                     result.tag = Token::Tag::invalid;
                     result.range.start = self.index;
                     self.index = self.index + 1;
                     result.range.end = self.index;
 
                     break;
-                },
-
-                '\n' => {
-                    result.tag = Token::Tag::invalid;
-                    result.range.start = self.index;
-                    self.index = self.index + 1;
-                    result.range.end = self.index;
-
-                    break; 
                 },
 
                 else => {

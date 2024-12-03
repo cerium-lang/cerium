@@ -654,10 +654,27 @@ pub const Parser = struct {
         self.block_id += 1;
 
         while (self.peekToken().tag != .eof and self.peekToken().tag != .close_brace) {
+            var block_id_repeat_count: u32 = 1;
+
             const parsing_else_case = self.eatToken(.keyword_else);
 
-            if (!parsing_else_case)
+            if (!parsing_else_case) {
                 try self.parseExpr(.lowest);
+
+                if (self.eatToken(.comma)) {
+                    while (self.peekToken().tag != .fat_arrow and self.peekToken().tag != .eof) {
+                        try self.parseExpr(.lowest);
+
+                        block_id_repeat_count += 1;
+
+                        if (!self.eatToken(.comma) and self.peekToken().tag != .fat_arrow) {
+                            self.error_info = .{ .message = "expected a ','", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
+
+                            return error.UnexpectedToken;
+                        }
+                    }
+                }
+            }
 
             const fat_arrow_token_start = self.peekToken().range.start;
 
@@ -694,8 +711,10 @@ pub const Parser = struct {
                     maybe_else_block_id = case_block_id;
                 }
             } else {
-                try case_block_ids.append(self.allocator, case_block_id);
-                try case_token_starts.append(self.allocator, fat_arrow_token_start);
+                for (0..block_id_repeat_count) |_| {
+                    try case_block_ids.append(self.allocator, case_block_id);
+                    try case_token_starts.append(self.allocator, fat_arrow_token_start);
+                }
             }
 
             if (!self.eatToken(.comma) and self.peekToken().tag != .close_brace) {
