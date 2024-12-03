@@ -445,6 +445,9 @@ fn main() {
         printu(token.range.start);
         prints("..");
         printu(token.range.end);
+        prints(", ");
+        prints("token value: ");
+        syscall3(SYS::write, STDOUT, &lexer.buffer[token.range.start] as usize, token.range.end - token.range.start);
         printc('\n');
 
         if token.tag == Token::Tag::eof {
