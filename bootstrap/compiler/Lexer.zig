@@ -391,6 +391,12 @@ pub fn next(self: *Lexer) Token {
                 result.tag = .double_equal_sign;
             },
 
+            '>' => {
+                self.index += 1;
+                result.range.end = self.index;
+                result.tag = .fat_arrow;
+            },
+
             else => {
                 result.range.end = self.index;
             },

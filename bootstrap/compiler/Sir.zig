@@ -181,12 +181,14 @@ pub const Instruction = union(enum) {
     set: Name,
     /// Get a value of a variable
     get: Name,
-    /// Make a new block out of instructions
+    /// Start a new block
     block: u32,
     /// Unconditionally branch to a block
     br: u32,
     /// Conditionally branch to a block, condition is on the stack
     cond_br: CondBr,
+    /// Switch on value to branch to a block
+    @"switch": Switch,
     /// Start a new scope
     start_scope,
     /// End a scope
@@ -224,6 +226,13 @@ pub const Instruction = union(enum) {
         false_id: u32,
         token_start: u32,
     };
+
+    pub const Switch = struct {
+        case_block_ids: []const u32,
+        case_token_starts: []const u32,
+        else_block_id: u32,
+        token_start: u32,
+    };
 };
 
 pub const Parser = struct {
@@ -238,7 +247,7 @@ pub const Parser = struct {
 
     sir: Sir,
 
-    block_id: ?u32 = null,
+    block_id: u32 = 0,
 
     error_info: ?ErrorInfo = null,
 
@@ -253,6 +262,7 @@ pub const Parser = struct {
         InvalidChar,
         InvalidNumber,
         Redeclared,
+        MissingElseCase,
         UnexpectedToken,
         UnexpectedStatement,
         UnexpectedExpression,
@@ -346,9 +356,11 @@ pub const Parser = struct {
         }
     }
 
-    fn parseStmt(self: *Parser) Error!void {
+    fn parseStmt(self: *Parser, expect_semicolon: bool) Error!void {
         switch (self.peekToken().tag) {
             .keyword_const, .keyword_var => try self.parseVariableDeclaration(.local),
+
+            .keyword_switch => return self.parseSwitch(),
 
             .keyword_if => return self.parseConditional(),
 
@@ -367,7 +379,7 @@ pub const Parser = struct {
             },
         }
 
-        if (!self.eatToken(.semicolon)) {
+        if (!self.eatToken(.semicolon) and expect_semicolon) {
             self.error_info = .{ .message = "expected a ';'", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
 
             return error.UnexpectedToken;
@@ -455,7 +467,6 @@ pub const Parser = struct {
         try self.sir.instructions.append(self.allocator, .{ .block = 0 });
 
         self.block_id = 1;
-        defer self.block_id = null;
 
         try self.sir.instructions.append(self.allocator, .start_scope);
 
@@ -610,38 +621,155 @@ pub const Parser = struct {
         );
     }
 
-    fn parseConditional(self: *Parser) Error!void {
-        const end_block_id = self.block_id.?;
-        self.block_id.? += 1;
+    fn parseSwitch(self: *Parser) Error!void {
+        const switch_keyword_start = self.nextToken().range.start;
 
-        try self.sir.instructions.append(self.allocator, .{ .br = self.block_id.? });
+        if (!self.eatToken(.open_paren)) {
+            self.error_info = .{ .message = "expected a '('", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
+
+            return error.UnexpectedToken;
+        }
+
+        try self.parseExpr(.lowest);
+
+        if (!self.eatToken(.close_paren)) {
+            self.error_info = .{ .message = "expected a ')'", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
+
+            return error.UnexpectedToken;
+        }
+
+        if (!self.eatToken(.open_brace)) {
+            self.error_info = .{ .message = "expected a '{'", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
+
+            return error.UnexpectedToken;
+        }
+
+        var case_block_ids: std.ArrayListUnmanaged(u32) = .{};
+        var case_token_starts: std.ArrayListUnmanaged(u32) = .{};
+        var case_instructions: std.ArrayListUnmanaged(Instruction) = .{};
+
+        var maybe_else_block_id: ?u32 = null;
+
+        const end_block_id = self.block_id;
+        self.block_id += 1;
+
+        while (self.peekToken().tag != .eof and self.peekToken().tag != .close_brace) {
+            const parsing_else_case = self.eatToken(.keyword_else);
+
+            if (!parsing_else_case)
+                try self.parseExpr(.lowest);
+
+            const fat_arrow_token_start = self.peekToken().range.start;
+
+            if (!self.eatToken(.fat_arrow)) {
+                self.error_info = .{ .message = "expected a '=>'", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
+
+                return error.UnexpectedToken;
+            }
+
+            const case_block_id = self.block_id;
+            self.block_id += 1;
+
+            try case_instructions.append(self.allocator, .{ .block = case_block_id });
+
+            const current_sir_instructions = self.sir.instructions;
+            self.sir.instructions = case_instructions;
+
+            if (self.peekToken().tag == .open_brace)
+                try self.parseBody()
+            else
+                try self.parseStmt(false);
+
+            try self.sir.instructions.append(self.allocator, .{ .br = end_block_id });
+
+            case_instructions = self.sir.instructions;
+            self.sir.instructions = current_sir_instructions;
+
+            if (parsing_else_case) {
+                if (maybe_else_block_id != null) {
+                    self.error_info = .{ .message = "already parsed 'else' case", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
+
+                    return error.UnexpectedToken;
+                } else {
+                    maybe_else_block_id = case_block_id;
+                }
+            } else {
+                try case_block_ids.append(self.allocator, case_block_id);
+                try case_token_starts.append(self.allocator, fat_arrow_token_start);
+            }
+
+            if (!self.eatToken(.comma) and self.peekToken().tag != .close_brace) {
+                self.error_info = .{ .message = "expected a ','", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
+
+                return error.UnexpectedToken;
+            }
+        }
+
+        if (!self.eatToken(.close_brace)) {
+            self.error_info = .{ .message = "expected a '}'", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
+
+            return error.UnexpectedToken;
+        }
+
+        const owned_case_block_ids = try case_block_ids.toOwnedSlice(self.allocator);
+        const owned_case_token_starts = try case_block_ids.toOwnedSlice(self.allocator);
+
+        try self.sir.instructions.append(self.allocator, .{ .reverse = @intCast(owned_case_block_ids.len + 1) });
+
+        if (maybe_else_block_id) |else_block_id| {
+            try self.sir.instructions.append(self.allocator, .{
+                .@"switch" = .{
+                    .case_block_ids = owned_case_block_ids,
+                    .case_token_starts = owned_case_token_starts,
+                    .else_block_id = else_block_id,
+                    .token_start = switch_keyword_start,
+                },
+            });
+        } else {
+            self.error_info = .{ .message = "missing 'else' case", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
+
+            return error.MissingElseCase;
+        }
+
+        for (case_instructions.items) |case_instruction| {
+            try self.sir.instructions.append(self.allocator, case_instruction);
+        }
+
+        try self.sir.instructions.append(self.allocator, .{ .block = end_block_id });
+    }
+
+    fn parseConditional(self: *Parser) Error!void {
+        const end_block_id = self.block_id;
+        self.block_id += 1;
+
+        try self.sir.instructions.append(self.allocator, .{ .br = self.block_id });
 
         while (self.peekToken().tag == .keyword_if) {
             const if_keyword_start = self.nextToken().range.start;
 
-            try self.sir.instructions.append(self.allocator, .{ .block = self.block_id.? });
-            self.block_id.? += 1;
+            try self.sir.instructions.append(self.allocator, .{ .block = self.block_id });
+            self.block_id += 1;
 
             try self.parseExpr(.lowest);
 
             try self.sir.instructions.append(self.allocator, .{
                 .cond_br = .{
-                    .true_id = self.block_id.?,
+                    .true_id = self.block_id,
                     .false_id = undefined,
                     .token_start = if_keyword_start,
                 },
             });
 
-            const cond_br_instruction = &self.sir.instructions.items[self.sir.instructions.items.len - 1].cond_br;
+            const cond_br_index = self.sir.instructions.items.len - 1;
 
-            try self.sir.instructions.append(self.allocator, .{ .block = self.block_id.? });
-            self.block_id.? += 1;
+            try self.sir.instructions.append(self.allocator, .{ .block = self.block_id });
+            self.block_id += 1;
 
             try self.sir.instructions.append(self.allocator, .start_scope);
 
             try self.parseBody();
 
-            cond_br_instruction.false_id = self.block_id.?;
+            self.sir.instructions.items[cond_br_index].cond_br.false_id = self.block_id;
 
             try self.sir.instructions.append(self.allocator, .end_scope);
 
@@ -650,8 +778,8 @@ pub const Parser = struct {
             if (self.eatToken(.keyword_else)) {
                 if (self.peekToken().tag == .keyword_if) continue;
 
-                try self.sir.instructions.append(self.allocator, .{ .block = self.block_id.? });
-                self.block_id.? += 1;
+                try self.sir.instructions.append(self.allocator, .{ .block = self.block_id });
+                self.block_id += 1;
 
                 try self.sir.instructions.append(self.allocator, .start_scope);
 
@@ -661,8 +789,8 @@ pub const Parser = struct {
 
                 try self.sir.instructions.append(self.allocator, .{ .br = end_block_id });
             } else {
-                try self.sir.instructions.append(self.allocator, .{ .block = self.block_id.? });
-                self.block_id.? += 1;
+                try self.sir.instructions.append(self.allocator, .{ .block = self.block_id });
+                self.block_id += 1;
 
                 try self.sir.instructions.append(self.allocator, .{ .br = end_block_id });
             }
@@ -679,18 +807,18 @@ pub const Parser = struct {
     fn parseWhileLoop(self: *Parser) Error!void {
         const while_keyword_start = self.nextToken().range.start;
 
-        const header_block_id = self.block_id.?;
-        self.block_id.? += 1;
+        const header_block_id = self.block_id;
+        self.block_id += 1;
 
         const previous_header_block_id = maybe_header_block_id;
         maybe_header_block_id = header_block_id;
         defer maybe_header_block_id = previous_header_block_id;
 
-        const body_block_id = self.block_id.?;
-        self.block_id.? += 1;
+        const body_block_id = self.block_id;
+        self.block_id += 1;
 
-        const end_block_id = self.block_id.?;
-        self.block_id.? += 1;
+        const end_block_id = self.block_id;
+        self.block_id += 1;
 
         const previous_end_block_id = maybe_end_block_id;
         maybe_end_block_id = end_block_id;
@@ -1680,7 +1808,7 @@ pub const Parser = struct {
         }
 
         while (!self.eatToken(.close_brace)) {
-            try self.parseStmt();
+            try self.parseStmt(true);
 
             if (self.peekToken().tag == .eof) {
                 self.error_info = .{ .message = "expected a '}'", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };

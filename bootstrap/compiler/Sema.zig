@@ -472,6 +472,7 @@ fn analyzeInstruction(self: *Sema, instruction: Sir.Instruction) Error!void {
         .block => |block| try self.analyzeBlock(block),
         .br => |br| try self.analyzeBr(br),
         .cond_br => |cond_br| try self.analyzeCondBr(cond_br),
+        .@"switch" => |@"switch"| try self.analyzeSwitch(@"switch"),
 
         .start_scope => try self.modifyScope(true),
         .end_scope => try self.modifyScope(false),
@@ -1393,6 +1394,32 @@ fn analyzeCondBr(self: *Sema, cond_br: Sir.Instruction.CondBr) Error!void {
             },
         },
     );
+}
+
+fn analyzeSwitch(self: *Sema, @"switch": Sir.Instruction.Switch) Error!void {
+    const switched_value = self.stack.pop();
+    const switched_value_type = switched_value.getType();
+
+    try self.checkIntOrBool(switched_value_type, @"switch".token_start);
+
+    for (@"switch".case_token_starts) |case_token_start| {
+        const case_value = self.stack.pop();
+
+        try self.checkUnaryImplicitCast(case_value, switched_value_type, case_token_start);
+
+        if (case_value == .runtime) {
+            self.error_info = .{ .message = "expected switch case value to be compile time known", .source_loc = SourceLoc.find(self.buffer, case_token_start) };
+
+            return error.ExpectedCompiletimeConstant;
+        }
+    }
+
+    try self.air.instructions.append(self.allocator, .{
+        .@"switch" = .{
+            .case_block_ids = @"switch".case_block_ids,
+            .else_block_id = @"switch".else_block_id,
+        },
+    });
 }
 
 fn modifyScope(self: *Sema, start: bool) Error!void {

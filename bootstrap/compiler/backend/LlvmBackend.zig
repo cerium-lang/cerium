@@ -534,9 +534,10 @@ fn renderInstruction(
         .get_element_ptr => try self.renderGetElementPtr(),
         .get_field_ptr => |field_index| try self.renderGetFieldPtr(field_index),
 
-        .block => |block| try self.renderBlock(block),
-        .br => |br| try self.renderBr(br),
-        .cond_br => |cond_br| try self.renderCondBr(cond_br),
+        .block => |block| self.renderBlock(block),
+        .br => |br| self.renderBr(br),
+        .cond_br => |cond_br| self.renderCondBr(cond_br),
+        .@"switch" => |@"switch"| try self.renderSwitch(@"switch"),
 
         .start_scope => try self.modifyScope(true),
         .end_scope => try self.modifyScope(false),
@@ -1162,19 +1163,23 @@ fn renderGetVariablePtr(self: *LlvmBackend, name: []const u8) Error!void {
     }
 }
 
-fn renderBlock(self: *LlvmBackend, id: u32) Error!void {
-    c.LLVMPositionBuilderAtEnd(self.builder, self.basic_blocks.get(id).?);
+fn renderBlock(self: *LlvmBackend, id: u32) void {
+    const basic_block = self.basic_blocks.get(id).?;
+
+    c.LLVMPositionBuilderAtEnd(self.builder, basic_block);
 }
 
-fn renderBr(self: *LlvmBackend, id: u32) Error!void {
+fn renderBr(self: *LlvmBackend, id: u32) void {
     const current_block = c.LLVMGetInsertBlock(self.builder);
     const previous_terminator = c.LLVMGetBasicBlockTerminator(current_block);
     if (previous_terminator != null) return;
 
-    _ = c.LLVMBuildBr(self.builder, self.basic_blocks.get(id).?);
+    const basic_block = self.basic_blocks.get(id).?;
+
+    _ = c.LLVMBuildBr(self.builder, basic_block);
 }
 
-fn renderCondBr(self: *LlvmBackend, cond_br: Air.Instruction.CondBr) Error!void {
+fn renderCondBr(self: *LlvmBackend, cond_br: Air.Instruction.CondBr) void {
     const current_block = c.LLVMGetInsertBlock(self.builder);
     const previous_terminator = c.LLVMGetBasicBlockTerminator(current_block);
     if (previous_terminator != null) return;
@@ -1190,6 +1195,33 @@ fn renderCondBr(self: *LlvmBackend, cond_br: Air.Instruction.CondBr) Error!void 
         true_basic_block,
         false_basic_block,
     );
+}
+
+fn renderSwitch(self: *LlvmBackend, @"switch": Air.Instruction.Switch) Error!void {
+    const current_block = c.LLVMGetInsertBlock(self.builder);
+    const previous_terminator = c.LLVMGetBasicBlockTerminator(current_block);
+    if (previous_terminator != null) return;
+
+    const switched_register = self.stack.pop();
+
+    const else_basic_block = self.basic_blocks.get(@"switch".else_block_id).?;
+
+    const switch_instruction = c.LLVMBuildSwitch(
+        self.builder,
+        switched_register.value,
+        else_basic_block,
+        @intCast(@"switch".case_block_ids.len),
+    );
+
+    for (@"switch".case_block_ids) |case_block_id| {
+        var case_register = self.stack.pop();
+
+        try self.unaryImplicitCast(&case_register, switched_register.type);
+
+        const case_basic_block = self.basic_blocks.get(case_block_id).?;
+
+        c.LLVMAddCase(switch_instruction, case_register.value, case_basic_block);
+    }
 }
 
 fn modifyScope(self: *LlvmBackend, start: bool) Error!void {

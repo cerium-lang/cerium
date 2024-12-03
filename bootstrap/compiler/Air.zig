@@ -81,12 +81,14 @@ pub const Instruction = union(enum) {
     get_element_ptr,
     /// Calculate the pointer of a field in a struct pointer
     get_field_ptr: u32,
-    /// Make a new block out of instructions
+    /// Start a new block
     block: u32,
     /// Unconditionally branch to a block
     br: u32,
     /// Conditionally branch to a block, condition is on the stack
     cond_br: CondBr,
+    /// Switch on value to branch to a block
+    @"switch": Switch,
     /// Start a new scope
     start_scope,
     /// End a scope
@@ -111,5 +113,10 @@ pub const Instruction = union(enum) {
     pub const CondBr = struct {
         true_id: u32,
         false_id: u32,
+    };
+
+    pub const Switch = struct {
+        case_block_ids: []const u32,
+        else_block_id: u32,
     };
 };

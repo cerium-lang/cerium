@@ -24,38 +24,25 @@ type Token::Tag = enum {
 };
 
 fn Token::Tag::to_string(self Token::Tag) [*]const u8 {
-    if self == Token::Tag::eof {
-        return "eof";
-    } else if self == Token::Tag::identifier {
-        return "identifier";
-    } else if self == Token::Tag::int {
-        return "int";
-    } else if self == Token::Tag::float {
-        return "float";
-    } else if self == Token::Tag::string_literal {
-        return "string_literal";
-    } else if self == Token::Tag::char_literal {
-        return "char_literal";
-    } else if self == Token::Tag::open_paren {
-        return "open_paren";
-    } else if self == Token::Tag::close_paren {
-        return "close_paren";
-    } else if self == Token::Tag::open_brace {
-        return "open_brace";
-    } else if self == Token::Tag::close_brace {
-        return "close_brace";
-    } else if self == Token::Tag::open_bracket {
-        return "open_bracket";
-    } else if self == Token::Tag::close_bracket {
-        return "close_bracket";
-    } else if self == Token::Tag::forward_slash {
-        return "forward_slash";
-    } else if self == Token::Tag::equal_sign {
-        return "equal_sign";
-    } else if self == Token::Tag::double_equal_sign {
-        return "double_equal_sign";
-    } else if self == Token::Tag::semicolon {
-        return "semicolon";
+    switch (self) {
+        Token::Tag::eof => return "eof",
+        Token::Tag::identifier => return "identifier",
+        Token::Tag::int => return "int",
+        Token::Tag::float => return "float",
+        Token::Tag::string_literal => return "string_literal",
+        Token::Tag::char_literal => return "char_literal",
+        Token::Tag::open_paren => return "open_paren",
+        Token::Tag::close_paren => return "close_paren",
+        Token::Tag::open_brace => return "open_brace",
+        Token::Tag::close_brace => return "close_brace",
+        Token::Tag::open_bracket => return "open_bracket",
+        Token::Tag::close_bracket => return "close_bracket",
+        Token::Tag::forward_slash => return "forward_slash",
+        Token::Tag::equal_sign => return "equal_sign",
+        Token::Tag::double_equal_sign => return "double_equal_sign",
+        Token::Tag::semicolon => return "semicolon",
+
+        else => {},
     }
 
     return "invalid";
@@ -112,201 +99,310 @@ fn Lexer::next(self *Lexer) Token {
     while true {
         var ch = self.buffer[self.index];
 
-        if state == Lexer::State::start {            
-            if Lexer::is_whitespace(ch) {
-            } else if Lexer::is_identifier(ch) {
-                result.tag = Token::Tag::identifier;
-                result.range.start = self.index;
-                
-                state = Lexer::State::identifier;
-            } else if Lexer::is_number(ch) {
-                result.tag = Token::Tag::int;
-                result.range.start = self.index;
-                
-                state = Lexer::State::number;
-            } else if ch == 0 {
-                result.tag = Token::Tag::eof;
-                result.range.start = self.index;
-                result.range.end = self.index;
+        switch (state) {
+            Lexer::State::start => switch (ch) {
+                0 => {
+                    result.tag = Token::Tag::eof;
+                    result.range.start = self.index;
+                    result.range.end = self.index;
 
-                break;
-            } else if ch == '(' {
-                result.tag = Token::Tag::open_paren;
-                result.range.start = self.index;
-                self.index = self.index + 1;
-                result.range.end = self.index;
+                    break;
+                },
 
-                break;
-            } else if ch == ')' {
-                result.tag = Token::Tag::close_paren;
-                result.range.start = self.index;
-                self.index = self.index + 1;
-                result.range.end = self.index;
+                '(' => {
+                    result.tag = Token::Tag::open_paren;
+                    result.range.start = self.index;
+                    self.index = self.index + 1;
+                    result.range.end = self.index;
 
-                break;
-            } else if ch == '{' {
-                result.tag = Token::Tag::open_brace;
-                result.range.start = self.index;
-                self.index = self.index + 1;
-                result.range.end = self.index;
+                    break;
+                },
 
-                break;
-            } else if ch == '}' {
-                result.tag = Token::Tag::close_brace;
-                result.range.start = self.index;
-                self.index = self.index + 1;
-                result.range.end = self.index;
+                ')' => {
+                    result.tag = Token::Tag::close_paren;
+                    result.range.start = self.index;
+                    self.index = self.index + 1;
+                    result.range.end = self.index;
 
-                break;
-            } else if ch == '[' {
-                result.tag = Token::Tag::open_bracket;
-                result.range.start = self.index;
-                self.index = self.index + 1;
-                result.range.end = self.index;
+                    break;
+                },
 
-                break;
-            } else if ch == ']' {
-                result.tag = Token::Tag::close_bracket;
-                result.range.start = self.index;
-                self.index = self.index + 1;
-                result.range.end = self.index;
+                '{' => {
+                    result.tag = Token::Tag::open_brace;
+                    result.range.start = self.index;
+                    self.index = self.index + 1;
+                    result.range.end = self.index;
 
-                break;
-            } else if ch == ';' {
-                result.tag = Token::Tag::semicolon;
-                result.range.start = self.index;
-                self.index = self.index + 1;
-                result.range.end = self.index;
+                    break;
+                },
 
-                break;
-            } else if ch == '"' {
-                result.tag = Token::Tag::string_literal;
-                result.range.start = self.index;
-                
-                state = Lexer::State::string_literal;
-            } else if ch == '\'' {
-                result.tag = Token::Tag::char_literal;
-                result.range.start = self.index;
-                
-                state = Lexer::State::char_literal;
-            } else if ch == '/' {
-                result.tag = Token::Tag::forward_slash;
-                result.range.start = self.index;
-                
-                state = Lexer::State::forward_slash;
-            } else if ch == '=' {
-                result.tag = Token::Tag::equal_sign;
-                result.range.start = self.index;
-                
-                state = Lexer::State::equal_sign;
-            } else {
-                result.tag = Token::Tag::invalid;
-                result.range.start = self.index;
-                self.index = self.index + 1;
-                result.range.end = self.index;
+                '}' => {
+                    result.tag = Token::Tag::close_brace;
+                    result.range.start = self.index;
+                    self.index = self.index + 1;
+                    result.range.end = self.index;
 
-                break;
-            }
-        } else if state == Lexer::State::identifier {
-            if !Lexer::is_identifier_continue(ch) {
-                result.range.end = self.index;
+                    break;
+                },
 
-                break;
-            }
-        } else if state == Lexer::State::number {
-            if ch == '.' {
-                result.tag = Token::Tag::float;
-            } else if !Lexer::is_number(ch) {
-                result.range.end = self.index;
+                '[' => {
+                    result.tag = Token::Tag::open_bracket;
+                    result.range.start = self.index;
+                    self.index = self.index + 1;
+                    result.range.end = self.index;
 
-                break;
-            }
-        } else if state == Lexer::State::string_literal {
-            if (ch == 0) | (ch == '\n') {
-                result.tag = Token::Tag::invalid;
-                result.range.start = self.index;
-                self.index = self.index + 1;
-                result.range.end = self.index;
+                    break;
+                },
 
-                break;
-            } else if ch == '\\' {
-                state = Lexer::State::string_literal_back_slash;
-            } else if ch == '"' {
-                result.range.end = self.index;
-                self.index = self.index + 1;
+                ']' => {
+                    result.tag = Token::Tag::close_bracket;
+                    result.range.start = self.index;
+                    self.index = self.index + 1;
+                    result.range.end = self.index; 
 
-                break;
-            }
-        } else if state == Lexer::State::string_literal_back_slash {
-            if (ch == 0) | (ch == '\n') {
-                result.tag = Token::Tag::invalid;
-                result.range.start = self.index;
-                self.index = self.index + 1;
-                result.range.end = self.index;
+                    break;
+                },
 
-                break;
-            } else {
-                state = Lexer::State::string_literal;
-            }
-        } else if state == Lexer::State::char_literal {
-            if (ch == 0) | (ch == '\n') {
-                result.tag = Token::Tag::invalid;
-                result.range.start = self.index;
-                self.index = self.index + 1;
-                result.range.end = self.index;
+                ';' => {
+                    result.tag = Token::Tag::semicolon;
+                    result.range.start = self.index;
+                    self.index = self.index + 1;
+                    result.range.end = self.index;
 
-                break;
-            } else if ch == '\\' {
-                state = Lexer::State::char_literal_back_slash;
-            } else if ch == '\'' {
-                result.range.end = self.index;
-                self.index = self.index + 1;
+                    break;
+                },
 
-                break;
-            }
-        } else if state == Lexer::State::char_literal_back_slash {
-            if (ch == 0) | (ch == '\n') {
-                result.tag = Token::Tag::invalid;
-                result.range.start = self.index;
-                self.index = self.index + 1;
-                result.range.end = self.index;
+                '"' => {
+                    result.tag = Token::Tag::string_literal;
+                    result.range.start = self.index;
+                    
+                    state = Lexer::State::string_literal;
+                },
 
-                break;
-            } else {
-                state = Lexer::State::char_literal;
-            }
-        } else if state == Lexer::State::forward_slash {
-            if ch == '/' {
-                state = Lexer::State::comment;
-            } else {
-                result.range.end = self.index;
+                '\'' => {
+                    result.tag = Token::Tag::char_literal;
+                    result.range.start = self.index;
+                    
+                    state = Lexer::State::char_literal;
+                },
 
-                break;
-            }
-        } else if state == Lexer::State::comment {
-            if ch == 0 {
-                result.tag = Token::Tag::eof;
-                result.range.start = self.index;
-                result.range.end = self.index;
+                '/' => {
+                    result.tag = Token::Tag::forward_slash;
+                    result.range.start = self.index;
+                    
+                    state = Lexer::State::forward_slash;
+                },
 
-                break;
-            }
+                '=' => {
+                    result.tag = Token::Tag::equal_sign;
+                    result.range.start = self.index;
+                    
+                    state = Lexer::State::equal_sign;
+                },
 
-            if ch == '\n' {
-                state = Lexer::State::start;
-            }
-        } else if state == Lexer::State::equal_sign {
-            if ch == '=' {
-                result.tag = Token::Tag::double_equal_sign;
-                self.index = self.index + 1;
-                result.range.end = self.index;
+                else => {
+                    if Lexer::is_identifier(ch) {
+                        result.tag = Token::Tag::identifier;
+                        result.range.start = self.index;
+                        
+                        state = Lexer::State::identifier;
+                    } else if Lexer::is_number(ch) {
+                        result.tag = Token::Tag::int;
+                        result.range.start = self.index;
+                        
+                        state = Lexer::State::number;
+                    } else if !Lexer::is_whitespace(ch) {
+                        result.tag = Token::Tag::invalid;
+                        result.range.start = self.index;
+                        self.index = self.index + 1;
+                        result.range.end = self.index;
 
-                break;
-            } else {
-                result.range.end = self.index;
+                        break;
+                    }
+                },
+            },
 
-                break;
-            }
+            Lexer::State::identifier => {  
+                if !Lexer::is_identifier_continue(ch) {
+                    result.range.end = self.index;
+
+                    break;
+                }
+            }, 
+
+            Lexer::State::number => switch (ch) {
+                '.' => {
+                    result.tag = Token::Tag::float;
+                }, 
+
+                else => if !Lexer::is_number(ch) {
+                    result.range.end = self.index;
+
+                    break;
+                },
+            },
+
+            Lexer::State::string_literal => switch (ch) {
+                0 => {
+                    result.tag = Token::Tag::invalid;
+                    result.range.start = self.index;
+                    self.index = self.index + 1;
+                    result.range.end = self.index;
+
+                    break;
+                },
+
+                '\n' => {
+                    result.tag = Token::Tag::invalid;
+                    result.range.start = self.index;
+                    self.index = self.index + 1;
+                    result.range.end = self.index;
+
+                    break;
+                },
+
+                '"' => {
+                    result.range.end = self.index;
+                    self.index = self.index + 1;
+
+                    break;
+                },
+
+                '\\' => {
+                    state = Lexer::State::string_literal_back_slash;
+                },
+
+                else => {},
+            },
+
+            Lexer::State::string_literal_back_slash => switch (ch) {
+                0 => {
+                    result.tag = Token::Tag::invalid;
+                    result.range.start = self.index;
+                    self.index = self.index + 1;
+                    result.range.end = self.index;
+
+                    break;
+                },
+
+                '\n' => {
+                    result.tag = Token::Tag::invalid;
+                    result.range.start = self.index;
+                    self.index = self.index + 1;
+                    result.range.end = self.index;
+
+                    break;
+                },
+
+                else => {
+                    state = Lexer::State::string_literal;
+                },
+            },
+            
+            Lexer::State::char_literal => switch (ch) {
+                0 => {
+                    result.tag = Token::Tag::invalid;
+                    result.range.start = self.index;
+                    self.index = self.index + 1;
+                    result.range.end = self.index;
+                    
+                    break;
+                },
+
+                '\n' => {
+                    result.tag = Token::Tag::invalid;
+                    result.range.start = self.index;
+                    self.index = self.index + 1;
+                    result.range.end = self.index;
+
+                    break; 
+                },
+
+                '\\' => {
+                    state = Lexer::State::char_literal_back_slash;
+                },
+
+                '\'' => {
+                    result.range.end = self.index;
+                    self.index = self.index + 1;
+
+                    break;
+                },
+
+                else => {},
+            },
+
+
+            Lexer::State::char_literal_back_slash => switch (ch) {
+                0 => {
+                    result.tag = Token::Tag::invalid;
+                    result.range.start = self.index;
+                    self.index = self.index + 1;
+                    result.range.end = self.index;
+
+                    break;
+                },
+
+                '\n' => {
+                    result.tag = Token::Tag::invalid;
+                    result.range.start = self.index;
+                    self.index = self.index + 1;
+                    result.range.end = self.index;
+
+                    break; 
+                },
+
+                else => {
+                    state = Lexer::State::char_literal;
+                },
+            },
+
+
+            Lexer::State::forward_slash => switch (ch) {
+                '/' => {
+                    state = Lexer::State::comment;
+                },
+
+                else => {
+                    result.range.end = self.index;
+
+                    break;
+                },
+            },
+
+            Lexer::State::comment => switch (ch) {
+                0 => {
+                    result.tag = Token::Tag::eof;
+                    result.range.start = self.index;
+                    result.range.end = self.index;
+
+                    break;
+                },
+
+                '\n' => {
+                    state = Lexer::State::start;
+                },
+
+                else => {},
+            },
+
+            Lexer::State::equal_sign => switch (ch) {
+                '=' => {
+                    result.tag = Token::Tag::double_equal_sign;
+                    self.index = self.index + 1;
+                    result.range.end = self.index;
+
+                    break;
+                },
+
+                else => {
+                    result.range.end = self.index;
+
+                    break;
+                },
+            },
+
+            else => {},
         }
 
         self.index = self.index + 1;
