@@ -71,18 +71,6 @@ type Lexer::State = enum {
     equal_sign,
 };
 
-fn Lexer::is_identifier(ch u8) bool {
-    return (!(ch < 'a') & !(ch > 'z')) | (!(ch < 'A') & !(ch > 'Z')) | (ch == '_');
-}
-
-fn Lexer::is_number(ch u8) bool {
-    return !(ch < '0') & !(ch > '9');
-}
-
-fn Lexer::is_identifier_continue(ch u8) bool {
-    return Lexer::is_identifier(ch) | Lexer::is_number(ch) | (ch == ':');
-}
-
 fn Lexer::next(self *Lexer) Token {
     var result Token;
 
@@ -106,6 +94,22 @@ fn Lexer::next(self *Lexer) Token {
                 },
 
                 ' ', '\r', '\n', '\t' => {},
+
+                'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
+                'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+                '_' => {
+                    result.tag = Token::Tag::identifier;
+                    result.range.start = self.index;
+
+                    state = Lexer::State::identifier;
+                },
+
+                '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' => {
+                    result.tag = Token::Tag::int;
+                    result.range.start = self.index;
+
+                    state = Lexer::State::number;
+                },
 
                 '(' => {
                     result.tag = Token::Tag::open_paren;
@@ -199,41 +203,36 @@ fn Lexer::next(self *Lexer) Token {
                 },
 
                 else => {
-                    if Lexer::is_identifier(ch) {
-                        result.tag = Token::Tag::identifier;
-                        result.range.start = self.index;
-                        
-                        state = Lexer::State::identifier;
-                    } else if Lexer::is_number(ch) {
-                        result.tag = Token::Tag::int;
-                        result.range.start = self.index;
-                        
-                        state = Lexer::State::number;
-                    } else {
-                        result.tag = Token::Tag::invalid;
-                        result.range.start = self.index;
-                        self.index = self.index + 1;
-                        result.range.end = self.index;
-
-                        break;
-                    }
-                },
-            },
-
-            Lexer::State::identifier => {  
-                if !Lexer::is_identifier_continue(ch) {
+                    result.tag = Token::Tag::invalid;
+                    result.range.start = self.index;
+                    self.index = self.index + 1;
                     result.range.end = self.index;
 
                     break;
-                }
+                },
+            },
+
+            Lexer::State::identifier => switch (ch) {
+                'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
+                'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+                '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+                '_', ':' => {},
+
+                else => {
+                    result.range.end = self.index;
+
+                    break;
+                },
             }, 
 
             Lexer::State::number => switch (ch) {
+                '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' => {},
+
                 '.' => {
                     result.tag = Token::Tag::float;
                 }, 
 
-                else => if !Lexer::is_number(ch) {
+                else => {
                     result.range.end = self.index;
 
                     break;
@@ -430,7 +429,7 @@ fn main() {
     var lexer Lexer;
 
     lexer.index = 0;
-    lexer.buffer = "([{(}])";
+    lexer.buffer = "var x::Hello = ([{(5.0}]);";
 
     prints("buffer: ");
     prints(lexer.buffer);
