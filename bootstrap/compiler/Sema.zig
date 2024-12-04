@@ -1406,6 +1406,8 @@ fn analyzeSwitch(self: *Sema, @"switch": Sir.Instruction.Switch) Error!void {
 
     try self.checkIntOrBool(switched_value_type, @"switch".token_start);
 
+    var case_values: std.AutoHashMapUnmanaged(i128, void) = .{};
+
     for (@"switch".case_token_starts) |case_token_start| {
         const case_value = self.stack.pop();
 
@@ -1416,7 +1418,24 @@ fn analyzeSwitch(self: *Sema, @"switch": Sir.Instruction.Switch) Error!void {
 
             return error.ExpectedCompiletimeConstant;
         }
+
+        const case_value_int = switch (case_value) {
+            .int => |int| int,
+            .boolean => |boolean| @as(i128, @intFromBool(boolean)),
+
+            else => unreachable,
+        };
+
+        if (case_values.get(case_value_int) != null) {
+            self.error_info = .{ .message = "duplcicte switch case", .source_loc = SourceLoc.find(self.buffer, case_token_start) };
+
+            return error.Redeclared;
+        }
+
+        try case_values.put(self.allocator, case_value_int, {});
     }
+
+    case_values.deinit(self.allocator);
 
     try self.air.instructions.append(self.allocator, .{
         .@"switch" = .{

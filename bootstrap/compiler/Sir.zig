@@ -262,7 +262,7 @@ pub const Parser = struct {
         InvalidChar,
         InvalidNumber,
         Redeclared,
-        MissingElseCase,
+        UnhandledSwitchCases,
         UnexpectedToken,
         UnexpectedStatement,
         UnexpectedExpression,
@@ -654,18 +654,31 @@ pub const Parser = struct {
         self.block_id += 1;
 
         while (self.peekToken().tag != .eof and self.peekToken().tag != .close_brace) {
-            var block_id_repeat_count: u32 = 1;
+            const case_block_id = self.block_id;
+            self.block_id += 1;
 
-            const parsing_else_case = self.eatToken(.keyword_else);
+            if (self.peekToken().tag == .keyword_else) {
+                const else_keyword_start = self.nextToken().range.start;
 
-            if (!parsing_else_case) {
+                if (maybe_else_block_id != null) {
+                    self.error_info = .{ .message = "duplicate switch case", .source_loc = SourceLoc.find(self.buffer, else_keyword_start) };
+
+                    return error.UnexpectedToken;
+                }
+
+                maybe_else_block_id = case_block_id;
+            } else {
+                try case_block_ids.append(self.allocator, case_block_id);
+                try case_token_starts.append(self.allocator, self.peekToken().range.start);
+
                 try self.parseExpr(.lowest);
 
                 if (self.eatToken(.comma)) {
-                    while (self.peekToken().tag != .fat_arrow and self.peekToken().tag != .eof) {
-                        try self.parseExpr(.lowest);
+                    while (self.peekToken().tag != .eof and self.peekToken().tag != .fat_arrow) {
+                        try case_block_ids.append(self.allocator, case_block_id);
+                        try case_token_starts.append(self.allocator, self.peekToken().range.start);
 
-                        block_id_repeat_count += 1;
+                        try self.parseExpr(.lowest);
 
                         if (!self.eatToken(.comma) and self.peekToken().tag != .fat_arrow) {
                             self.error_info = .{ .message = "expected a ','", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
@@ -676,16 +689,11 @@ pub const Parser = struct {
                 }
             }
 
-            const fat_arrow_token_start = self.peekToken().range.start;
-
             if (!self.eatToken(.fat_arrow)) {
                 self.error_info = .{ .message = "expected a '=>'", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
 
                 return error.UnexpectedToken;
             }
-
-            const case_block_id = self.block_id;
-            self.block_id += 1;
 
             try case_instructions.append(self.allocator, .{ .block = case_block_id });
 
@@ -702,21 +710,6 @@ pub const Parser = struct {
             case_instructions = self.sir.instructions;
             self.sir.instructions = current_sir_instructions;
 
-            if (parsing_else_case) {
-                if (maybe_else_block_id != null) {
-                    self.error_info = .{ .message = "already parsed 'else' case", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
-
-                    return error.UnexpectedToken;
-                } else {
-                    maybe_else_block_id = case_block_id;
-                }
-            } else {
-                for (0..block_id_repeat_count) |_| {
-                    try case_block_ids.append(self.allocator, case_block_id);
-                    try case_token_starts.append(self.allocator, fat_arrow_token_start);
-                }
-            }
-
             if (!self.eatToken(.comma) and self.peekToken().tag != .close_brace) {
                 self.error_info = .{ .message = "expected a ','", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
 
@@ -731,7 +724,7 @@ pub const Parser = struct {
         }
 
         const owned_case_block_ids = try case_block_ids.toOwnedSlice(self.allocator);
-        const owned_case_token_starts = try case_block_ids.toOwnedSlice(self.allocator);
+        const owned_case_token_starts = try case_token_starts.toOwnedSlice(self.allocator);
 
         try self.sir.instructions.append(self.allocator, .{ .reverse = @intCast(owned_case_block_ids.len + 1) });
 
@@ -745,9 +738,9 @@ pub const Parser = struct {
                 },
             });
         } else {
-            self.error_info = .{ .message = "missing 'else' case", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
+            self.error_info = .{ .message = "unhandled switch cases (note: missing a default 'else' case)", .source_loc = SourceLoc.find(self.buffer, switch_keyword_start) };
 
-            return error.MissingElseCase;
+            return error.UnhandledSwitchCases;
         }
 
         for (case_instructions.items) |case_instruction| {
