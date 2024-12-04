@@ -252,7 +252,11 @@ pub fn analyze(self: *Sema, sir: Sir) Error!void {
         const sir_instruction = sir.instructions.items[i];
 
         switch (sir_instruction) {
-            .type_alias => |subsymbol| try type_aliases.put(self.allocator, subsymbol.name.buffer, subsymbol),
+            .type_alias => |subsymbol| {
+                if (type_aliases.get(subsymbol.name.buffer) != null) return self.reportRedeclaration(subsymbol.name);
+                try type_aliases.put(self.allocator, subsymbol.name.buffer, subsymbol);
+            },
+
             .external => |subsymbol| try externals.append(self.allocator, subsymbol),
 
             .function => |subsymbol| {
