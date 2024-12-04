@@ -7,40 +7,80 @@ type Token::Tag = enum {
     eof,
     invalid,
     identifier,
-    int,
-    float,
     string_literal,
     char_literal,
+    int,
+    float,
     open_paren,
     close_paren,
     open_brace,
     close_brace,
     open_bracket,
     close_bracket,
+    bang,
+    tilde,
+    ampersand,
+    pipe,
+    caret,
+    comma,
+    period,
+    double_period,
+    triple_period,
+    percent,
+    colon,
+    semicolon,
+    plus,
+    minus,
+    star,
+    less_than,
+    double_less_than,
+    greater_than,
+    double_greater_than,
     forward_slash,
+    bang_equal_sign,
     equal_sign,
     double_equal_sign,
-    semicolon,
+    fat_arrow,
 };
 
 fn Token::Tag::to_string(self Token::Tag) [*]const u8 {
     switch (self) {
         Token::Tag::eof => return "eof",
         Token::Tag::identifier => return "identifier",
-        Token::Tag::int => return "int",
-        Token::Tag::float => return "float",
         Token::Tag::string_literal => return "string_literal",
         Token::Tag::char_literal => return "char_literal",
+        Token::Tag::int => return "int",
+        Token::Tag::float => return "float",
         Token::Tag::open_paren => return "open_paren",
         Token::Tag::close_paren => return "close_paren",
         Token::Tag::open_brace => return "open_brace",
         Token::Tag::close_brace => return "close_brace",
         Token::Tag::open_bracket => return "open_bracket",
         Token::Tag::close_bracket => return "close_bracket",
+        Token::Tag::bang => return "bang",
+        Token::Tag::tilde => return "tilde",
+        Token::Tag::ampersand => return "ampersand",
+        Token::Tag::pipe => return "pipe",
+        Token::Tag::caret => return "caret",
+        Token::Tag::comma => return "comma",
+        Token::Tag::period => return "period",
+        Token::Tag::double_period => return "double_period",
+        Token::Tag::triple_period => return "triple_period",
+        Token::Tag::percent => return "percent",
+        Token::Tag::colon => return "colon",
+        Token::Tag::semicolon => return "semicolon",
+        Token::Tag::plus => return "plus",
+        Token::Tag::minus => return "minus",
+        Token::Tag::star => return "star",
+        Token::Tag::less_than => return "less_than",
+        Token::Tag::double_less_than => return "double_less_than",
+        Token::Tag::greater_than => return "greater_than",
+        Token::Tag::double_greater_than => return "double_greater_than",
         Token::Tag::forward_slash => return "forward_slash",
+        Token::Tag::bang_equal_sign => return "bang_equal_sign",
         Token::Tag::equal_sign => return "equal_sign",
         Token::Tag::double_equal_sign => return "double_equal_sign",
-        Token::Tag::semicolon => return "semicolon",
+        Token::Tag::fat_arrow => return "fat_arrow",
 
         else => {},
     }
@@ -61,14 +101,19 @@ type Lexer = struct {
 type Lexer::State = enum {
     start,
     identifier,
-    number,
     string_literal,
     string_literal_back_slash,
     char_literal,
     char_literal_back_slash,
+    number,
     forward_slash,
     comment,
     equal_sign,
+    bang,
+    period,
+    double_period,
+    less_than,
+    greater_than,
 };
 
 fn Lexer::next(self *Lexer) Token {
@@ -109,6 +154,22 @@ fn Lexer::next(self *Lexer) Token {
                     result.range.start = self.index;
 
                     state = Lexer::State::number;
+                },
+
+                '"' => {
+                    result.tag = Token::Tag::string_literal;
+                    self.index = self.index + 1;
+                    result.range.start = self.index;
+
+                    state = Lexer::State::string_literal;
+                },
+
+                '\'' => {
+                    result.tag = Token::Tag::char_literal;
+                    self.index = self.index + 1;
+                    result.range.start = self.index;
+
+                    state = Lexer::State::char_literal;
                 },
 
                 '(' => {
@@ -174,32 +235,137 @@ fn Lexer::next(self *Lexer) Token {
                     break;
                 },
 
-                '"' => {
-                    result.tag = Token::Tag::string_literal;
-                    result.range.start = self.index;
-                    
-                    state = Lexer::State::string_literal;
-                },
-
-                '\'' => {
-                    result.tag = Token::Tag::char_literal;
-                    result.range.start = self.index;
-                    
-                    state = Lexer::State::char_literal;
-                },
 
                 '/' => {
                     result.tag = Token::Tag::forward_slash;
                     result.range.start = self.index;
-                    
+
                     state = Lexer::State::forward_slash;
                 },
 
                 '=' => {
                     result.tag = Token::Tag::equal_sign;
                     result.range.start = self.index;
-                    
+
                     state = Lexer::State::equal_sign;
+                },
+
+                '!' => {
+                    result.tag = Token::Tag::bang;
+                    result.range.start = self.index;
+
+                    state = Lexer::State::bang;
+                },
+
+                '~' => {
+                    result.tag = Token::Tag::tilde;
+                    result.range.start = self.index;
+                    self.index = self.index + 1;
+                    result.range.end = self.index;
+
+                    break;
+                },
+
+                '.' => {
+                    result.tag = Token::Tag::period;
+                    result.range.start = self.index;
+
+                    state = Lexer::State::period;
+                },
+
+                '+' => {
+                    result.tag = Token::Tag::plus;
+                    result.range.start = self.index;
+                    self.index = self.index + 1;
+                    result.range.end = self.index;
+
+                    break;
+                },
+
+                '-' => {
+                    result.tag = Token::Tag::minus;
+                    result.range.start = self.index;
+                    self.index = self.index + 1;
+                    result.range.end = self.index;
+
+                    break;
+                },
+
+                '*' => {
+                    result.tag = Token::Tag::star;
+                    result.range.start = self.index;
+                    self.index = self.index + 1;
+                    result.range.end = self.index;
+
+                    break;
+                },
+
+                '%' => {
+                    result.tag = Token::Tag::percent;
+                    result.range.start = self.index;
+                    self.index = self.index + 1;
+                    result.range.end = self.index;
+
+                    break;
+                },
+
+                ',' => {
+                    result.tag = Token::Tag::comma;
+                    result.range.start = self.index;
+                    self.index = self.index + 1;
+                    result.range.end = self.index;
+
+                    break;
+                },
+
+                '&' => {
+                    result.tag = Token::Tag::ampersand;
+                    result.range.start = self.index;
+                    self.index = self.index + 1;
+                    result.range.end = self.index;
+
+                    break;
+                },
+
+                '|' => {
+                    result.tag = Token::Tag::pipe;
+                    result.range.start = self.index;
+                    self.index = self.index + 1;
+                    result.range.end = self.index;
+
+                    break;
+                },
+
+                '^' => {
+                    result.tag = Token::Tag::caret;
+                    result.range.start = self.index;
+                    self.index = self.index + 1;
+                    result.range.end = self.index;
+
+                    break;
+                },
+
+                ':' => {
+                    result.tag = Token::Tag::colon;
+                    result.range.start = self.index;
+                    self.index = self.index + 1;
+                    result.range.end = self.index;
+
+                    break;
+                },
+
+                '<' => {
+                    result.tag = Token::Tag::less_than;
+                    result.range.start = self.index;
+
+                    state = Lexer::State::less_than;
+                },
+
+                '>' => {
+                    result.tag = Token::Tag::greater_than;
+                    result.range.start = self.index;
+
+                    state = Lexer::State::greater_than;
                 },
 
                 else => {
@@ -277,7 +443,7 @@ fn Lexer::next(self *Lexer) Token {
                     state = Lexer::State::string_literal;
                 },
             },
-            
+
             Lexer::State::char_literal => switch (ch) {
                 0, '\n' => {
                     result.tag = Token::Tag::invalid;
@@ -350,6 +516,92 @@ fn Lexer::next(self *Lexer) Token {
             Lexer::State::equal_sign => switch (ch) {
                 '=' => {
                     result.tag = Token::Tag::double_equal_sign;
+                    self.index = self.index + 1;
+                    result.range.end = self.index;
+
+                    break;
+                },
+
+                '>' => {
+                    result.tag = Token::Tag::fat_arrow;
+                    self.index = self.index + 1;
+                    result.range.end = self.index;
+
+                    break;
+                },
+
+                else => {
+                    result.range.end = self.index;
+
+                    break;
+                },
+            },
+
+            Lexer::State::bang => switch (ch) {
+                '=' => {
+                    result.tag = Token::Tag::bang_equal_sign;
+                    self.index = self.index + 1;
+                    result.range.end = self.index;
+
+                    break;
+                },
+
+                else => {
+                    result.range.end = self.index;
+
+                    break;
+                },
+            },
+
+            Lexer::State::period => switch (ch) {
+                '.' => {
+                    result.tag = Token::Tag::double_period;
+
+                    state = Lexer::State::double_period;
+                },
+
+                else => {
+                    result.range.end = self.index;
+
+                    break;
+                },
+            },
+
+            Lexer::State::double_period => switch (ch) {
+                '.' => {
+                    result.tag = Token::Tag::triple_period;
+                    self.index = self.index + 1;
+                    result.range.end = self.index;
+
+                    break;
+                },
+
+                else => {
+                    result.range.end = self.index;
+
+                    break;
+                },
+            },
+
+            Lexer::State::less_than => switch (ch) {
+                '<' => {
+                    result.tag = Token::Tag::double_less_than;
+                    self.index = self.index + 1;
+                    result.range.end = self.index;
+
+                    break;
+                },
+
+                else => {
+                    result.range.end = self.index;
+
+                    break;
+                },
+            },
+
+            Lexer::State::greater_than => switch (ch) {
+                '>' => {
+                    result.tag = Token::Tag::double_greater_than;
                     self.index = self.index + 1;
                     result.range.end = self.index;
 
@@ -429,7 +681,7 @@ fn main() {
     var lexer Lexer;
 
     lexer.index = 0;
-    lexer.buffer = "var x::Hello = ([{(5.0}]);";
+    lexer.buffer = "x::Hello([{}])=>5;5.38904,+-/*%&|^:;<=>,.~!;. .. ... '.' '...' \".Hello World!\"";
 
     prints("buffer: ");
     prints(lexer.buffer);
