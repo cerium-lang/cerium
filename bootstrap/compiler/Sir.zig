@@ -738,14 +738,14 @@ pub const Parser = struct {
                 },
             });
         } else {
-            self.error_info = .{ .message = "unhandled switch cases (note: missing a default 'else' case)", .source_loc = SourceLoc.find(self.buffer, switch_keyword_start) };
+            self.error_info = .{ .message = "unhandled switch cases (note: missing an 'else' case)", .source_loc = SourceLoc.find(self.buffer, switch_keyword_start) };
 
             return error.UnhandledSwitchCases;
         }
 
-        for (case_instructions.items) |case_instruction| {
-            try self.sir.instructions.append(self.allocator, case_instruction);
-        }
+        try self.sir.instructions.appendSlice(self.allocator, case_instructions.items);
+
+        case_instructions.deinit(self.allocator);
 
         try self.sir.instructions.append(self.allocator, .{ .block = end_block_id });
     }
