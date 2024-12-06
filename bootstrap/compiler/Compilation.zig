@@ -192,13 +192,18 @@ pub fn analyze(self: Compilation, file_path: []const u8, buffer: []const u8, sir
 }
 
 /// Emit to an object file or an assembly file
-pub fn emit(self: Compilation, output_file_path: [:0]const u8, output_kind: root.OutputKind) std.mem.Allocator.Error!void {
+pub fn emit(
+    self: Compilation,
+    output_file_path: [:0]const u8,
+    output_kind: root.OutputKind,
+    code_model: root.CodeModel,
+) std.mem.Allocator.Error!void {
     var backend = try LlvmBackend.init(self.allocator, self.env.target);
     defer backend.deinit();
 
     try backend.render(self.pipeline.airs.items);
 
-    try backend.emit(output_file_path, output_kind);
+    try backend.emit(output_file_path, output_kind, code_model);
 }
 
 /// Link an object file into an executable file

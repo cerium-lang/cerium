@@ -15,6 +15,15 @@ pub const RunnerKind = enum {
     none,
 };
 
+pub const CodeModel = enum {
+    default,
+    tiny,
+    small,
+    kernel,
+    medium,
+    large,
+};
+
 pub const Cli = struct {
     allocator: std.mem.Allocator,
 
@@ -32,6 +41,7 @@ pub const Cli = struct {
             output_kind: OutputKind,
             runner_kind: RunnerKind,
             target: std.Target,
+            code_model: CodeModel,
 
             const usage =
                 \\Usage:
@@ -45,6 +55,9 @@ pub const Cli = struct {
                 \\                                    [executable (default), none]
                 \\  --target <arch-os-abi>         -- specify the target query
                 \\
+                \\  --code-model <code-model>     -- specify the code model
+                \\                                    [default, tiny, small, kernel, medium, large]
+                \\
                 \\
             ;
         };
@@ -53,6 +66,7 @@ pub const Cli = struct {
             input_file_path: []const u8,
             runner_kind: RunnerKind,
             target: std.Target,
+            code_model: CodeModel,
             arguments: []const []const u8,
 
             const usage =
@@ -63,6 +77,9 @@ pub const Cli = struct {
                 \\  --runner <runner-kind>         -- specify the runner kind
                 \\                                    [executable (default), none]
                 \\  --target <arch-os-abi>         -- specify the target query
+                \\
+                \\  --code-model <code-model>     -- specify the code model
+                \\                                    [default, tiny, small, kernel, medium, large]
                 \\
                 \\
             ;
@@ -146,6 +163,28 @@ pub const Cli = struct {
         }
     }
 
+    fn parseCodeModelOption(self: Cli, raw_code_model: []const u8) ?CodeModel {
+        if (std.mem.eql(u8, raw_code_model, "default")) {
+            return .default;
+        } else if (std.mem.eql(u8, raw_code_model, "tiny")) {
+            return .tiny;
+        } else if (std.mem.eql(u8, raw_code_model, "small")) {
+            return .small;
+        } else if (std.mem.eql(u8, raw_code_model, "kernel")) {
+            return .kernel;
+        } else if (std.mem.eql(u8, raw_code_model, "medium")) {
+            return .medium;
+        } else if (std.mem.eql(u8, raw_code_model, "large")) {
+            return .large;
+        } else {
+            std.debug.print(Command.Compile.usage, .{self.program});
+
+            std.debug.print("Error: unrecognized code model: {s}\n", .{raw_code_model});
+
+            return null;
+        }
+    }
+
     fn parseTargetQueryOption(raw_target_query: []const u8) ?std.Target {
         const target_query = std.Target.Query.parse(.{ .arch_os_abi = raw_target_query }) catch |err| {
             std.debug.print("Error: could not parse target query: {s}\n", .{errorDescription(err)});
@@ -180,6 +219,7 @@ pub const Cli = struct {
                 var output_kind: OutputKind = .executable;
                 var runner_kind: RunnerKind = .executable;
                 var target: std.Target = builtin.target;
+                var code_model: CodeModel = .default;
 
                 while (argument_iterator.next()) |next_argument| {
                     if (std.mem.eql(u8, next_argument, "--output")) {
@@ -220,6 +260,16 @@ pub const Cli = struct {
 
                             return null;
                         }
+                    } else if (std.mem.eql(u8, next_argument, "--code-model")) {
+                        if (argument_iterator.next()) |raw_code_model| {
+                            code_model = self.parseCodeModelOption(raw_code_model) orelse return null;
+                        } else {
+                            std.debug.print(Command.Compile.usage, .{self.program});
+
+                            std.debug.print("Error: expected code model\n", .{});
+
+                            return null;
+                        }
                     } else {
                         std.debug.print(Command.Compile.usage, .{self.program});
 
@@ -236,6 +286,7 @@ pub const Cli = struct {
                         .output_kind = output_kind,
                         .runner_kind = runner_kind,
                         .target = target,
+                        .code_model = code_model,
                     },
                 };
             } else if (std.mem.eql(u8, argument, "run")) {
@@ -249,6 +300,7 @@ pub const Cli = struct {
 
                 var runner_kind: RunnerKind = .executable;
                 var target: std.Target = builtin.target;
+                var code_model: CodeModel = .default;
 
                 while (argument_iterator.next()) |next_argument| {
                     if (std.mem.eql(u8, next_argument, "--runner")) {
@@ -271,6 +323,16 @@ pub const Cli = struct {
 
                             return null;
                         }
+                    } else if (std.mem.eql(u8, next_argument, "--code-model")) {
+                        if (argument_iterator.next()) |raw_code_model| {
+                            code_model = self.parseCodeModelOption(raw_code_model) orelse return null;
+                        } else {
+                            std.debug.print(Command.Compile.usage, .{self.program});
+
+                            std.debug.print("Error: expected code model\n", .{});
+
+                            return null;
+                        }
                     } else if (std.mem.eql(u8, next_argument, "--")) {
                         var remaining_arguments: std.ArrayListUnmanaged([]const u8) = .{};
 
@@ -287,6 +349,7 @@ pub const Cli = struct {
                                 .input_file_path = input_file_path,
                                 .runner_kind = runner_kind,
                                 .target = target,
+                                .code_model = code_model,
                                 .arguments = remaining_arguments.toOwnedSlice(self.allocator) catch |err| {
                                     std.debug.print("Error: {s}\n", .{errorDescription(err)});
 
@@ -304,6 +367,7 @@ pub const Cli = struct {
                         .input_file_path = input_file_path,
                         .runner_kind = runner_kind,
                         .target = target,
+                        .code_model = code_model,
                         .arguments = &.{},
                     },
                 };
@@ -336,6 +400,7 @@ pub const Cli = struct {
         output_kind: OutputKind,
         runner_kind: RunnerKind,
         target: std.Target,
+        code_model: CodeModel,
     ) u8 {
         const cerium_lib_dir = Compilation.Environment.openCeriumLibrary() catch {
             std.debug.print("Error: could not open the cerium library directory\n", .{});
@@ -395,7 +460,7 @@ pub const Cli = struct {
 
             defer self.allocator.free(assembly_file_path);
 
-            compilation.emit(assembly_file_path, output_kind) catch |err| {
+            compilation.emit(assembly_file_path, output_kind, code_model) catch |err| {
                 std.debug.print("Error: could not emit assembly file: {s}\n", .{errorDescription(err)});
 
                 return 1;
@@ -412,7 +477,7 @@ pub const Cli = struct {
 
             defer self.allocator.free(object_file_path);
 
-            compilation.emit(object_file_path, output_kind) catch |err| {
+            compilation.emit(object_file_path, output_kind, code_model) catch |err| {
                 std.debug.print("Error: could not emit object file: {s}\n", .{errorDescription(err)});
 
                 return 1;
@@ -457,6 +522,7 @@ pub const Cli = struct {
             options.output_kind,
             options.runner_kind,
             options.target,
+            options.code_model,
         );
     }
 
@@ -471,6 +537,7 @@ pub const Cli = struct {
             .executable,
             options.runner_kind,
             options.target,
+            options.code_model,
         );
 
         if (compile_step_exit_code != 0) return compile_step_exit_code;

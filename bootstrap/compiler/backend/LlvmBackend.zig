@@ -296,7 +296,12 @@ pub fn targetTripleZ(allocator: std.mem.Allocator, target: std.Target) ![:0]u8 {
     return llvm_triple.toOwnedSliceSentinel(0);
 }
 
-pub fn emit(self: *LlvmBackend, output_file_path: [:0]const u8, output_kind: root.OutputKind) Error!void {
+pub fn emit(
+    self: *LlvmBackend,
+    output_file_path: [:0]const u8,
+    output_kind: root.OutputKind,
+    code_model: root.CodeModel,
+) Error!void {
     c.LLVMInitializeAllTargetInfos();
     c.LLVMInitializeAllTargets();
     c.LLVMInitializeAllTargetMCs();
@@ -319,14 +324,25 @@ pub fn emit(self: *LlvmBackend, output_file_path: [:0]const u8, output_kind: roo
         "",
         c.LLVMCodeGenLevelDefault,
         c.LLVMRelocPIC,
-        c.LLVMCodeModelDefault,
+        switch (code_model) {
+            .default => c.LLVMCodeModelDefault,
+            .tiny => c.LLVMCodeModelTiny,
+            .small => c.LLVMCodeModelSmall,
+            .kernel => c.LLVMCodeModelKernel,
+            .medium => c.LLVMCodeModelMedium,
+            .large => c.LLVMCodeModelLarge,
+        },
     );
 
     _ = c.LLVMTargetMachineEmitToFile(
         target_machine,
         self.module,
         output_file_path,
-        if (output_kind == .object or output_kind == .executable) c.LLVMObjectFile else c.LLVMAssemblyFile,
+        switch (output_kind) {
+            .object, .executable => c.LLVMObjectFile,
+            .assembly => c.LLVMAssemblyFile,
+            .none => unreachable,
+        },
         null,
     );
 }
