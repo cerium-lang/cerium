@@ -704,8 +704,8 @@ fn renderGetElementPtr(self: *LlvmBackend) Error!void {
             .value = c.LLVMBuildGEP2(
                 self.builder,
                 element_llvm_type,
-                element_index.value,
-                &array_pointer.value,
+                array_pointer.value,
+                &element_index.value,
                 1,
                 "",
             ),
