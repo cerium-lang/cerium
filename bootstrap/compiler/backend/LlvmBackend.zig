@@ -854,8 +854,12 @@ const BitwiseShiftDirection = enum {
 };
 
 fn renderBitwiseShift(self: *LlvmBackend, comptime direction: BitwiseShiftDirection) Error!void {
-    const rhs = self.stack.pop();
+    var rhs = self.stack.pop();
     const lhs = self.stack.pop();
+
+    const count_type: Type = .{ .int = .{ .signedness = .unsigned, .bits = std.math.log2(lhs.type.int.bits) } };
+
+    try self.unaryImplicitCast(&rhs, count_type);
 
     try self.stack.append(
         self.allocator,

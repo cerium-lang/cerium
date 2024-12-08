@@ -1087,11 +1087,9 @@ fn analyzeBitwiseShift(self: *Sema, comptime direction: BitwiseShiftDirection, t
         const lhs_int = lhs.int;
         const rhs_int = rhs.int;
 
-        if (rhs_int > std.math.maxInt(u7)) {
-            self.error_info = .{ .message = "cannot bit shift with a count more than '" ++ std.fmt.comptimePrint("{}", .{std.math.maxInt(u7)}) ++ "'", .source_loc = SourceLoc.find(self.buffer, token_start) };
+        const count_type: Type = .{ .int = .{ .signedness = .unsigned, .bits = 7 } };
 
-            return error.UnexpectedType;
-        }
+        try self.checkBitShiftCount(rhs, count_type, token_start);
 
         const result = switch (direction) {
             .left => lhs_int << @intCast(rhs_int),
@@ -1104,7 +1102,9 @@ fn analyzeBitwiseShift(self: *Sema, comptime direction: BitwiseShiftDirection, t
 
         self.air.instructions.items[self.air.instructions.items.len - 1] = .{ .int = result };
     } else {
-        try self.checkUnaryImplicitCast(rhs, .{ .int = .{ .signedness = .unsigned, .bits = std.math.log2(lhs_type.int.bits) } }, token_start);
+        const count_type: Type = .{ .int = .{ .signedness = .unsigned, .bits = std.math.log2(lhs_type.int.bits) } };
+
+        try self.checkBitShiftCount(rhs, count_type, token_start);
 
         switch (direction) {
             .left => try self.air.instructions.append(self.allocator, .shl),
@@ -1672,10 +1672,10 @@ fn checkTypeAliasPointsToOthers(subtype: Sir.SubType, type_aliases: *std.StringH
     };
 }
 
-fn checkUnaryImplicitCast(self: *Sema, lhs: Value, to: Type, token_start: u32) Error!void {
+fn canUnaryImplicitCast(lhs: Value, to: Type) bool {
     const lhs_type = lhs.getType();
 
-    if (!(lhs_type.eql(to) or
+    return (lhs_type.eql(to) or
         (lhs == .int and to == .int and lhs.int >= to.minInt() and
         lhs == .int and to == .int and lhs.int <= to.maxInt()) or
         (lhs == .float and to == .float and lhs.float >= -to.maxFloat() and
@@ -1687,11 +1687,26 @@ fn checkUnaryImplicitCast(self: *Sema, lhs: Value, to: Type, token_start: u32) E
         lhs_type.maxFloat() <= to.maxFloat()) or
         (lhs_type == .pointer and to == .pointer and
         lhs_type.pointer.child_type.* == .array and to.pointer.size == .many and
-        lhs_type.pointer.child_type.array.child_type.eql(to.pointer.child_type.*))))
-    {
+        lhs_type.pointer.child_type.array.child_type.eql(to.pointer.child_type.*)));
+}
+
+fn checkUnaryImplicitCast(self: *Sema, lhs: Value, to: Type, token_start: u32) Error!void {
+    if (!canUnaryImplicitCast(lhs, to)) {
         var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
-        try error_message_buf.writer(self.allocator).print("'{}' cannot be implicitly casted to '{}'", .{ lhs_type, to });
+        try error_message_buf.writer(self.allocator).print("'{}' cannot be implicitly casted to '{}'", .{ lhs.getType(), to });
+
+        self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
+
+        return error.MismatchedTypes;
+    }
+}
+
+fn checkBitShiftCount(self: *Sema, rhs: Value, count_type: Type, token_start: u32) Error!void {
+    if (!canUnaryImplicitCast(rhs, count_type)) {
+        var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+        try error_message_buf.writer(self.allocator).print("'{}' cannot be used as a bit shift count, as it cannot be implicitly casted to '{}'", .{ rhs, count_type });
 
         self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.buffer, token_start) };
 
