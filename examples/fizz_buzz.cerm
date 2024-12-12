@@ -1,17 +1,18 @@
 fn main() {
-    var i s32 = 0;
+    var i u32 = 0;
 
     while (i = i + 1) < 16 {
         if i % 3 == 0 {
             if i % 5 == 0 {
-                print("FizzBuzz\n");
+                prints("FizzBuzz\n");
             } else {
-                print("Fizz\n");
+                prints("Fizz\n");
             }
         } else if i % 5 == 0 {
-            print("Buzz\n");
+            prints("Buzz\n");
         } else {
-            print("Number\n");
+            printi(i);
+            prints("\n");
         }
     }
 }
@@ -45,7 +46,15 @@ fn strlen(str [*]const u8) usize {
 
 const STDOUT = 1;
 
-fn print(str [*]const u8) {
-    syscall3(SYS::write, STDOUT, str as usize, strlen(str));
+fn printi(n u32) {
+    if n > 9 {
+        printi(n / 10);
+        n = n % 10;
+    }
+
+    syscall3(SYS::write, STDOUT, &('0' + n) as usize, 1);
 }
 
+fn prints(str [*]const u8) {
+    syscall3(SYS::write, STDOUT, str as usize, strlen(str));
+}
