@@ -1,24 +1,6 @@
 module examples::hello;
 
-fn main() {
-    print("Hello, World!\n");
-}
-
-type SYS = enum usize {
-    write = 1,
-};
-
-fn syscall3(code SYS, arg1 usize, arg2 usize, arg3 usize) usize {
-    return asm {
-        "syscall"
-        : "={rax}" (usize)
-        : "{rax}" (code),
-          "{rdi}" (arg1),
-          "{rsi}" (arg2),
-          "{rdx}" (arg3),
-        : "rcx", "r11", "memory"
-    };
-}
+import "std/os/linux/x86_64.cerm";
 
 // TODO: We don't support slices yet
 fn strlen(str [*]const u8) usize {
@@ -34,6 +16,9 @@ fn strlen(str [*]const u8) usize {
 const STDOUT = 1;
 
 fn print(str [*]const u8) {
-    syscall3(SYS::write, STDOUT, str as usize, strlen(str));
+    std::os::linux::x86_64::write(STDOUT, str as usize, strlen(str));
 }
 
+fn main() {
+    print("Hello, World!\n");
+}

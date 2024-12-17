@@ -1,39 +1,6 @@
 module examples::fizz_buzz;
 
-fn main() {
-    var i u32 = 0;
-
-    while (i = i + 1) < 16 {
-        if i % 3 == 0 {
-            if i % 5 == 0 {
-                prints("FizzBuzz\n");
-            } else {
-                prints("Fizz\n");
-            }
-        } else if i % 5 == 0 {
-            prints("Buzz\n");
-        } else {
-            printi(i);
-            prints("\n");
-        }
-    }
-}
-
-type SYS = enum usize {
-    write = 1,
-};
-
-fn syscall3(code SYS, arg1 usize, arg2 usize, arg3 usize) usize {
-    return asm {
-        "syscall"
-        : "={rax}" (usize)
-        : "{rax}" (code),
-          "{rdi}" (arg1),
-          "{rsi}" (arg2),
-          "{rdx}" (arg3),
-        : "rcx", "r11", "memory"
-    };
-}
+import "std/os/linux/x86_64.cerm";
 
 // TODO: We don't support slices yet
 fn strlen(str [*]const u8) usize {
@@ -54,9 +21,28 @@ fn printi(n u32) {
         n = n % 10;
     }
 
-    syscall3(SYS::write, STDOUT, &('0' + n) as usize, 1);
+    std::os::linux::x86_64::write(STDOUT, &('0' + n) as usize, 1);
 }
 
 fn prints(str [*]const u8) {
-    syscall3(SYS::write, STDOUT, str as usize, strlen(str));
+    std::os::linux::x86_64::write(STDOUT, str as usize, strlen(str));
+}
+
+fn main() {
+    var i u32 = 0;
+
+    while (i = i + 1) < 16 {
+        if i % 3 == 0 {
+            if i % 5 == 0 {
+                prints("FizzBuzz\n");
+            } else {
+                prints("Fizz\n");
+            }
+        } else if i % 5 == 0 {
+            prints("Buzz\n");
+        } else {
+            printi(i);
+            prints("\n");
+        }
+    }
 }

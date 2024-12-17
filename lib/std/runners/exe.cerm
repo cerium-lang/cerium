@@ -1,27 +1,11 @@
 module std::runners::exe;
 
+import "std/os/linux/x86_64.cerm";
+
 import "root";
 
 export fn _start() {
     root::main();
 
-    exit(0);
-}
-
-type SYS = enum usize {
-    exit_group = 231,
-};
-
-fn syscall1(code SYS, arg1 usize) usize {
-    return asm {
-        "syscall"
-        : "={rax}" (usize)
-        : "{rax}" (code),
-          "{rdi}" (arg1),
-        : "rcx", "r11", "memory"
-    };
-}
-
-fn exit(code u8) {
-    syscall1(SYS::exit_group, code);
+    std::os::linux::x86_64::exit(0);
 }
