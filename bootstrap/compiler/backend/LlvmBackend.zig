@@ -17,7 +17,7 @@ const LlvmBackend = @This();
 
 allocator: std.mem.Allocator,
 
-target: std.Target,
+compilation: *const Compilation,
 
 context: c.LLVMContextRef,
 module: c.LLVMModuleRef,
@@ -48,9 +48,9 @@ pub const Register = struct {
     type: Type,
 };
 
-pub fn init(allocator: std.mem.Allocator, target: std.Target) Error!LlvmBackend {
+pub fn init(allocator: std.mem.Allocator, compilation: *const Compilation) Error!LlvmBackend {
     const context = c.LLVMContextCreate();
-    const module = c.LLVMModuleCreateWithNameInContext("module", context);
+    const module = c.LLVMModuleCreateWithNameInContext(try allocator.dupeZ(u8, compilation.root_file.path), context);
     const builder = c.LLVMCreateBuilderInContext(context);
 
     var scopes: @FieldType(LlvmBackend, "scopes") = .{};
@@ -60,7 +60,7 @@ pub fn init(allocator: std.mem.Allocator, target: std.Target) Error!LlvmBackend 
 
     return LlvmBackend{
         .allocator = allocator,
-        .target = target,
+        .compilation = compilation,
         .context = context,
         .module = module,
         .builder = builder,
@@ -308,7 +308,7 @@ pub fn emit(
     c.LLVMInitializeAllAsmParsers();
     c.LLVMInitializeAllAsmPrinters();
 
-    const target_triple = try targetTripleZ(self.allocator, self.target);
+    const target_triple = try targetTripleZ(self.allocator, self.compilation.env.target);
     defer self.allocator.free(target_triple);
 
     _ = c.LLVMSetTarget(self.module, target_triple);
@@ -686,7 +686,7 @@ fn renderGetElementPtr(self: *LlvmBackend) Error!void {
     var element_index = self.stack.pop();
     var array_pointer = self.stack.pop();
 
-    const usize_type: Type = .{ .int = .{ .signedness = .unsigned, .bits = self.target.ptrBitWidth() } };
+    const usize_type: Type = .{ .int = .{ .signedness = .unsigned, .bits = self.compilation.env.target.ptrBitWidth() } };
 
     try self.unaryImplicitCast(&element_index, usize_type);
 
@@ -756,7 +756,7 @@ fn renderArithmetic(self: *LlvmBackend, comptime operation: ArithmeticOperation)
     var rhs = self.stack.pop();
     var lhs = self.stack.pop();
 
-    const usize_type: Type = .{ .int = .{ .signedness = .unsigned, .bits = self.target.ptrBitWidth() } };
+    const usize_type: Type = .{ .int = .{ .signedness = .unsigned, .bits = self.compilation.env.target.ptrBitWidth() } };
 
     if (lhs.type == .pointer and rhs.type != .pointer) {
         rhs.value = try self.saneIntCast(rhs, usize_type);
@@ -952,7 +952,7 @@ fn renderAssembly(self: *LlvmBackend, assembly: Air.Instruction.Assembly) Error!
         if (i != assembly.clobbers.len - 1) try assembly_constraints.append(self.allocator, ',');
     }
 
-    if (self.target.cpu.arch.isX86()) {
+    if (self.compilation.env.target.cpu.arch.isX86()) {
         if (assembly_constraints.items.len != 0) try assembly_constraints.append(self.allocator, ',');
         try assembly_constraints.appendSlice(self.allocator, "~{dirflag},~{fpsr},~{flags}");
     }

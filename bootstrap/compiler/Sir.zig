@@ -163,16 +163,20 @@ pub const Instruction = union(enum) {
     assembly: Assembly,
     /// Call a function pointer on the stack
     call: Call,
-    /// Declare a function
-    function: SubSymbol,
+    /// Start a module
+    module: Name,
+    /// Import a module
+    import: Name,
+    /// Start a function
+    function: Function,
     /// Declare function parameters
     parameters: []const SubSymbol,
     /// Declare a constant that is replaced at compile time and acts as a placeholder for a value
     constant: SubSymbol,
     /// Declare a variable that is only known at runtime and doesn't get replaced by the compiler
-    variable: SubSymbol,
+    variable: Variable,
     /// Same as `variable` but the type is unknown at the point of declaration
-    variable_infer: SubSymbol,
+    variable_infer: Variable,
     /// Same as `variable` but the variable is external
     external: SubSymbol,
     /// Declare a type alias
@@ -219,6 +223,16 @@ pub const Instruction = union(enum) {
     pub const Call = struct {
         arguments_count: usize,
         token_start: u32,
+    };
+
+    pub const Function = struct {
+        subsymbol: SubSymbol,
+        exported: bool,
+    };
+
+    pub const Variable = struct {
+        subsymbol: SubSymbol,
+        exported: bool,
     };
 
     pub const CondBr = struct {
@@ -328,22 +342,28 @@ pub const Parser = struct {
 
     pub fn parse(self: *Parser) Error!void {
         while (self.peekToken().tag != .eof) {
-            try self.parseTopLevelDeclaration();
+            try self.parseTopLevelStmt();
         }
     }
 
-    fn parseTopLevelDeclaration(self: *Parser) Error!void {
+    fn parseTopLevelStmt(self: *Parser) Error!void {
         switch (self.peekToken().tag) {
+            .keyword_module => try self.parseModuleSpecifier(),
+
             .keyword_extern => try self.parseExternalDeclaration(),
 
-            .keyword_fn => return self.parseFunctionDeclaration(.global),
+            .keyword_export => return self.parseExportDeclaration(),
 
-            .keyword_const, .keyword_var => try self.parseVariableDeclaration(.global),
+            .keyword_import => try self.parseImport(),
+
+            .keyword_fn => return self.parseFunctionDeclaration(.global, true),
+
+            .keyword_const, .keyword_var => try self.parseVariableDeclaration(.global, true),
 
             .keyword_type => try self.parseTypeAlias(),
 
             else => {
-                self.error_info = .{ .message = "expected a top level declaration", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
+                self.error_info = .{ .message = "expected a top level statement", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
 
                 return error.UnexpectedToken;
             },
@@ -358,7 +378,7 @@ pub const Parser = struct {
 
     fn parseStmt(self: *Parser, expect_semicolon: bool) Error!void {
         switch (self.peekToken().tag) {
-            .keyword_const, .keyword_var => try self.parseVariableDeclaration(.local),
+            .keyword_const, .keyword_var => try self.parseVariableDeclaration(.local, false),
 
             .keyword_switch => return self.parseSwitch(),
 
@@ -386,13 +406,21 @@ pub const Parser = struct {
         }
     }
 
+    fn parseModuleSpecifier(self: *Parser) Error!void {
+        _ = self.nextToken();
+
+        const name = try self.parseName();
+
+        try self.sir.instructions.append(self.allocator, .{ .module = name });
+    }
+
     fn parseExternalDeclaration(self: *Parser) Error!void {
         _ = self.nextToken();
 
         if (self.peekToken().tag == .keyword_fn) {
-            try self.parseFunctionDeclaration(.external);
+            try self.parseFunctionDeclaration(.external, false);
         } else if (self.peekToken().tag == .keyword_var) {
-            try self.parseVariableDeclaration(.external);
+            try self.parseVariableDeclaration(.external, false);
         } else if (self.peekToken().tag == .keyword_const) {
             self.error_info = .{ .message = "'const' is declaring a compile time constant and cannot be used with 'extern'", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
 
@@ -404,7 +432,43 @@ pub const Parser = struct {
         }
     }
 
-    fn parseFunctionDeclaration(self: *Parser, linkage: Symbol.Linkage) Error!void {
+    fn parseExportDeclaration(self: *Parser) Error!void {
+        _ = self.nextToken();
+
+        if (self.peekToken().tag == .keyword_fn) {
+            try self.parseFunctionDeclaration(.global, false);
+        } else if (self.peekToken().tag == .keyword_var) {
+            try self.parseVariableDeclaration(.global, false);
+        } else if (self.peekToken().tag == .keyword_const) {
+            self.error_info = .{ .message = "'const' is declaring a compile time constant and cannot be used with 'export'", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
+
+            return error.UnexpectedToken;
+        } else {
+            self.error_info = .{ .message = "expected a function or variable declaration", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
+
+            return error.UnexpectedToken;
+        }
+    }
+
+    fn parseImport(self: *Parser) Error!void {
+        _ = self.nextToken();
+
+        if (self.peekToken().tag != .string_literal) {
+            self.error_info = .{ .message = "expected a valid string", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
+
+            return error.UnexpectedToken;
+        }
+
+        const file_path_start = self.peekToken().range.start;
+
+        try self.parseString();
+
+        const file_path = self.sir.instructions.pop().string;
+
+        try self.sir.instructions.append(self.allocator, .{ .import = .{ .buffer = file_path, .token_start = file_path_start } });
+    }
+
+    fn parseFunctionDeclaration(self: *Parser, linkage: Symbol.Linkage, exported: bool) Error!void {
         const fn_keyword_start = self.nextToken().range.start;
 
         const name = try self.parseName();
@@ -458,9 +522,13 @@ pub const Parser = struct {
 
         try self.sir.instructions.append(self.allocator, .{
             .function = .{
-                .name = name,
-                .subtype = function_pointer_subtype,
-                .linkage = linkage,
+                .subsymbol = .{
+                    .name = name,
+                    .subtype = function_pointer_subtype,
+                    .linkage = linkage,
+                },
+
+                .exported = exported,
             },
         });
 
@@ -530,7 +598,7 @@ pub const Parser = struct {
         return paramters.toOwnedSlice(self.allocator);
     }
 
-    fn parseVariableDeclaration(self: *Parser, linkage: Symbol.Linkage) Error!void {
+    fn parseVariableDeclaration(self: *Parser, linkage: Symbol.Linkage, exported: bool) Error!void {
         const init_token = self.nextToken();
 
         const is_const = init_token.tag == .keyword_const;
@@ -570,9 +638,13 @@ pub const Parser = struct {
             if (maybe_subtype) |subtype|
                 .{
                     .variable = .{
-                        .name = name,
-                        .subtype = subtype,
-                        .linkage = linkage,
+                        .subsymbol = .{
+                            .name = name,
+                            .subtype = subtype,
+                            .linkage = linkage,
+                        },
+
+                        .exported = exported,
                     },
                 }
             else if (is_const)
@@ -586,9 +658,13 @@ pub const Parser = struct {
             else
                 .{
                     .variable_infer = .{
-                        .name = name,
-                        .subtype = .{ .pure = .void },
-                        .linkage = linkage,
+                        .subsymbol = .{
+                            .name = name,
+                            .subtype = .{ .pure = .void },
+                            .linkage = linkage,
+                        },
+
+                        .exported = exported,
                     },
                 },
         );

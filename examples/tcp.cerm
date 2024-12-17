@@ -1,3 +1,5 @@
+module examples::fizz_buzz;
+
 type Server = struct {
     fd s32,
 };

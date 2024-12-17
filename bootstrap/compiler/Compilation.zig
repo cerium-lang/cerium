@@ -16,8 +16,9 @@ const Compilation = @This();
 
 allocator: std.mem.Allocator,
 
+root_file: File,
+
 env: Environment,
-pipeline: Pipeline = .{},
 
 pub const Environment = struct {
     cerium_lib_dir: std.fs.Dir,
@@ -64,82 +65,22 @@ pub const Environment = struct {
     }
 };
 
-pub const Pipeline = struct {
-    mutex: std.Thread.Mutex = .{},
-    failed: bool = false,
-    files: std.StringArrayHashMapUnmanaged([:0]const u8) = .{},
-    airs: std.ArrayListUnmanaged(Air) = .{},
-};
-
-pub fn init(allocator: std.mem.Allocator, env: Environment) Compilation {
+pub fn init(allocator: std.mem.Allocator, root_file: File, env: Environment) Compilation {
     return Compilation{
         .allocator = allocator,
+        .root_file = root_file,
         .env = env,
     };
 }
 
-pub fn deinit(self: *Compilation) void {
-    self.pipeline.files.deinit(self.allocator);
-    self.pipeline.airs.deinit(self.allocator);
-}
-
-/// Add a file to the compilation pipeline and associate it with its path
-pub fn put(self: *Compilation, file_path: []const u8) !void {
-    if (self.pipeline.files.get(file_path) != null) return;
-
-    const file = try std.fs.cwd().openFile(file_path, .{});
-    defer file.close();
-
-    const buffer = try file.readToEndAllocOptions(self.allocator, std.math.maxInt(u32), null, @alignOf(u8), 0);
-    if (buffer.len == 0) return;
-
-    try self.pipeline.files.put(self.allocator, file_path, buffer);
-}
-
-/// Compile all provided files
-pub fn compileAll(self: *Compilation) !void {
-    var thread_pool: std.Thread.Pool = undefined;
-    try thread_pool.init(.{ .allocator = self.allocator });
-    defer thread_pool.deinit();
-
-    var wait_group: std.Thread.WaitGroup = .{};
-
-    for (self.pipeline.files.keys(), self.pipeline.files.values()) |file_path, buffer| {
-        thread_pool.spawnWg(&wait_group, compile, .{ self, file_path, buffer });
-    }
-
-    thread_pool.waitAndWork(&wait_group);
-}
-
-/// Compile a file and append the result to the compilation pipeline's airs
-pub fn compile(self: *Compilation, file_path: []const u8, buffer: [:0]const u8) void {
-    _ = blk: {
-        // TODO: Sir is leaking memory..
-        const sir = self.parse(file_path, buffer) orelse break :blk null;
-
-        // TODO: Some of the strucures in Air depend on Sir memory allocated data, we can not free Sir memory here.
-        // find a way to free Sir memory when we are done with it or do not depend on it anymore.
-        const airs = self.analyze(file_path, buffer, sir) orelse break :blk null;
-
-        self.pipeline.mutex.lock();
-        defer self.pipeline.mutex.unlock();
-
-        self.pipeline.airs.appendSlice(self.allocator, airs) catch |err| {
-            std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
-
-            break :blk null;
-        };
-    } orelse {
-        self.pipeline.mutex.lock();
-        defer self.pipeline.mutex.unlock();
-
-        self.pipeline.failed = true;
-    };
-}
+pub const File = struct {
+    path: []const u8,
+    buffer: [:0]const u8,
+};
 
 /// Parse a file into an sir
-pub fn parse(self: Compilation, file_path: []const u8, buffer: [:0]const u8) ?Sir {
-    var sir_parser = Sir.Parser.init(self.allocator, self.env, buffer) catch |err| {
+pub fn parse(self: Compilation, file: File) ?Sir {
+    var sir_parser = Sir.Parser.init(self.allocator, self.env, file.buffer) catch |err| {
         std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
 
         return null;
@@ -155,7 +96,12 @@ pub fn parse(self: Compilation, file_path: []const u8, buffer: [:0]const u8) ?Si
         },
 
         else => {
-            std.debug.print("{s}:{}:{}: {s}\n", .{ file_path, sir_parser.error_info.?.source_loc.line, sir_parser.error_info.?.source_loc.column, sir_parser.error_info.?.message });
+            std.debug.print("{s}:{}:{}: {s}\n", .{
+                file.path,
+                sir_parser.error_info.?.source_loc.line,
+                sir_parser.error_info.?.source_loc.column,
+                sir_parser.error_info.?.message,
+            });
 
             return null;
         },
@@ -165,8 +111,8 @@ pub fn parse(self: Compilation, file_path: []const u8, buffer: [:0]const u8) ?Si
 }
 
 /// Analyze Sir and lower it to Air
-pub fn analyze(self: Compilation, file_path: []const u8, buffer: []const u8, sir: Sir) ?[]Air {
-    var sema = Sema.init(self.allocator, buffer, self.env) catch |err| {
+pub fn analyze(self: Compilation, file: File, sir: Sir) ?[]Air {
+    var sema = Sema.init(self.allocator, file, &self) catch |err| {
         std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
 
         return null;
@@ -182,7 +128,12 @@ pub fn analyze(self: Compilation, file_path: []const u8, buffer: []const u8, sir
         },
 
         else => {
-            std.debug.print("{s}:{}:{}: {s}\n", .{ file_path, sema.error_info.?.source_loc.line, sema.error_info.?.source_loc.column, sema.error_info.?.message });
+            std.debug.print("{s}:{}:{}: {s}\n", .{
+                file.path,
+                sema.error_info.?.source_loc.line,
+                sema.error_info.?.source_loc.column,
+                sema.error_info.?.message,
+            });
 
             return null;
         },
@@ -194,14 +145,15 @@ pub fn analyze(self: Compilation, file_path: []const u8, buffer: []const u8, sir
 /// Emit to an object file or an assembly file
 pub fn emit(
     self: Compilation,
+    airs: []const Air,
     output_file_path: [:0]const u8,
     output_kind: root.OutputKind,
     code_model: root.CodeModel,
 ) std.mem.Allocator.Error!void {
-    var backend = try LlvmBackend.init(self.allocator, self.env.target);
+    var backend = try LlvmBackend.init(self.allocator, &self);
     defer backend.deinit();
 
-    try backend.render(self.pipeline.airs.items);
+    try backend.render(airs);
 
     try backend.emit(output_file_path, output_kind, code_model);
 }

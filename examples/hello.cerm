@@ -1,3 +1,5 @@
+module examples::hello;
+
 fn main() {
     print("Hello, World!\n");
 }

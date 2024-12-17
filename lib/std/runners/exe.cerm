@@ -1,5 +1,9 @@
-fn _start() {
-    main();
+module std::runners::exe;
+
+import "root";
+
+export fn _start() {
+    root::main();
 
     exit(0);
 }
@@ -21,6 +25,3 @@ fn syscall1(code SYS, arg1 usize) usize {
 fn exit(code u8) {
     syscall1(SYS::exit_group, code);
 }
-
-extern fn main();
-

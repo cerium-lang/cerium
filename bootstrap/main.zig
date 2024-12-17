@@ -36,7 +36,7 @@ pub const Cli = struct {
         help,
 
         const Compile = struct {
-            input_file_path: []const u8,
+            root_file_path: []const u8,
             maybe_output_file_path: ?[]const u8,
             output_kind: OutputKind,
             runner_kind: RunnerKind,
@@ -45,7 +45,7 @@ pub const Cli = struct {
 
             const usage =
                 \\Usage:
-                \\  {s} compile <input-file-path> [options]
+                \\  {s} compile <root-file-path> [options]
                 \\
                 \\Options:
                 \\  --output <output-file-path>    -- specify the output file path
@@ -63,7 +63,7 @@ pub const Cli = struct {
         };
 
         const Run = struct {
-            input_file_path: []const u8,
+            root_file_path: []const u8,
             runner_kind: RunnerKind,
             target: std.Target,
             code_model: CodeModel,
@@ -71,7 +71,7 @@ pub const Cli = struct {
 
             const usage =
                 \\Usage:
-                \\  {s} run <input-file-path> [options] [-- [arguments]]
+                \\  {s} run <root-file-path> [options] [-- [arguments]]
                 \\
                 \\Options:
                 \\  --runner <runner-kind>         -- specify the runner kind
@@ -207,7 +207,7 @@ pub const Cli = struct {
 
         while (argument_iterator.next()) |argument| {
             if (std.mem.eql(u8, argument, "compile")) {
-                const input_file_path = argument_iterator.next() orelse {
+                const root_file_path = argument_iterator.next() orelse {
                     std.debug.print(Command.Compile.usage, .{self.program});
 
                     std.debug.print("Error: expected input file path\n", .{});
@@ -281,7 +281,7 @@ pub const Cli = struct {
 
                 self.command = .{
                     .compile = .{
-                        .input_file_path = input_file_path,
+                        .root_file_path = root_file_path,
                         .maybe_output_file_path = maybe_output_file_path,
                         .output_kind = output_kind,
                         .runner_kind = runner_kind,
@@ -290,7 +290,7 @@ pub const Cli = struct {
                     },
                 };
             } else if (std.mem.eql(u8, argument, "run")) {
-                const input_file_path = argument_iterator.next() orelse {
+                const root_file_path = argument_iterator.next() orelse {
                     std.debug.print(Command.Run.usage, .{self.program});
 
                     std.debug.print("Error: expected input file path\n", .{});
@@ -346,7 +346,7 @@ pub const Cli = struct {
 
                         self.command = .{
                             .run = .{
-                                .input_file_path = input_file_path,
+                                .root_file_path = root_file_path,
                                 .runner_kind = runner_kind,
                                 .target = target,
                                 .code_model = code_model,
@@ -364,7 +364,7 @@ pub const Cli = struct {
 
                 self.command = .{
                     .run = .{
-                        .input_file_path = input_file_path,
+                        .root_file_path = root_file_path,
                         .runner_kind = runner_kind,
                         .target = target,
                         .code_model = code_model,
@@ -395,7 +395,7 @@ pub const Cli = struct {
 
     fn compileStep(
         self: Cli,
-        input_file_path: []const u8,
+        root_file_path: []const u8,
         maybe_output_file_path: ?[]const u8,
         output_kind: OutputKind,
         runner_kind: RunnerKind,
@@ -408,106 +408,127 @@ pub const Cli = struct {
             return 1;
         };
 
-        var compilation = Compilation.init(self.allocator, .{
-            .cerium_lib_dir = cerium_lib_dir,
-            .target = target,
-        });
-
-        defer compilation.deinit();
-
-        if (runner_kind == .executable) {
-            var runner_file_path_buf: [std.fs.max_path_bytes]u8 = undefined;
-
-            const runner_file_path = cerium_lib_dir.realpath(
-                "std" ++ std.fs.path.sep_str ++ "runners" ++ std.fs.path.sep_str ++ "exe.cerm",
-                &runner_file_path_buf,
-            ) catch {
-                std.debug.print("Error: could not find executable runner file path\n", .{});
-
-                return 1;
-            };
-
-            compilation.put(runner_file_path) catch |err| {
-                std.debug.print("Error: {s}\n", .{errorDescription(err)});
-
-                return 1;
-            };
-        }
-
-        compilation.put(input_file_path) catch |err| {
-            std.debug.print("Error: {s}\n", .{errorDescription(err)});
+        const root_file = std.fs.cwd().openFile(root_file_path, .{}) catch |err| {
+            std.debug.print("Error: could not open root file '{s}': {s}\n", .{ root_file_path, errorDescription(err) });
 
             return 1;
         };
 
-        compilation.compileAll() catch |err| {
-            std.debug.print("Error: {s}\n", .{errorDescription(err)});
+        const root_file_buffer = root_file.readToEndAllocOptions(self.allocator, std.math.maxInt(u32), null, @alignOf(u8), 0) catch |err| {
+            std.debug.print("Error: could not read root file '{s}': {s}\n", .{ root_file_path, errorDescription(err) });
 
             return 1;
         };
 
-        if (compilation.pipeline.failed) return 1;
+        var compilation = Compilation.init(
+            self.allocator,
+            .{ .path = root_file_path, .buffer = root_file_buffer },
+            .{
+                .cerium_lib_dir = cerium_lib_dir,
+                .target = target,
+            },
+        );
 
-        if (output_kind == .assembly) {
-            const assembly_file_path = std.fmt.allocPrintZ(self.allocator, "{s}{s}", .{
-                maybe_output_file_path orelse std.fs.path.stem(input_file_path),
-                if (maybe_output_file_path != null) "" else ".s",
-            }) catch |err| {
-                std.debug.print("Error: {s}\n", .{errorDescription(err)});
+        const compilation_file: Compilation.File = switch (runner_kind) {
+            .executable => blk: {
+                const relative_runner_file_path = "std" ++ std.fs.path.sep_str ++ "runners" ++ std.fs.path.sep_str ++ "exe.cerm";
 
-                return 1;
-            };
+                var runner_file_path_buffer: [std.fs.max_path_bytes]u8 = undefined;
 
-            defer self.allocator.free(assembly_file_path);
-
-            compilation.emit(assembly_file_path, output_kind, code_model) catch |err| {
-                std.debug.print("Error: could not emit assembly file: {s}\n", .{errorDescription(err)});
-
-                return 1;
-            };
-        } else if (output_kind == .object or output_kind == .executable) {
-            const object_file_path = std.fmt.allocPrintZ(self.allocator, "{s}{s}", .{
-                maybe_output_file_path orelse std.fs.path.stem(input_file_path),
-                if (maybe_output_file_path != null and output_kind == .object) "" else target.ofmt.fileExt(target.cpu.arch),
-            }) catch |err| {
-                std.debug.print("Error: {s}\n", .{errorDescription(err)});
-
-                return 1;
-            };
-
-            defer self.allocator.free(object_file_path);
-
-            compilation.emit(object_file_path, output_kind, code_model) catch |err| {
-                std.debug.print("Error: could not emit object file: {s}\n", .{errorDescription(err)});
-
-                return 1;
-            };
-
-            if (output_kind == .executable) {
-                const linker_exit_code = compilation.link(
-                    object_file_path,
-                    maybe_output_file_path orelse std.fs.path.stem(input_file_path),
-                ) catch |err| {
-                    std.debug.print("Error: could not link object file: {s}\n", .{errorDescription(err)});
+                const runner_file_path = cerium_lib_dir.realpath(relative_runner_file_path, &runner_file_path_buffer) catch |err| {
+                    std.debug.print("Error: could not find executable runner file path: {s}\n", .{errorDescription(err)});
 
                     return 1;
                 };
 
-                if (linker_exit_code != 0) {
-                    std.debug.print(
-                        "Error: could not link object file, linker exited with non-zero exit code: {}\n",
-                        .{linker_exit_code},
-                    );
+                const runner_file = std.fs.cwd().openFile(runner_file_path, .{}) catch |err| {
+                    std.debug.print("Error: could not open executable runner file: {s}\n", .{errorDescription(err)});
 
-                    return linker_exit_code;
+                    return 1;
+                };
+
+                const runner_file_buffer = runner_file.readToEndAllocOptions(self.allocator, std.math.maxInt(u32), null, @alignOf(u8), 0) catch |err| {
+                    std.debug.print("Error: could not read executable runner file: {s}\n", .{errorDescription(err)});
+
+                    return 1;
+                };
+
+                break :blk .{ .path = runner_file_path, .buffer = runner_file_buffer };
+            },
+
+            .none => .{ .path = root_file_path, .buffer = root_file_buffer },
+        };
+
+        const sir = compilation.parse(compilation_file) orelse return 1;
+
+        const airs = compilation.analyze(compilation_file, sir) orelse return 1;
+
+        switch (output_kind) {
+            .assembly => {
+                const assembly_file_path = std.fmt.allocPrintZ(self.allocator, "{s}{s}", .{
+                    maybe_output_file_path orelse std.fs.path.stem(root_file_path),
+                    if (maybe_output_file_path != null) "" else ".s",
+                }) catch |err| {
+                    std.debug.print("Error: {s}\n", .{errorDescription(err)});
+
+                    return 1;
+                };
+
+                defer self.allocator.free(assembly_file_path);
+
+                compilation.emit(airs, assembly_file_path, output_kind, code_model) catch |err| {
+                    std.debug.print("Error: could not emit assembly file: {s}\n", .{errorDescription(err)});
+
+                    return 1;
+                };
+            },
+
+            .object, .executable => {
+                const object_file_path = std.fmt.allocPrintZ(self.allocator, "{s}{s}", .{
+                    maybe_output_file_path orelse std.fs.path.stem(root_file_path),
+                    if (maybe_output_file_path != null and output_kind == .object) "" else target.ofmt.fileExt(target.cpu.arch),
+                }) catch |err| {
+                    std.debug.print("Error: {s}\n", .{errorDescription(err)});
+
+                    return 1;
+                };
+
+                defer self.allocator.free(object_file_path);
+
+                compilation.emit(airs, object_file_path, output_kind, code_model) catch |err| {
+                    std.debug.print("Error: could not emit object file: {s}\n", .{errorDescription(err)});
+
+                    return 1;
+                };
+
+                if (output_kind == .executable) {
+                    const linker_exit_code = compilation.link(
+                        object_file_path,
+                        maybe_output_file_path orelse std.fs.path.stem(root_file_path),
+                    ) catch |err| {
+                        std.debug.print("Error: could not link object file: {s}\n", .{errorDescription(err)});
+
+                        return 1;
+                    };
+
+                    if (linker_exit_code != 0) {
+                        std.debug.print(
+                            "Error: could not link object file, linker exited with non-zero exit code: {}\n",
+                            .{linker_exit_code},
+                        );
+
+                        return linker_exit_code;
+                    }
+
+                    std.fs.cwd().deleteFile(object_file_path) catch |err| {
+                        std.debug.print("Error: could not delete object file: {s}\n", .{errorDescription(err)});
+
+                        return 1;
+                    };
                 }
+            },
 
-                std.fs.cwd().deleteFile(object_file_path) catch |err| {
-                    std.debug.print("Error: could not delete object file: {s}\n", .{errorDescription(err)});
-
-                    return 1;
-                };
-            }
+            .none => {},
         }
 
         return 0;
@@ -517,7 +538,7 @@ pub const Cli = struct {
         const options = self.command.?.compile;
 
         return self.compileStep(
-            options.input_file_path,
+            options.root_file_path,
             options.maybe_output_file_path,
             options.output_kind,
             options.runner_kind,
@@ -529,10 +550,10 @@ pub const Cli = struct {
     fn executeRunCommand(self: Cli) u8 {
         const options = self.command.?.run;
 
-        const output_file_path = std.fs.path.stem(options.input_file_path);
+        const output_file_path = std.fs.path.stem(options.root_file_path);
 
         const compile_step_exit_code = self.compileStep(
-            options.input_file_path,
+            options.root_file_path,
             output_file_path,
             .executable,
             options.runner_kind,

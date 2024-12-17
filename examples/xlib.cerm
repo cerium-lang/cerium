@@ -7,6 +7,8 @@
 //                      with xlib and C runtime library and C math library
 //    i.e: `cc xlib_example.o -lX11 -o xlib_example`
 
+module examples::xlib;
+
 fn main() u8 {
     var display = XOpenDisplay(0 as [*]const u8);
 
