@@ -249,13 +249,15 @@ fn import(self: *Sema, file_path: Name) Error!void {
     const compilation_file: Compilation.File = if (import_root)
         self.compilation.root_file
     else blk: {
-        const import_file = self.compilation.env.cerium_lib_dir.openFile(file_path.buffer, .{}) catch nested_blk: {
-            const parent_dir_name = std.fs.path.dirname(self.file.path) orelse if (self.file.path[0] == std.fs.path.sep)
-                std.fs.path.sep_str
-            else
-                ".";
+        var in_lib_dir = true;
 
-            const parent_dir = std.fs.cwd().openDir(parent_dir_name, .{}) catch |err| {
+        const parent_dir_path = std.fs.path.dirname(self.file.path) orelse if (self.file.path[0] == std.fs.path.sep)
+            std.fs.path.sep_str
+        else
+            ".";
+
+        const import_file = self.compilation.env.cerium_lib_dir.openFile(file_path.buffer, .{}) catch nested_blk: {
+            const parent_dir = std.fs.cwd().openDir(parent_dir_path, .{}) catch |err| {
                 var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
                 try error_message_buf.writer(self.allocator).print(
@@ -267,6 +269,8 @@ fn import(self: *Sema, file_path: Name) Error!void {
 
                 return error.ImportFailed;
             };
+
+            in_lib_dir = false;
 
             break :nested_blk parent_dir.openFile(file_path.buffer, .{}) catch |err| {
                 var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
@@ -295,7 +299,23 @@ fn import(self: *Sema, file_path: Name) Error!void {
             return error.ImportFailed;
         };
 
-        break :blk .{ .path = file_path.buffer, .buffer = import_file_buffer };
+        const import_file_path = if (in_lib_dir)
+            self.compilation.env.cerium_lib_dir.realpathAlloc(self.allocator, file_path.buffer) catch |err| {
+                var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+                try error_message_buf.writer(self.allocator).print(
+                    "could not find import file path: '{s}'",
+                    .{root.Cli.errorDescription(err)},
+                );
+
+                self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.file.buffer, file_path.token_start) };
+
+                return error.ImportFailed;
+            }
+        else
+            try std.fs.path.resolve(self.allocator, &.{ parent_dir_path, file_path.buffer });
+
+        break :blk .{ .path = import_file_path, .buffer = import_file_buffer };
     };
 
     var sir_parser = try Sir.Parser.init(self.allocator, self.compilation.env, compilation_file.buffer);
@@ -1455,17 +1475,17 @@ fn analyzeVariable(self: *Sema, infer: bool, variable_instruction: Sir.Instructi
     var symbol = try self.analyzeSubSymbol(variable_instruction.subsymbol);
     if (self.scope.get(symbol.name.buffer) != null) return self.reportRedeclaration(symbol.name);
 
-    var variable: Variable = .{ .type = symbol.type, .linkage = symbol.linkage };
-
     if (infer) {
-        variable.type = self.stack.getLast().getType();
+        symbol.type = self.stack.getLast().getType();
     }
 
-    if (variable.type == .void) {
+    if (symbol.type == .void) {
         self.error_info = .{ .message = "cannot declare a variable with type 'void'", .source_loc = SourceLoc.find(self.file.buffer, symbol.name.token_start) };
 
         return error.UnexpectedType;
     }
+
+    var variable: Variable = .{ .type = symbol.type, .linkage = symbol.linkage };
 
     variable.maybe_prefixed = if (variable_instruction.exported) try prefix(self.allocator, self.module, symbol.name.buffer) else null;
 
