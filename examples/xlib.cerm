@@ -9,11 +9,14 @@
 
 module examples::xlib;
 
+import "std/c.cerm";
+
 fn main() u8 {
     var display = XOpenDisplay(0 as [*]const u8);
 
     if (display as usize == 0) {
-        printf("failed to open display\n");
+        std::c::printf("failed to open display\n");
+
         return 1;
     }
 
@@ -32,17 +35,17 @@ fn main() u8 {
 
     XMapWindow(display, window);
 
-    srand(time(0 as *c_int));
+    std::c::srand(std::c::time(0 as *std::c::time_t) as c_uint);
 
     while true {
         XGetGeometry(display, window, &root, &x, &y, &width, &height, &border_width, &depth);
 
-        XSetForeground(display, gc, (rand() % 0xFFFFFF) as c_ulong);
+        XSetForeground(display, gc, (std::c::rand() % 0xFFFFFF) as c_ulong);
 
         var i u16 = 0;
         
         while (i < 255 * 2) {
-            XDrawPoint(display, window, gc, rand() % width as c_int, rand() % height as c_int);
+            XDrawPoint(display, window, gc, std::c::rand() % width as c_int, std::c::rand() % height as c_int);
 
             i = i + 1;
         }
@@ -77,8 +80,3 @@ extern fn XSetForeground(display *XDisplay, gc *XGraphicsContext, foreground c_u
 extern fn XSetBackground(display *XDisplay, gc *XGraphicsContext, background c_ulong);
 extern fn XDrawPoint(display *XDisplay, drawable XDrawable, gc *XGraphicsContext, x c_int, y c_int);
 extern fn XGetGeometry(display *XDisplay, drawable XDrawable, root_return *XWindow, x_return *c_int, y_return *c_int, width_return *c_uint, height_return *c_uint, border_width_return *c_uint, depth_return *c_uint);
-
-extern fn printf(format [*]const u8, ...);
-extern fn time(ptr *c_int) c_int;
-extern fn srand(seed c_int);
-extern fn rand() c_int;

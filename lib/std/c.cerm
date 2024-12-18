@@ -1,0 +1,10 @@
+module std::c;
+
+extern fn printf(format [*]const u8, ...);
+
+type time_t = c_long;
+
+extern fn time(timer *time_t) time_t;
+
+extern fn srand(seed c_uint);
+extern fn rand() c_int;
