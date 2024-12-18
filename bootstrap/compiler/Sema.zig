@@ -364,15 +364,18 @@ fn import(self: *Sema, file_path: Name) Error!void {
     var variable_entry_iterator = sema.scope.items.iterator();
 
     while (variable_entry_iterator.next()) |variable_entry| {
-        const variable = variable_entry.value_ptr.*;
+        var variable = variable_entry.value_ptr.*;
         var variable_name = variable_entry.key_ptr.*;
 
-        variable_name = if (import_root)
-            try prefix(self.allocator, "root", variable_name)
-        else if (variable.maybe_prefixed) |prefixed_name|
+        variable_name = if (import_root) blk: {
+            if (variable.maybe_prefixed == null) variable.maybe_prefixed = variable_name;
+            break :blk try prefix(self.allocator, "root", variable_name);
+        } else if (variable.maybe_prefixed) |prefixed_name|
             prefixed_name
-        else
-            try prefix(self.allocator, sema.module, variable_name);
+        else blk: {
+            variable.maybe_prefixed = variable_name;
+            break :blk try prefix(self.allocator, sema.module, variable_name);
+        };
 
         try self.scope.put(self.allocator, variable_name, variable);
     }
@@ -565,7 +568,7 @@ pub fn analyze(self: *Sema, sir: Sir) Error!void {
         const symbol = try self.analyzeSubSymbol(function.subsymbol);
 
         try self.scope.put(self.allocator, symbol.name.buffer, .{
-            .maybe_prefixed = if (function.exported) try prefix(self.allocator, self.module, symbol.name.buffer) else null,
+            .maybe_prefixed = if (!function.exported) try prefix(self.allocator, self.module, symbol.name.buffer) else null,
             .type = symbol.type,
             .linkage = symbol.linkage,
         });
@@ -973,7 +976,6 @@ fn analyzeReference(self: *Sema) Error!void {
     const rhs_type = rhs.getType();
 
     const last_instruction = self.air.instructions.items[self.air.instructions.items.len - 1];
-    const before_last_instruction = self.air.instructions.items[self.air.instructions.items.len - 2];
 
     if (last_instruction == .read or rhs != .runtime) {
         _ = self.air.instructions.pop();
@@ -1019,10 +1021,7 @@ fn analyzeReference(self: *Sema) Error!void {
         }
     }
 
-    const is_const = if (before_last_instruction == .get_variable_ptr)
-        self.scope.get(before_last_instruction.get_variable_ptr).?.is_const
-    else
-        false;
+    const is_const = false;
 
     const child_on_heap = try self.allocator.create(Type);
     child_on_heap.* = rhs_type;
@@ -1487,22 +1486,13 @@ fn analyzeVariable(self: *Sema, infer: bool, variable_instruction: Sir.Instructi
 
     var variable: Variable = .{ .type = symbol.type, .linkage = symbol.linkage };
 
-    variable.maybe_prefixed = if (variable_instruction.exported) try prefix(self.allocator, self.module, symbol.name.buffer) else null;
+    variable.maybe_prefixed = if (!variable_instruction.exported) try prefix(self.allocator, self.module, symbol.name.buffer) else null;
 
     try self.scope.put(self.allocator, symbol.name.buffer, variable);
 
     if (variable.maybe_prefixed) |prefixed_name| symbol.name.buffer = prefixed_name;
 
     try self.air.instructions.append(self.allocator, .{ .variable = symbol });
-}
-
-fn analyzeExternal(self: *Sema, subsymbol: Sir.SubSymbol) Error!void {
-    const symbol = try self.analyzeSubSymbol(subsymbol);
-    if (self.scope.get(symbol.name.buffer) != null) return self.reportRedeclaration(symbol.name);
-
-    try self.scope.put(self.allocator, symbol.name.buffer, .{ .type = symbol.type, .linkage = symbol.linkage });
-
-    try self.air.instructions.append(self.allocator, .{ .external = symbol });
 }
 
 fn analyzeSet(self: *Sema, name: Name) Error!void {
