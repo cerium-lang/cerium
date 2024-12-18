@@ -1,11 +1,11 @@
 module std::runner::exe;
 
-import "std/os/linux/x86_64.cerm";
+import "std/process.cerm";
 
 import "root";
 
 export fn _start() {
     root::main();
 
-    std::os::linux::x86_64::exit(0);
+    std::process::exit(1);
 }

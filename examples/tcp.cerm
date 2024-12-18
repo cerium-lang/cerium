@@ -1,5 +1,6 @@
 module examples::fizz_buzz;
 
+import "std/process.cerm";
 import "std/os/linux/x86_64.cerm";
 
 type Server = struct {
@@ -12,7 +13,7 @@ fn Server::init(server *Server) {
     if (server.fd = std::os::linux::x86_64::socket(std::os::linux::x86_64::AF_INET, std::os::linux::x86_64::SOCK_STREAM, 0)) < 0 {
         print("failure\n");
 
-        std::os::linux::x86_64::exit(1);
+        std::process::exit(1);
     } else {    
         print("success\n");
     }
@@ -32,7 +33,7 @@ fn Server::init(server *Server) {
     if std::os::linux::x86_64::bind(server.fd, &address as usize, 16) != 0 {
         print("failure\n");
 
-        std::os::linux::x86_64::exit(1);
+        std::process::exit(1);
     } else {
         print("success\n");
     }
@@ -42,7 +43,7 @@ fn Server::init(server *Server) {
     if std::os::linux::x86_64::listen(server.fd, 5) != 0 {
         print("failure\n");
 
-        std::os::linux::x86_64::exit(1);
+        std::process::exit(1);
     } else {
         print("success\n");
     }
@@ -56,7 +57,7 @@ fn Server::accept(server Server, client *Client) {
     if (client.fd = std::os::linux::x86_64::accept(server.fd, &client.address as usize, &address_len as usize)) < 0 {
         print("failure\n");
 
-        std::os::linux::x86_64::exit(1);
+        std::process::exit(1);
     } else {    
         print("success\n");
     }
