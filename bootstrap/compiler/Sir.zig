@@ -418,9 +418,9 @@ pub const Parser = struct {
         _ = self.nextToken();
 
         if (self.peekToken().tag == .keyword_fn) {
-            try self.parseFunctionDeclaration(.external, false);
+            try self.parseFunctionDeclaration(.external, true);
         } else if (self.peekToken().tag == .keyword_var) {
-            try self.parseVariableDeclaration(.external, false);
+            try self.parseVariableDeclaration(.external, true);
         } else if (self.peekToken().tag == .keyword_const) {
             self.error_info = .{ .message = "'const' is declaring a compile time constant and cannot be used with 'extern'", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
 
@@ -436,9 +436,9 @@ pub const Parser = struct {
         _ = self.nextToken();
 
         if (self.peekToken().tag == .keyword_fn) {
-            try self.parseFunctionDeclaration(.global, false);
+            try self.parseFunctionDeclaration(.global, true);
         } else if (self.peekToken().tag == .keyword_var) {
-            try self.parseVariableDeclaration(.global, false);
+            try self.parseVariableDeclaration(.global, true);
         } else if (self.peekToken().tag == .keyword_const) {
             self.error_info = .{ .message = "'const' is declaring a compile time constant and cannot be used with 'export'", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
 
