@@ -94,6 +94,11 @@ pub const SubSymbol = struct {
     name: Name,
     subtype: SubType,
     linkage: Symbol.Linkage,
+
+    pub const MaybeExported = struct {
+        subsymbol: SubSymbol,
+        exported: bool,
+    };
 };
 
 pub const Instruction = union(enum) {
@@ -168,15 +173,15 @@ pub const Instruction = union(enum) {
     /// Import a module
     import: Name,
     /// Start a function
-    function: Function,
+    function: SubSymbol.MaybeExported,
     /// Declare function parameters
     parameters: []const SubSymbol,
     /// Declare a constant that is replaced at compile time and acts as a placeholder for a value
     constant: SubSymbol,
     /// Declare a variable that is only known at runtime and doesn't get replaced by the compiler
-    variable: Variable,
+    variable: SubSymbol.MaybeExported,
     /// Same as `variable` but the type is unknown at the point of declaration
-    variable_infer: Variable,
+    variable_infer: SubSymbol.MaybeExported,
     /// Same as `variable` but the variable is external
     external: SubSymbol,
     /// Declare a type alias
@@ -223,16 +228,6 @@ pub const Instruction = union(enum) {
     pub const Call = struct {
         arguments_count: usize,
         token_start: u32,
-    };
-
-    pub const Function = struct {
-        subsymbol: SubSymbol,
-        exported: bool,
-    };
-
-    pub const Variable = struct {
-        subsymbol: SubSymbol,
-        exported: bool,
     };
 
     pub const CondBr = struct {
@@ -356,9 +351,9 @@ pub const Parser = struct {
 
             .keyword_import => try self.parseImport(),
 
-            .keyword_fn => return self.parseFunctionDeclaration(.global, true),
+            .keyword_fn => return self.parseFunctionDeclaration(.global, false),
 
-            .keyword_const, .keyword_var => try self.parseVariableDeclaration(.global, true),
+            .keyword_const, .keyword_var => try self.parseVariableDeclaration(.global, false),
 
             .keyword_type => try self.parseTypeAlias(),
 
@@ -418,9 +413,9 @@ pub const Parser = struct {
         _ = self.nextToken();
 
         if (self.peekToken().tag == .keyword_fn) {
-            try self.parseFunctionDeclaration(.external, true);
+            try self.parseFunctionDeclaration(.external, false);
         } else if (self.peekToken().tag == .keyword_var) {
-            try self.parseVariableDeclaration(.external, true);
+            try self.parseVariableDeclaration(.external, false);
         } else if (self.peekToken().tag == .keyword_const) {
             self.error_info = .{ .message = "'const' is declaring a compile time constant and cannot be used with 'extern'", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
 

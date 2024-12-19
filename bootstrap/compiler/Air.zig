@@ -8,9 +8,18 @@ const std = @import("std");
 const Symbol = @import("Symbol.zig");
 const Type = Symbol.Type;
 
+const Air = @This();
+
+pub const SymbolMaybeExported = struct {
+    symbol: Symbol,
+    exported: bool,
+};
+
 instructions: std.ArrayListUnmanaged(Instruction) = .{},
 
 pub const Instruction = union(enum) {
+    /// No operation
+    nop,
     /// Duplicate the top of the stack
     duplicate,
     /// Reverse the stack into nth depth
@@ -70,9 +79,9 @@ pub const Instruction = union(enum) {
     /// Call a function pointer on top of the stack
     call: usize,
     /// Declare a function
-    function: Symbol,
+    function: SymbolMaybeExported,
     /// Declare a variable using the specified name and type
-    variable: Symbol,
+    variable: SymbolMaybeExported,
     /// Same as `variable` but the variable is external
     external: Symbol,
     /// Get a pointer to variable
@@ -119,4 +128,96 @@ pub const Instruction = union(enum) {
         case_block_ids: []const u32,
         else_block_id: u32,
     };
+};
+
+pub const passes = struct {
+    pub fn removeRedundantDeclarations(allocator: std.mem.Allocator, airs: []Air) std.mem.Allocator.Error!void {
+        var declarations: std.StringHashMapUnmanaged(struct { bool, []Air.Instruction }) = .{};
+        defer declarations.deinit(allocator);
+
+        for (airs) |air| {
+            var i: usize = 0;
+
+            while (i < air.instructions.items.len) : (i += 1) {
+                const air_instruction = air.instructions.items[i];
+
+                switch (air_instruction) {
+                    .function => |symbol_maybe_exported| {
+                        const start = i;
+                        var end = i + 1;
+
+                        var scope_depth: usize = 0;
+
+                        for (air.instructions.items[end..]) |function_instruction| {
+                            end += 1;
+                            i += 1;
+
+                            switch (function_instruction) {
+                                .start_scope => scope_depth += 1,
+                                .end_scope => {
+                                    scope_depth -= 1;
+                                    if (scope_depth == 0) break;
+                                },
+
+                                else => {},
+                            }
+                        }
+
+                        try declarations.put(
+                            allocator,
+                            symbol_maybe_exported.symbol.name.buffer,
+                            .{
+                                symbol_maybe_exported.exported,
+                                air.instructions.items[start..end],
+                            },
+                        );
+                    },
+
+                    .variable => |symbol_maybe_exported| {
+                        if (symbol_maybe_exported.symbol.linkage != .global) continue;
+
+                        const start = i - 1;
+                        const end = i + 1;
+
+                        try declarations.put(
+                            allocator,
+                            symbol_maybe_exported.symbol.name.buffer,
+                            .{
+                                symbol_maybe_exported.exported,
+                                air.instructions.items[start..end],
+                            },
+                        );
+                    },
+
+                    .external => |symbol| {
+                        const start = i;
+                        const end = i + 1;
+
+                        try declarations.put(allocator, symbol.name.buffer, .{ false, air.instructions.items[start..end] });
+                    },
+
+                    else => {},
+                }
+            }
+        }
+
+        for (airs) |air|
+            for (air.instructions.items) |air_instruction|
+                switch (air_instruction) {
+                    .get_variable_ptr => |name| _ = declarations.remove(name),
+
+                    else => {},
+                };
+
+        var declaration_iterator = declarations.valueIterator();
+
+        while (declaration_iterator.next()) |declaration| {
+            const exported, const air_instructions = declaration.*;
+
+            if (exported) continue;
+
+            for (air_instructions) |*air_instruction|
+                air_instruction.* = .nop;
+        }
+    }
 };

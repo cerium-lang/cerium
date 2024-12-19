@@ -392,7 +392,7 @@ pub fn analyze(self: *Sema, sir: Sir) Error!void {
     var externals: std.ArrayListUnmanaged(Sir.SubSymbol) = .{};
     defer externals.deinit(self.allocator);
 
-    var functions: std.ArrayListUnmanaged(struct { Sir.Instruction.Function, []const Sir.Instruction }) = .{};
+    var functions: std.ArrayListUnmanaged(struct { Sir.SubSymbol.MaybeExported, []const Sir.Instruction }) = .{};
     defer functions.deinit(self.allocator);
 
     var global_instructions: std.ArrayListUnmanaged(Sir.Instruction) = .{};
@@ -421,11 +421,11 @@ pub fn analyze(self: *Sema, sir: Sir) Error!void {
 
                 var scope_depth: usize = 0;
 
-                for (sir.instructions.items[start..]) |function_instruction| {
+                for (sir.instructions.items[start..]) |other_instruction| {
                     end += 1;
                     i += 1;
 
-                    switch (function_instruction) {
+                    switch (other_instruction) {
                         .start_scope => scope_depth += 1,
                         .end_scope => {
                             scope_depth -= 1;
@@ -587,9 +587,12 @@ pub fn analyze(self: *Sema, sir: Sir) Error!void {
 
         try self.air.instructions.append(self.allocator, .{
             .function = .{
-                .name = function.subsymbol.name,
-                .type = variable.type,
-                .linkage = variable.linkage,
+                .symbol = .{
+                    .name = function.subsymbol.name,
+                    .type = variable.type,
+                    .linkage = variable.linkage,
+                },
+                .exported = function.exported,
             },
         });
 
@@ -989,9 +992,12 @@ fn analyzeReference(self: *Sema) Error!void {
                 self.allocator,
                 .{
                     .variable = .{
-                        .name = .{ .buffer = anon_var_name, .token_start = 0 },
-                        .type = rhs_type,
-                        .linkage = .local,
+                        .symbol = .{
+                            .name = .{ .buffer = anon_var_name, .token_start = 0 },
+                            .type = rhs_type,
+                            .linkage = .local,
+                        },
+                        .exported = false,
                     },
                 },
             );
@@ -1010,9 +1016,12 @@ fn analyzeReference(self: *Sema) Error!void {
                 self.allocator,
                 .{
                     .variable = .{
-                        .name = .{ .buffer = anon_var_name, .token_start = 0 },
-                        .type = rhs_type,
-                        .linkage = .global,
+                        .symbol = .{
+                            .name = .{ .buffer = anon_var_name, .token_start = 0 },
+                            .type = rhs_type,
+                            .linkage = .global,
+                        },
+                        .exported = false,
                     },
                 },
             );
@@ -1470,8 +1479,8 @@ fn analyzeConstant(self: *Sema, subsymbol: Sir.SubSymbol) Error!void {
     try self.scope.put(self.allocator, symbol.name.buffer, variable);
 }
 
-fn analyzeVariable(self: *Sema, infer: bool, variable_instruction: Sir.Instruction.Variable) Error!void {
-    var symbol = try self.analyzeSubSymbol(variable_instruction.subsymbol);
+fn analyzeVariable(self: *Sema, infer: bool, subsymbol_maybe_exported: Sir.SubSymbol.MaybeExported) Error!void {
+    var symbol = try self.analyzeSubSymbol(subsymbol_maybe_exported.subsymbol);
     if (self.scope.get(symbol.name.buffer) != null) return self.reportRedeclaration(symbol.name);
 
     if (infer) {
@@ -1486,13 +1495,13 @@ fn analyzeVariable(self: *Sema, infer: bool, variable_instruction: Sir.Instructi
 
     var variable: Variable = .{ .type = symbol.type, .linkage = symbol.linkage };
 
-    variable.maybe_prefixed = if (!variable_instruction.exported) try prefix(self.allocator, self.module, symbol.name.buffer) else null;
+    variable.maybe_prefixed = if (!subsymbol_maybe_exported.exported) try prefix(self.allocator, self.module, symbol.name.buffer) else null;
 
     try self.scope.put(self.allocator, symbol.name.buffer, variable);
 
     if (variable.maybe_prefixed) |prefixed_name| symbol.name.buffer = prefixed_name;
 
-    try self.air.instructions.append(self.allocator, .{ .variable = symbol });
+    try self.air.instructions.append(self.allocator, .{ .variable = .{ .symbol = symbol, .exported = subsymbol_maybe_exported.exported } });
 }
 
 fn analyzeSet(self: *Sema, name: Name) Error!void {

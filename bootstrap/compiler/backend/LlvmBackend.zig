@@ -351,7 +351,9 @@ pub fn render(self: *LlvmBackend, airs: []const Air) Error!void {
     for (airs) |air| {
         for (air.instructions.items) |air_instruction| {
             switch (air_instruction) {
-                .function => |symbol| {
+                .function => |symbol_maybe_exported| {
+                    const symbol = symbol_maybe_exported.symbol;
+
                     if (self.scope.get(symbol.name.buffer) != null) continue;
 
                     const function_pointer = c.LLVMAddFunction(
@@ -500,6 +502,7 @@ fn renderInstruction(
     remainder_instructions: []const Air.Instruction,
 ) Error!void {
     switch (air_instruction) {
+        .nop => {},
         .duplicate => try self.stack.append(self.allocator, self.stack.getLast()),
         .reverse => |count| std.mem.reverse(Register, self.stack.items[self.stack.items.len - count ..]),
         .pop => _ = self.stack.pop(),
@@ -539,11 +542,11 @@ fn renderInstruction(
 
         .call => |arguments_count| try self.renderCall(arguments_count),
 
-        .function => |symbol| try self.renderFunction(symbol, remainder_instructions),
+        .function => |symbol_maybe_exported| try self.renderFunction(symbol_maybe_exported.symbol, remainder_instructions),
 
         .parameters => |symbols| try self.renderParameters(symbols),
 
-        .variable => |symbol| try self.renderVariable(symbol),
+        .variable => |symbol_maybe_exported| try self.renderVariable(symbol_maybe_exported.symbol),
         .external => |symbol| try self.renderExternal(symbol),
 
         .get_variable_ptr => |name| try self.renderGetVariablePtr(name),
@@ -1071,7 +1074,7 @@ fn renderVariable(self: *LlvmBackend, symbol: Symbol) Error!void {
 
     if (self.scope.get(symbol.name.buffer)) |variable| {
         // If the variable is an external variable that is already declared, this would happen if
-        // there is an `extern var x u8;` in a file and then a `var x u8 = 0;` in another file
+        // there is an `extern var x u8;` in a file and then an `export var x u8 = 0;` in another file
         if (variable.linkage == .external) {
             var register = self.stack.popOrNull() orelse Register{ .value = c.LLVMGetUndef(llvm_type), .type = symbol.type };
 
