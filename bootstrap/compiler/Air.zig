@@ -189,13 +189,6 @@ pub const passes = struct {
                         );
                     },
 
-                    .external => |symbol| {
-                        const start = i;
-                        const end = i + 1;
-
-                        try declarations.put(allocator, symbol.name.buffer, .{ false, air.instructions.items[start..end] });
-                    },
-
                     else => {},
                 }
             }
