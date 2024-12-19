@@ -132,7 +132,7 @@ pub const Instruction = union(enum) {
 
 pub const passes = struct {
     pub fn removeRedundantDeclarations(allocator: std.mem.Allocator, airs: []Air) std.mem.Allocator.Error!void {
-        var declarations: std.StringHashMapUnmanaged(struct { bool, []Air.Instruction }) = .{};
+        var declarations: std.StringHashMapUnmanaged([]Air.Instruction) = .{};
         defer declarations.deinit(allocator);
 
         for (airs) |air| {
@@ -163,18 +163,15 @@ pub const passes = struct {
                             }
                         }
 
-                        try declarations.put(
+                        if (!symbol_maybe_exported.exported) try declarations.put(
                             allocator,
                             symbol_maybe_exported.symbol.name.buffer,
-                            .{
-                                symbol_maybe_exported.exported,
-                                air.instructions.items[start..end],
-                            },
+                            air.instructions.items[start..end],
                         );
                     },
 
                     .variable => |symbol_maybe_exported| {
-                        if (symbol_maybe_exported.symbol.linkage != .global) continue;
+                        if (symbol_maybe_exported.symbol.linkage != .global or symbol_maybe_exported.exported) continue;
 
                         const start = i - 1;
                         const end = i + 1;
@@ -182,10 +179,7 @@ pub const passes = struct {
                         try declarations.put(
                             allocator,
                             symbol_maybe_exported.symbol.name.buffer,
-                            .{
-                                symbol_maybe_exported.exported,
-                                air.instructions.items[start..end],
-                            },
+                            air.instructions.items[start..end],
                         );
                     },
 
@@ -205,9 +199,7 @@ pub const passes = struct {
         var declaration_iterator = declarations.valueIterator();
 
         while (declaration_iterator.next()) |declaration| {
-            const exported, const air_instructions = declaration.*;
-
-            if (exported) continue;
+            const air_instructions = declaration.*;
 
             for (air_instructions) |*air_instruction|
                 air_instruction.* = .nop;
