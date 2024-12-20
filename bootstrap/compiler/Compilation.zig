@@ -139,14 +139,19 @@ pub fn analyze(self: Compilation, file: File, sir: Sir) ?[]Air {
         },
     };
 
-    inline for (0..5) |_|
-        Air.passes.removeRedundantDeclarations(self.allocator, sema.airs.items) catch |err| {
-            std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
+    const airs = sema.airs.toOwnedSlice(self.allocator) catch |err| {
+        std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
 
-            return null;
-        };
+        return null;
+    };
 
-    return sema.airs.items;
+    inline for (0..2) |_| Air.passes.redundancy.removeRedundantDeclarations(self.allocator, airs) catch |err| {
+        std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
+
+        return null;
+    };
+
+    return airs;
 }
 
 /// Emit to an object file or an assembly file

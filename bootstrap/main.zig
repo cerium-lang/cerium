@@ -459,9 +459,11 @@ pub const Cli = struct {
             .none => .{ .path = root_file_path, .buffer = root_file_buffer },
         };
 
-        const sir = compilation.parse(compilation_file) orelse return 1;
+        var sir = compilation.parse(compilation_file) orelse return 1;
 
         const airs = compilation.analyze(compilation_file, sir) orelse return 1;
+
+        sir.instructions.deinit(self.allocator);
 
         switch (output_kind) {
             .assembly => {
@@ -481,6 +483,8 @@ pub const Cli = struct {
 
                     return 1;
                 };
+
+                self.allocator.free(airs);
             },
 
             .object, .executable => {
@@ -500,6 +504,8 @@ pub const Cli = struct {
 
                     return 1;
                 };
+
+                self.allocator.free(airs);
 
                 if (output_kind == .executable) {
                     const linker_exit_code = compilation.link(

@@ -131,78 +131,122 @@ pub const Instruction = union(enum) {
 };
 
 pub const passes = struct {
-    pub fn removeRedundantDeclarations(allocator: std.mem.Allocator, airs: []Air) std.mem.Allocator.Error!void {
-        var declarations: std.StringHashMapUnmanaged([]Air.Instruction) = .{};
-        defer declarations.deinit(allocator);
+    pub const redundancy = struct {
+        const Function = struct {
+            exported: bool,
+            callers: usize = 0,
+            callees: std.StringArrayHashMapUnmanaged(void) = .{},
+            air_instructions: []Air.Instruction,
+        };
 
-        for (airs) |air| {
-            var i: usize = 0;
+        pub fn removeRedundantDeclarations(allocator: std.mem.Allocator, airs: []Air) std.mem.Allocator.Error!void {
+            var functions: std.StringArrayHashMapUnmanaged(Function) = .{};
 
-            while (i < air.instructions.items.len) : (i += 1) {
-                const air_instruction = air.instructions.items[i];
+            defer {
+                for (functions.values()) |*function|
+                    if (function.callers != 0)
+                        function.callees.deinit(allocator);
 
-                switch (air_instruction) {
-                    .function => |symbol_maybe_exported| {
-                        const start = i;
-                        var end = i + 1;
+                functions.deinit(allocator);
+            }
 
-                        var scope_depth: usize = 0;
+            var variables: std.StringArrayHashMapUnmanaged([]Air.Instruction) = .{};
+            defer variables.deinit(allocator);
 
-                        for (air.instructions.items[end..]) |function_instruction| {
-                            end += 1;
-                            i += 1;
+            for (airs) |air| {
+                var i: usize = 0;
 
-                            switch (function_instruction) {
-                                .start_scope => scope_depth += 1,
-                                .end_scope => {
-                                    scope_depth -= 1;
-                                    if (scope_depth == 0) break;
-                                },
+                while (i < air.instructions.items.len) : (i += 1) {
+                    const air_instruction = air.instructions.items[i];
 
-                                else => {},
+                    switch (air_instruction) {
+                        .function => |symbol_maybe_exported| {
+                            const start = i;
+                            var end = i + 1;
+
+                            var scope_depth: usize = 0;
+
+                            for (air.instructions.items[end..]) |function_instruction| {
+                                end += 1;
+                                i += 1;
+
+                                switch (function_instruction) {
+                                    .start_scope => scope_depth += 1,
+                                    .end_scope => {
+                                        scope_depth -= 1;
+                                        if (scope_depth == 0) break;
+                                    },
+
+                                    else => {},
+                                }
                             }
-                        }
 
-                        if (!symbol_maybe_exported.exported) try declarations.put(
-                            allocator,
-                            symbol_maybe_exported.symbol.name.buffer,
-                            air.instructions.items[start..end],
-                        );
-                    },
+                            try functions.put(allocator, symbol_maybe_exported.symbol.name.buffer, .{
+                                .exported = symbol_maybe_exported.exported,
+                                .air_instructions = air.instructions.items[start..end],
+                            });
+                        },
 
-                    .variable => |symbol_maybe_exported| {
-                        if (symbol_maybe_exported.symbol.linkage != .global or symbol_maybe_exported.exported) continue;
+                        .variable => |symbol_maybe_exported| {
+                            if (symbol_maybe_exported.symbol.linkage != .global or symbol_maybe_exported.exported) continue;
 
-                        const start = i - 1;
-                        const end = i + 1;
+                            const start = i - 1;
+                            const end = i + 1;
 
-                        try declarations.put(
-                            allocator,
-                            symbol_maybe_exported.symbol.name.buffer,
-                            air.instructions.items[start..end],
-                        );
-                    },
+                            try variables.put(
+                                allocator,
+                                symbol_maybe_exported.symbol.name.buffer,
+                                air.instructions.items[start..end],
+                            );
+                        },
 
-                    else => {},
+                        else => {},
+                    }
+                }
+            }
+
+            for (functions.values()) |*function|
+                for (function.air_instructions) |air_instruction|
+                    switch (air_instruction) {
+                        .get_variable_ptr => |name| {
+                            if (functions.getPtr(name)) |other_function| {
+                                other_function.callers += 1;
+                                try function.callees.put(allocator, name, {});
+                            } else {
+                                _ = variables.swapRemove(name);
+                            }
+                        },
+
+                        else => {},
+                    };
+
+            for (functions.values()) |*function|
+                checkRedundantFunction(allocator, &functions, function);
+
+            for (variables.values()) |air_instructions| {
+                for (air_instructions) |*air_instruction| {
+                    air_instruction.* = .nop;
                 }
             }
         }
 
-        for (airs) |air|
-            for (air.instructions.items) |air_instruction|
-                switch (air_instruction) {
-                    .get_variable_ptr => |name| _ = declarations.remove(name),
+        fn checkRedundantFunction(allocator: std.mem.Allocator, functions: *std.StringArrayHashMapUnmanaged(Function), function: *Function) void {
+            if (function.exported) return;
 
-                    else => {},
-                };
+            if (function.callers == 0) {
+                for (function.callees.keys()) |name| {
+                    const other_function = functions.getPtr(name).?;
 
-        var declaration_iterator = declarations.valueIterator();
+                    other_function.callers -= 1;
 
-        while (declaration_iterator.next()) |declaration| {
-            const air_instructions = declaration.*;
+                    checkRedundantFunction(allocator, functions, other_function);
+                }
 
-            for (air_instructions) |*air_instruction|
-                air_instruction.* = .nop;
+                function.callees.deinit(allocator);
+
+                for (function.air_instructions) |*air_instruction|
+                    air_instruction.* = .nop;
+            }
         }
-    }
+    };
 };

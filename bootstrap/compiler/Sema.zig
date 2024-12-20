@@ -358,6 +358,8 @@ fn import(self: *Sema, file_path: Name) Error!void {
         return error.ImportFailed;
     };
 
+    sir_parser.sir.instructions.deinit(self.allocator);
+
     // We should be in global scope if the semantic analysis was successful
     std.debug.assert(sema.scope.maybe_parent == null);
 
@@ -382,7 +384,7 @@ fn import(self: *Sema, file_path: Name) Error!void {
 
     try self.airs.appendSlice(self.allocator, sema.airs.items);
 
-    sema.airs.deinit(sema.allocator);
+    sema.airs.deinit(self.allocator);
 }
 
 pub fn analyze(self: *Sema, sir: Sir) Error!void {
