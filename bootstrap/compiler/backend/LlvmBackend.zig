@@ -1035,12 +1035,18 @@ fn renderFunction(self: *LlvmBackend, symbol: Symbol, remainder_instructions: []
     self.function_value = function_pointer;
     self.function_type = symbol.type.pointer.child_type.*;
 
+    var max_scope_depth: usize = 0;
     var scope_depth: usize = 0;
 
     for (remainder_instructions) |air_instruction| {
         switch (air_instruction) {
             .block => |id| try self.basic_blocks.put(self.allocator, id, c.LLVMAppendBasicBlock(function_pointer, "")),
-            .start_scope => scope_depth += 1,
+
+            .start_scope => {
+                scope_depth += 1;
+                max_scope_depth += 1;
+            },
+
             .end_scope => {
                 scope_depth -= 1;
                 if (scope_depth == 0) break;
@@ -1049,6 +1055,8 @@ fn renderFunction(self: *LlvmBackend, symbol: Symbol, remainder_instructions: []
             else => {},
         }
     }
+
+    try self.scopes.ensureTotalCapacity(self.allocator, max_scope_depth);
 }
 
 fn renderParameters(self: *LlvmBackend, symbols: []const Symbol) Error!void {

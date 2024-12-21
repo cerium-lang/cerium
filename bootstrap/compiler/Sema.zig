@@ -397,6 +397,8 @@ pub fn analyze(self: *Sema, sir: Sir) Error!void {
     var functions: std.ArrayListUnmanaged(struct { Sir.SubSymbol.MaybeExported, []const Sir.Instruction }) = .{};
     defer functions.deinit(self.allocator);
 
+    var max_scope_depth: usize = 0;
+
     var global_instructions: std.ArrayListUnmanaged(Sir.Instruction) = .{};
     defer global_instructions.deinit(self.allocator);
 
@@ -428,7 +430,11 @@ pub fn analyze(self: *Sema, sir: Sir) Error!void {
                     i += 1;
 
                     switch (other_instruction) {
-                        .start_scope => scope_depth += 1,
+                        .start_scope => {
+                            scope_depth += 1;
+                            max_scope_depth = @max(max_scope_depth, scope_depth);
+                        },
+
                         .end_scope => {
                             scope_depth -= 1;
                             if (scope_depth == 0) break;
@@ -579,6 +585,8 @@ pub fn analyze(self: *Sema, sir: Sir) Error!void {
     const functions_air = try self.airs.addOne(self.allocator);
     functions_air.* = .{};
     self.air = functions_air;
+
+    try self.scopes.ensureTotalCapacity(self.allocator, max_scope_depth);
 
     for (functions.items) |entry| {
         var function, const sir_instructions = entry;
