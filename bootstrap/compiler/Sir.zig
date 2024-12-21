@@ -434,6 +434,12 @@ pub const Parser = struct {
             try self.parseFunctionDeclaration(.global, true);
         } else if (self.peekToken().tag == .keyword_var) {
             try self.parseVariableDeclaration(.global, true);
+
+            if (!self.eatToken(.semicolon)) {
+                self.error_info = .{ .message = "expected a ';'", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
+
+                return error.UnexpectedToken;
+            }
         } else if (self.peekToken().tag == .keyword_const) {
             self.error_info = .{ .message = "'const' is declaring a compile time constant and cannot be used with 'export'", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
 
