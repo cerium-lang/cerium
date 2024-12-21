@@ -11,7 +11,7 @@ module examples::xlib;
 
 import "std/c.cerm";
 
-fn main() u8 {
+export fn main() u8 {
     var display = XOpenDisplay(0 as [*]const u8);
 
     if (display as usize == 0) {

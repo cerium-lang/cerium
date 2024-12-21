@@ -118,14 +118,14 @@ fn graph() {
     }
 }
 
-fn main() u8 {
+export fn main() u8 {
     InitWindow(800, 600, "Raylib Example");
 
 
     while !WindowShouldClose() {
         BeginDrawing();
 
-        // noise();
+        noise();
         // graph();
 
         EndDrawing();

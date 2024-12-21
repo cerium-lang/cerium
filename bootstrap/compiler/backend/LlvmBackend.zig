@@ -362,6 +362,14 @@ pub fn render(self: *LlvmBackend, airs: []const Air) Error!void {
                         try self.getLlvmType(symbol.type.pointer.child_type.*),
                     );
 
+                    c.LLVMSetLinkage(
+                        function_pointer,
+                        if (symbol_maybe_exported.exported)
+                            c.LLVMExternalLinkage
+                        else
+                            c.LLVMPrivateLinkage,
+                    );
+
                     try self.scope.put(
                         self.allocator,
                         symbol.name.buffer,
@@ -546,7 +554,7 @@ fn renderInstruction(
 
         .parameters => |symbols| try self.renderParameters(symbols),
 
-        .variable => |symbol_maybe_exported| try self.renderVariable(symbol_maybe_exported.symbol),
+        .variable => |symbol_maybe_exported| try self.renderVariable(symbol_maybe_exported),
         .external => |symbol| try self.renderExternal(symbol),
 
         .get_variable_ptr => |name| try self.renderGetVariablePtr(name),
@@ -1077,7 +1085,9 @@ fn renderParameters(self: *LlvmBackend, symbols: []const Symbol) Error!void {
     }
 }
 
-fn renderVariable(self: *LlvmBackend, symbol: Symbol) Error!void {
+fn renderVariable(self: *LlvmBackend, symbol_maybe_exported: Air.SymbolMaybeExported) Error!void {
+    const symbol = symbol_maybe_exported.symbol;
+
     const llvm_type = try self.getLlvmType(symbol.type);
 
     if (self.scope.get(symbol.name.buffer)) |variable| {
@@ -1100,6 +1110,14 @@ fn renderVariable(self: *LlvmBackend, symbol: Symbol) Error!void {
                 self.module,
                 llvm_type,
                 try self.allocator.dupeZ(u8, symbol.name.buffer),
+            );
+
+            c.LLVMSetLinkage(
+                global_variable_pointer,
+                if (symbol_maybe_exported.exported)
+                    c.LLVMExternalLinkage
+                else
+                    c.LLVMPrivateLinkage,
             );
 
             var register = self.stack.popOrNull() orelse Register{ .value = c.LLVMGetUndef(llvm_type), .type = symbol.type };
@@ -1159,7 +1177,6 @@ fn renderExternal(self: *LlvmBackend, symbol: Symbol) Error!void {
         );
 
     c.LLVMSetLinkage(pointer, c.LLVMExternalLinkage);
-    c.LLVMSetVisibility(pointer, c.LLVMDefaultVisibility);
 
     try self.scope.put(
         self.allocator,
