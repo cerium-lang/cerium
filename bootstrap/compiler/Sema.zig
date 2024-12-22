@@ -218,8 +218,9 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
     {
         const builtin_target_os = @intFromEnum(self.compilation.env.target.os.tag);
         const builtin_target_arch = @intFromEnum(self.compilation.env.target.cpu.arch);
+        const builtin_target_abi = @intFromEnum(self.compilation.env.target.abi);
 
-        inline for (.{ "builtin::target::os", "builtin::target::arch" }, .{ builtin_target_os, builtin_target_arch }) |builtin_name, builtin_value| {
+        inline for (.{ "builtin::target::os", "builtin::target::arch", "builtin::target::abi" }, .{ builtin_target_os, builtin_target_arch, builtin_target_abi }) |builtin_name, builtin_value| {
             self.scope.putAssumeCapacity(builtin_name, .{
                 .type = Type.intFittingRange(builtin_value, builtin_value),
                 .linkage = .global,

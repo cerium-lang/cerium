@@ -1,0 +1,181 @@
+module std::target;
+
+type Os = enum {
+    freestanding,
+    other,
+
+    contiki,
+    elfiamcu,
+    fuchsia,
+    hermit,
+
+    aix,
+    haiku,
+    hurd,
+    linux,
+    plan9,
+    rtems,
+    serenity,
+    zos,
+
+    dragonfly,
+    freebsd,
+    netbsd,
+    openbsd,
+
+    bridgeos,
+    driverkit,
+    ios,
+    macos,
+    tvos,
+    visionos,
+    watchos,
+
+    illumos,
+    solaris,
+
+    windows,
+    uefi,
+
+    ps3,
+    ps4,
+    ps5,
+
+    emscripten,
+    wasi,
+
+    amdhsa,
+    amdpal,
+    cuda,
+    mesa3d,
+    nvcl,
+    opencl,
+    opengl,
+    vulkan,
+
+    // LLVM tags deliberately omitted:
+    // - darwin
+    // - kfreebsd
+    // - nacl
+    // - shadermodel
+};
+
+type Cpu::Arch = enum {
+    amdgcn,
+    arc,
+    arm,
+    armeb,
+    thumb,
+    thumbeb,
+    aarch64,
+    aarch64_be,
+    avr,
+    bpfel,
+    bpfeb,
+    csky,
+    hexagon,
+    kalimba,
+    lanai,
+    loongarch32,
+    loongarch64,
+    m68k,
+    mips,
+    mipsel,
+    mips64,
+    mips64el,
+    msp430,
+    nvptx,
+    nvptx64,
+    powerpc,
+    powerpcle,
+    powerpc64,
+    powerpc64le,
+    propeller1,
+    propeller2,
+    riscv32,
+    riscv64,
+    s390x,
+    sparc,
+    sparc64,
+    spirv,
+    spirv32,
+    spirv64,
+    spu_2,
+    ve,
+    wasm32,
+    wasm64,
+    x86,
+    x86_64,
+    xcore,
+    xtensa,
+
+    // LLVM tags deliberately omitted:
+    // - aarch64_32
+    // - amdil
+    // - amdil64
+    // - dxil
+    // - le32
+    // - le64
+    // - r600
+    // - hsail
+    // - hsail64
+    // - renderscript32
+    // - renderscript64
+    // - shave
+    // - sparcel
+    // - spir
+    // - spir64
+    // - tce
+    // - tcele
+};
+
+type Abi = enum {
+    none,
+    gnu,
+    gnuabin32,
+    gnuabi64,
+    gnueabi,
+    gnueabihf,
+    gnuf32,
+    gnusf,
+    gnux32,
+    gnuilp32,
+    code16,
+    eabi,
+    eabihf,
+    ilp32,
+    android,
+    androideabi,
+    musl,
+    muslabin32,
+    muslabi64,
+    musleabi,
+    musleabihf,
+    muslx32,
+    msvc,
+    itanium,
+    cygnus,
+    simulator,
+    macabi,
+    ohos,
+    ohoseabi,
+
+    // LLVM tags deliberately omitted:
+    // - amplification
+    // - anyhit
+    // - callable
+    // - closesthit
+    // - compute
+    // - coreclr
+    // - domain
+    // - geometry
+    // - gnuf64
+    // - hull
+    // - intersection
+    // - library
+    // - mesh
+    // - miss
+    // - pixel
+    // - raygeneration
+    // - vertex
+};
