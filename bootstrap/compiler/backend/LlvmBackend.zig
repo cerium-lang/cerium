@@ -367,7 +367,7 @@ pub fn render(self: *LlvmBackend, airs: []const Air) Error!void {
                         if (symbol_maybe_exported.exported)
                             c.LLVMExternalLinkage
                         else
-                            c.LLVMPrivateLinkage,
+                            c.LLVMInternalLinkage,
                     );
 
                     try self.scope.put(
@@ -1117,7 +1117,7 @@ fn renderVariable(self: *LlvmBackend, symbol_maybe_exported: Air.SymbolMaybeExpo
                 if (symbol_maybe_exported.exported)
                     c.LLVMExternalLinkage
                 else
-                    c.LLVMPrivateLinkage,
+                    c.LLVMInternalLinkage,
             );
 
             var register = self.stack.popOrNull() orelse Register{ .value = c.LLVMGetUndef(llvm_type), .type = symbol.type };
