@@ -86,13 +86,6 @@ fn write(fd s32, bufferptr usize, count usize) usize {
 const AF_INET = 2;
 const SOCK_STREAM = 1;
 
-type sockaddr_in = struct {
-   sin_family u16,
-   sin_port u16,
-   sin_addr u32,
-   sin_zero u64,
-};
-
 fn socket(domain u32, type_ u32, protocol u32) s32 {
     return (&(syscall3(SYS::socket, domain, type_, protocol) as u32) as *s32).*;
 }
@@ -105,12 +98,28 @@ fn setsockopt(fd s32, level u32, optname u32, optvalptr usize, optlen usize) voi
     syscall5(SYS::setsockopt, (&fd as *u32).* as usize, level, optname, optvalptr, optlen);
 }
 
-fn accept(fd s32, addrptr usize, addrlenptr usize) s32 {
-    return (&(syscall4(SYS::accept, (&fd as *u32).* as usize, addrptr, addrlenptr, 0) as u32) as *s32).*;
+type sa_family_t = u16;
+type in_port_t = u16;
+type socklen_t = u32;
+
+type sockaddr = struct {
+   family sa_family_t,
+   data [14]u8,
+};
+
+type sockaddr::in = struct {
+    family sa_family_t,
+    port in_port_t,
+    addr u32,
+    zero [8]u8,
+};
+
+fn accept(fd s32, addrptr *sockaddr, addrlenptr *socklen_t) s32 {
+    return (&(syscall4(SYS::accept, (&fd as *u32).* as usize, addrptr as usize, addrlenptr as usize, 0) as u32) as *s32).*;
 }
 
-fn bind(fd s32, addrptr usize, addrlen u32) usize {
-    return syscall3(SYS::bind, (&fd as *u32).* as usize, addrptr, addrlen as usize);
+fn bind(fd s32, addrptr *const sockaddr, addrlen socklen_t) usize {
+    return syscall3(SYS::bind, (&fd as *u32).* as usize, addrptr as usize, addrlen as usize);
 }
 
 fn listen(fd s32, backlog u32) usize {

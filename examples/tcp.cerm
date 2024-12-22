@@ -22,15 +22,15 @@ fn Server::init(server *Server) {
     std::os::linux::x86_64::setsockopt(server.fd, std::os::linux::x86_64::SOL_SOCKET, std::os::linux::x86_64::SO_REUSEADDR, &optlevel as usize, 4);
     std::os::linux::x86_64::setsockopt(server.fd, std::os::linux::x86_64::SOL_SOCKET, std::os::linux::x86_64::SO_REUSEPORT, &optlevel as usize, 4);
 
-    var address std::os::linux::x86_64::sockaddr_in;
-    address.sin_family = std::os::linux::x86_64::AF_INET;
-    address.sin_port = 0x901f;
-    address.sin_addr = 0;
-    address.sin_zero = 0;
+    var address std::os::linux::x86_64::sockaddr::in;
+    address.family = std::os::linux::x86_64::AF_INET;
+    address.port = 0x901f;
+    address.addr = 0;
+    (&address.zero as *u64).* = 0;
 
     print("binding.. ");
 
-    if std::os::linux::x86_64::bind(server.fd, &address as usize, 16) != 0 {
+    if std::os::linux::x86_64::bind(server.fd, &address as *std::os::linux::x86_64::sockaddr, 16) != 0 {
         print("failure\n");
 
         std::process::exit(1);
@@ -49,12 +49,17 @@ fn Server::init(server *Server) {
     }
 }
 
+type Client = struct {
+    fd s32,
+    address std::os::linux::x86_64::sockaddr,
+};
+
 fn Server::accept(server Server, client *Client) {
-    var address_len u32;
+    var address_len std::os::linux::x86_64::socklen_t;
 
     print("accepting request.. ");
 
-    if (client.fd = std::os::linux::x86_64::accept(server.fd, &client.address as usize, &address_len as usize)) < 0 {
+    if (client.fd = std::os::linux::x86_64::accept(server.fd, &client.address, &address_len)) < 0 {
         print("failure\n");
 
         std::process::exit(1);
@@ -62,11 +67,6 @@ fn Server::accept(server Server, client *Client) {
         print("success\n");
     }
 }
-
-type Client = struct {
-    fd s32,
-    address std::os::linux::x86_64::sockaddr_in,
-};
 
 fn Client::close(client Client) {
     std::os::linux::x86_64::close(client.fd);
