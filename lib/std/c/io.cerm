@@ -1,0 +1,3 @@
+module std::c;
+
+extern fn printf(format [*]const u8, ...);

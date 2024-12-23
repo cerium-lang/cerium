@@ -9,7 +9,9 @@
 
 module examples::xlib;
 
-import "std/c.cerm";
+import "std/c/io.cerm";
+import "std/c/time.cerm";
+import "std/c/random.cerm";
 
 export fn main() u8 {
     var display = XOpenDisplay(0 as [*]const u8);
