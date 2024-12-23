@@ -249,7 +249,21 @@ pub const Type = union(enum) {
                 try writer.writeAll("struct { ");
 
                 for (@"struct".fields, 0..) |field, i| {
-                    const recursive = field.type == .pointer and field.type.pointer.child_type.eql(self);
+                    var recursive = false;
+
+                    if (field.type.getPointer()) |pointer| {
+                        if (pointer.child_type.getStruct()) |child_struct| {
+                            for (child_struct.fields) |child_field|
+                                if ((child_field.type == .pointer and child_field.type.pointer.child_type.eql(self)) or
+                                    child_field.type.eql(self))
+                                {
+                                    recursive = true;
+                                    break;
+                                };
+                        } else if (pointer.child_type.eql(self)) {
+                            recursive = true;
+                        }
+                    }
 
                     if (recursive) {
                         try writer.print("{s} ", .{field.name});
