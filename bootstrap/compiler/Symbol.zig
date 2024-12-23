@@ -249,7 +249,27 @@ pub const Type = union(enum) {
                 try writer.writeAll("struct { ");
 
                 for (@"struct".fields, 0..) |field, i| {
-                    try writer.print("{s} {}", .{ field.name, field.type });
+                    const recursive = field.type == .pointer and field.type.pointer.child_type.eql(self);
+
+                    if (recursive) {
+                        try writer.print("{s} ", .{field.name});
+
+                        const pointer = field.type.pointer;
+
+                        if (pointer.size == .one) {
+                            try writer.writeAll("*");
+                        } else if (pointer.size == .many) {
+                            try writer.writeAll("[*]");
+                        }
+
+                        if (pointer.is_const) {
+                            try writer.writeAll("const ");
+                        }
+
+                        try writer.writeAll("{...}");
+                    } else {
+                        try writer.print("{s} {}", .{ field.name, field.type });
+                    }
 
                     if (i < @"struct".fields.len - 1) {
                         try writer.writeAll(", ");
@@ -287,8 +307,17 @@ pub const Type = union(enum) {
 
             if (@"struct".fields.len != other_struct.fields.len) return false;
 
-            for (@"struct".fields, other_struct.fields) |field, other_field|
+            for (@"struct".fields, other_struct.fields) |field, other_field| {
+                if (field.type.getPointer()) |pointer|
+                    if (other_field.type.getPointer()) |other_pointer| {
+                        if (pointer.child_type == other_pointer.child_type)
+                            continue;
+                    } else {
+                        return false;
+                    };
+
                 if (!field.type.eql(other_field.type)) return false;
+            }
 
             return true;
         } else {
