@@ -244,6 +244,16 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
     }
 }
 
+pub fn analyze(self: *Sema, sir: Sir) Error!void {
+    var collection = try self.collect(sir);
+    defer collection.deinit(self.allocator);
+
+    try self.analyzeTypeAliases(&collection);
+    try self.analyzeGlobalInstructions(collection);
+    try self.analyzeExternals(collection);
+    try self.analyzeFunctions(collection);
+}
+
 fn import(self: *Sema, file_path: Name) Error!void {
     const import_root = std.mem.eql(u8, file_path.buffer, "root");
 
@@ -388,22 +398,30 @@ fn import(self: *Sema, file_path: Name) Error!void {
     sema.airs.deinit(self.allocator);
 }
 
-pub fn analyze(self: *Sema, sir: Sir) Error!void {
-    var type_aliases: std.StringHashMapUnmanaged(Sir.SubSymbol) = .{};
-    defer type_aliases.deinit(self.allocator);
+const Collection = struct {
+    type_aliases: std.StringHashMapUnmanaged(Sir.SubSymbol) = .{},
+    externals: std.ArrayListUnmanaged(Sir.SubSymbol) = .{},
+    functions: std.ArrayListUnmanaged(FunctionEntry) = .{},
+    global_instructions: std.ArrayListUnmanaged(Sir.Instruction) = .{},
+    max_scope_depth: usize = 0,
 
-    var externals: std.ArrayListUnmanaged(Sir.SubSymbol) = .{};
-    defer externals.deinit(self.allocator);
+    const FunctionEntry = struct {
+        Sir.SubSymbol.MaybeExported,
+        []const Sir.Instruction,
+    };
 
-    var functions: std.ArrayListUnmanaged(struct { Sir.SubSymbol.MaybeExported, []const Sir.Instruction }) = .{};
-    defer functions.deinit(self.allocator);
+    fn deinit(self: *Collection, allocator: std.mem.Allocator) void {
+        self.type_aliases.deinit(allocator);
+        self.externals.deinit(allocator);
+        self.functions.deinit(allocator);
+        self.global_instructions.deinit(allocator);
+    }
+};
 
-    var max_scope_depth: usize = 0;
+pub fn collect(self: *Sema, sir: Sir) Error!Collection {
+    var collection: Collection = .{};
 
-    var global_instructions: std.ArrayListUnmanaged(Sir.Instruction) = .{};
-    defer global_instructions.deinit(self.allocator);
-
-    try global_instructions.ensureTotalCapacity(self.allocator, sir.instructions.items.len);
+    try collection.global_instructions.ensureTotalCapacity(self.allocator, sir.instructions.items.len);
 
     var maybe_module: ?[]const u8 = null;
 
@@ -414,11 +432,11 @@ pub fn analyze(self: *Sema, sir: Sir) Error!void {
 
         switch (sir_instruction) {
             .type_alias => |subsymbol| {
-                if (type_aliases.get(subsymbol.name.buffer) != null) return self.reportRedeclaration(subsymbol.name);
-                try type_aliases.put(self.allocator, subsymbol.name.buffer, subsymbol);
+                if (collection.type_aliases.get(subsymbol.name.buffer) != null) try self.reportRedeclaration(subsymbol.name);
+                try collection.type_aliases.put(self.allocator, subsymbol.name.buffer, subsymbol);
             },
 
-            .external => |subsymbol| try externals.append(self.allocator, subsymbol),
+            .external => |subsymbol| try collection.externals.append(self.allocator, subsymbol),
 
             .function => |function| {
                 const start = i + 1;
@@ -433,7 +451,7 @@ pub fn analyze(self: *Sema, sir: Sir) Error!void {
                     switch (other_instruction) {
                         .start_scope => {
                             scope_depth += 1;
-                            max_scope_depth = @max(max_scope_depth, scope_depth);
+                            collection.max_scope_depth += 1;
                         },
 
                         .end_scope => {
@@ -445,7 +463,7 @@ pub fn analyze(self: *Sema, sir: Sir) Error!void {
                     }
                 }
 
-                try functions.append(self.allocator, .{ function, sir.instructions.items[start..end] });
+                try collection.functions.append(self.allocator, .{ function, sir.instructions.items[start..end] });
             },
 
             .module => |name| {
@@ -460,7 +478,7 @@ pub fn analyze(self: *Sema, sir: Sir) Error!void {
 
             .import => |file_path| try self.import(file_path),
 
-            else => global_instructions.appendAssumeCapacity(sir_instruction),
+            else => collection.global_instructions.appendAssumeCapacity(sir_instruction),
         }
     }
 
@@ -470,94 +488,99 @@ pub fn analyze(self: *Sema, sir: Sir) Error!void {
         return error.UnnamedModule;
     };
 
-    {
-        var type_alias_iterator = type_aliases.valueIterator();
+    return collection;
+}
 
-        // First Type Alias Pass: put type aliases in scope
-        while (type_alias_iterator.next()) |type_alias| {
-            if (self.scope.get(type_alias.name.buffer) != null) return self.reportRedeclaration(type_alias.name);
-            try self.scope.put(self.allocator, type_alias.name.buffer, .{
-                .type = .void,
+pub fn analyzeTypeAliases(self: *Sema, collection: *Collection) Error!void {
+    var type_alias_iterator = collection.type_aliases.valueIterator();
+
+    // First Type Alias Pass: put type aliases in scope
+    while (type_alias_iterator.next()) |type_alias| {
+        if (self.scope.get(type_alias.name.buffer) != null) try self.reportRedeclaration(type_alias.name);
+        try self.scope.put(self.allocator, type_alias.name.buffer, .{
+            .type = .void,
+            .linkage = type_alias.linkage,
+            .is_type_alias = true,
+        });
+    }
+
+    type_alias_iterator = collection.type_aliases.valueIterator();
+
+    // Second Type Alias Pass: analyze type aliases that don't point to others
+    while (type_alias_iterator.next()) |type_alias| {
+        if (type_alias.subtype == .@"enum" or
+            checkTypeAliasPointsToOthers(type_alias.subtype, &collection.type_aliases)) continue;
+
+        try self.checkTypeAliasCircular(type_alias.name, type_alias.subtype, &collection.type_aliases);
+
+        const variable = self.scope.getPtr(type_alias.name.buffer).?;
+        variable.type = try self.analyzeSubType(type_alias.subtype);
+        variable.linkage = type_alias.linkage;
+    }
+
+    type_alias_iterator = collection.type_aliases.valueIterator();
+
+    // Third Type Alias Pass: analyze enums
+    while (type_alias_iterator.next()) |type_alias| {
+        if (type_alias.subtype != .@"enum") continue;
+
+        try self.checkTypeAliasCircular(type_alias.name, type_alias.subtype, &collection.type_aliases);
+
+        const @"enum" = type_alias.subtype.@"enum";
+        const enum_type = try self.analyzeSubType(@"enum".subtype.*);
+
+        try self.checkIntType(enum_type, @"enum".token_start);
+
+        for (@"enum".fields) |field| {
+            const enum_field_value: Value = .{ .int = field.value };
+
+            try self.checkUnaryImplicitCast(enum_field_value, enum_type, field.name.token_start);
+
+            const enum_field_entry = try std.mem.concat(self.allocator, u8, &.{ type_alias.name.buffer, "::", field.name.buffer });
+
+            if (self.scope.get(enum_field_entry) != null)
+                try self.reportRedeclaration(.{ .buffer = enum_field_entry, .token_start = field.name.token_start });
+
+            try self.scope.put(self.allocator, enum_field_entry, .{
+                .type = enum_type,
                 .linkage = type_alias.linkage,
-                .is_type_alias = true,
+                .maybe_value = enum_field_value,
+                .is_const = true,
+                .is_comptime = true,
             });
         }
 
-        type_alias_iterator = type_aliases.valueIterator();
-
-        // Second Type Alias Pass: analyze type aliases that don't point to others
-        while (type_alias_iterator.next()) |type_alias| {
-            if (type_alias.subtype == .@"enum" or
-                checkTypeAliasPointsToOthers(type_alias.subtype, &type_aliases)) continue;
-
-            try self.checkTypeAliasCircular(type_alias.name, type_alias.subtype, &type_aliases);
-
-            const variable = self.scope.getPtr(type_alias.name.buffer).?;
-            variable.type = try self.analyzeSubType(type_alias.subtype);
-            variable.linkage = type_alias.linkage;
-        }
-
-        type_alias_iterator = type_aliases.valueIterator();
-
-        // Third Type Alias Pass: analyze enums
-        while (type_alias_iterator.next()) |type_alias| {
-            if (type_alias.subtype != .@"enum") continue;
-
-            try self.checkTypeAliasCircular(type_alias.name, type_alias.subtype, &type_aliases);
-
-            const @"enum" = type_alias.subtype.@"enum";
-            const enum_type = try self.analyzeSubType(@"enum".subtype.*);
-
-            try self.checkIntType(enum_type, @"enum".token_start);
-
-            for (@"enum".fields) |field| {
-                const enum_field_value: Value = .{ .int = field.value };
-
-                try self.checkUnaryImplicitCast(enum_field_value, enum_type, field.name.token_start);
-
-                const enum_field_entry = try std.mem.concat(self.allocator, u8, &.{ type_alias.name.buffer, "::", field.name.buffer });
-
-                if (self.scope.get(enum_field_entry) != null)
-                    return self.reportRedeclaration(.{ .buffer = enum_field_entry, .token_start = field.name.token_start });
-
-                try self.scope.put(self.allocator, enum_field_entry, .{
-                    .type = enum_type,
-                    .linkage = type_alias.linkage,
-                    .maybe_value = enum_field_value,
-                    .is_const = true,
-                    .is_comptime = true,
-                });
-            }
-
-            const variable = self.scope.getPtr(type_alias.name.buffer).?;
-            variable.type = enum_type;
-            variable.linkage = type_alias.linkage;
-        }
-
-        type_alias_iterator = type_aliases.valueIterator();
-
-        // Fourth Type Alias Pass: analyze type aliases that isn't an enum
-        while (type_alias_iterator.next()) |type_alias| {
-            if (type_alias.subtype == .@"enum") continue;
-
-            try self.checkTypeAliasCircular(type_alias.name, type_alias.subtype, &type_aliases);
-
-            const variable = self.scope.getPtr(type_alias.name.buffer).?;
-            variable.type = try self.analyzeSubType(type_alias.subtype);
-            variable.linkage = type_alias.linkage;
-        }
+        const variable = self.scope.getPtr(type_alias.name.buffer).?;
+        variable.type = enum_type;
+        variable.linkage = type_alias.linkage;
     }
 
+    type_alias_iterator = collection.type_aliases.valueIterator();
+
+    // Fourth Type Alias Pass: analyze type aliases that isn't an enum
+    while (type_alias_iterator.next()) |type_alias| {
+        if (type_alias.subtype == .@"enum") continue;
+
+        try self.checkTypeAliasCircular(type_alias.name, type_alias.subtype, &collection.type_aliases);
+
+        const variable = self.scope.getPtr(type_alias.name.buffer).?;
+        variable.type = try self.analyzeSubType(type_alias.subtype);
+        variable.linkage = type_alias.linkage;
+    }
+}
+
+fn analyzeGlobalInstructions(self: *Sema, collection: Collection) Error!void {
     const global_air = try self.airs.addOne(self.allocator);
     global_air.* = .{};
     self.air = global_air;
 
-    for (global_instructions.items) |global_instruction| {
+    for (collection.global_instructions.items) |global_instruction|
         try self.analyzeInstruction(global_instruction);
-    }
+}
 
-    for (externals.items) |external| {
-        if (self.scope.get(external.name.buffer) != null) return self.reportRedeclaration(external.name);
+fn analyzeExternals(self: *Sema, collection: Collection) Error!void {
+    for (collection.externals.items) |external| {
+        if (self.scope.get(external.name.buffer) != null) try self.reportRedeclaration(external.name);
 
         const symbol = try self.analyzeSubSymbol(external);
 
@@ -568,11 +591,13 @@ pub fn analyze(self: *Sema, sir: Sir) Error!void {
 
         try self.air.instructions.append(self.allocator, .{ .external = symbol });
     }
+}
 
-    for (functions.items) |entry| {
+fn analyzeFunctions(self: *Sema, collection: Collection) Error!void {
+    for (collection.functions.items) |entry| {
         const function, _ = entry;
 
-        if (self.scope.get(function.subsymbol.name.buffer) != null) return self.reportRedeclaration(function.subsymbol.name);
+        if (self.scope.get(function.subsymbol.name.buffer) != null) try self.reportRedeclaration(function.subsymbol.name);
 
         const symbol = try self.analyzeSubSymbol(function.subsymbol);
 
@@ -587,9 +612,9 @@ pub fn analyze(self: *Sema, sir: Sir) Error!void {
     functions_air.* = .{};
     self.air = functions_air;
 
-    try self.scopes.ensureTotalCapacity(self.allocator, max_scope_depth);
+    try self.scopes.ensureTotalCapacity(self.allocator, collection.max_scope_depth);
 
-    for (functions.items) |entry| {
+    for (collection.functions.items) |entry| {
         var function, const sir_instructions = entry;
 
         const variable = self.scope.get(function.subsymbol.name.buffer).?;
@@ -870,7 +895,7 @@ fn analyzeWrite(self: *Sema, token_start: u32) Error!void {
     const lhs = self.stack.pop();
     const lhs_type = lhs.getType();
 
-    const lhs_pointer = lhs_type.getPointer() orelse return self.reportNotPointer(lhs_type, token_start);
+    const lhs_pointer = lhs_type.getPointer() orelse try self.reportNotPointer(lhs_type, token_start);
 
     const rhs = self.stack.pop();
 
@@ -889,7 +914,7 @@ fn analyzeRead(self: *Sema, token_start: u32) Error!void {
     const rhs = self.stack.pop();
     const rhs_type = rhs.getType();
 
-    const rhs_pointer = rhs_type.getPointer() orelse return self.reportNotPointer(rhs_type, token_start);
+    const rhs_pointer = rhs_type.getPointer() orelse try self.reportNotPointer(rhs_type, token_start);
 
     if (rhs_pointer.child_type.* == .function) {
         self.error_info = .{ .message = "cannot read from a function pointer, it can only be called", .source_loc = SourceLoc.find(self.file.buffer, token_start) };
@@ -909,7 +934,7 @@ fn analyzePreElement(self: *Sema, token_start: u32) Error!void {
     if (lhs_type == .array) {
         return self.analyzeReference();
     } else if (lhs_type == .pointer and lhs_type.pointer.size != .many and lhs_type.pointer.child_type.* != .array) {
-        return self.reportNotIndexable(lhs_type, token_start);
+        try self.reportNotIndexable(lhs_type, token_start);
     }
 }
 
@@ -1453,7 +1478,7 @@ fn analyzeParameters(self: *Sema, subsymbols: []const Sir.SubSymbol) Error!void 
 
     for (subsymbols) |subsymbol| {
         const symbol = try self.analyzeSubSymbol(subsymbol);
-        if (self.scope.get(symbol.name.buffer) != null) return self.reportRedeclaration(symbol.name);
+        if (self.scope.get(symbol.name.buffer) != null) try self.reportRedeclaration(symbol.name);
 
         symbols.appendAssumeCapacity(symbol);
 
@@ -1468,7 +1493,7 @@ fn analyzeParameters(self: *Sema, subsymbols: []const Sir.SubSymbol) Error!void 
 
 fn analyzeConstant(self: *Sema, subsymbol: Sir.SubSymbol) Error!void {
     const symbol = try self.analyzeSubSymbol(subsymbol);
-    if (self.scope.get(symbol.name.buffer) != null) return self.reportRedeclaration(symbol.name);
+    if (self.scope.get(symbol.name.buffer) != null) try self.reportRedeclaration(symbol.name);
 
     var variable: Variable = .{
         .type = symbol.type,
@@ -1492,7 +1517,7 @@ fn analyzeConstant(self: *Sema, subsymbol: Sir.SubSymbol) Error!void {
 
 fn analyzeVariable(self: *Sema, infer: bool, subsymbol_maybe_exported: Sir.SubSymbol.MaybeExported) Error!void {
     var symbol = try self.analyzeSubSymbol(subsymbol_maybe_exported.subsymbol);
-    if (self.scope.get(symbol.name.buffer) != null) return self.reportRedeclaration(symbol.name);
+    if (self.scope.get(symbol.name.buffer) != null) try self.reportRedeclaration(symbol.name);
 
     if (infer) {
         symbol.type = self.stack.getLast().getType();
@@ -1516,8 +1541,8 @@ fn analyzeVariable(self: *Sema, infer: bool, subsymbol_maybe_exported: Sir.SubSy
 }
 
 fn analyzeSet(self: *Sema, name: Name) Error!void {
-    const variable = self.scope.getPtr(name.buffer) orelse return self.reportNotDeclared(name);
-    if (variable.is_type_alias) return self.reportTypeNotExpression(name);
+    const variable = self.scope.getPtr(name.buffer) orelse try self.reportNotDeclared(name);
+    if (variable.is_type_alias) try self.reportTypeNotExpression(name);
 
     const value = self.stack.pop();
 
@@ -1542,8 +1567,8 @@ fn analyzeSet(self: *Sema, name: Name) Error!void {
 }
 
 fn analyzeGet(self: *Sema, name: Name) Error!void {
-    const variable = self.scope.get(name.buffer) orelse return self.reportNotDeclared(name);
-    if (variable.is_type_alias) return self.reportTypeNotExpression(name);
+    const variable = self.scope.get(name.buffer) orelse try self.reportNotDeclared(name);
+    if (variable.is_type_alias) try self.reportTypeNotExpression(name);
 
     if (variable.maybe_value) |value| {
         switch (value) {
@@ -1810,7 +1835,7 @@ fn checkTypeAliasCircular(self: *Sema, target: Name, subtype: Sir.SubType, type_
             // type T = J;
             // type J = T;
             if (std.mem.eql(u8, name.buffer, target.buffer)) {
-                return self.reportCircularDependency(target);
+                try self.reportCircularDependency(target);
             } else if (type_aliases.get(name.buffer)) |type_alias| {
                 try self.checkTypeAliasCircular(target, type_alias.subtype, type_aliases);
             }
@@ -2001,11 +2026,11 @@ fn checkIntType(self: *Sema, provided_type: Type, token_start: u32) Error!void {
 
 fn checkCanBeCompared(self: *Sema, provided_type: Type, token_start: u32) Error!void {
     if (provided_type == .@"struct" or provided_type == .void or provided_type == .function) {
-        return self.reportNotComparable(provided_type, token_start);
+        try self.reportNotComparable(provided_type, token_start);
     }
 }
 
-fn reportIncompatibleTypes(self: *Sema, lhs: Type, rhs: Type, token_start: u32) Error!void {
+fn reportIncompatibleTypes(self: *Sema, lhs: Type, rhs: Type, token_start: u32) Error!noreturn {
     var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
     try error_message_buf.writer(self.allocator).print("'{}' is not compatible with '{}'", .{ lhs, rhs });
@@ -2015,7 +2040,7 @@ fn reportIncompatibleTypes(self: *Sema, lhs: Type, rhs: Type, token_start: u32) 
     return error.MismatchedTypes;
 }
 
-fn reportNotDeclared(self: *Sema, name: Name) Error!void {
+fn reportNotDeclared(self: *Sema, name: Name) Error!noreturn {
     var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
     try error_message_buf.writer(self.allocator).print("'{s}' is not declared", .{name.buffer});
@@ -2025,7 +2050,7 @@ fn reportNotDeclared(self: *Sema, name: Name) Error!void {
     return error.Undeclared;
 }
 
-fn reportRedeclaration(self: *Sema, name: Name) Error!void {
+fn reportRedeclaration(self: *Sema, name: Name) Error!noreturn {
     var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
     try error_message_buf.writer(self.allocator).print("redeclaration of '{s}'", .{name.buffer});
@@ -2035,7 +2060,7 @@ fn reportRedeclaration(self: *Sema, name: Name) Error!void {
     return error.Redeclared;
 }
 
-fn reportTypeNotDeclared(self: *Sema, name: Name) Error!void {
+fn reportTypeNotDeclared(self: *Sema, name: Name) Error!noreturn {
     var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
     try error_message_buf.writer(self.allocator).print("type '{s}' is not declared", .{name.buffer});
@@ -2045,7 +2070,7 @@ fn reportTypeNotDeclared(self: *Sema, name: Name) Error!void {
     return error.Undeclared;
 }
 
-fn reportTypeNotExpression(self: *Sema, name: Name) Error!void {
+fn reportTypeNotExpression(self: *Sema, name: Name) Error!noreturn {
     var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
     try error_message_buf.writer(self.allocator).print("'{s}' is a type not an expression", .{name.buffer});
@@ -2055,7 +2080,7 @@ fn reportTypeNotExpression(self: *Sema, name: Name) Error!void {
     return error.Undeclared;
 }
 
-fn reportNotPointer(self: *Sema, provided_type: Type, token_start: u32) Error!void {
+fn reportNotPointer(self: *Sema, provided_type: Type, token_start: u32) Error!noreturn {
     var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
     try error_message_buf.writer(self.allocator).print("'{}' is not a pointer", .{provided_type});
@@ -2065,7 +2090,7 @@ fn reportNotPointer(self: *Sema, provided_type: Type, token_start: u32) Error!vo
     return error.MismatchedTypes;
 }
 
-fn reportNotIndexable(self: *Sema, provided_type: Type, token_start: u32) Error!void {
+fn reportNotIndexable(self: *Sema, provided_type: Type, token_start: u32) Error!noreturn {
     var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
     try error_message_buf.writer(self.allocator).print("'{}' does not support indexing", .{provided_type});
@@ -2075,7 +2100,7 @@ fn reportNotIndexable(self: *Sema, provided_type: Type, token_start: u32) Error!
     return error.UnexpectedType;
 }
 
-fn reportNotComparable(self: *Sema, provided_type: Type, token_start: u32) Error!void {
+fn reportNotComparable(self: *Sema, provided_type: Type, token_start: u32) Error!noreturn {
     var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
     try error_message_buf.writer(self.allocator).print("'{}' does not support comparison", .{provided_type});
@@ -2085,7 +2110,7 @@ fn reportNotComparable(self: *Sema, provided_type: Type, token_start: u32) Error
     return error.MismatchedTypes;
 }
 
-fn reportCircularDependency(self: *Sema, name: Name) Error!void {
+fn reportCircularDependency(self: *Sema, name: Name) Error!noreturn {
     var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
     try error_message_buf.writer(self.allocator).print("'{s}' is circularly dependent on itself", .{name.buffer});
