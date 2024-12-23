@@ -357,17 +357,19 @@ pub const passes = struct {
 
                         .call => |id| try writer.print("call {}\n", .{id}),
 
-                        .function => |symbol_maybe_exported| try writer.print("\nfunction {s} ({s}):\n", .{
+                        .function => |symbol_maybe_exported| try writer.print("\nfunction {s} ({s}, type: {}):\n", .{
                             symbol_maybe_exported.symbol.name.buffer,
                             if (symbol_maybe_exported.exported) "exported" else "not exported",
+                            symbol_maybe_exported.symbol.type,
                         }),
 
-                        .variable => |symbol_maybe_exported| try writer.print("variable {s} ({s})\n", .{
+                        .variable => |symbol_maybe_exported| try writer.print("variable {s} ({s}, type: {})\n", .{
                             symbol_maybe_exported.symbol.name.buffer,
                             if (symbol_maybe_exported.exported) "exported" else "not exported",
+                            symbol_maybe_exported.symbol.type,
                         }),
 
-                        .external => |symbol| try writer.print("external {s}\n", .{symbol.name.buffer}),
+                        .external => |symbol| try writer.print("external {s} (type: {})\n", .{ symbol.name.buffer, symbol.type }),
 
                         .get_variable_ptr => |name| try writer.print("get_variable_ptr {s}\n", .{name}),
                         .get_element_ptr => try writer.writeAll("get_element_ptr\n"),
