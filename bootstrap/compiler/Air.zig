@@ -249,4 +249,159 @@ pub const passes = struct {
             }
         }
     };
+
+    pub const format = struct {
+        pub fn print(writer: anytype, airs: []Air) !void {
+            var scope_depth: usize = 0;
+
+            for (airs) |air| {
+                for (air.instructions.items) |instruction| {
+                    try writer.writeByteNTimes('\t', if (instruction == .end_scope) scope_depth - 1 else scope_depth);
+
+                    switch (instruction) {
+                        .nop => {},
+
+                        .duplicate => try writer.writeAll("duplicate\n"),
+                        .pop => try writer.writeAll("pop\n"),
+
+                        .reverse => |n| try writer.print("reverse {}\n", .{n}),
+
+                        .string => |string| {
+                            try writer.writeAll("string \"");
+                            try std.zig.stringEscape(string, "", .{}, writer);
+                            try writer.writeAll("\"\n");
+                        },
+
+                        .int => |int| try writer.print("int {}\n", .{int}),
+
+                        .float => |float| try writer.print("float {}\n", .{float}),
+
+                        .boolean => |boolean| try writer.print("boolean {}\n", .{boolean}),
+
+                        .negate => try writer.writeAll("negate\n"),
+                        .bool_not => try writer.writeAll("bool_not\n"),
+                        .bit_not => try writer.writeAll("bit_not\n"),
+                        .bit_and => try writer.writeAll("bit_and\n"),
+                        .bit_or => try writer.writeAll("bit_or\n"),
+                        .bit_xor => try writer.writeAll("bit_xor\n"),
+                        .write => try writer.writeAll("write\n"),
+                        .read => try writer.writeAll("read\n"),
+                        .add => try writer.writeAll("add\n"),
+                        .sub => try writer.writeAll("sub\n"),
+                        .mul => try writer.writeAll("mul\n"),
+                        .div => try writer.writeAll("div\n"),
+                        .rem => try writer.writeAll("rem\n"),
+                        .lt => try writer.writeAll("lt\n"),
+                        .gt => try writer.writeAll("gt\n"),
+                        .eql => try writer.writeAll("eql\n"),
+                        .shl => try writer.writeAll("shl\n"),
+                        .shr => try writer.writeAll("shr\n"),
+
+                        .cast => |to_type| try writer.print("cast to {}\n", .{to_type}),
+
+                        .assembly => |assembly| {
+                            try writer.writeAll("assembly:\n");
+                            try writer.writeByteNTimes('\t', scope_depth + 1);
+                            try writer.writeAll("content:\n");
+
+                            var content_iterator = std.mem.splitScalar(u8, assembly.content, '\n');
+                            while (content_iterator.next()) |line| {
+                                try writer.writeByteNTimes('\t', scope_depth + 2);
+                                try writer.writeByte('"');
+                                try std.zig.stringEscape(line, "", .{}, writer);
+                                try writer.writeAll("\"\n");
+                            }
+
+                            try writer.writeByteNTimes('\t', scope_depth + 1);
+                            try writer.writeAll("input constraints:\n");
+
+                            for (assembly.input_constraints) |constraint| {
+                                try writer.writeByteNTimes('\t', scope_depth + 2);
+                                try writer.writeByte('"');
+                                try std.zig.stringEscape(constraint, "", .{}, writer);
+                                try writer.writeAll("\"\n");
+                            }
+
+                            try writer.writeByteNTimes('\t', scope_depth + 1);
+                            try writer.writeAll("output constraint:\n");
+
+                            if (assembly.output_constraint) |output_constraint| {
+                                try writer.writeByteNTimes('\t', scope_depth + 2);
+                                try writer.writeByte('"');
+                                try std.zig.stringEscape(output_constraint.register, "", .{}, writer);
+                                try writer.print("\" {}\n", .{output_constraint.type});
+                            } else {
+                                try writer.writeByteNTimes('\t', scope_depth + 2);
+                                try writer.writeAll("none\n");
+                            }
+
+                            try writer.writeByteNTimes('\t', scope_depth + 1);
+                            try writer.writeAll("clobbers:\n");
+
+                            for (assembly.clobbers) |clobber| {
+                                try writer.writeByteNTimes('\t', scope_depth + 2);
+                                try writer.writeByte('"');
+                                try std.zig.stringEscape(clobber, "", .{}, writer);
+                                try writer.writeAll("\"\n");
+                            }
+                        },
+
+                        .parameters => |parameters| {
+                            try writer.writeAll("parameters:\n");
+
+                            for (parameters) |parameter| {
+                                try writer.writeByteNTimes('\t', scope_depth + 1);
+                                try writer.print("{s} {}\n", .{ parameter.name.buffer, parameter.type });
+                            }
+                        },
+
+                        .call => |id| try writer.print("call {}\n", .{id}),
+
+                        .function => |symbol_maybe_exported| try writer.print("\nfunction {s} ({s}):\n", .{
+                            symbol_maybe_exported.symbol.name.buffer,
+                            if (symbol_maybe_exported.exported) "exported" else "not exported",
+                        }),
+
+                        .variable => |symbol_maybe_exported| try writer.print("variable {s} ({s})\n", .{
+                            symbol_maybe_exported.symbol.name.buffer,
+                            if (symbol_maybe_exported.exported) "exported" else "not exported",
+                        }),
+
+                        .external => |symbol| try writer.print("external {s}\n", .{symbol.name.buffer}),
+
+                        .get_variable_ptr => |name| try writer.print("get_variable_ptr {s}\n", .{name}),
+                        .get_element_ptr => try writer.writeAll("get_element_ptr\n"),
+                        .get_field_ptr => |n| try writer.print("get_field_ptr {}\n", .{n}),
+
+                        .block => |id| try writer.print("block {}:\n", .{id}),
+
+                        .br => |id| try writer.print("br {}\n", .{id}),
+
+                        .cond_br => |cond_br| {
+                            try writer.writeAll("cond_br:\n");
+                            try writer.writeByteNTimes('\t', scope_depth + 1);
+                            try writer.print("true {}\n", .{cond_br.true_id});
+                            try writer.writeByteNTimes('\t', scope_depth + 1);
+                            try writer.print("false {}\n", .{cond_br.false_id});
+                        },
+
+                        .@"switch" => |@"switch"| try writer.print("switch {}\n", .{@"switch"}),
+
+                        .start_scope => {
+                            scope_depth += 1;
+                            try writer.writeAll("{\n");
+                        },
+
+                        .end_scope => {
+                            scope_depth -= 1;
+                            try writer.writeAll("}\n");
+                        },
+
+                        .ret => try writer.writeAll("ret\n"),
+                        .ret_void => try writer.writeAll("ret_void\n"),
+                    }
+                }
+            }
+        }
+    };
 };

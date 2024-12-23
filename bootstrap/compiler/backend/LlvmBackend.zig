@@ -341,7 +341,7 @@ pub fn emit(
         switch (output_kind) {
             .object, .executable => c.LLVMObjectFile,
             .assembly => c.LLVMAssemblyFile,
-            .none => unreachable,
+            .ir, .none => unreachable,
         },
         null,
     );

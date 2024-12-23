@@ -1506,7 +1506,7 @@ fn analyzeVariable(self: *Sema, infer: bool, subsymbol_maybe_exported: Sir.SubSy
 
     var variable: Variable = .{ .type = symbol.type, .linkage = symbol.linkage };
 
-    variable.maybe_prefixed = if (!subsymbol_maybe_exported.exported) try prefix(self.allocator, self.module, symbol.name.buffer) else null;
+    variable.maybe_prefixed = if (subsymbol_maybe_exported.exported) try prefix(self.allocator, self.module, symbol.name.buffer) else null;
 
     try self.scope.put(self.allocator, symbol.name.buffer, variable);
 

@@ -860,9 +860,9 @@ pub const Parser = struct {
 
             self.sir.instructions.items[cond_br_index].cond_br.false_id = self.block_id;
 
-            try self.sir.instructions.append(self.allocator, .end_scope);
-
             try self.sir.instructions.append(self.allocator, .{ .br = end_block_id });
+
+            try self.sir.instructions.append(self.allocator, .end_scope);
 
             if (self.eatToken(.keyword_else)) {
                 if (self.peekToken().tag == .keyword_if) continue;
@@ -874,9 +874,9 @@ pub const Parser = struct {
 
                 try self.parseBody();
 
-                try self.sir.instructions.append(self.allocator, .end_scope);
-
                 try self.sir.instructions.append(self.allocator, .{ .br = end_block_id });
+
+                try self.sir.instructions.append(self.allocator, .end_scope);
             } else {
                 try self.sir.instructions.append(self.allocator, .{ .block = self.block_id });
                 self.block_id += 1;
@@ -931,9 +931,9 @@ pub const Parser = struct {
 
         try self.parseBody();
 
-        try self.sir.instructions.append(self.allocator, .end_scope);
-
         try self.sir.instructions.append(self.allocator, .{ .br = header_block_id });
+
+        try self.sir.instructions.append(self.allocator, .end_scope);
 
         try self.sir.instructions.append(self.allocator, .{ .block = end_block_id });
     }

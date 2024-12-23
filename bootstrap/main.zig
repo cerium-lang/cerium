@@ -2,11 +2,13 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 const Compilation = @import("compiler/Compilation.zig");
+const Air = @import("compiler/Air.zig");
 
 pub const OutputKind = enum {
     assembly,
     object,
     executable,
+    ir,
     none,
 };
 
@@ -50,7 +52,7 @@ pub const Cli = struct {
                 \\Options:
                 \\  --output <output-file-path>    -- specify the output file path
                 \\  --emit <output-kind>           -- specify the output kind
-                \\                                    [assembly, object, executable (default), none]
+                \\                                    [assembly, object, executable (default), ir, none]
                 \\  --runner <runner-kind>         -- specify the runner kind
                 \\                                    [executable (default), none]
                 \\  --target <arch-os-abi>         -- specify the target query
@@ -152,6 +154,8 @@ pub const Cli = struct {
             return .object;
         } else if (std.mem.eql(u8, raw_output_kind, "executable")) {
             return .executable;
+        } else if (std.mem.eql(u8, raw_output_kind, "ir")) {
+            return .ir;
         } else if (std.mem.eql(u8, raw_output_kind, "none")) {
             return .none;
         } else {
@@ -532,6 +536,31 @@ pub const Cli = struct {
                         return 1;
                     };
                 }
+            },
+
+            .ir => {
+                const ir_file_path = std.fmt.allocPrintZ(self.allocator, "{s}{s}", .{
+                    maybe_output_file_path orelse std.fs.path.stem(root_file_path),
+                    if (maybe_output_file_path != null and output_kind == .object) "" else ".air",
+                }) catch |err| {
+                    std.debug.print("Error: {s}\n", .{errorDescription(err)});
+
+                    return 1;
+                };
+
+                defer self.allocator.free(ir_file_path);
+
+                const ir_file = std.fs.cwd().createFile(ir_file_path, .{}) catch |err| {
+                    std.debug.print("Error: could not create intermediate representation file: {s}\n", .{errorDescription(err)});
+
+                    return 1;
+                };
+
+                Air.passes.format.print(ir_file.writer(), airs) catch |err| {
+                    std.debug.print("Error: could not emit intermediate representation: {s}\n", .{errorDescription(err)});
+
+                    return 1;
+                };
             },
 
             .none => {},
