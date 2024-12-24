@@ -494,9 +494,21 @@ pub fn collect(self: *Sema, sir: Sir) Error!Collection {
 pub fn analyzeTypeAliases(self: *Sema, collection: *Collection) Error!void {
     var type_alias_iterator = collection.type_aliases.valueIterator();
 
+    var type_alias_circular_targets: std.ArrayListUnmanaged(Name) = .{};
+    defer type_alias_circular_targets.deinit(self.allocator);
+
+    try type_alias_circular_targets.ensureTotalCapacity(self.allocator, collection.type_aliases.count());
+
     // First Type Alias Pass: put type aliases in scope
     while (type_alias_iterator.next()) |type_alias| {
         if (self.scope.get(type_alias.name.buffer) != null) try self.reportRedeclaration(type_alias.name);
+
+        type_alias_circular_targets.appendAssumeCapacity(type_alias.name);
+
+        try self.checkTypeAliasCircular(&type_alias_circular_targets, type_alias.subtype, &collection.type_aliases);
+
+        _ = type_alias_circular_targets.pop();
+
         try self.scope.put(self.allocator, type_alias.name.buffer, .{
             .type = .void,
             .linkage = type_alias.linkage,
@@ -509,9 +521,7 @@ pub fn analyzeTypeAliases(self: *Sema, collection: *Collection) Error!void {
     // Second Type Alias Pass: analyze type aliases that don't point to others
     while (type_alias_iterator.next()) |type_alias| {
         if (type_alias.subtype == .@"enum" or
-            checkTypeAliasPointsToOthers(type_alias.subtype, &collection.type_aliases)) continue;
-
-        try self.checkTypeAliasCircular(type_alias.name, type_alias.subtype, &collection.type_aliases);
+            checkTypeAliasWaitsOthers(type_alias.subtype, &collection.type_aliases)) continue;
 
         const variable = self.scope.getPtr(type_alias.name.buffer).?;
         variable.type = try self.analyzeSubType(type_alias.subtype);
@@ -523,8 +533,6 @@ pub fn analyzeTypeAliases(self: *Sema, collection: *Collection) Error!void {
     // Third Type Alias Pass: analyze enums
     while (type_alias_iterator.next()) |type_alias| {
         if (type_alias.subtype != .@"enum") continue;
-
-        try self.checkTypeAliasCircular(type_alias.name, type_alias.subtype, &collection.type_aliases);
 
         const @"enum" = type_alias.subtype.@"enum";
         const enum_type = try self.analyzeSubType(@"enum".subtype.*);
@@ -560,8 +568,6 @@ pub fn analyzeTypeAliases(self: *Sema, collection: *Collection) Error!void {
     // Fourth Type Alias Pass: analyze type aliases that isn't an enum
     while (type_alias_iterator.next()) |type_alias| {
         if (type_alias.subtype == .@"enum") continue;
-
-        try self.checkTypeAliasCircular(type_alias.name, type_alias.subtype, &collection.type_aliases);
 
         const variable = self.scope.getPtr(type_alias.name.buffer).?;
         variable.type = try self.analyzeSubType(type_alias.subtype);
@@ -1829,59 +1835,57 @@ fn analyzeSubSymbol(self: *Sema, subsymbol: Sir.SubSymbol) Error!Symbol {
     };
 }
 
-fn checkTypeAliasCircular(self: *Sema, target: Name, subtype: Sir.SubType, type_aliases: *std.StringHashMapUnmanaged(Sir.SubSymbol)) Error!void {
+fn checkTypeAliasCircular(self: *Sema, targets: *std.ArrayListUnmanaged(Name), subtype: Sir.SubType, type_aliases: *std.StringHashMapUnmanaged(Sir.SubSymbol)) Error!void {
     switch (subtype) {
         .name => |name| {
-            // type I = I;
-            //
-            // type T = J;
-            // type J = T;
-            if (std.mem.eql(u8, name.buffer, target.buffer)) {
-                try self.reportCircularDependency(target);
-            } else if (type_aliases.get(name.buffer)) |type_alias| {
-                try self.checkTypeAliasCircular(target, type_alias.subtype, type_aliases);
+            try targets.append(self.allocator, name);
+
+            for (targets.items[0 .. targets.items.len - 1]) |target| {
+                if (std.mem.eql(u8, name.buffer, target.buffer)) {
+                    try self.reportCircularDependency(target);
+                }
             }
+
+            if (type_aliases.get(name.buffer)) |type_alias| {
+                try self.checkTypeAliasCircular(targets, type_alias.subtype, type_aliases);
+            }
+
+            _ = targets.pop();
         },
 
         .@"struct" => |@"struct"| {
-            // type T = struct { t T };
-            //
-            // type I = struct { j J };
-            // type J = struct { i I };
             for (@"struct".subsymbols) |field_subsymbol| {
-                try self.checkTypeAliasCircular(target, field_subsymbol.subtype, type_aliases);
+                try self.checkTypeAliasCircular(targets, field_subsymbol.subtype, type_aliases);
             }
         },
 
         .@"enum" => |@"enum"| {
-            // type T = enum T {};
-            try self.checkTypeAliasCircular(target, @"enum".subtype.*, type_aliases);
+            try self.checkTypeAliasCircular(targets, @"enum".subtype.*, type_aliases);
         },
 
         else => {},
     }
 }
 
-fn checkTypeAliasPointsToOthers(subtype: Sir.SubType, type_aliases: *std.StringHashMapUnmanaged(Sir.SubSymbol)) bool {
+fn checkTypeAliasWaitsOthers(subtype: Sir.SubType, type_aliases: *std.StringHashMapUnmanaged(Sir.SubSymbol)) bool {
     return switch (subtype) {
-        // Pointers or Arrays
         .pure, .pointer, .array => false,
 
         .name => |name| type_aliases.get(name.buffer) != null,
 
-        .@"enum" => |@"enum"| checkTypeAliasPointsToOthers(@"enum".subtype.*, type_aliases),
+        .@"enum" => |@"enum"| checkTypeAliasWaitsOthers(@"enum".subtype.*, type_aliases),
 
         .function => |function| blk: {
             for (function.parameter_subtypes) |parameter_subtype|
-                if (checkTypeAliasPointsToOthers(parameter_subtype, type_aliases))
+                if (checkTypeAliasWaitsOthers(parameter_subtype, type_aliases))
                     break :blk true;
 
-            break :blk checkTypeAliasPointsToOthers(function.return_subtype.*, type_aliases);
+            break :blk checkTypeAliasWaitsOthers(function.return_subtype.*, type_aliases);
         },
 
         .@"struct" => |@"struct"| blk: {
             for (@"struct".subsymbols) |field_subsymbol|
-                if (checkTypeAliasPointsToOthers(field_subsymbol.subtype, type_aliases))
+                if (checkTypeAliasWaitsOthers(field_subsymbol.subtype, type_aliases))
                     break :blk true;
 
             break :blk false;
