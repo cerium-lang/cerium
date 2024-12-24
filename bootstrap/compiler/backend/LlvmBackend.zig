@@ -1065,6 +1065,8 @@ fn renderFunction(self: *LlvmBackend, symbol: Symbol, remainder_instructions: []
     }
 
     try self.scopes.ensureTotalCapacity(self.allocator, max_scope_depth);
+
+    self.scope = &self.scopes.items[self.scopes.items.len - 1];
 }
 
 fn renderParameters(self: *LlvmBackend, symbols: []const Symbol) Error!void {

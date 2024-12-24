@@ -614,6 +614,8 @@ fn analyzeFunctions(self: *Sema, collection: Collection) Error!void {
 
     try self.scopes.ensureTotalCapacity(self.allocator, collection.max_scope_depth);
 
+    self.scope = &self.scopes.items[self.scopes.items.len - 1];
+
     for (collection.functions.items) |entry| {
         var function, const sir_instructions = entry;
 
