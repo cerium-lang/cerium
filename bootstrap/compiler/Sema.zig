@@ -496,34 +496,31 @@ fn analyzeSubTypeOrTypeAlias(self: *Sema, subtype: Sir.SubType, collection: *Col
         .name => |name| {
             if (self.scope.getPtr(subtype.name.buffer)) |variable| {
                 if (variable.is_type_alias) {
-                    if (variable.type == .void) {
+                    if (variable.type == .void)
                         if (collection.type_aliases.get(subtype.name.buffer)) |type_alias| {
-                            return self.analyzeTypeAlias(type_alias.name, variable, type_alias.subtype, collection);
-                        }
-                    } else {
-                        return variable.type;
-                    }
-                }
+                            variable.type = try self.analyzeTypeAlias(type_alias, collection);
+                        };
 
-                try self.reportTypeNotDeclared(name);
+                    return variable.type;
+                }
             }
+
+            try self.reportTypeNotDeclared(name);
         },
 
         else => return self.analyzeSubType(subtype),
     }
-
-    unreachable;
 }
 
-fn analyzeTypeAlias(self: *Sema, name: Name, variable: *Variable, subtype: Sir.SubType, collection: *Collection) Error!Type {
-    const @"type" = switch (subtype) {
-        .pure => |pure| pure,
+fn analyzeTypeAlias(self: *Sema, type_alias: Sir.SubSymbol, collection: *Collection) Error!Type {
+    switch (type_alias.subtype) {
+        .pure => |pure| return pure,
 
-        .name => try self.analyzeSubTypeOrTypeAlias(subtype, collection),
+        .name => return self.analyzeSubTypeOrTypeAlias(type_alias.subtype, collection),
 
-        .array, .pointer => try self.analyzeSubType(subtype),
+        .array, .pointer => return self.analyzeSubType(type_alias.subtype),
 
-        .function => |function| blk: {
+        .function => |function| {
             const parameter_types = try self.allocator.alloc(Type, function.parameter_subtypes.len);
 
             for (function.parameter_subtypes, 0..) |parameter_subtype, i| {
@@ -535,7 +532,7 @@ fn analyzeTypeAlias(self: *Sema, name: Name, variable: *Variable, subtype: Sir.S
             const return_type_on_heap = try self.allocator.create(Type);
             return_type_on_heap.* = return_type;
 
-            break :blk Type{
+            return Type{
                 .function = .{
                     .parameter_types = parameter_types,
                     .is_var_args = function.is_var_args,
@@ -544,17 +541,17 @@ fn analyzeTypeAlias(self: *Sema, name: Name, variable: *Variable, subtype: Sir.S
             };
         },
 
-        .@"struct" => |@"struct"| blk: {
+        .@"struct" => |@"struct"| {
             var fields = try self.allocator.alloc(Type.Struct.Field, @"struct".subsymbols.len);
 
             for (@"struct".subsymbols, 0..) |subsymbol, i| {
                 fields[i] = .{ .name = subsymbol.name.buffer, .type = try self.analyzeSubTypeOrTypeAlias(subsymbol.subtype, collection) };
             }
 
-            break :blk Type{ .@"struct" = .{ .fields = fields } };
+            return Type{ .@"struct" = .{ .fields = fields } };
         },
 
-        .@"enum" => |@"enum"| blk: {
+        .@"enum" => |@"enum"| {
             const enum_type = try self.analyzeSubTypeOrTypeAlias(@"enum".subtype.*, collection);
 
             try self.checkIntType(enum_type, @"enum".token_start);
@@ -564,27 +561,23 @@ fn analyzeTypeAlias(self: *Sema, name: Name, variable: *Variable, subtype: Sir.S
 
                 try self.checkUnaryImplicitCast(enum_field_value, enum_type, field.name.token_start);
 
-                const enum_field_entry = try std.mem.concat(self.allocator, u8, &.{ name.buffer, "::", field.name.buffer });
+                const enum_field_entry = try std.mem.concat(self.allocator, u8, &.{ type_alias.name.buffer, "::", field.name.buffer });
 
                 if (self.scope.get(enum_field_entry) != null)
                     try self.reportRedeclaration(.{ .buffer = enum_field_entry, .token_start = field.name.token_start });
 
                 try self.scope.put(self.allocator, enum_field_entry, .{
                     .type = enum_type,
-                    .linkage = variable.linkage,
+                    .linkage = type_alias.linkage,
                     .maybe_value = enum_field_value,
                     .is_const = true,
                     .is_comptime = true,
                 });
             }
 
-            break :blk enum_type;
+            return enum_type;
         },
-    };
-
-    variable.type = @"type";
-
-    return @"type";
+    }
 }
 
 fn analyzeTypeAliases(self: *Sema, collection: *Collection) Error!void {
@@ -617,9 +610,8 @@ fn analyzeTypeAliases(self: *Sema, collection: *Collection) Error!void {
     while (type_alias_iterator.next()) |type_alias| {
         const variable = self.scope.getPtr(type_alias.name.buffer).?;
 
-        if (variable.type != .void) continue;
-
-        _ = try self.analyzeTypeAlias(type_alias.name, variable, type_alias.subtype, collection);
+        if (variable.type == .void)
+            variable.type = try self.analyzeTypeAlias(type_alias.*, collection);
     }
 }
 
