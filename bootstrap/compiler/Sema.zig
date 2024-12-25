@@ -1745,15 +1745,11 @@ fn analyzeReturn(self: *Sema, with_value: bool, token_start: u32) Error!void {
 fn analyzeSubType(self: *Sema, subtype: Sir.SubType) Error!Type {
     switch (subtype) {
         .name => |name| {
-            if (self.scope.get(name.buffer)) |variable| {
-                if (variable.is_type_alias) {
+            if (self.scope.get(name.buffer)) |variable|
+                if (variable.is_type_alias)
                     return variable.type;
-                }
-            }
 
             try self.reportTypeNotDeclared(name);
-
-            unreachable;
         },
 
         .function => |function| {
@@ -1794,8 +1790,6 @@ fn analyzeSubType(self: *Sema, subtype: Sir.SubType) Error!Type {
                 }
 
                 try self.reportTypeNotDeclared(child_subtype_name);
-
-                unreachable;
             } else {
                 const child_type = try self.analyzeSubType(pointer.child_subtype.*);
 
@@ -1828,8 +1822,6 @@ fn analyzeSubType(self: *Sema, subtype: Sir.SubType) Error!Type {
                 }
 
                 try self.reportTypeNotDeclared(child_subtype_name);
-
-                unreachable;
             } else {
                 const child_type = try self.analyzeSubType(array.child_subtype.*);
 
