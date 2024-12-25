@@ -20,7 +20,6 @@ fn main() {
     var m u8 = 4;
     var n u8 = 4;
 
-    // Too much nesting produces a lot of unexpected behaviours by the compiler
     if (a == b) {
         if (c == d) {
             if (e == f) {
