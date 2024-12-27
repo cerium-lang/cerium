@@ -546,7 +546,8 @@ fn renderInstruction(
 
         .cast => |cast_to| try self.renderCast(cast_to),
 
-        .assembly => |assembly| try self.renderAssembly(assembly),
+        .global_assembly => |global_assembly| c.LLVMAppendModuleInlineAsm(self.module, global_assembly.ptr, global_assembly.len),
+        .inline_assembly => |inline_assembly| try self.renderInlineAssembly(inline_assembly),
 
         .call => |arguments_count| try self.renderCall(arguments_count),
 
@@ -941,7 +942,7 @@ fn renderCast(self: *LlvmBackend, cast_to: Type) Error!void {
     );
 }
 
-fn renderAssembly(self: *LlvmBackend, assembly: Air.Instruction.Assembly) Error!void {
+fn renderInlineAssembly(self: *LlvmBackend, assembly: Air.Instruction.InlineAssembly) Error!void {
     const assembly_inputs = try self.allocator.alloc(c.LLVMValueRef, assembly.input_constraints.len);
 
     var assembly_constraints: std.ArrayListUnmanaged(u8) = .{};

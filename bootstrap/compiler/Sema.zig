@@ -729,7 +729,8 @@ fn analyzeInstruction(self: *Sema, instruction: Sir.Instruction) Error!void {
 
         .cast => |cast| try self.analyzeCast(cast),
 
-        .assembly => |assembly| try self.analyzeAssembly(assembly),
+        .global_assembly => |global_assembly| try self.analyzeGlobalAssembly(global_assembly),
+        .inline_assembly => |inline_assembly| try self.analyzeInlineAssembly(inline_assembly),
 
         .call => |call| try self.analyzeCall(call),
 
@@ -1448,32 +1449,36 @@ fn analyzeCast(self: *Sema, cast: Sir.Instruction.Cast) Error!void {
     try self.stack.append(self.allocator, .{ .runtime = to });
 }
 
-fn analyzeAssembly(self: *Sema, assembly: Sir.Instruction.Assembly) Error!void {
-    self.stack.shrinkRetainingCapacity(self.stack.items.len - assembly.input_constraints.len);
+fn analyzeGlobalAssembly(self: *Sema, global_assembly: []const u8) Error!void {
+    try self.air.instructions.append(self.allocator, .{ .global_assembly = global_assembly });
+}
 
-    if (assembly.output_constraint) |output_constraint| {
+fn analyzeInlineAssembly(self: *Sema, inline_assembly: Sir.Instruction.InlineAssembly) Error!void {
+    self.stack.shrinkRetainingCapacity(self.stack.items.len - inline_assembly.input_constraints.len);
+
+    if (inline_assembly.output_constraint) |output_constraint| {
         const output_constraint_type = try self.analyzeSubType(output_constraint.subtype);
 
         try self.air.instructions.append(self.allocator, .{
-            .assembly = .{
-                .content = assembly.content,
-                .input_constraints = assembly.input_constraints,
+            .inline_assembly = .{
+                .content = inline_assembly.content,
+                .input_constraints = inline_assembly.input_constraints,
                 .output_constraint = .{
                     .register = output_constraint.register,
                     .type = output_constraint_type,
                 },
-                .clobbers = assembly.clobbers,
+                .clobbers = inline_assembly.clobbers,
             },
         });
 
         try self.stack.append(self.allocator, .{ .runtime = output_constraint_type });
     } else {
         try self.air.instructions.append(self.allocator, .{
-            .assembly = .{
-                .content = assembly.content,
-                .input_constraints = assembly.input_constraints,
+            .inline_assembly = .{
+                .content = inline_assembly.content,
+                .input_constraints = inline_assembly.input_constraints,
                 .output_constraint = null,
-                .clobbers = assembly.clobbers,
+                .clobbers = inline_assembly.clobbers,
             },
         });
 

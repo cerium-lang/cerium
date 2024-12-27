@@ -72,8 +72,11 @@ pub const Instruction = union(enum) {
     shr,
     /// Cast a value to a different type
     cast: Type,
-    /// Place a machine-specific assembly in the output
-    assembly: Assembly,
+    /// Place a machine-specific global assembly in the output
+    /// (This is a special case of `inline_assembly` that is only used when the assembly is outside of a function)
+    global_assembly: []const u8,
+    /// Place a machine-specific inline assembly in the output
+    inline_assembly: InlineAssembly,
     /// Declare function parameters
     parameters: []const Symbol,
     /// Call a function pointer on top of the stack
@@ -107,7 +110,7 @@ pub const Instruction = union(enum) {
     /// Return out of the function without a value
     ret_void,
 
-    pub const Assembly = struct {
+    pub const InlineAssembly = struct {
         content: []const u8,
         output_constraint: ?OutputConstraint,
         input_constraints: []const []const u8,
@@ -299,12 +302,26 @@ pub const passes = struct {
 
                         .cast => |to_type| try writer.print("cast to {}\n", .{to_type}),
 
-                        .assembly => |assembly| {
-                            try writer.writeAll("assembly:\n");
+                        .global_assembly => |global_assembly| {
+                            try writer.writeAll("\nglobal_assembly:\n");
                             try writer.writeByteNTimes('\t', scope_depth + 1);
                             try writer.writeAll("content:\n");
 
-                            var content_iterator = std.mem.splitScalar(u8, assembly.content, '\n');
+                            var content_iterator = std.mem.splitScalar(u8, global_assembly, '\n');
+                            while (content_iterator.next()) |line| {
+                                try writer.writeByteNTimes('\t', scope_depth + 2);
+                                try writer.writeByte('"');
+                                try std.zig.stringEscape(line, "", .{}, writer);
+                                try writer.writeAll("\"\n");
+                            }
+                        },
+
+                        .inline_assembly => |inline_assembly| {
+                            try writer.writeAll("inline_assembly:\n");
+                            try writer.writeByteNTimes('\t', scope_depth + 1);
+                            try writer.writeAll("content:\n");
+
+                            var content_iterator = std.mem.splitScalar(u8, inline_assembly.content, '\n');
                             while (content_iterator.next()) |line| {
                                 try writer.writeByteNTimes('\t', scope_depth + 2);
                                 try writer.writeByte('"');
@@ -315,7 +332,7 @@ pub const passes = struct {
                             try writer.writeByteNTimes('\t', scope_depth + 1);
                             try writer.writeAll("input constraints:\n");
 
-                            for (assembly.input_constraints) |constraint| {
+                            for (inline_assembly.input_constraints) |constraint| {
                                 try writer.writeByteNTimes('\t', scope_depth + 2);
                                 try writer.writeByte('"');
                                 try std.zig.stringEscape(constraint, "", .{}, writer);
@@ -325,7 +342,7 @@ pub const passes = struct {
                             try writer.writeByteNTimes('\t', scope_depth + 1);
                             try writer.writeAll("output constraint:\n");
 
-                            if (assembly.output_constraint) |output_constraint| {
+                            if (inline_assembly.output_constraint) |output_constraint| {
                                 try writer.writeByteNTimes('\t', scope_depth + 2);
                                 try writer.writeByte('"');
                                 try std.zig.stringEscape(output_constraint.register, "", .{}, writer);
@@ -338,7 +355,7 @@ pub const passes = struct {
                             try writer.writeByteNTimes('\t', scope_depth + 1);
                             try writer.writeAll("clobbers:\n");
 
-                            for (assembly.clobbers) |clobber| {
+                            for (inline_assembly.clobbers) |clobber| {
                                 try writer.writeByteNTimes('\t', scope_depth + 2);
                                 try writer.writeByte('"');
                                 try std.zig.stringEscape(clobber, "", .{}, writer);

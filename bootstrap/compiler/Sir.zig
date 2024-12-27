@@ -164,8 +164,11 @@ pub const Instruction = union(enum) {
     shr: u32,
     /// Cast a value to a different type
     cast: Cast,
-    /// Place a machine-specific assembly in the output
-    assembly: Assembly,
+    /// Place a machine-specific global assembly in the output
+    /// (This is a special case of `inline_assembly` that is only used when the assembly is outside of a function)
+    global_assembly: []const u8,
+    /// Place a machine-specific inline assembly in the output
+    inline_assembly: InlineAssembly,
     /// Call a function pointer on the stack
     call: Call,
     /// Start a module
@@ -212,7 +215,7 @@ pub const Instruction = union(enum) {
         token_start: u32,
     };
 
-    pub const Assembly = struct {
+    pub const InlineAssembly = struct {
         content: []const u8,
         output_constraint: ?OutputConstraint,
         input_constraints: []const []const u8,
@@ -350,6 +353,8 @@ pub const Parser = struct {
             .keyword_export => return self.parseExportDeclaration(),
 
             .keyword_import => try self.parseImport(),
+
+            .keyword_asm => return self.parseGlobalAssembly(),
 
             .keyword_fn => return self.parseFunctionDeclaration(.global, false),
 
@@ -1030,7 +1035,7 @@ pub const Parser = struct {
 
             .float => try self.parseFloat(),
 
-            .keyword_asm => try self.parseAssembly(),
+            .keyword_asm => try self.parseInlineAssembly(),
 
             .open_paren => try self.parseParentheses(),
 
@@ -1188,7 +1193,35 @@ pub const Parser = struct {
         try self.sir.instructions.append(self.allocator, .{ .float = value });
     }
 
-    fn parseAssembly(self: *Parser) Error!void {
+    fn parseGlobalAssembly(self: *Parser) Error!void {
+        _ = self.nextToken();
+
+        var content: std.ArrayListUnmanaged(u8) = .{};
+
+        if (!self.eatToken(.open_brace)) {
+            self.error_info = .{ .message = "expected a '{'", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
+
+            return error.UnexpectedToken;
+        }
+
+        while (!self.eatToken(.close_brace)) {
+            if (self.peekToken().tag != .string_literal) {
+                self.error_info = .{ .message = "expected a valid string", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
+
+                return error.UnexpectedToken;
+            }
+
+            try self.parseString();
+
+            try content.appendSlice(self.allocator, self.sir.instructions.pop().string);
+        }
+
+        try self.sir.instructions.append(self.allocator, .{
+            .global_assembly = try content.toOwnedSlice(self.allocator),
+        });
+    }
+
+    fn parseInlineAssembly(self: *Parser) Error!void {
         const asm_keyword_start = self.nextToken().range.start;
 
         var content: std.ArrayListUnmanaged(u8) = .{};
@@ -1200,7 +1233,7 @@ pub const Parser = struct {
         }
 
         var input_constraints: []const []const u8 = &.{};
-        var output_constraint: ?Instruction.Assembly.OutputConstraint = null;
+        var output_constraint: ?Instruction.InlineAssembly.OutputConstraint = null;
         var clobbers: []const []const u8 = &.{};
 
         while (!self.eatToken(.close_brace)) {
@@ -1216,19 +1249,19 @@ pub const Parser = struct {
 
             if (self.eatToken(.colon)) {
                 if (self.peekToken().tag != .colon) {
-                    output_constraint = try self.parseAssemblyOutputConstraint();
+                    output_constraint = try self.parseInlineAssemblyOutputConstraint();
                 }
             }
 
             if (self.eatToken(.colon)) {
                 if (self.peekToken().tag != .colon) {
-                    input_constraints = try self.parseAssemblyInputConstraints();
+                    input_constraints = try self.parseInlineAssemblyInputConstraints();
                 }
             }
 
             if (self.eatToken(.colon)) {
                 if (self.peekToken().tag != .close_brace) {
-                    clobbers = try self.parseAssemblyClobbers();
+                    clobbers = try self.parseInlineAssemblyClobbers();
                 }
             }
 
@@ -1242,7 +1275,7 @@ pub const Parser = struct {
         }
 
         try self.sir.instructions.append(self.allocator, .{
-            .assembly = .{
+            .inline_assembly = .{
                 .content = try content.toOwnedSlice(self.allocator),
                 .input_constraints = input_constraints,
                 .output_constraint = output_constraint,
@@ -1252,11 +1285,11 @@ pub const Parser = struct {
         });
     }
 
-    fn parseAssemblyInputConstraints(self: *Parser) Error![][]const u8 {
+    fn parseInlineAssemblyInputConstraints(self: *Parser) Error![][]const u8 {
         var constraints = std.ArrayList([]const u8).init(self.allocator);
 
         while (self.peekToken().tag != .eof and self.peekToken().tag != .colon and self.peekToken().tag != .close_brace) {
-            try constraints.append(try self.parseAssemblyInputConstraint());
+            try constraints.append(try self.parseInlineAssemblyInputConstraint());
 
             if (!self.eatToken(.comma) and self.peekToken().tag != .colon and self.peekToken().tag != .close_brace) {
                 self.error_info = .{ .message = "expected a ','", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
@@ -1270,7 +1303,7 @@ pub const Parser = struct {
         return constraints.toOwnedSlice();
     }
 
-    fn parseAssemblyInputConstraint(self: *Parser) Error![]const u8 {
+    fn parseInlineAssemblyInputConstraint(self: *Parser) Error![]const u8 {
         if (self.peekToken().tag != .string_literal) {
             self.error_info = .{ .message = "expected a valid string", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
 
@@ -1298,7 +1331,7 @@ pub const Parser = struct {
         return register;
     }
 
-    fn parseAssemblyOutputConstraint(self: *Parser) Error!Instruction.Assembly.OutputConstraint {
+    fn parseInlineAssemblyOutputConstraint(self: *Parser) Error!Instruction.InlineAssembly.OutputConstraint {
         if (self.peekToken().tag != .string_literal) {
             self.error_info = .{ .message = "expected a valid string", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
 
@@ -1323,13 +1356,13 @@ pub const Parser = struct {
             return error.UnexpectedToken;
         }
 
-        return Instruction.Assembly.OutputConstraint{
+        return Instruction.InlineAssembly.OutputConstraint{
             .register = register,
             .subtype = subtype,
         };
     }
 
-    fn parseAssemblyClobbers(self: *Parser) Error![][]const u8 {
+    fn parseInlineAssemblyClobbers(self: *Parser) Error![][]const u8 {
         var clobbers = std.ArrayList([]const u8).init(self.allocator);
 
         while (self.peekToken().tag != .eof and self.peekToken().tag != .close_brace) {
