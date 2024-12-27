@@ -1214,6 +1214,7 @@ pub const Parser = struct {
             try self.parseString();
 
             try content.appendSlice(self.allocator, self.sir.instructions.pop().string);
+            try content.append(self.allocator, '\n');
         }
 
         try self.sir.instructions.append(self.allocator, .{
@@ -1246,6 +1247,7 @@ pub const Parser = struct {
             try self.parseString();
 
             try content.appendSlice(self.allocator, self.sir.instructions.pop().string);
+            try content.append(self.allocator, '\n');
 
             if (self.eatToken(.colon)) {
                 if (self.peekToken().tag != .colon) {
@@ -1264,8 +1266,6 @@ pub const Parser = struct {
                     clobbers = try self.parseInlineAssemblyClobbers();
                 }
             }
-
-            try content.append(self.allocator, '\n');
 
             if (self.peekToken().tag != .close_brace and (self.peekToken().tag != .colon or self.peekToken().tag != .string_literal)) {
                 self.error_info = .{ .message = "expected a '}'", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
