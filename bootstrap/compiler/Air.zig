@@ -134,7 +134,7 @@ pub const Instruction = union(enum) {
 };
 
 pub const passes = struct {
-    pub const redundancy = struct {
+    pub const reachability = struct {
         const Function = struct {
             exported: bool,
             callers: usize = 0,
@@ -142,7 +142,7 @@ pub const passes = struct {
             air_instructions: []Air.Instruction,
         };
 
-        pub fn removeRedundantDeclarations(allocator: std.mem.Allocator, airs: []Air) std.mem.Allocator.Error!void {
+        pub fn removeUnreachableDeclarations(allocator: std.mem.Allocator, airs: []Air) std.mem.Allocator.Error!void {
             var functions: std.StringArrayHashMapUnmanaged(Function) = .{};
 
             defer {
@@ -224,7 +224,7 @@ pub const passes = struct {
                     };
 
             for (functions.values()) |*function|
-                checkRedundantFunction(allocator, &functions, function);
+                checkFunctionReachability(allocator, &functions, function);
 
             for (variables.values()) |air_instructions| {
                 for (air_instructions) |*air_instruction| {
@@ -233,7 +233,7 @@ pub const passes = struct {
             }
         }
 
-        fn checkRedundantFunction(allocator: std.mem.Allocator, functions: *std.StringArrayHashMapUnmanaged(Function), function: *Function) void {
+        fn checkFunctionReachability(allocator: std.mem.Allocator, functions: *std.StringArrayHashMapUnmanaged(Function), function: *Function) void {
             if (function.exported) return;
 
             if (function.callers == 0) {
@@ -242,7 +242,7 @@ pub const passes = struct {
 
                     other_function.callers -= 1;
 
-                    checkRedundantFunction(allocator, functions, other_function);
+                    checkFunctionReachability(allocator, functions, other_function);
                 }
 
                 function.callees.deinit(allocator);

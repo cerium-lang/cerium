@@ -145,7 +145,7 @@ pub fn analyze(self: Compilation, file: File, sir: Sir) ?[]Air {
         return null;
     };
 
-    inline for (0..2) |_| Air.passes.redundancy.removeRedundantDeclarations(self.allocator, airs) catch |err| {
+    inline for (0..2) |_| Air.passes.reachability.removeUnreachableDeclarations(self.allocator, airs) catch |err| {
         std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
 
         return null;
