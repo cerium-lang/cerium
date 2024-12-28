@@ -1657,15 +1657,33 @@ fn analyzeCondBr(self: *Sema, cond_br: Sir.Instruction.CondBr) Error!void {
 
     try self.checkUnaryImplicitCast(condition, .bool, cond_br.token_start);
 
-    try self.air.instructions.append(
-        self.allocator,
-        .{
-            .cond_br = .{
-                .true_id = cond_br.true_id,
-                .false_id = cond_br.false_id,
-            },
+    switch (condition) {
+        .boolean => |condition_boolean| {
+            _ = self.air.instructions.pop();
+
+            try self.air.instructions.append(
+                self.allocator,
+                .{
+                    .br = if (condition_boolean)
+                        cond_br.true_id
+                    else
+                        cond_br.false_id,
+                },
+            );
         },
-    );
+
+        else => {
+            try self.air.instructions.append(
+                self.allocator,
+                .{
+                    .cond_br = .{
+                        .true_id = cond_br.true_id,
+                        .false_id = cond_br.false_id,
+                    },
+                },
+            );
+        },
+    }
 }
 
 fn analyzeSwitch(self: *Sema, @"switch": Sir.Instruction.Switch) Error!void {
