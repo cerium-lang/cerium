@@ -5,6 +5,10 @@ type SYS = enum usize {
     write,
     open,
     close,
+    mmap = 9,
+    mprotect,
+    munmap,
+    mremap = 25,
     socket = 41,
     connect,
     accept,
@@ -75,12 +79,27 @@ fn syscall5(code SYS, arg1 usize, arg2 usize, arg3 usize, arg4 usize, arg5 usize
     };
 }
 
+fn syscall6(code SYS, arg1 usize, arg2 usize, arg3 usize, arg4 usize, arg5 usize, arg6 usize) usize {
+    return asm {
+        "syscall"
+        : "={rax}" (usize)
+        : "{rax}" (code),
+          "{rdi}" (arg1),
+          "{rsi}" (arg2),
+          "{rdx}" (arg3),
+          "{r10}" (arg4),
+          "{r8}" (arg5),
+          "{r9}" (arg6),
+        : "rcx", "r11", "memory"
+    };
+}
+
 fn read(fd s32, bufferptr usize, count usize) usize {
-    return syscall3(SYS::read, (&fd as *u32).* as usize, bufferptr, count);
+    return syscall3(SYS::read, (&fd as *u32).*, bufferptr, count);
 }
 
 fn write(fd s32, bufferptr usize, count usize) usize {
-    return syscall3(SYS::write, (&fd as *u32).* as usize, bufferptr, count);
+    return syscall3(SYS::write, (&fd as *u32).*, bufferptr, count);
 }
 
 const AF_INET = 2;
@@ -95,7 +114,7 @@ const SO_REUSEADDR = 2;
 const SO_REUSEPORT = 15;
 
 fn setsockopt(fd s32, level u32, optname u32, optvalptr usize, optlen usize) void {
-    syscall5(SYS::setsockopt, (&fd as *u32).* as usize, level, optname, optvalptr, optlen);
+    syscall5(SYS::setsockopt, (&fd as *u32).*, level, optname, optvalptr, optlen);
 }
 
 type sa_family_t = u16;
@@ -115,15 +134,15 @@ type sockaddr::in = struct {
 };
 
 fn accept(fd s32, addrptr *sockaddr, addrlenptr *socklen_t) s32 {
-    return (&(syscall4(SYS::accept, (&fd as *u32).* as usize, addrptr as usize, addrlenptr as usize, 0) as u32) as *s32).*;
+    return (&(syscall4(SYS::accept, (&fd as *u32).*, addrptr as usize, addrlenptr as usize, 0) as u32) as *s32).*;
 }
 
 fn bind(fd s32, addrptr *const sockaddr, addrlen socklen_t) usize {
-    return syscall3(SYS::bind, (&fd as *u32).* as usize, addrptr as usize, addrlen as usize);
+    return syscall3(SYS::bind, (&fd as *u32).*, addrptr as usize, addrlen as usize);
 }
 
 fn listen(fd s32, backlog u32) usize {
-    return syscall2(SYS::listen, (&fd as *u32).* as usize, backlog);
+    return syscall2(SYS::listen, (&fd as *u32).*, backlog);
 }
 
 fn exit(status u8) void {
@@ -136,4 +155,20 @@ fn exit_group(status u8) void {
 
 fn close(fd s32) s32 {
     return (&(syscall1(SYS::close, (&fd as *u32).* as usize) as u32) as *s32).*;
+}
+
+fn mmap(addr usize, length usize, prot u32, flags u32, fd s32, offset s64) usize {
+    return syscall6(SYS::mmap, addr, length, prot, flags, (&fd as *u32).*, (&offset as *u64).*);
+}
+
+fn mprotect(addr usize, length usize, prot u32) s32 {
+    return (&(syscall3(SYS::mprotect, addr, length, prot) as u32) as *s32).*;
+}
+
+fn munmap(addr usize, length usize) s32 {
+    return (&(syscall2(SYS::munmap, addr, length) as u32) as *s32).*;
+}
+
+fn mremap(old_addr usize, old_len usize, new_len usize, flags u32, new_addr usize) usize {
+    return syscall5(SYS::mremap, old_addr, old_len, new_len, flags, new_addr);
 }
