@@ -9,6 +9,7 @@ const std = @import("std");
 const Compilation = @import("Compilation.zig");
 const Lexer = @import("Lexer.zig");
 const Symbol = @import("Symbol.zig");
+const Scope = Symbol.Scope;
 const Type = Symbol.Type;
 const Token = @import("Token.zig");
 
@@ -261,6 +262,9 @@ pub const Parser = struct {
 
     block_id: u32 = 0,
 
+    defer_stack: std.ArrayListUnmanaged([]Instruction) = .{},
+    scope_defer_count: u32 = 0,
+
     error_info: ?ErrorInfo = null,
 
     pub const ErrorInfo = struct {
@@ -390,7 +394,19 @@ pub const Parser = struct {
 
             .keyword_continue => try self.parseContinue(),
 
+            .keyword_defer => return self.parseDefer(),
+
             .keyword_return => try self.parseReturn(),
+
+            .open_brace => {
+                try self.sir.instructions.append(self.allocator, .start_scope);
+
+                try self.parseBody();
+
+                try self.sir.instructions.append(self.allocator, .end_scope);
+
+                return;
+            },
 
             else => {
                 try self.parseExpr(.lowest);
@@ -399,7 +415,7 @@ pub const Parser = struct {
             },
         }
 
-        if (!self.eatToken(.semicolon) and expect_semicolon) {
+        if (expect_semicolon and !self.eatToken(.semicolon)) {
             self.error_info = .{ .message = "expected a ';'", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
 
             return error.UnexpectedToken;
@@ -703,6 +719,14 @@ pub const Parser = struct {
         );
     }
 
+    fn popScopeDefers(self: *Parser) Error!void {
+        while (self.scope_defer_count > 0) : (self.scope_defer_count -= 1) {
+            const defer_instructions = self.defer_stack.pop();
+            try self.sir.instructions.appendSlice(self.allocator, defer_instructions);
+            self.allocator.free(defer_instructions);
+        }
+    }
+
     fn parseSwitch(self: *Parser) Error!void {
         const switch_keyword_start = self.nextToken().range.start;
 
@@ -782,10 +806,21 @@ pub const Parser = struct {
             const current_sir_instructions = self.sir.instructions;
             self.sir.instructions = case_instructions;
 
-            if (self.peekToken().tag == .open_brace)
-                try self.parseBody()
-            else
+            if (self.peekToken().tag == .open_brace) {
+                try self.sir.instructions.append(self.allocator, .start_scope);
+
+                try self.parseBody();
+
+                try self.sir.instructions.append(self.allocator, .end_scope);
+            } else {
+                const previous_scope_defer_count = self.scope_defer_count;
+                self.scope_defer_count = 0;
+
                 try self.parseStmt(false);
+
+                try self.popScopeDefers();
+                self.scope_defer_count = previous_scope_defer_count;
+            }
 
             try self.sir.instructions.append(self.allocator, .{ .br = end_block_id });
 
@@ -838,7 +873,7 @@ pub const Parser = struct {
 
         try self.sir.instructions.append(self.allocator, .{ .br = self.block_id });
 
-        while (self.peekToken().tag == .keyword_if) {
+        while (true) {
             const if_keyword_start = self.nextToken().range.start;
 
             try self.sir.instructions.append(self.allocator, .{ .block = self.block_id });
@@ -967,8 +1002,51 @@ pub const Parser = struct {
         return error.UnexpectedStatement;
     }
 
+    fn parseDefer(self: *Parser) Error!void {
+        _ = self.nextToken();
+
+        const defer_instructions_start = self.sir.instructions.items.len;
+
+        if (self.peekToken().tag == .open_brace) {
+            try self.sir.instructions.append(self.allocator, .start_scope);
+
+            try self.parseBody();
+
+            try self.sir.instructions.append(self.allocator, .end_scope);
+        } else {
+            const previous_scope_defer_count = self.scope_defer_count;
+            self.scope_defer_count = 0;
+
+            try self.parseStmt(true);
+
+            try self.popScopeDefers();
+            self.scope_defer_count = previous_scope_defer_count;
+        }
+
+        if (defer_instructions_start == self.sir.instructions.items.len) return;
+
+        const defer_instructions = self.sir.instructions.items[defer_instructions_start..];
+        const defer_instructions_on_heap = try self.allocator.alloc(Instruction, defer_instructions.len);
+        @memcpy(defer_instructions_on_heap, defer_instructions);
+
+        try self.defer_stack.append(self.allocator, defer_instructions_on_heap);
+        self.scope_defer_count += 1;
+
+        self.sir.instructions.shrinkRetainingCapacity(defer_instructions_start);
+    }
+
     fn parseReturn(self: *Parser) Error!void {
         const return_keyword_start = self.nextToken().range.start;
+
+        if (self.defer_stack.items.len > 0) {
+            var i = self.defer_stack.items.len - 1;
+
+            while (true) : (i -= 1) {
+                const defer_instructions = self.defer_stack.items[i];
+                try self.sir.instructions.appendSlice(self.allocator, defer_instructions);
+                if (i == 0) break;
+            }
+        }
 
         if (self.peekToken().tag == .semicolon) {
             try self.sir.instructions.append(self.allocator, .{ .ret_void = return_keyword_start });
@@ -1923,6 +2001,9 @@ pub const Parser = struct {
     }
 
     fn parseBody(self: *Parser) Error!void {
+        const previous_scope_defer_count = self.scope_defer_count;
+        self.scope_defer_count = 0;
+
         if (!self.eatToken(.open_brace)) {
             self.error_info = .{ .message = "expected a '{'", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
 
@@ -1938,5 +2019,9 @@ pub const Parser = struct {
                 return error.UnexpectedToken;
             }
         }
+
+        try self.popScopeDefers();
+
+        self.scope_defer_count = previous_scope_defer_count;
     }
 };
