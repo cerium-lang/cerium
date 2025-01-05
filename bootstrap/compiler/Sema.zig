@@ -719,30 +719,6 @@ fn analyzeExternals(self: *Sema) Error!void {
     }
 }
 
-fn analyzeFunction(self: *Sema, function: *Sir.SubSymbol.MaybeExported, sir_instructions: []const Sir.Instruction) Error!void {
-    const variable = self.scope.get(function.subsymbol.name.buffer).?;
-
-    if (variable.maybe_prefixed) |prefixed_name|
-        function.subsymbol.name.buffer = prefixed_name;
-
-    try self.air.instructions.append(self.allocator, .{
-        .function = .{
-            .symbol = .{
-                .name = function.subsymbol.name,
-                .type = variable.type,
-                .linkage = variable.linkage,
-            },
-            .exported = function.exported,
-        },
-    });
-
-    self.maybe_function_type = variable.type;
-
-    for (sir_instructions) |sir_instruction| {
-        try self.analyzeInstruction(sir_instruction);
-    }
-}
-
 fn analyzeFunctions(self: *Sema) Error!void {
     var function_entry_iterator = self.collection.functions.valueIterator();
 
@@ -774,7 +750,28 @@ fn analyzeFunctions(self: *Sema) Error!void {
     for (self.collection.used_variables.keys()) |used_variable| {
         if (self.collection.functions.get(used_variable)) |function_entry| {
             var function, const sir_instructions = function_entry;
-            try self.analyzeFunction(&function, sir_instructions);
+
+            const variable = self.scope.get(function.subsymbol.name.buffer).?;
+
+            if (variable.maybe_prefixed) |prefixed_name|
+                function.subsymbol.name.buffer = prefixed_name;
+
+            try self.air.instructions.append(self.allocator, .{
+                .function = .{
+                    .symbol = .{
+                        .name = function.subsymbol.name,
+                        .type = variable.type,
+                        .linkage = variable.linkage,
+                    },
+                    .exported = function.exported,
+                },
+            });
+
+            self.maybe_function_type = variable.type;
+
+            for (sir_instructions) |sir_instruction| {
+                try self.analyzeInstruction(sir_instruction);
+            }
         }
     }
 }
