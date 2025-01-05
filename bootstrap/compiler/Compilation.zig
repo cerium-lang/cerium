@@ -112,7 +112,7 @@ pub fn parse(self: Compilation, file: File) ?Sir {
 
 /// Analyze Sir and lower it to Air
 pub fn analyze(self: Compilation, file: File, sir: Sir) ?[]Air {
-    var sema = Sema.init(self.allocator, file, &self) catch |err| {
+    var sema = Sema.init(self.allocator, &self, file) catch |err| {
         std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
 
         return null;
@@ -140,12 +140,6 @@ pub fn analyze(self: Compilation, file: File, sir: Sir) ?[]Air {
     };
 
     const airs = sema.airs.toOwnedSlice(self.allocator) catch |err| {
-        std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
-
-        return null;
-    };
-
-    inline for (0..2) |_| Air.passes.reachability.removeUnreachableDeclarations(self.allocator, airs) catch |err| {
         std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
 
         return null;

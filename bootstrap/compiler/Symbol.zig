@@ -348,8 +348,16 @@ pub fn Scope(comptime V: type) type {
 
         items: std.StringHashMapUnmanaged(V) = .{},
 
+        pub fn clearRetainingCapacity(self: *Self) void {
+            self.items.clearRetainingCapacity();
+        }
+
         pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
             self.items.deinit(allocator);
+        }
+
+        pub fn iterator(self: *const Self) @FieldType(Self, "items").Iterator {
+            return self.items.iterator();
         }
 
         pub fn put(self: *Self, allocator: std.mem.Allocator, name: []const u8, value: V) std.mem.Allocator.Error!void {

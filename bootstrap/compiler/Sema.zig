@@ -22,17 +22,19 @@ module: []const u8,
 
 file: Compilation.File,
 
+collection: Collection = .{},
+
 compilation: *const Compilation,
 
 airs: std.ArrayListUnmanaged(Air) = .{},
 air: *Air = undefined,
 
-maybe_function_type: ?Type = null,
-
 stack: std.ArrayListUnmanaged(Value) = .{},
 
 scope: *Scope(Variable),
 scopes: std.ArrayListUnmanaged(Scope(Variable)),
+
+maybe_function_type: ?Type = null,
 
 error_info: ?ErrorInfo = null,
 
@@ -100,7 +102,7 @@ pub fn prefix(allocator: std.mem.Allocator, module: []const u8, symbol: []const 
     return std.fmt.allocPrint(allocator, "{s}::{s}", .{ module, symbol });
 }
 
-pub fn init(allocator: std.mem.Allocator, file: Compilation.File, compilation: *const Compilation) std.mem.Allocator.Error!Sema {
+pub fn init(allocator: std.mem.Allocator, compilation: *const Compilation, file: Compilation.File) Error!Sema {
     var scopes: @FieldType(Sema, "scopes") = .{};
 
     const global_scope = try scopes.addOne(allocator);
@@ -244,15 +246,35 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
     }
 }
 
-pub fn analyze(self: *Sema, sir: Sir) Error!void {
-    var collection = try self.collect(sir);
-    defer collection.deinit(self.allocator);
+const Collection = struct {
+    type_aliases: std.StringHashMapUnmanaged(Sir.SubSymbol) = .{},
+    externals: std.ArrayListUnmanaged(Sir.SubSymbol) = .{},
+    functions: std.StringHashMapUnmanaged(FunctionEntry) = .{},
+    global_instructions: std.ArrayListUnmanaged(Sir.Instruction) = .{},
+    used_variables: std.StringArrayHashMapUnmanaged(void) = .{},
+    max_scope_depth: usize = 0,
 
-    try self.analyzeTypeAliases(&collection);
-    try self.analyzeGlobalInstructions(collection);
-    try self.analyzeExternals(collection);
-    try self.analyzeFunctions(collection);
-}
+    const FunctionEntry = struct {
+        Sir.SubSymbol.MaybeExported,
+        []const Sir.Instruction,
+    };
+
+    fn clearRetainingCapacity(self: *Collection) void {
+        self.type_aliases.clearRetainingCapacity();
+        self.externals.clearRetainingCapacity();
+        self.functions.clearRetainingCapacity();
+        self.global_instructions.clearRetainingCapacity();
+        self.used_variables.clearRetainingCapacity();
+    }
+
+    fn deinit(self: *Collection, allocator: std.mem.Allocator) void {
+        self.type_aliases.deinit(allocator);
+        self.externals.deinit(allocator);
+        self.functions.deinit(allocator);
+        self.global_instructions.deinit(allocator);
+        self.used_variables.deinit(allocator);
+    }
+};
 
 fn import(self: *Sema, file_path: Name) Error!void {
     const import_root = std.mem.eql(u8, file_path.buffer, "root");
@@ -349,7 +371,7 @@ fn import(self: *Sema, file_path: Name) Error!void {
         return error.ImportFailed;
     };
 
-    var sema = try Sema.init(self.allocator, compilation_file, self.compilation);
+    var sema = try Sema.init(self.allocator, self.compilation, compilation_file);
     defer sema.deinit();
 
     sema.analyze(sir_parser.sir) catch |err| {
@@ -369,59 +391,84 @@ fn import(self: *Sema, file_path: Name) Error!void {
         return error.ImportFailed;
     };
 
-    sir_parser.sir.instructions.deinit(self.allocator);
-
     // We should be in global scope if the semantic analysis was successful
     std.debug.assert(sema.scope.maybe_parent == null);
 
-    var variable_entry_iterator = sema.scope.items.iterator();
+    sema.collection.clearRetainingCapacity();
+
+    var variable_entry_iterator = sema.scope.iterator();
 
     while (variable_entry_iterator.next()) |variable_entry| {
         var variable = variable_entry.value_ptr.*;
-        var variable_name = variable_entry.key_ptr.*;
+        const old_variable_name = variable_entry.key_ptr.*;
 
-        variable_name = if (import_root) blk: {
-            if (variable.maybe_prefixed == null) variable.maybe_prefixed = variable_name;
-            break :blk try prefix(self.allocator, "root", variable_name);
+        const new_variable_name = if (import_root) blk: {
+            if (variable.maybe_prefixed == null) variable.maybe_prefixed = old_variable_name;
+            break :blk try prefix(self.allocator, "root", old_variable_name);
         } else if (variable.maybe_prefixed) |prefixed_name|
             prefixed_name
         else blk: {
-            variable.maybe_prefixed = variable_name;
-            break :blk try prefix(self.allocator, sema.module, variable_name);
+            variable.maybe_prefixed = old_variable_name;
+            break :blk try prefix(self.allocator, sema.module, old_variable_name);
         };
 
-        try self.scope.put(self.allocator, variable_name, variable);
+        if (self.collection.used_variables.get(new_variable_name)) |_|
+            try sema.collection.used_variables.put(self.allocator, old_variable_name, {});
+
+        try self.scope.put(self.allocator, new_variable_name, variable);
     }
+
+    sema.scope.clearRetainingCapacity();
+
+    // Unreachable case: it will not allocate since we used `clearRetainingCapacity`
+    sema.putBuiltinConstants() catch unreachable;
+
+    sema.analyze(sir_parser.sir) catch |err| {
+        switch (err) {
+            error.OutOfMemory => std.debug.print("Error: {s}\n", .{root.Cli.errorDescription(err)}),
+
+            else => std.debug.print("{s}:{}:{}: {s}\n", .{
+                compilation_file.path,
+                sema.error_info.?.source_loc.line,
+                sema.error_info.?.source_loc.column,
+                sema.error_info.?.message,
+            }),
+        }
+
+        self.error_info = .{ .message = "import file failed in semantic analysis pass", .source_loc = SourceLoc.find(self.file.buffer, file_path.token_start) };
+
+        return error.ImportFailed;
+    };
 
     try self.airs.appendSlice(self.allocator, sema.airs.items);
 
     sema.airs.deinit(self.allocator);
+
+    sir_parser.sir.instructions.deinit(self.allocator);
 }
 
-const Collection = struct {
-    type_aliases: std.StringHashMapUnmanaged(Sir.SubSymbol) = .{},
-    externals: std.ArrayListUnmanaged(Sir.SubSymbol) = .{},
-    functions: std.ArrayListUnmanaged(FunctionEntry) = .{},
-    global_instructions: std.ArrayListUnmanaged(Sir.Instruction) = .{},
-    max_scope_depth: usize = 0,
+fn collectUsedVariables(self: *Sema, sir_instructions: []const Sir.Instruction) Error!void {
+    for (sir_instructions) |sir_instruction|
+        switch (sir_instruction) {
+            .get => |name| {
+                const gop_entry = try self.collection.used_variables.getOrPut(self.allocator, name.buffer);
 
-    const FunctionEntry = struct {
-        Sir.SubSymbol.MaybeExported,
-        []const Sir.Instruction,
-    };
+                if (!gop_entry.found_existing) {
+                    if (self.collection.functions.get(name.buffer)) |other_function_entry| {
+                        _, const other_sir_instructions = other_function_entry;
+                        try self.collectUsedVariables(other_sir_instructions);
+                    }
 
-    fn deinit(self: *Collection, allocator: std.mem.Allocator) void {
-        self.type_aliases.deinit(allocator);
-        self.externals.deinit(allocator);
-        self.functions.deinit(allocator);
-        self.global_instructions.deinit(allocator);
-    }
-};
+                    gop_entry.value_ptr.* = {};
+                }
+            },
 
-fn collect(self: *Sema, sir: Sir) Error!Collection {
-    var collection: Collection = .{};
+            else => {},
+        };
+}
 
-    try collection.global_instructions.ensureTotalCapacity(self.allocator, sir.instructions.items.len);
+fn collect(self: *Sema, sir: Sir) Error!void {
+    try self.collection.global_instructions.ensureTotalCapacity(self.allocator, sir.instructions.items.len);
 
     var maybe_module: ?[]const u8 = null;
 
@@ -432,11 +479,11 @@ fn collect(self: *Sema, sir: Sir) Error!Collection {
 
         switch (sir_instruction) {
             .type_alias => |subsymbol| {
-                if (collection.type_aliases.get(subsymbol.name.buffer) != null) try self.reportRedeclaration(subsymbol.name);
-                try collection.type_aliases.put(self.allocator, subsymbol.name.buffer, subsymbol);
+                if (self.collection.type_aliases.get(subsymbol.name.buffer) != null) try self.reportRedeclaration(subsymbol.name);
+                try self.collection.type_aliases.put(self.allocator, subsymbol.name.buffer, subsymbol);
             },
 
-            .external => |subsymbol| try collection.externals.append(self.allocator, subsymbol),
+            .external => |subsymbol| try self.collection.externals.append(self.allocator, subsymbol),
 
             .function => |function| {
                 const start = i + 1;
@@ -451,7 +498,7 @@ fn collect(self: *Sema, sir: Sir) Error!Collection {
                     switch (other_instruction) {
                         .start_scope => {
                             scope_depth += 1;
-                            collection.max_scope_depth += 1;
+                            self.collection.max_scope_depth += 1;
                         },
 
                         .end_scope => {
@@ -463,9 +510,36 @@ fn collect(self: *Sema, sir: Sir) Error!Collection {
                     }
                 }
 
-                try collection.functions.append(self.allocator, .{ function, sir.instructions.items[start..end] });
+                if (self.collection.functions.get(function.subsymbol.name.buffer) != null) try self.reportRedeclaration(function.subsymbol.name);
+                try self.collection.functions.put(self.allocator, function.subsymbol.name.buffer, .{ function, sir.instructions.items[start..end] });
             },
 
+            .import, .module => {},
+
+            else => self.collection.global_instructions.appendAssumeCapacity(sir_instruction),
+        }
+    }
+
+    var function_entry_iterator = self.collection.functions.valueIterator();
+
+    while (function_entry_iterator.next()) |function_entry| {
+        const function, const sir_instructions = function_entry.*;
+
+        if (function.exported) {
+            try self.collectUsedVariables(sir_instructions);
+            try self.collection.used_variables.put(self.allocator, function.subsymbol.name.buffer, {});
+        }
+    }
+
+    for (self.collection.used_variables.keys()) |used_variable| {
+        if (self.collection.functions.get(used_variable)) |function_entry| {
+            _, const sir_instructions = function_entry;
+            try self.collectUsedVariables(sir_instructions);
+        }
+    }
+
+    for (sir.instructions.items) |sir_instruction| {
+        switch (sir_instruction) {
             .module => |name| {
                 if (maybe_module == null) {
                     maybe_module = name.buffer;
@@ -478,7 +552,7 @@ fn collect(self: *Sema, sir: Sir) Error!Collection {
 
             .import => |file_path| try self.import(file_path),
 
-            else => collection.global_instructions.appendAssumeCapacity(sir_instruction),
+            else => {},
         }
     }
 
@@ -487,18 +561,24 @@ fn collect(self: *Sema, sir: Sir) Error!Collection {
 
         return error.UnnamedModule;
     };
-
-    return collection;
 }
 
-fn analyzeSubTypeOrTypeAlias(self: *Sema, subtype: Sir.SubType, collection: *Collection) Error!Type {
+pub fn analyze(self: *Sema, sir: Sir) Error!void {
+    try self.collect(sir);
+    try self.analyzeTypeAliases();
+    try self.analyzeGlobalInstructions();
+    try self.analyzeExternals();
+    try self.analyzeFunctions();
+}
+
+fn analyzeSubTypeOrTypeAlias(self: *Sema, subtype: Sir.SubType) Error!Type {
     switch (subtype) {
         .name => |name| {
             if (self.scope.getPtr(subtype.name.buffer)) |variable| {
                 if (variable.is_type_alias) {
                     if (variable.type == .void)
-                        if (collection.type_aliases.get(subtype.name.buffer)) |type_alias| {
-                            variable.type = try self.analyzeTypeAlias(type_alias, collection);
+                        if (self.collection.type_aliases.get(subtype.name.buffer)) |type_alias| {
+                            variable.type = try self.analyzeTypeAlias(type_alias);
                         };
 
                     return variable.type;
@@ -512,11 +592,11 @@ fn analyzeSubTypeOrTypeAlias(self: *Sema, subtype: Sir.SubType, collection: *Col
     }
 }
 
-fn analyzeTypeAlias(self: *Sema, type_alias: Sir.SubSymbol, collection: *Collection) Error!Type {
+fn analyzeTypeAlias(self: *Sema, type_alias: Sir.SubSymbol) Error!Type {
     switch (type_alias.subtype) {
         .pure => |pure| return pure,
 
-        .name => return self.analyzeSubTypeOrTypeAlias(type_alias.subtype, collection),
+        .name => return self.analyzeSubTypeOrTypeAlias(type_alias.subtype),
 
         .array, .pointer => return self.analyzeSubType(type_alias.subtype),
 
@@ -524,10 +604,10 @@ fn analyzeTypeAlias(self: *Sema, type_alias: Sir.SubSymbol, collection: *Collect
             const parameter_types = try self.allocator.alloc(Type, function.parameter_subtypes.len);
 
             for (function.parameter_subtypes, 0..) |parameter_subtype, i| {
-                parameter_types[i] = try self.analyzeSubTypeOrTypeAlias(parameter_subtype, collection);
+                parameter_types[i] = try self.analyzeSubTypeOrTypeAlias(parameter_subtype);
             }
 
-            const return_type = try self.analyzeSubTypeOrTypeAlias(function.return_subtype.*, collection);
+            const return_type = try self.analyzeSubTypeOrTypeAlias(function.return_subtype.*);
 
             const return_type_on_heap = try self.allocator.create(Type);
             return_type_on_heap.* = return_type;
@@ -545,14 +625,14 @@ fn analyzeTypeAlias(self: *Sema, type_alias: Sir.SubSymbol, collection: *Collect
             var fields = try self.allocator.alloc(Type.Struct.Field, @"struct".subsymbols.len);
 
             for (@"struct".subsymbols, 0..) |subsymbol, i| {
-                fields[i] = .{ .name = subsymbol.name.buffer, .type = try self.analyzeSubTypeOrTypeAlias(subsymbol.subtype, collection) };
+                fields[i] = .{ .name = subsymbol.name.buffer, .type = try self.analyzeSubTypeOrTypeAlias(subsymbol.subtype) };
             }
 
             return Type{ .@"struct" = .{ .fields = fields } };
         },
 
         .@"enum" => |@"enum"| {
-            const enum_type = try self.analyzeSubTypeOrTypeAlias(@"enum".subtype.*, collection);
+            const enum_type = try self.analyzeSubTypeOrTypeAlias(@"enum".subtype.*);
 
             try self.checkIntType(enum_type, @"enum".token_start);
 
@@ -580,19 +660,19 @@ fn analyzeTypeAlias(self: *Sema, type_alias: Sir.SubSymbol, collection: *Collect
     }
 }
 
-fn analyzeTypeAliases(self: *Sema, collection: *Collection) Error!void {
-    var type_alias_iterator = collection.type_aliases.valueIterator();
+fn analyzeTypeAliases(self: *Sema) Error!void {
+    var type_alias_iterator = self.collection.type_aliases.valueIterator();
 
     var type_alias_circular_targets: std.ArrayListUnmanaged(Name) = .{};
 
-    try type_alias_circular_targets.ensureTotalCapacity(self.allocator, collection.type_aliases.count());
+    try type_alias_circular_targets.ensureTotalCapacity(self.allocator, self.collection.type_aliases.count());
 
     while (type_alias_iterator.next()) |type_alias| {
         if (self.scope.get(type_alias.name.buffer) != null) try self.reportRedeclaration(type_alias.name);
 
         type_alias_circular_targets.appendAssumeCapacity(type_alias.name);
 
-        try self.checkTypeAliasCircular(&type_alias_circular_targets, type_alias.subtype, &collection.type_aliases);
+        try self.checkTypeAliasCircular(&type_alias_circular_targets, type_alias.subtype, &self.collection.type_aliases);
 
         _ = type_alias_circular_targets.pop();
 
@@ -605,27 +685,27 @@ fn analyzeTypeAliases(self: *Sema, collection: *Collection) Error!void {
 
     type_alias_circular_targets.deinit(self.allocator);
 
-    type_alias_iterator = collection.type_aliases.valueIterator();
+    type_alias_iterator = self.collection.type_aliases.valueIterator();
 
     while (type_alias_iterator.next()) |type_alias| {
         const variable = self.scope.getPtr(type_alias.name.buffer).?;
 
         if (variable.type == .void)
-            variable.type = try self.analyzeTypeAlias(type_alias.*, collection);
+            variable.type = try self.analyzeTypeAlias(type_alias.*);
     }
 }
 
-fn analyzeGlobalInstructions(self: *Sema, collection: Collection) Error!void {
+fn analyzeGlobalInstructions(self: *Sema) Error!void {
     const global_air = try self.airs.addOne(self.allocator);
     global_air.* = .{};
     self.air = global_air;
 
-    for (collection.global_instructions.items) |global_instruction|
+    for (self.collection.global_instructions.items) |global_instruction|
         try self.analyzeInstruction(global_instruction);
 }
 
-fn analyzeExternals(self: *Sema, collection: Collection) Error!void {
-    for (collection.externals.items) |external| {
+fn analyzeExternals(self: *Sema) Error!void {
+    for (self.collection.externals.items) |external| {
         if (self.scope.get(external.name.buffer) != null) try self.reportRedeclaration(external.name);
 
         const symbol = try self.analyzeSubSymbol(external);
@@ -639,51 +719,62 @@ fn analyzeExternals(self: *Sema, collection: Collection) Error!void {
     }
 }
 
-fn analyzeFunctions(self: *Sema, collection: Collection) Error!void {
-    for (collection.functions.items) |entry| {
-        const function, _ = entry;
+fn analyzeFunction(self: *Sema, function: *Sir.SubSymbol.MaybeExported, sir_instructions: []const Sir.Instruction) Error!void {
+    const variable = self.scope.get(function.subsymbol.name.buffer).?;
 
-        if (self.scope.get(function.subsymbol.name.buffer) != null) try self.reportRedeclaration(function.subsymbol.name);
+    if (variable.maybe_prefixed) |prefixed_name|
+        function.subsymbol.name.buffer = prefixed_name;
+
+    try self.air.instructions.append(self.allocator, .{
+        .function = .{
+            .symbol = .{
+                .name = function.subsymbol.name,
+                .type = variable.type,
+                .linkage = variable.linkage,
+            },
+            .exported = function.exported,
+        },
+    });
+
+    self.maybe_function_type = variable.type;
+
+    for (sir_instructions) |sir_instruction| {
+        try self.analyzeInstruction(sir_instruction);
+    }
+}
+
+fn analyzeFunctions(self: *Sema) Error!void {
+    var function_entry_iterator = self.collection.functions.valueIterator();
+
+    while (function_entry_iterator.next()) |function_entry| {
+        const function, _ = function_entry.*;
+
+        if (self.scope.get(function.subsymbol.name.buffer) != null)
+            try self.reportRedeclaration(function.subsymbol.name);
 
         const symbol = try self.analyzeSubSymbol(function.subsymbol);
 
         try self.scope.put(self.allocator, symbol.name.buffer, .{
-            .maybe_prefixed = if (!function.exported) try prefix(self.allocator, self.module, symbol.name.buffer) else null,
+            .maybe_prefixed = if (!function.exported)
+                try prefix(self.allocator, self.module, symbol.name.buffer)
+            else
+                null,
             .type = symbol.type,
             .linkage = symbol.linkage,
         });
     }
 
+    try self.scopes.ensureTotalCapacity(self.allocator, self.collection.max_scope_depth);
+    self.scope = &self.scopes.items[0];
+
     const functions_air = try self.airs.addOne(self.allocator);
     functions_air.* = .{};
     self.air = functions_air;
 
-    try self.scopes.ensureTotalCapacity(self.allocator, collection.max_scope_depth);
-
-    self.scope = &self.scopes.items[self.scopes.items.len - 1];
-
-    for (collection.functions.items) |entry| {
-        var function, const sir_instructions = entry;
-
-        const variable = self.scope.get(function.subsymbol.name.buffer).?;
-
-        if (variable.maybe_prefixed) |prefixed_name| function.subsymbol.name.buffer = prefixed_name;
-
-        try self.air.instructions.append(self.allocator, .{
-            .function = .{
-                .symbol = .{
-                    .name = function.subsymbol.name,
-                    .type = variable.type,
-                    .linkage = variable.linkage,
-                },
-                .exported = function.exported,
-            },
-        });
-
-        self.maybe_function_type = variable.type;
-
-        for (sir_instructions) |sir_instruction| {
-            try self.analyzeInstruction(sir_instruction);
+    for (self.collection.used_variables.keys()) |used_variable| {
+        if (self.collection.functions.get(used_variable)) |function_entry| {
+            var function, const sir_instructions = function_entry;
+            try self.analyzeFunction(&function, sir_instructions);
         }
     }
 }
