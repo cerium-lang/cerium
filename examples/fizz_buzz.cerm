@@ -1,6 +1,6 @@
 module examples::fizz_buzz;
 
-import "std/os/linux/x86_64.cerm";
+import "std/os/linux.cerm";
 
 // TODO: We don't support slices yet
 fn strlen(str [*]const u8) usize {
@@ -21,11 +21,11 @@ fn printi(n u32) {
         n = n % 10;
     }
 
-    std::os::linux::x86_64::write(STDOUT, &('0' + n) as usize, 1);
+    std::os::linux::write(STDOUT, &('0' + n) as usize, 1);
 }
 
 fn prints(str [*]const u8) {
-    std::os::linux::x86_64::write(STDOUT, str as usize, strlen(str));
+    std::os::linux::write(STDOUT, str as usize, strlen(str));
 }
 
 fn main() {

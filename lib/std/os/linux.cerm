@@ -1,4 +1,4 @@
-module std::os::linux::x86_64;
+module std::os::linux;
 
 type SYS = enum usize {
     read,
