@@ -38,14 +38,14 @@ scopes: std.ArrayListUnmanaged(Scope(Variable)) = .{},
 pub const Error = std.mem.Allocator.Error;
 
 pub const Variable = struct {
-    pointer: c.LLVMValueRef,
+    tag: Symbol.Tag,
     type: Type,
-    linkage: Symbol.Linkage,
+    pointer: c.LLVMValueRef,
 };
 
 pub const Register = struct {
-    value: c.LLVMValueRef,
     type: Type,
+    value: c.LLVMValueRef,
 };
 
 pub fn init(allocator: std.mem.Allocator, compilation: *const Compilation) Error!LlvmBackend {
@@ -376,7 +376,7 @@ pub fn render(self: *LlvmBackend, airs: []const Air) Error!void {
                         .{
                             .pointer = function_pointer,
                             .type = symbol.type,
-                            .linkage = symbol.linkage,
+                            .tag = symbol.tag,
                         },
                     );
                 },
@@ -1082,7 +1082,7 @@ fn renderParameters(self: *LlvmBackend, symbols: []const Symbol) Error!void {
             .{
                 .pointer = parameter_pointer,
                 .type = symbol.type,
-                .linkage = symbol.linkage,
+                .tag = symbol.tag,
             },
         );
     }
@@ -1094,7 +1094,7 @@ fn renderVariable(self: *LlvmBackend, symbol_maybe_exported: Air.SymbolMaybeExpo
     const llvm_type = try self.getLlvmType(symbol.type);
 
     if (self.scope.get(symbol.name.buffer)) |variable| {
-        if (variable.linkage == .global) {
+        if (variable.tag == .global) {
             var register = self.stack.popOrNull() orelse Register{ .value = c.LLVMGetUndef(llvm_type), .type = symbol.type };
 
             try self.unaryImplicitCast(&register, symbol.type);
@@ -1105,7 +1105,7 @@ fn renderVariable(self: *LlvmBackend, symbol_maybe_exported: Air.SymbolMaybeExpo
         }
     }
 
-    const variable_pointer = switch (symbol.linkage) {
+    const variable_pointer = switch (symbol.tag) {
         .global => blk: {
             const global_variable_pointer = c.LLVMAddGlobal(
                 self.module,
@@ -1154,9 +1154,9 @@ fn renderVariable(self: *LlvmBackend, symbol_maybe_exported: Air.SymbolMaybeExpo
         self.allocator,
         symbol.name.buffer,
         .{
-            .pointer = variable_pointer,
+            .tag = symbol.tag,
             .type = symbol.type,
-            .linkage = symbol.linkage,
+            .pointer = variable_pointer,
         },
     );
 }
@@ -1183,9 +1183,9 @@ fn renderExternal(self: *LlvmBackend, symbol: Symbol) Error!void {
         self.allocator,
         symbol.name.buffer,
         .{
+            .tag = .global,
             .pointer = pointer,
             .type = symbol.type,
-            .linkage = .global,
         },
     );
 }

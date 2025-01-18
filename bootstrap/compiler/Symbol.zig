@@ -5,11 +5,11 @@ const Compilation = @import("Compilation.zig");
 
 const Symbol = @This();
 
+tag: Tag,
 name: Name,
 type: Type,
-linkage: Linkage,
 
-pub const Linkage = enum {
+pub const Tag = enum {
     local,
     global,
     builtin,

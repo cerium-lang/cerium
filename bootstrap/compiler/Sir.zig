@@ -94,7 +94,7 @@ pub const SubType = union(enum) {
 pub const SubSymbol = struct {
     name: Name,
     subtype: SubType,
-    linkage: Symbol.Linkage,
+    tag: Symbol.Tag,
 
     pub const MaybeExported = struct {
         subsymbol: SubSymbol,
@@ -492,7 +492,7 @@ pub const Parser = struct {
 
     fn parseFunctionDeclaration(
         self: *Parser,
-        comptime linkage: Symbol.Linkage,
+        comptime tag: Symbol.Tag,
         comptime external: bool,
         comptime exported: bool,
     ) Error!void {
@@ -540,9 +540,9 @@ pub const Parser = struct {
         if (external) {
             return self.sir.instructions.append(self.allocator, .{
                 .external = .{
+                    .tag = tag,
                     .name = name,
                     .subtype = function_pointer_subtype,
-                    .linkage = linkage,
                 },
             });
         }
@@ -550,9 +550,9 @@ pub const Parser = struct {
         try self.sir.instructions.append(self.allocator, .{
             .function = .{
                 .subsymbol = .{
+                    .tag = tag,
                     .name = name,
                     .subtype = function_pointer_subtype,
-                    .linkage = linkage,
                 },
 
                 .exported = exported,
@@ -610,9 +610,9 @@ pub const Parser = struct {
             }
 
             try paramters.append(self.allocator, .{
+                .tag = .local,
                 .name = try self.parseName(),
                 .subtype = try self.parseSubType(),
-                .linkage = .local,
             });
 
             if (!self.eatToken(.comma) and self.peekToken().tag != .close_paren) {
@@ -627,7 +627,7 @@ pub const Parser = struct {
 
     fn parseVariableDeclaration(
         self: *Parser,
-        comptime linkage: Symbol.Linkage,
+        comptime tag: Symbol.Tag,
         comptime external: bool,
         comptime exported: bool,
     ) Error!void {
@@ -647,9 +647,9 @@ pub const Parser = struct {
                 self.allocator,
                 .{
                     .external = .{
+                        .tag = .global,
                         .name = name,
                         .subtype = maybe_subtype.?,
-                        .linkage = .global,
                     },
                 },
             );
@@ -671,9 +671,9 @@ pub const Parser = struct {
                 .{
                     .variable = .{
                         .subsymbol = .{
+                            .tag = tag,
                             .name = name,
                             .subtype = subtype,
-                            .linkage = linkage,
                         },
 
                         .exported = exported,
@@ -682,18 +682,18 @@ pub const Parser = struct {
             else if (is_const)
                 .{
                     .constant = .{
+                        .tag = tag,
                         .name = name,
                         .subtype = .{ .pure = .void },
-                        .linkage = linkage,
                     },
                 }
             else
                 .{
                     .variable_infer = .{
                         .subsymbol = .{
+                            .tag = tag,
                             .name = name,
                             .subtype = .{ .pure = .void },
-                            .linkage = linkage,
                         },
 
                         .exported = exported,
@@ -721,9 +721,9 @@ pub const Parser = struct {
             self.allocator,
             .{
                 .type_alias = .{
+                    .tag = .global,
                     .name = name,
                     .subtype = subtype,
-                    .linkage = .global,
                 },
             },
         );
@@ -1756,9 +1756,9 @@ pub const Parser = struct {
                     try fields_hashset.put(self.allocator, name.buffer, {});
 
                     try subsymbols.append(self.allocator, .{
+                        .tag = .local,
                         .name = name,
                         .subtype = try self.parseSubType(),
-                        .linkage = .local,
                     });
 
                     if (!self.eatToken(.comma) and self.peekToken().tag != .close_brace) {
