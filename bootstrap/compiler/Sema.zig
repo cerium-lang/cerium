@@ -134,7 +134,7 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
         inline for (.{ "void", "bool" }, .{ .void, .bool }) |name, @"type"| {
             self.scope.putAssumeCapacity(name, .{
                 .type = @"type",
-                .linkage = .global,
+                .linkage = .builtin,
                 .is_type_alias = true,
             });
         }
@@ -159,14 +159,14 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
                     .bits = c_char_bits,
                 },
             },
-            .linkage = .global,
+            .linkage = .builtin,
             .is_type_alias = true,
         });
 
         inline for (.{ "c_uchar", "c_ushort", "c_uint", "c_ulong", "c_ulonglong", "usize" }, .{ c_char_bits, c_ushort_bits, c_uint_bits, c_ulong_bits, c_ulonglong_bits, ptr_bits }) |name, bits| {
             self.scope.putAssumeCapacity(name, .{
                 .type = .{ .int = .{ .signedness = .unsigned, .bits = @intCast(bits) } },
-                .linkage = .global,
+                .linkage = .builtin,
                 .is_type_alias = true,
             });
         }
@@ -174,7 +174,7 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
         inline for (.{ "c_schar", "c_short", "c_int", "c_long", "c_longlong", "ssize" }, .{ c_char_bits, c_short_bits, c_int_bits, c_long_bits, c_longlong_bits, ptr_bits }) |name, bits| {
             self.scope.putAssumeCapacity(name, .{
                 .type = .{ .int = .{ .signedness = .signed, .bits = @intCast(bits) } },
-                .linkage = .global,
+                .linkage = .builtin,
                 .is_type_alias = true,
             });
         }
@@ -187,7 +187,7 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
         for (unsigned_int_names, 0..) |name, bits| {
             self.scope.putAssumeCapacity(name, .{
                 .type = .{ .int = .{ .signedness = .unsigned, .bits = @intCast(bits) } },
-                .linkage = .global,
+                .linkage = .builtin,
                 .is_type_alias = true,
             });
         }
@@ -197,7 +197,7 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
         for (signed_int_names, 0..) |name, bits| {
             self.scope.putAssumeCapacity(name, .{
                 .type = .{ .int = .{ .signedness = .signed, .bits = @intCast(bits) } },
-                .linkage = .global,
+                .linkage = .builtin,
                 .is_type_alias = true,
             });
         }
@@ -211,7 +211,7 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
         inline for (.{ "f16", "f32", "f64", "c_float", "c_double" }, .{ 16, 32, 64, c_float_bits, c_double_bits }) |float_type, i| {
             self.scope.putAssumeCapacity(float_type, .{
                 .type = .{ .float = .{ .bits = @intCast(i) } },
-                .linkage = .global,
+                .linkage = .builtin,
                 .is_type_alias = true,
             });
         }
@@ -225,7 +225,7 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
         inline for (.{ "builtin::target::os", "builtin::target::arch", "builtin::target::abi" }, .{ builtin_target_os, builtin_target_arch, builtin_target_abi }) |builtin_name, builtin_value| {
             self.scope.putAssumeCapacity(builtin_name, .{
                 .type = Type.intFittingRange(builtin_value, builtin_value),
-                .linkage = .global,
+                .linkage = .builtin,
                 .maybe_value = .{ .int = builtin_value },
                 .is_const = true,
                 .is_comptime = true,
@@ -237,7 +237,7 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
         inline for (.{ "true", "false" }, .{ true, false }) |boolean_name, boolean_value| {
             self.scope.putAssumeCapacity(boolean_name, .{
                 .type = .bool,
-                .linkage = .global,
+                .linkage = .builtin,
                 .maybe_value = .{ .boolean = boolean_value },
                 .is_const = true,
                 .is_comptime = true,
@@ -401,6 +401,8 @@ fn import(self: *Sema, file_path: Name) Error!void {
     while (variable_entry_iterator.next()) |variable_entry| {
         var variable = variable_entry.value_ptr.*;
         const old_variable_name = variable_entry.key_ptr.*;
+
+        if (variable.linkage == .builtin) continue;
 
         const new_variable_name = if (import_root) blk: {
             if (variable.maybe_prefixed == null) variable.maybe_prefixed = old_variable_name;

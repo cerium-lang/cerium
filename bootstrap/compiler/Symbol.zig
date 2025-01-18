@@ -13,6 +13,7 @@ pub const Linkage = enum {
     local,
     global,
     external,
+    builtin,
 };
 
 pub const Type = union(enum) {

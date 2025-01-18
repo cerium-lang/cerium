@@ -1149,7 +1149,7 @@ fn renderVariable(self: *LlvmBackend, symbol_maybe_exported: Air.SymbolMaybeExpo
             break :blk local_variable_pointer;
         },
 
-        .external => unreachable,
+        .external, .builtin => unreachable,
     };
 
     try self.scope.put(
