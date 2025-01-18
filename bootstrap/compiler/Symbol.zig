@@ -12,7 +12,6 @@ linkage: Linkage,
 pub const Linkage = enum {
     local,
     global,
-    external,
     builtin,
 };
 

@@ -1094,9 +1094,7 @@ fn renderVariable(self: *LlvmBackend, symbol_maybe_exported: Air.SymbolMaybeExpo
     const llvm_type = try self.getLlvmType(symbol.type);
 
     if (self.scope.get(symbol.name.buffer)) |variable| {
-        // If the variable is an external variable that is already declared, this would happen if
-        // there is an `extern var x u8;` in a file and then an `export var x u8 = 0;` in another file
-        if (variable.linkage == .external) {
+        if (variable.linkage == .global) {
             var register = self.stack.popOrNull() orelse Register{ .value = c.LLVMGetUndef(llvm_type), .type = symbol.type };
 
             try self.unaryImplicitCast(&register, symbol.type);
@@ -1149,7 +1147,7 @@ fn renderVariable(self: *LlvmBackend, symbol_maybe_exported: Air.SymbolMaybeExpo
             break :blk local_variable_pointer;
         },
 
-        .external, .builtin => unreachable,
+        .builtin => unreachable,
     };
 
     try self.scope.put(

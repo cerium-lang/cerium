@@ -360,9 +360,9 @@ pub const Parser = struct {
 
             .keyword_asm => return self.parseGlobalAssembly(),
 
-            .keyword_fn => return self.parseFunctionDeclaration(.global, false),
+            .keyword_fn => return self.parseFunctionDeclaration(.global, false, false),
 
-            .keyword_const, .keyword_var => try self.parseVariableDeclaration(.global, false),
+            .keyword_const, .keyword_var => try self.parseVariableDeclaration(.global, false, false),
 
             .keyword_type => try self.parseTypeAlias(),
 
@@ -382,7 +382,7 @@ pub const Parser = struct {
 
     fn parseStmt(self: *Parser, expect_semicolon: bool) Error!void {
         switch (self.peekToken().tag) {
-            .keyword_const, .keyword_var => try self.parseVariableDeclaration(.local, false),
+            .keyword_const, .keyword_var => try self.parseVariableDeclaration(.local, false, false),
 
             .keyword_switch => return self.parseSwitch(),
 
@@ -434,9 +434,9 @@ pub const Parser = struct {
         _ = self.nextToken();
 
         if (self.peekToken().tag == .keyword_fn) {
-            try self.parseFunctionDeclaration(.external, false);
+            try self.parseFunctionDeclaration(.global, true, false);
         } else if (self.peekToken().tag == .keyword_var) {
-            try self.parseVariableDeclaration(.external, false);
+            try self.parseVariableDeclaration(.global, true, false);
         } else if (self.peekToken().tag == .keyword_const) {
             self.error_info = .{ .message = "'const' is declaring a compile time constant and cannot be used with 'extern'", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
 
@@ -452,9 +452,9 @@ pub const Parser = struct {
         _ = self.nextToken();
 
         if (self.peekToken().tag == .keyword_fn) {
-            try self.parseFunctionDeclaration(.global, true);
+            try self.parseFunctionDeclaration(.global, false, true);
         } else if (self.peekToken().tag == .keyword_var) {
-            try self.parseVariableDeclaration(.global, true);
+            try self.parseVariableDeclaration(.global, false, true);
 
             if (!self.eatToken(.semicolon)) {
                 self.error_info = .{ .message = "expected a ';'", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
@@ -490,7 +490,12 @@ pub const Parser = struct {
         try self.sir.instructions.append(self.allocator, .{ .import = .{ .buffer = file_path, .token_start = file_path_start } });
     }
 
-    fn parseFunctionDeclaration(self: *Parser, linkage: Symbol.Linkage, exported: bool) Error!void {
+    fn parseFunctionDeclaration(
+        self: *Parser,
+        comptime linkage: Symbol.Linkage,
+        comptime external: bool,
+        comptime exported: bool,
+    ) Error!void {
         const fn_keyword_start = self.nextToken().range.start;
 
         const name = try self.parseName();
@@ -505,7 +510,7 @@ pub const Parser = struct {
             parameter_subtypes[i] = parameter_subsymbol.subtype;
         }
 
-        const return_subtype = if (self.peekToken().tag == .open_brace or (self.peekToken().tag == .semicolon and linkage == .external))
+        const return_subtype = if (self.peekToken().tag == .open_brace or (self.peekToken().tag == .semicolon and external))
             SubType{ .pure = .void }
         else
             try self.parseSubType();
@@ -532,7 +537,7 @@ pub const Parser = struct {
             },
         };
 
-        if (linkage == .external) {
+        if (external) {
             return self.sir.instructions.append(self.allocator, .{
                 .external = .{
                     .name = name,
@@ -620,7 +625,12 @@ pub const Parser = struct {
         return paramters.toOwnedSlice(self.allocator);
     }
 
-    fn parseVariableDeclaration(self: *Parser, linkage: Symbol.Linkage, exported: bool) Error!void {
+    fn parseVariableDeclaration(
+        self: *Parser,
+        comptime linkage: Symbol.Linkage,
+        comptime external: bool,
+        comptime exported: bool,
+    ) Error!void {
         const init_token = self.nextToken();
 
         const is_const = init_token.tag == .keyword_const;
@@ -632,7 +642,7 @@ pub const Parser = struct {
         else
             try self.parseSubType();
 
-        if (linkage == .external) {
+        if (external) {
             return self.sir.instructions.append(
                 self.allocator,
                 .{
