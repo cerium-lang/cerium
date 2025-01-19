@@ -1106,7 +1106,22 @@ fn analyzePreElement(self: *Sema, token_start: u32) Error!void {
     const lhs_type = lhs.getType();
 
     if (lhs_type == .array) {
-        return self.analyzeReference();
+        try self.analyzeReference();
+    } else if (lhs_type == .pointer and lhs_type.pointer.size == .slice) {
+        try self.analyzeReference();
+
+        try self.air.instructions.append(self.allocator, .{ .get_field_ptr = 1 });
+        try self.air.instructions.append(self.allocator, .read);
+
+        self.stack.items[self.stack.items.len - 1] = .{
+            .runtime = .{
+                .pointer = .{
+                    .size = .many,
+                    .is_const = lhs_type.pointer.is_const,
+                    .child_type = lhs_type.pointer.child_type,
+                },
+            },
+        };
     } else if (lhs_type == .pointer and lhs_type.pointer.size != .many and lhs_type.pointer.child_type.* != .array) {
         try self.reportNotIndexable(lhs_type, token_start);
     }
@@ -1116,14 +1131,14 @@ fn analyzeElement(self: *Sema, token_start: u32) Error!void {
     const rhs = self.stack.pop();
 
     const lhs = self.stack.pop();
-    const lhs_type = lhs.getType();
+    const lhs_pointer = lhs.getType().pointer;
 
     const usize_type: Type = .{ .int = .{ .signedness = .unsigned, .bits = self.compilation.env.target.ptrBitWidth() } };
 
     try self.checkUnaryImplicitCast(rhs, usize_type, token_start);
 
-    if (rhs == .int and lhs_type.pointer.child_type.* == .array and
-        rhs.int >= lhs_type.pointer.child_type.array.len)
+    if (rhs == .int and lhs_pointer.child_type.* == .array and
+        rhs.int >= lhs_pointer.child_type.array.len)
     {
         self.error_info = .{ .message = "index out of bounds", .source_loc = SourceLoc.find(self.file.buffer, token_start) };
 
@@ -1133,17 +1148,18 @@ fn analyzeElement(self: *Sema, token_start: u32) Error!void {
     try self.air.instructions.append(self.allocator, .get_element_ptr);
     try self.air.instructions.append(self.allocator, .read);
 
-    if (lhs_type.pointer.child_type.* == .array) {
-        try self.stack.append(self.allocator, .{ .runtime = lhs_type.pointer.child_type.array.child_type.* });
+    if (lhs_pointer.child_type.* == .array) {
+        try self.stack.append(self.allocator, .{ .runtime = lhs_pointer.child_type.array.child_type.* });
     } else {
-        try self.stack.append(self.allocator, .{ .runtime = lhs_type.pointer.child_type.* });
+        try self.stack.append(self.allocator, .{ .runtime = lhs_pointer.child_type.* });
     }
 }
 
 fn analyzeField(self: *Sema, name: Name) Error!void {
     const rhs_type = self.stack.getLast().getType();
 
-    if (rhs_type == .@"struct") try self.analyzeReference();
+    if (rhs_type == .@"struct" or (rhs_type == .pointer and rhs_type.pointer.size == .slice))
+        try self.analyzeReference();
 
     const rhs = self.stack.pop();
 
@@ -1157,6 +1173,30 @@ fn analyzeField(self: *Sema, name: Name) Error!void {
             try self.air.instructions.append(self.allocator, .{ .int = @intCast(rhs_array.len) });
 
             return self.stack.append(self.allocator, .{ .int = @intCast(rhs_array.len) });
+        }
+    } else if (rhs_type == .pointer and (rhs_type.pointer.size == .slice or
+        (rhs_type.pointer.child_type.* == .pointer and rhs_type.pointer.child_type.pointer.size == .slice)))
+    {
+        if (std.mem.eql(u8, name.buffer, "len")) {
+            try self.air.instructions.append(self.allocator, .{ .get_field_ptr = 0 });
+            try self.air.instructions.append(self.allocator, .read);
+
+            const usize_type: Type = .{ .int = .{ .signedness = .unsigned, .bits = self.compilation.env.target.ptrBitWidth() } };
+
+            return self.stack.append(self.allocator, .{ .runtime = usize_type });
+        } else if (std.mem.eql(u8, name.buffer, "ptr")) {
+            try self.air.instructions.append(self.allocator, .{ .get_field_ptr = 1 });
+            try self.air.instructions.append(self.allocator, .read);
+
+            return self.stack.append(self.allocator, .{
+                .runtime = .{
+                    .pointer = .{
+                        .size = .many,
+                        .is_const = rhs_type.pointer.is_const,
+                        .child_type = rhs_type.pointer.child_type,
+                    },
+                },
+            });
         }
     } else if (rhs_type == .@"struct" or
         (rhs_type == .pointer and rhs_type.pointer.child_type.* == .@"struct"))
@@ -2086,8 +2126,8 @@ fn canUnaryImplicitCast(lhs: Value, to: Type) bool {
         lhs_type.canBeNegative() == to.canBeNegative()) or
         (lhs_type == .float and to == .float and
         lhs_type.maxFloat() <= to.maxFloat()) or
-        (lhs_type == .pointer and to == .pointer and
-        lhs_type.pointer.child_type.* == .array and to.pointer.size == .many and
+        (lhs_type == .pointer and to == .pointer and lhs_type.pointer.child_type.* == .array and
+        (to.pointer.size == .many or to.pointer.size == .slice) and
         lhs_type.pointer.child_type.array.child_type.eql(to.pointer.child_type.*)));
 }
 

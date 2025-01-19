@@ -98,24 +98,13 @@ fn echo(client Client) {
     }
 }
 
-// TODO: We don't support slices yet
-fn strlen(str [*]const u8) usize {
-    var len usize = 0;
-
-    while str[len] != 0 {
-        len = len + 1;
-    }
-
-    return len;
-}
-
-fn printfd(fd s32, str [*]const u8) {
-    std::os::linux::write(fd, str as usize, strlen(str));
+fn printfd(fd s32, str []const u8) {
+    std::os::linux::write(fd, str.ptr as usize, str.len);
 }
 
 const STDOUT = 1;
 
-fn print(str [*]const u8) {
+fn print(str []const u8) {
     printfd(STDOUT, str);
 }
 

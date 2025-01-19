@@ -397,14 +397,29 @@ fn getLlvmType(self: *LlvmBackend, @"type": Type) Error!c.LLVMTypeRef {
     return switch (@"type") {
         .void => c.LLVMVoidTypeInContext(self.context),
         .bool => c.LLVMIntTypeInContext(self.context, 1),
+
         .int => |int| c.LLVMIntTypeInContext(self.context, int.bits),
+
         .float => |float| if (float.bits == 16)
             c.LLVMHalfTypeInContext(self.context)
         else if (float.bits == 32)
             c.LLVMFloatTypeInContext(self.context)
         else
             c.LLVMDoubleTypeInContext(self.context),
-        .pointer => c.LLVMPointerTypeInContext(self.context, 0),
+
+        .pointer => |pointer| blk: {
+            if (pointer.size == .slice) {
+                var element_types: [2]c.LLVMTypeRef = .{
+                    c.LLVMIntTypeInContext(self.context, self.compilation.env.target.ptrBitWidth()),
+                    c.LLVMPointerTypeInContext(self.context, 0),
+                };
+
+                break :blk c.LLVMStructTypeInContext(self.context, &element_types, 2, 0);
+            } else {
+                break :blk c.LLVMPointerTypeInContext(self.context, 0);
+            }
+        },
+
         .array => |array| c.LLVMArrayType2(try self.getLlvmType(array.child_type.*), array.len),
 
         .function => |function| blk: {
@@ -477,6 +492,17 @@ fn unaryImplicitCast(self: *LlvmBackend, lhs: *Register, to: Type) Error!void {
         lhs.value = try self.saneIntCast(lhs.*, to);
     } else if (to == .float) {
         lhs.value = try self.saneFloatCast(lhs.*, to);
+    } else if (to == .pointer and to.pointer.size == .slice) {
+        var constant_values: [2]c.LLVMValueRef = .{
+            c.LLVMConstInt(
+                c.LLVMIntTypeInContext(self.context, self.compilation.env.target.ptrBitWidth()),
+                @intCast(lhs.type.pointer.child_type.array.len),
+                0,
+            ),
+            lhs.value,
+        };
+
+        lhs.value = c.LLVMConstStructInContext(self.context, &constant_values, 2, 0);
     }
 
     lhs.type = to;
@@ -728,19 +754,54 @@ fn renderGetElementPtr(self: *LlvmBackend) Error!void {
 }
 
 fn renderGetFieldPtr(self: *LlvmBackend, field_index: u32) Error!void {
-    const struct_pointer = self.stack.pop();
-    const struct_type = struct_pointer.type.pointer.child_type.*;
+    const container = self.stack.pop();
+    const container_type = container.type.pointer.child_type.*;
+    const llvm_container_type = try self.getLlvmType(container_type);
 
     const field_type_on_heap = try self.allocator.create(Type);
-    field_type_on_heap.* = struct_type.@"struct".fields[field_index].type;
+
+    switch (container_type) {
+        .pointer => |pointer_type| {
+            std.debug.assert(pointer_type.size == .slice);
+
+            switch (field_index) {
+                0 => {
+                    field_type_on_heap.* = .{
+                        .int = .{
+                            .signedness = .unsigned,
+                            .bits = self.compilation.env.target.ptrBitWidth(),
+                        },
+                    };
+                },
+
+                1 => {
+                    field_type_on_heap.* = .{
+                        .pointer = .{
+                            .size = .many,
+                            .is_const = pointer_type.is_const,
+                            .child_type = pointer_type.child_type,
+                        },
+                    };
+                },
+
+                else => unreachable,
+            }
+        },
+
+        .@"struct" => |struct_type| {
+            field_type_on_heap.* = struct_type.fields[field_index].type;
+        },
+
+        else => unreachable,
+    }
 
     try self.stack.append(
         self.allocator,
         .{
             .value = c.LLVMBuildStructGEP2(
                 self.builder,
-                try self.getLlvmType(struct_type),
-                struct_pointer.value,
+                llvm_container_type,
+                container.value,
                 @intCast(field_index),
                 "",
             ),

@@ -2,17 +2,6 @@ module examples::fizz_buzz;
 
 import "std/os/linux.cerm";
 
-// TODO: We don't support slices yet
-fn strlen(str [*]const u8) usize {
-    var len usize = 0;
-
-    while str[len] != 0 {
-        len = len + 1;
-    }
-
-    return len;
-}
-
 const STDOUT = 1;
 
 fn printi(n u32) {
@@ -24,8 +13,8 @@ fn printi(n u32) {
     std::os::linux::write(STDOUT, &('0' + n) as usize, 1);
 }
 
-fn prints(str [*]const u8) {
-    std::os::linux::write(STDOUT, str as usize, strlen(str));
+fn prints(str []const u8) {
+    std::os::linux::write(STDOUT, str.ptr as usize, str.len);
 }
 
 fn main() {

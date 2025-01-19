@@ -47,6 +47,7 @@ pub const Type = union(enum) {
         pub const Size = enum {
             one,
             many,
+            slice,
         };
     };
 
@@ -222,6 +223,8 @@ pub const Type = union(enum) {
                     try writer.writeAll("*");
                 } else if (pointer.size == .many) {
                     try writer.writeAll("[*]");
+                } else if (pointer.size == .slice) {
+                    try writer.writeAll("[]");
                 }
 
                 if (pointer.is_const) {

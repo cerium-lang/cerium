@@ -1946,6 +1946,8 @@ pub const Parser = struct {
             .open_bracket => {
                 _ = self.nextToken();
 
+                var size: Type.Pointer.Size = .slice;
+
                 if (self.eatToken(.star)) {
                     if (!self.eatToken(.close_bracket)) {
                         self.error_info = .{ .message = "expected a ']'", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
@@ -1953,20 +1955,7 @@ pub const Parser = struct {
                         return error.UnexpectedToken;
                     }
 
-                    const is_const = self.eatToken(.keyword_const);
-
-                    const child = try self.parseSubType();
-
-                    const child_on_heap = try self.allocator.create(SubType);
-                    child_on_heap.* = child;
-
-                    return SubType{
-                        .pointer = .{
-                            .size = .many,
-                            .is_const = is_const,
-                            .child_subtype = child_on_heap,
-                        },
-                    };
+                    size = .many;
                 } else if (self.peekToken().tag == .int) {
                     try self.parseInt();
 
@@ -1995,11 +1984,26 @@ pub const Parser = struct {
                             .child_subtype = child_on_heap,
                         },
                     };
-                } else {
-                    self.error_info = .{ .message = "expected a '*' or an integer", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
+                } else if (!self.eatToken(.close_bracket)) {
+                    self.error_info = .{ .message = "expected a ']'", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
 
                     return error.UnexpectedToken;
                 }
+
+                const is_const = self.eatToken(.keyword_const);
+
+                const child = try self.parseSubType();
+
+                const child_on_heap = try self.allocator.create(SubType);
+                child_on_heap.* = child;
+
+                return SubType{
+                    .pointer = .{
+                        .size = size,
+                        .is_const = is_const,
+                        .child_subtype = child_on_heap,
+                    },
+                };
             },
 
             else => {},
