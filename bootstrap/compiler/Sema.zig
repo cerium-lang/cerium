@@ -365,14 +365,10 @@ fn import(self: *Sema, file_path: Name) Error!void {
     defer sema.deinit();
 
     if (maybe_compiled_file) |compiled_file| {
-        std.debug.print("Already analyzed: {s}\n", .{compilation_file.path});
-
         sir = compiled_file.sir;
         sema.module = compiled_file.module;
         sema.scope.items = try compiled_file.scope.items.clone(self.allocator);
     } else {
-        std.debug.print("Parsing: {s}\n", .{compilation_file.path});
-
         var sir_parser = try Sir.Parser.init(self.allocator, self.compilation.env, compilation_file.buffer);
         defer sir_parser.deinit();
 
@@ -394,8 +390,6 @@ fn import(self: *Sema, file_path: Name) Error!void {
         };
 
         sir = sir_parser.sir;
-
-        std.debug.print("Analyzing: {s}\n", .{compilation_file.path});
 
         sema.analyze(sir) catch |err| {
             switch (err) {
