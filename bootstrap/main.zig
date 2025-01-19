@@ -492,12 +492,6 @@ pub const Cli = struct {
             },
         };
 
-        compilation.compiled_files.put(self.allocator, compilation_file.path, sir_parser.sir) catch |err| {
-            std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
-
-            return 1;
-        };
-
         var sema = Sema.init(self.allocator, &compilation, compilation_file) catch |err| {
             std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
 

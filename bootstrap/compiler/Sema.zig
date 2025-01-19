@@ -88,7 +88,7 @@ const Value = union(enum) {
     }
 };
 
-const Variable = struct {
+pub const Variable = struct {
     tag: Symbol.Tag,
     type: Type,
     maybe_prefixed: ?[]const u8 = null,
@@ -277,7 +277,7 @@ const Collection = struct {
 };
 
 fn import(self: *Sema, file_path: Name) Error!void {
-    var maybe_sir: ?Sir = null;
+    var maybe_compiled_file: ?Compilation.CompiledFile = null;
 
     const import_root = std.mem.eql(u8, file_path.buffer, "root");
 
@@ -337,10 +337,11 @@ fn import(self: *Sema, file_path: Name) Error!void {
         else
             try std.fs.path.resolve(self.allocator, &.{ parent_dir_path, file_path.buffer });
 
-        maybe_sir = self.compilation.compiled_files.get(import_file_path);
+        if (self.compilation.compiled_files.get(import_file_path)) |compiled_file| {
+            maybe_compiled_file = compiled_file;
 
-        if (maybe_sir) |_|
             break :blk .{ .path = import_file_path, .buffer = "" };
+        }
 
         const import_file_buffer = import_file.readToEndAllocOptions(self.allocator, std.math.maxInt(u32), null, @alignOf(u8), 0) catch |err| {
             var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
@@ -358,7 +359,20 @@ fn import(self: *Sema, file_path: Name) Error!void {
         break :blk .{ .path = import_file_path, .buffer = import_file_buffer };
     };
 
-    const sir = maybe_sir orelse blk: {
+    var sir: Sir = undefined;
+
+    var sema = try Sema.init(self.allocator, self.compilation, compilation_file);
+    defer sema.deinit();
+
+    if (maybe_compiled_file) |compiled_file| {
+        std.debug.print("Already analyzed: {s}\n", .{compilation_file.path});
+
+        sir = compiled_file.sir;
+        sema.module = compiled_file.module;
+        sema.scope.items = try compiled_file.scope.items.clone(self.allocator);
+    } else {
+        std.debug.print("Parsing: {s}\n", .{compilation_file.path});
+
         var sir_parser = try Sir.Parser.init(self.allocator, self.compilation.env, compilation_file.buffer);
         defer sir_parser.deinit();
 
@@ -379,35 +393,39 @@ fn import(self: *Sema, file_path: Name) Error!void {
             return error.ImportFailed;
         };
 
-        try self.compilation.compiled_files.put(self.allocator, compilation_file.path, sir_parser.sir);
+        sir = sir_parser.sir;
 
-        break :blk sir_parser.sir;
-    };
+        std.debug.print("Analyzing: {s}\n", .{compilation_file.path});
 
-    var sema = try Sema.init(self.allocator, self.compilation, compilation_file);
-    defer sema.deinit();
+        sema.analyze(sir) catch |err| {
+            switch (err) {
+                error.OutOfMemory => std.debug.print("Error: {s}\n", .{root.Cli.errorDescription(err)}),
 
-    sema.analyze(sir) catch |err| {
-        switch (err) {
-            error.OutOfMemory => std.debug.print("Error: {s}\n", .{root.Cli.errorDescription(err)}),
+                else => std.debug.print("{s}:{}:{}: {s}\n", .{
+                    compilation_file.path,
+                    sema.error_info.?.source_loc.line,
+                    sema.error_info.?.source_loc.column,
+                    sema.error_info.?.message,
+                }),
+            }
 
-            else => std.debug.print("{s}:{}:{}: {s}\n", .{
-                compilation_file.path,
-                sema.error_info.?.source_loc.line,
-                sema.error_info.?.source_loc.column,
-                sema.error_info.?.message,
-            }),
-        }
+            self.error_info = .{ .message = "import file failed in semantic analysis pass", .source_loc = SourceLoc.find(self.file.buffer, file_path.token_start) };
 
-        self.error_info = .{ .message = "import file failed in semantic analysis pass", .source_loc = SourceLoc.find(self.file.buffer, file_path.token_start) };
+            return error.ImportFailed;
+        };
 
-        return error.ImportFailed;
-    };
+        try self.compilation.compiled_files.put(self.allocator, compilation_file.path, .{
+            .sir = sir,
+            .scope = .{ .items = try sema.scope.items.clone(self.allocator) },
+            .module = sema.module,
+        });
 
-    // We should be in global scope if the semantic analysis was successful
-    std.debug.assert(sema.scope.maybe_parent == null);
+        for (sema.airs.items) |*air|
+            air.instructions.deinit(self.allocator);
 
-    sema.collection.clearRetainingCapacity();
+        sema.airs.clearRetainingCapacity();
+        sema.collection.clearRetainingCapacity();
+    }
 
     var variable_entry_iterator = sema.scope.iterator();
 
@@ -460,16 +478,17 @@ fn import(self: *Sema, file_path: Name) Error!void {
     sema.airs.deinit(self.allocator);
 }
 
-fn collectUsedVariables(self: *Sema, sir_instructions: []const Sir.Instruction) Error!void {
+fn collectUsedVariables(self: *Sema, next_used_variables: *@FieldType(Collection, "used_variables"), sir_instructions: []const Sir.Instruction) Error!void {
     for (sir_instructions) |sir_instruction|
         switch (sir_instruction) {
             .get => |name| {
-                const gop_entry = try self.collection.used_variables.getOrPut(self.allocator, name.buffer);
+                const gop_entry = try next_used_variables.getOrPut(self.allocator, name.buffer);
 
                 if (!gop_entry.found_existing) {
                     if (self.collection.functions.get(name.buffer)) |other_function_entry| {
                         _, const other_sir_instructions = other_function_entry;
-                        try self.collectUsedVariables(other_sir_instructions);
+
+                        try self.collectUsedVariables(next_used_variables, other_sir_instructions);
                     }
 
                     gop_entry.value_ptr.* = {};
@@ -539,17 +558,28 @@ fn collect(self: *Sema, sir: Sir) Error!void {
         const function, const sir_instructions = function_entry.*;
 
         if (function.exported) {
-            try self.collectUsedVariables(sir_instructions);
+            try self.collectUsedVariables(&self.collection.used_variables, sir_instructions);
+
             try self.collection.used_variables.put(self.allocator, function.subsymbol.name.buffer, {});
         }
     }
 
+    var next_used_variables: @FieldType(Collection, "used_variables") = .{};
+
     for (self.collection.used_variables.keys()) |used_variable| {
         if (self.collection.functions.get(used_variable)) |function_entry| {
             _, const sir_instructions = function_entry;
-            try self.collectUsedVariables(sir_instructions);
+
+            try self.collectUsedVariables(&next_used_variables, sir_instructions);
         }
     }
+
+    try self.collection.used_variables.ensureUnusedCapacity(self.allocator, next_used_variables.count());
+
+    for (next_used_variables.keys()) |next_used_variable|
+        self.collection.used_variables.putAssumeCapacity(next_used_variable, {});
+
+    next_used_variables.deinit(self.allocator);
 
     for (sir.instructions.items) |sir_instruction| {
         switch (sir_instruction) {

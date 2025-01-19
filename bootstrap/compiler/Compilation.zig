@@ -5,8 +5,10 @@
 const std = @import("std");
 const root = @import("root");
 
-const Sir = @import("Sir.zig");
 const Air = @import("Air.zig");
+const Symbol = @import("Symbol.zig");
+const Sir = @import("Sir.zig");
+const Sema = @import("Sema.zig");
 
 const LlvmBackend = @import("backend/LlvmBackend.zig");
 
@@ -16,7 +18,7 @@ allocator: std.mem.Allocator,
 
 root_file: File,
 
-compiled_files: std.StringHashMapUnmanaged(Sir) = .{},
+compiled_files: std.StringHashMapUnmanaged(CompiledFile) = .{},
 
 env: Environment,
 
@@ -76,6 +78,12 @@ pub fn init(allocator: std.mem.Allocator, root_file: File, env: Environment) Com
 pub const File = struct {
     path: []const u8,
     buffer: [:0]const u8,
+};
+
+pub const CompiledFile = struct {
+    module: []const u8,
+    sir: Sir,
+    scope: Symbol.Scope(Sema.Variable),
 };
 
 pub fn emit(
