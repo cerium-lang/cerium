@@ -24,7 +24,7 @@ file: Compilation.File,
 
 collection: Collection = .{},
 
-compilation: *const Compilation,
+compilation: *Compilation,
 
 airs: std.ArrayListUnmanaged(Air) = .{},
 air: *Air = undefined,
@@ -102,7 +102,7 @@ pub fn prefix(allocator: std.mem.Allocator, module: []const u8, symbol: []const 
     return std.fmt.allocPrint(allocator, "{s}::{s}", .{ module, symbol });
 }
 
-pub fn init(allocator: std.mem.Allocator, compilation: *const Compilation, file: Compilation.File) Error!Sema {
+pub fn init(allocator: std.mem.Allocator, compilation: *Compilation, file: Compilation.File) Error!Sema {
     var scopes: @FieldType(Sema, "scopes") = .{};
 
     const global_scope = try scopes.addOne(allocator);
@@ -277,6 +277,8 @@ const Collection = struct {
 };
 
 fn import(self: *Sema, file_path: Name) Error!void {
+    var maybe_sir: ?Sir = null;
+
     const import_root = std.mem.eql(u8, file_path.buffer, "root");
 
     const compilation_file: Compilation.File = if (import_root)
@@ -319,19 +321,6 @@ fn import(self: *Sema, file_path: Name) Error!void {
             };
         };
 
-        const import_file_buffer = import_file.readToEndAllocOptions(self.allocator, std.math.maxInt(u32), null, @alignOf(u8), 0) catch |err| {
-            var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
-
-            try error_message_buf.writer(self.allocator).print(
-                "could not read import file: {s}",
-                .{root.Cli.errorDescription(err)},
-            );
-
-            self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.file.buffer, file_path.token_start) };
-
-            return error.ImportFailed;
-        };
-
         const import_file_path = if (in_lib_dir)
             self.compilation.env.cerium_lib_dir.realpathAlloc(self.allocator, file_path.buffer) catch |err| {
                 var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
@@ -348,33 +337,57 @@ fn import(self: *Sema, file_path: Name) Error!void {
         else
             try std.fs.path.resolve(self.allocator, &.{ parent_dir_path, file_path.buffer });
 
+        maybe_sir = self.compilation.compiled_files.get(import_file_path);
+
+        if (maybe_sir) |_|
+            break :blk .{ .path = import_file_path, .buffer = "" };
+
+        const import_file_buffer = import_file.readToEndAllocOptions(self.allocator, std.math.maxInt(u32), null, @alignOf(u8), 0) catch |err| {
+            var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
+
+            try error_message_buf.writer(self.allocator).print(
+                "could not read import file: {s}",
+                .{root.Cli.errorDescription(err)},
+            );
+
+            self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.file.buffer, file_path.token_start) };
+
+            return error.ImportFailed;
+        };
+
         break :blk .{ .path = import_file_path, .buffer = import_file_buffer };
     };
 
-    var sir_parser = try Sir.Parser.init(self.allocator, self.compilation.env, compilation_file.buffer);
-    defer sir_parser.deinit();
+    const sir = maybe_sir orelse blk: {
+        var sir_parser = try Sir.Parser.init(self.allocator, self.compilation.env, compilation_file.buffer);
+        defer sir_parser.deinit();
 
-    sir_parser.parse() catch |err| {
-        switch (err) {
-            error.OutOfMemory => std.debug.print("Error: {s}\n", .{root.Cli.errorDescription(err)}),
+        sir_parser.parse() catch |err| {
+            switch (err) {
+                error.OutOfMemory => std.debug.print("Error: {s}\n", .{root.Cli.errorDescription(err)}),
 
-            else => std.debug.print("{s}:{}:{}: {s}\n", .{
-                compilation_file.path,
-                sir_parser.error_info.?.source_loc.line,
-                sir_parser.error_info.?.source_loc.column,
-                sir_parser.error_info.?.message,
-            }),
-        }
+                else => std.debug.print("{s}:{}:{}: {s}\n", .{
+                    compilation_file.path,
+                    sir_parser.error_info.?.source_loc.line,
+                    sir_parser.error_info.?.source_loc.column,
+                    sir_parser.error_info.?.message,
+                }),
+            }
 
-        self.error_info = .{ .message = "import file failed in parsing pass", .source_loc = SourceLoc.find(self.file.buffer, file_path.token_start) };
+            self.error_info = .{ .message = "import file failed in parsing pass", .source_loc = SourceLoc.find(self.file.buffer, file_path.token_start) };
 
-        return error.ImportFailed;
+            return error.ImportFailed;
+        };
+
+        try self.compilation.compiled_files.put(self.allocator, compilation_file.path, sir_parser.sir);
+
+        break :blk sir_parser.sir;
     };
 
     var sema = try Sema.init(self.allocator, self.compilation, compilation_file);
     defer sema.deinit();
 
-    sema.analyze(sir_parser.sir) catch |err| {
+    sema.analyze(sir) catch |err| {
         switch (err) {
             error.OutOfMemory => std.debug.print("Error: {s}\n", .{root.Cli.errorDescription(err)}),
 
@@ -425,7 +438,7 @@ fn import(self: *Sema, file_path: Name) Error!void {
     // Unreachable case: it will not allocate since we used `clearRetainingCapacity`
     sema.putBuiltinConstants() catch unreachable;
 
-    sema.analyze(sir_parser.sir) catch |err| {
+    sema.analyze(sir) catch |err| {
         switch (err) {
             error.OutOfMemory => std.debug.print("Error: {s}\n", .{root.Cli.errorDescription(err)}),
 
@@ -445,8 +458,6 @@ fn import(self: *Sema, file_path: Name) Error!void {
     try self.airs.appendSlice(self.allocator, sema.airs.items);
 
     sema.airs.deinit(self.allocator);
-
-    sir_parser.sir.instructions.deinit(self.allocator);
 }
 
 fn collectUsedVariables(self: *Sema, sir_instructions: []const Sir.Instruction) Error!void {

@@ -3,6 +3,8 @@ const builtin = @import("builtin");
 
 const Compilation = @import("compiler/Compilation.zig");
 const Air = @import("compiler/Air.zig");
+const Sema = @import("compiler/Sema.zig");
+const Sir = @import("compiler/Sir.zig");
 
 pub const OutputKind = enum {
     assembly,
@@ -203,7 +205,7 @@ pub const Cli = struct {
         };
     }
 
-    fn parse(allocator: std.mem.Allocator, argument_iterator: *std.process.ArgIterator) ?Cli {
+    fn parseArguments(allocator: std.mem.Allocator, argument_iterator: *std.process.ArgIterator) ?Cli {
         var self: Cli = .{
             .allocator = allocator,
             .program = argument_iterator.next().?,
@@ -397,7 +399,7 @@ pub const Cli = struct {
         return self;
     }
 
-    fn compileStep(
+    fn compile(
         self: Cli,
         root_file_path: []const u8,
         maybe_output_file_path: ?[]const u8,
@@ -463,11 +465,73 @@ pub const Cli = struct {
             .none => .{ .path = root_file_path, .buffer = root_file_buffer },
         };
 
-        var sir = compilation.parse(compilation_file) orelse return 1;
+        var sir_parser = Sir.Parser.init(self.allocator, compilation.env, compilation_file.buffer) catch |err| {
+            std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
 
-        const airs = compilation.analyze(compilation_file, sir) orelse return 1;
+            return 1;
+        };
 
-        sir.instructions.deinit(self.allocator);
+        defer sir_parser.deinit();
+
+        sir_parser.parse() catch |err| switch (err) {
+            error.OutOfMemory => {
+                std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
+
+                return 1;
+            },
+
+            else => {
+                std.debug.print("{s}:{}:{}: {s}\n", .{
+                    compilation_file.path,
+                    sir_parser.error_info.?.source_loc.line,
+                    sir_parser.error_info.?.source_loc.column,
+                    sir_parser.error_info.?.message,
+                });
+
+                return 1;
+            },
+        };
+
+        compilation.compiled_files.put(self.allocator, compilation_file.path, sir_parser.sir) catch |err| {
+            std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
+
+            return 1;
+        };
+
+        var sema = Sema.init(self.allocator, &compilation, compilation_file) catch |err| {
+            std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
+
+            return 1;
+        };
+
+        defer sema.deinit();
+
+        sema.analyze(sir_parser.sir) catch |err| switch (err) {
+            error.OutOfMemory => {
+                std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
+
+                return 1;
+            },
+
+            else => {
+                std.debug.print("{s}:{}:{}: {s}\n", .{
+                    compilation_file.path,
+                    sema.error_info.?.source_loc.line,
+                    sema.error_info.?.source_loc.column,
+                    sema.error_info.?.message,
+                });
+
+                return 1;
+            },
+        };
+
+        const airs = sema.airs.toOwnedSlice(self.allocator) catch |err| {
+            std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
+
+            return 1;
+        };
+
+        sir_parser.sir.instructions.deinit(self.allocator);
 
         switch (output_kind) {
             .assembly => {
@@ -572,7 +636,7 @@ pub const Cli = struct {
     fn executeCompileCommand(self: Cli) u8 {
         const options = self.command.?.compile;
 
-        return self.compileStep(
+        return self.compile(
             options.root_file_path,
             options.maybe_output_file_path,
             options.output_kind,
@@ -587,7 +651,7 @@ pub const Cli = struct {
 
         const output_file_path = std.fs.path.stem(options.root_file_path);
 
-        const compile_step_exit_code = self.compileStep(
+        const compile_step_exit_code = self.compile(
             options.root_file_path,
             output_file_path,
             .executable,
@@ -661,7 +725,7 @@ pub fn main() u8 {
 
     defer argument_iterator.deinit();
 
-    const cli = Cli.parse(allocator, &argument_iterator) orelse return 1;
+    const cli = Cli.parseArguments(allocator, &argument_iterator) orelse return 1;
 
     switch (cli.command.?) {
         .compile => return cli.executeCompileCommand(),

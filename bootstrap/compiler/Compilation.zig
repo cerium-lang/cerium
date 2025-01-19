@@ -7,8 +7,6 @@ const root = @import("root");
 
 const Sir = @import("Sir.zig");
 const Air = @import("Air.zig");
-const Sema = @import("Sema.zig");
-const Cli = root.Cli;
 
 const LlvmBackend = @import("backend/LlvmBackend.zig");
 
@@ -17,6 +15,8 @@ const Compilation = @This();
 allocator: std.mem.Allocator,
 
 root_file: File,
+
+compiled_files: std.StringHashMapUnmanaged(Sir) = .{},
 
 env: Environment,
 
@@ -78,77 +78,6 @@ pub const File = struct {
     buffer: [:0]const u8,
 };
 
-/// Parse a file into an sir
-pub fn parse(self: Compilation, file: File) ?Sir {
-    var sir_parser = Sir.Parser.init(self.allocator, self.env, file.buffer) catch |err| {
-        std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
-
-        return null;
-    };
-
-    defer sir_parser.deinit();
-
-    sir_parser.parse() catch |err| switch (err) {
-        error.OutOfMemory => {
-            std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
-
-            return null;
-        },
-
-        else => {
-            std.debug.print("{s}:{}:{}: {s}\n", .{
-                file.path,
-                sir_parser.error_info.?.source_loc.line,
-                sir_parser.error_info.?.source_loc.column,
-                sir_parser.error_info.?.message,
-            });
-
-            return null;
-        },
-    };
-
-    return sir_parser.sir;
-}
-
-/// Analyze Sir and lower it to Air
-pub fn analyze(self: Compilation, file: File, sir: Sir) ?[]Air {
-    var sema = Sema.init(self.allocator, &self, file) catch |err| {
-        std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
-
-        return null;
-    };
-
-    defer sema.deinit();
-
-    sema.analyze(sir) catch |err| switch (err) {
-        error.OutOfMemory => {
-            std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
-
-            return null;
-        },
-
-        else => {
-            std.debug.print("{s}:{}:{}: {s}\n", .{
-                file.path,
-                sema.error_info.?.source_loc.line,
-                sema.error_info.?.source_loc.column,
-                sema.error_info.?.message,
-            });
-
-            return null;
-        },
-    };
-
-    const airs = sema.airs.toOwnedSlice(self.allocator) catch |err| {
-        std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
-
-        return null;
-    };
-
-    return airs;
-}
-
-/// Emit to an object file or an assembly file
 pub fn emit(
     self: Compilation,
     airs: []const Air,
