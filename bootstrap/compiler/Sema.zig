@@ -836,6 +836,7 @@ fn analyzeInstruction(self: *Sema, instruction: Sir.Instruction) Error!void {
         .read => |token_start| try self.analyzeRead(token_start),
         .pre_element => |token_start| try self.analyzePreElement(token_start),
         .element => |token_start| try self.analyzeElement(token_start),
+        .slice => |token_start| try self.analyzeSlice(token_start),
         .field => |name| try self.analyzeField(name),
         .reference => try self.analyzeReference(),
 
@@ -1128,31 +1129,58 @@ fn analyzePreElement(self: *Sema, token_start: u32) Error!void {
 }
 
 fn analyzeElement(self: *Sema, token_start: u32) Error!void {
-    const rhs = self.stack.pop();
+    const index = self.stack.pop();
+
+    const usize_type: Type = .{ .int = .{ .signedness = .unsigned, .bits = self.compilation.env.target.ptrBitWidth() } };
+
+    try self.checkUnaryImplicitCast(index, usize_type, token_start);
+
+    const lhs = self.stack.pop();
+    const lhs_pointer = lhs.getType().pointer;
+
+    try self.checkIndexOutOfBounds(index, lhs_pointer, token_start);
+
+    try self.air.instructions.append(self.allocator, .get_element_ptr);
+    try self.air.instructions.append(self.allocator, .read);
+
+    const child_type = if (lhs_pointer.size == .one)
+        lhs_pointer.child_type.array.child_type
+    else
+        lhs_pointer.child_type;
+
+    try self.stack.append(self.allocator, .{ .runtime = child_type.* });
+}
+
+fn analyzeSlice(self: *Sema, token_start: u32) Error!void {
+    const end = self.stack.pop();
+    const start = self.stack.pop();
 
     const lhs = self.stack.pop();
     const lhs_pointer = lhs.getType().pointer;
 
     const usize_type: Type = .{ .int = .{ .signedness = .unsigned, .bits = self.compilation.env.target.ptrBitWidth() } };
 
-    try self.checkUnaryImplicitCast(rhs, usize_type, token_start);
+    try self.checkUnaryImplicitCast(start, usize_type, token_start);
+    try self.checkUnaryImplicitCast(end, usize_type, token_start);
 
-    if (rhs == .int and lhs_pointer.child_type.* == .array and
-        rhs.int >= lhs_pointer.child_type.array.len)
-    {
-        self.error_info = .{ .message = "index out of bounds", .source_loc = SourceLoc.find(self.file.buffer, token_start) };
+    try self.checkRangeOutOfBounds(start, end, lhs_pointer, token_start);
 
-        return error.UnexpectedValue;
-    }
+    try self.air.instructions.append(self.allocator, .slice);
 
-    try self.air.instructions.append(self.allocator, .get_element_ptr);
-    try self.air.instructions.append(self.allocator, .read);
+    const child_type = if (lhs_pointer.size == .one)
+        lhs_pointer.child_type.array.child_type
+    else
+        lhs_pointer.child_type;
 
-    if (lhs_pointer.child_type.* == .array) {
-        try self.stack.append(self.allocator, .{ .runtime = lhs_pointer.child_type.array.child_type.* });
-    } else {
-        try self.stack.append(self.allocator, .{ .runtime = lhs_pointer.child_type.* });
-    }
+    try self.stack.append(self.allocator, .{
+        .runtime = .{
+            .pointer = .{
+                .size = .slice,
+                .is_const = lhs_pointer.is_const,
+                .child_type = child_type,
+            },
+        },
+    });
 }
 
 fn analyzeField(self: *Sema, name: Name) Error!void {
@@ -1581,6 +1609,10 @@ fn analyzeCast(self: *Sema, cast: Sir.Instruction.Cast) Error!void {
         const usize_type: Type = .{ .int = .{ .signedness = .unsigned, .bits = self.compilation.env.target.ptrBitWidth() } };
 
         try self.checkUnaryImplicitCast(rhs, usize_type, cast.token_start);
+    } else if (to == .pointer and to.pointer.size == .slice) {
+        self.error_info = .{ .message = "cannot cast explicitly to a slice, use slicing syntax or implicit casting", .source_loc = SourceLoc.find(self.file.buffer, cast.token_start) };
+
+        return error.UnexpectedType;
     } else if (from == .pointer and to != .pointer) {
         const usize_type: Type = .{ .int = .{ .signedness = .unsigned, .bits = self.compilation.env.target.ptrBitWidth() } };
 
@@ -2140,6 +2172,40 @@ fn checkUnaryImplicitCast(self: *Sema, lhs: Value, to: Type, token_start: u32) E
         self.error_info = .{ .message = error_message_buf.items, .source_loc = SourceLoc.find(self.file.buffer, token_start) };
 
         return error.MismatchedTypes;
+    }
+}
+
+fn checkIndexOutOfBounds(self: *Sema, index: Value, lhs_pointer: Type.Pointer, token_start: u32) Error!void {
+    if (index == .int and lhs_pointer.child_type.* == .array and
+        index.int >= lhs_pointer.child_type.array.len)
+    {
+        self.error_info = .{ .message = "index out of bounds", .source_loc = SourceLoc.find(self.file.buffer, token_start) };
+
+        return error.UnexpectedValue;
+    }
+}
+
+fn checkRangeOutOfBounds(self: *Sema, start: Value, end: Value, lhs_pointer: Type.Pointer, token_start: u32) Error!void {
+    if (start == .int) {
+        if (end == .int and start.int > end.int) {
+            self.error_info = .{ .message = "range start is greater than range end", .source_loc = SourceLoc.find(self.file.buffer, token_start) };
+
+            return error.UnexpectedValue;
+        }
+
+        if (lhs_pointer.child_type.* == .array and
+            start.int >= lhs_pointer.child_type.array.len)
+        {
+            self.error_info = .{ .message = "range start out of bounds", .source_loc = SourceLoc.find(self.file.buffer, token_start) };
+
+            return error.UnexpectedValue;
+        }
+    } else if (end == .int and lhs_pointer.child_type.* == .array and
+        end.int > lhs_pointer.child_type.array.len)
+    {
+        self.error_info = .{ .message = "range end out of bounds", .source_loc = SourceLoc.find(self.file.buffer, token_start) };
+
+        return error.UnexpectedValue;
     }
 }
 

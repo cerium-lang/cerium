@@ -424,6 +424,7 @@ fn getLlvmType(self: *LlvmBackend, @"type": Type) Error!c.LLVMTypeRef {
 
         .function => |function| blk: {
             const parameter_types = try self.allocator.alloc(c.LLVMTypeRef, function.parameter_types.len);
+            defer self.allocator.free(parameter_types);
 
             for (function.parameter_types, 0..) |parameter, i| {
                 parameter_types[i] = try self.getLlvmType(parameter);
@@ -436,6 +437,7 @@ fn getLlvmType(self: *LlvmBackend, @"type": Type) Error!c.LLVMTypeRef {
 
         .@"struct" => |@"struct"| blk: {
             const element_types = try self.allocator.alloc(c.LLVMTypeRef, @"struct".fields.len);
+            defer self.allocator.free(element_types);
 
             for (@"struct".fields, 0..) |field, i| {
                 element_types[i] = try self.getLlvmType(field.type);
@@ -481,6 +483,37 @@ fn saneFloatCast(self: *LlvmBackend, lhs: Register, to: Type) Error!c.LLVMValueR
     return c.LLVMBuildFPCast(self.builder, lhs.value, try self.getLlvmType(to), "");
 }
 
+fn makeSlice(self: *LlvmBackend, slice_type: c.LLVMTypeRef, ptr: c.LLVMValueRef, len: c.LLVMValueRef) Error!c.LLVMValueRef {
+    if (c.LLVMIsConstant(ptr) == 1 and c.LLVMIsConstant(len) == 1) {
+        var slice_values: [2]c.LLVMValueRef = .{ len, ptr };
+
+        return c.LLVMConstStructInContext(self.context, &slice_values, 2, 0);
+    }
+
+    const current_block = c.LLVMGetInsertBlock(self.builder);
+    const first_block = c.LLVMGetFirstBasicBlock(self.function_value);
+    const first_instruction = c.LLVMGetFirstInstruction(first_block);
+
+    if (first_instruction != null)
+        c.LLVMPositionBuilderBefore(self.builder, first_instruction)
+    else
+        c.LLVMPositionBuilderAtEnd(self.builder, first_block);
+
+    const slice_pointer = c.LLVMBuildAlloca(self.builder, slice_type, "");
+
+    c.LLVMPositionBuilderAtEnd(self.builder, current_block);
+
+    const len_in_slice = c.LLVMBuildStructGEP2(self.builder, slice_type, slice_pointer, 0, "");
+
+    _ = c.LLVMBuildStore(self.builder, len, len_in_slice);
+
+    const ptr_in_slice = c.LLVMBuildStructGEP2(self.builder, slice_type, slice_pointer, 1, "");
+
+    _ = c.LLVMBuildStore(self.builder, ptr, ptr_in_slice);
+
+    return c.LLVMBuildLoad2(self.builder, slice_type, slice_pointer, "");
+}
+
 fn unaryImplicitCast(self: *LlvmBackend, lhs: *Register, to: Type) Error!void {
     if (lhs.type.eql(to)) return;
 
@@ -493,16 +526,10 @@ fn unaryImplicitCast(self: *LlvmBackend, lhs: *Register, to: Type) Error!void {
     } else if (to == .float) {
         lhs.value = try self.saneFloatCast(lhs.*, to);
     } else if (to == .pointer and to.pointer.size == .slice) {
-        var constant_values: [2]c.LLVMValueRef = .{
-            c.LLVMConstInt(
-                c.LLVMIntTypeInContext(self.context, self.compilation.env.target.ptrBitWidth()),
-                @intCast(lhs.type.pointer.child_type.array.len),
-                0,
-            ),
-            lhs.value,
-        };
+        const usize_llvm_type = c.LLVMIntTypeInContext(self.context, self.compilation.env.target.ptrBitWidth());
+        const len = c.LLVMConstInt(usize_llvm_type, @intCast(lhs.type.pointer.child_type.array.len), 0);
 
-        lhs.value = c.LLVMConstStructInContext(self.context, &constant_values, 2, 0);
+        lhs.value = try self.makeSlice(try self.getLlvmType(to), lhs.value, len);
     }
 
     lhs.type = to;
@@ -587,6 +614,8 @@ fn renderInstruction(
         .get_variable_ptr => |name| try self.renderGetVariablePtr(name),
         .get_element_ptr => try self.renderGetElementPtr(),
         .get_field_ptr => |field_index| try self.renderGetFieldPtr(field_index),
+
+        .slice => try self.renderSlice(),
 
         .block => |block| self.renderBlock(block),
         .br => |br| self.renderBr(br),
@@ -721,34 +750,41 @@ fn renderRead(self: *LlvmBackend) Error!void {
 }
 
 fn renderGetElementPtr(self: *LlvmBackend) Error!void {
-    var element_index = self.stack.pop();
-    var array_pointer = self.stack.pop();
+    var index = self.stack.pop();
 
     const usize_type: Type = .{ .int = .{ .signedness = .unsigned, .bits = self.compilation.env.target.ptrBitWidth() } };
 
-    try self.unaryImplicitCast(&element_index, usize_type);
+    try self.unaryImplicitCast(&index, usize_type);
 
-    if (array_pointer.type.pointer.size == .one) {
-        array_pointer.type.pointer.child_type = array_pointer.type.pointer.child_type.array.child_type;
-    } else {
-        array_pointer.type.pointer.size = .one;
-    }
+    const array_pointer = self.stack.pop();
+    const array_pointer_type = array_pointer.type.pointer;
 
-    const element_llvm_type = try self.getLlvmType(array_pointer.type.pointer.child_type.*);
+    const child_type = if (array_pointer_type.size == .one)
+        array_pointer_type.child_type.array.child_type
+    else
+        array_pointer_type.child_type;
+
+    const child_llvm_type = try self.getLlvmType(child_type.*);
 
     try self.stack.append(
         self.allocator,
         .{
             .value = c.LLVMBuildGEP2(
                 self.builder,
-                element_llvm_type,
+                child_llvm_type,
                 array_pointer.value,
-                &element_index.value,
+                &index.value,
                 1,
                 "",
             ),
 
-            .type = array_pointer.type,
+            .type = .{
+                .pointer = .{
+                    .size = .one,
+                    .is_const = array_pointer_type.is_const,
+                    .child_type = child_type,
+                },
+            },
         },
     );
 }
@@ -815,6 +851,51 @@ fn renderGetFieldPtr(self: *LlvmBackend, field_index: u32) Error!void {
             },
         },
     );
+}
+
+fn renderSlice(self: *LlvmBackend) Error!void {
+    var end = self.stack.pop();
+    var start = self.stack.pop();
+
+    const usize_type: Type = .{ .int = .{ .signedness = .unsigned, .bits = self.compilation.env.target.ptrBitWidth() } };
+
+    try self.unaryImplicitCast(&end, usize_type);
+    try self.unaryImplicitCast(&start, usize_type);
+
+    const array_pointer = self.stack.pop();
+    const array_pointer_type = array_pointer.type.pointer;
+
+    const child_type = if (array_pointer_type.size == .one)
+        array_pointer_type.child_type.array.child_type
+    else
+        array_pointer_type.child_type;
+
+    const child_llvm_type = try self.getLlvmType(child_type.*);
+
+    const slice_type: Type = .{
+        .pointer = .{
+            .size = .slice,
+            .is_const = array_pointer_type.is_const,
+            .child_type = child_type,
+        },
+    };
+
+    try self.stack.append(self.allocator, .{
+        .value = try self.makeSlice(
+            try self.getLlvmType(slice_type),
+            c.LLVMBuildGEP2(
+                self.builder,
+                child_llvm_type,
+                array_pointer.value,
+                &start.value,
+                1,
+                "",
+            ),
+            c.LLVMBuildSub(self.builder, end.value, start.value, ""),
+        ),
+
+        .type = slice_type,
+    });
 }
 
 const ArithmeticOperation = enum {

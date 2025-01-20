@@ -93,6 +93,8 @@ pub const Instruction = union(enum) {
     get_element_ptr,
     /// Calculate the pointer of a field in a struct pointer
     get_field_ptr: u32,
+    /// Make a slice out of a "size many" pointer
+    slice,
     /// Start a new block
     block: u32,
     /// Unconditionally branch to a block
@@ -272,6 +274,8 @@ pub const passes = struct {
                         .get_variable_ptr => |name| try writer.print("get_variable_ptr {s}\n", .{name}),
                         .get_element_ptr => try writer.writeAll("get_element_ptr\n"),
                         .get_field_ptr => |n| try writer.print("get_field_ptr {}\n", .{n}),
+
+                        .slice => try writer.writeAll("slice\n"),
 
                         .block => |id| try writer.print("block {}:\n", .{id}),
 

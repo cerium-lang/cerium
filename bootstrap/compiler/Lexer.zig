@@ -15,6 +15,7 @@ pub const State = enum {
     char_literal,
     char_literal_back_slash,
     number,
+    number_period,
     forward_slash,
     comment,
     equal_sign,
@@ -347,12 +348,22 @@ pub fn next(self: *Lexer) Token {
             '.' => {
                 result.tag = .float;
                 self.index += 1;
-                continue :state .number;
+                continue :state .number_period;
             },
 
             else => {
                 result.range.end = self.index;
             },
+        },
+
+        .number_period => switch (self.buffer[self.index]) {
+            '.' => {
+                result.tag = .int;
+                self.index -= 1;
+                result.range.end = self.index;
+            },
+
+            else => continue :state .number,
         },
 
         .forward_slash => switch (self.buffer[self.index]) {

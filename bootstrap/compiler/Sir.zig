@@ -137,10 +137,12 @@ pub const Instruction = union(enum) {
     write: u32,
     /// Read the data that the pointer is pointing to
     read: u32,
-    ///  Should be used before parsing the index of element access (i.e array[index])
+    /// Should be used before parsing the index of element access (i.e array[index]) or slicing (i.e array[start..end])
     pre_element: u32,
     /// Get an element in a "size many" pointer
     element: u32,
+    /// Make a new slice out of a "size many" pointer
+    slice: u32,
     /// Get a field in a struct
     field: Name,
     /// Add two integers or floats or pointers on the top of the stack
@@ -1689,13 +1691,23 @@ pub const Parser = struct {
 
         try self.parseExpr(.subscript);
 
+        const slicing = self.eatToken(.double_period);
+
+        if (slicing) {
+            try self.parseExpr(.subscript);
+
+            try self.sir.instructions.append(self.allocator, .{ .slice = open_bracket_start });
+        }
+
         if (!self.eatToken(.close_bracket)) {
             self.error_info = .{ .message = "expected a ']'", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
 
             return error.UnexpectedToken;
         }
 
-        try self.sir.instructions.append(self.allocator, .{ .element = open_bracket_start });
+        if (!slicing) {
+            try self.sir.instructions.append(self.allocator, .{ .element = open_bracket_start });
+        }
     }
 
     fn parseFieldAccess(self: *Parser) Error!void {
