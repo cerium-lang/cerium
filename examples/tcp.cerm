@@ -1,21 +1,22 @@
 module examples::fizz_buzz;
 
-import "std/process.cerm";
 import "std/os/linux.cerm";
+import "std/process.cerm";
+import "std/io.cerm";
 
 type Server = struct {
     fd s32,
 };
 
 fn Server::init(server *Server) {
-    print("creating socket.. ");
+    std::io::print("creating socket.. ");
 
     if (server.fd = std::os::linux::socket(std::os::linux::AF_INET, std::os::linux::SOCK_STREAM, 0)) < 0 {
-        print("failure\n");
+        std::io::print("failure\n");
 
         std::process::exit(1);
     } else {    
-        print("success\n");
+        std::io::print("success\n");
     }
 
     var optlevel u32 = 1;
@@ -28,24 +29,24 @@ fn Server::init(server *Server) {
     address.addr = 0;
     (&address.zero as *u64).* = 0;
 
-    print("binding.. ");
+    std::io::print("binding.. ");
 
     if std::os::linux::bind(server.fd, &address as *std::os::linux::sockaddr, 16) != 0 {
-        print("failure\n");
+        std::io::print("failure\n");
 
         std::process::exit(1);
     } else {
-        print("success\n");
+        std::io::print("success\n");
     }
 
-    print("listening.. ");
+    std::io::print("listening.. ");
 
     if std::os::linux::listen(server.fd, 5) != 0 {
-        print("failure\n");
+        std::io::print("failure\n");
 
         std::process::exit(1);
     } else {
-        print("success\n");
+        std::io::print("success\n");
     }
 }
 
@@ -57,14 +58,14 @@ type Client = struct {
 fn Server::accept(server Server, client *Client) {
     var address_len std::os::linux::socklen_t;
 
-    print("accepting request.. ");
+    std::io::print("accepting request.. ");
 
     if (client.fd = std::os::linux::accept(server.fd, &client.address, &address_len)) < 0 {
-        print("failure\n");
+        std::io::print("failure\n");
 
         std::process::exit(1);
     } else {    
-        print("success\n");
+        std::io::print("success\n");
     }
 }
 
@@ -87,7 +88,7 @@ fn http(client Client) {
         }
     }
 
-    printfd(client.fd, "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: text/html\r\n\r\n<h1>Hello, World!</h1>\n");
+    std::io::printfd(client.fd, "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: text/html\r\n\r\n<h1>Hello, World!</h1>\n");
 }
 
 fn echo(client Client) {
@@ -96,14 +97,6 @@ fn echo(client Client) {
     while std::os::linux::read(client.fd, &ch as usize, 1) == 1 {
         std::os::linux::write(client.fd, &ch as usize, 1);
     }
-}
-
-fn printfd(fd s32, str []const u8) {
-    std::os::linux::write(fd, str.ptr as usize, str.len);
-}
-
-fn print(str []const u8) {
-    printfd(std::os::linux::STDOUT, str);
 }
 
 fn main() {
@@ -115,7 +108,7 @@ fn main() {
     while true {
         Server::accept(server, &client);
 
-        // http(client);
+        http(client);
         // echo(client);
 
         Client::close(client);

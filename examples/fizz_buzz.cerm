@@ -1,19 +1,6 @@
 module examples::fizz_buzz;
 
-import "std/os/linux.cerm";
-
-fn printi(n u32) {
-    if n > 9 {
-        printi(n / 10);
-        n = n % 10;
-    }
-
-    std::os::linux::write(std::os::linux::STDOUT, &('0' + n) as usize, 1);
-}
-
-fn prints(str []const u8) {
-    std::os::linux::write(std::os::linux::STDOUT, str.ptr as usize, str.len);
-}
+import "std/io.cerm";
 
 fn main() {
     var i u32 = 0;
@@ -21,15 +8,15 @@ fn main() {
     while (i = i + 1) < 16 {
         if i % 3 == 0 {
             if i % 5 == 0 {
-                prints("FizzBuzz\n");
+                std::io::print("FizzBuzz\n");
             } else {
-                prints("Fizz\n");
+                std::io::print("Fizz\n");
             }
         } else if i % 5 == 0 {
-            prints("Buzz\n");
+            std::io::print("Buzz\n");
         } else {
-            printi(i);
-            prints("\n");
+            std::io::numprint(i);
+            std::io::print("\n");
         }
     }
 }

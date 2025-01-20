@@ -1,11 +1,7 @@
 module examples::hello;
 
-import "std/os/linux.cerm";
-
-fn print(str []const u8) {
-    std::os::linux::write(std::os::linux::STDOUT, str.ptr as usize, str.len);
-}
+import "std/io.cerm";
 
 fn main() {
-    print("Hello, World!\n");
+    std::io::println("Hello, World!");
 }

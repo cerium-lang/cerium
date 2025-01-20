@@ -1,0 +1,44 @@
+module std::io;
+
+import "std/os/linux.cerm";
+
+// TODO: This is a temporary solution until we have a proper files implementation which must work on all platforms
+fn printfd(fd s32, str []const u8) {
+    // String's length contains the null terminator which we don't want to print
+    if str[str.len - 1] == 0 {
+        str.len = str.len - 1;
+    }
+
+    std::os::linux::write(fd, str.ptr as usize, str.len);
+}
+
+fn print(str []const u8) {
+    printfd(std::os::linux::STDOUT, str);
+}
+
+// TODO: This is a temporary solution until we have a proper printing implementation
+fn numprint(n u64) {
+    if n > 9 {
+        numprint(n / 10);
+        n = n % 10;
+    }
+
+    var buf [1]u8;
+    buf[0] = (n + '0') as u8;
+
+    print(buf[0..1]);
+}
+
+fn println(str []const u8) {
+    print(str);
+    print("\n");
+}
+
+fn eprint(str []const u8) {
+    printfd(std::os::linux::STDERR, str);
+}
+
+fn eprintln(str []const u8) {
+    eprint(str);
+    eprint("\n");
+}
