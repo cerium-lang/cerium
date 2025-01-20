@@ -1689,12 +1689,12 @@ pub const Parser = struct {
 
         try self.sir.instructions.append(self.allocator, .{ .pre_element = open_bracket_start });
 
-        try self.parseExpr(.subscript);
+        try self.parseExpr(.lowest);
 
         const slicing = self.eatToken(.double_period);
 
         if (slicing) {
-            try self.parseExpr(.subscript);
+            try self.parseExpr(.lowest);
 
             try self.sir.instructions.append(self.allocator, .{ .slice = open_bracket_start });
         }
