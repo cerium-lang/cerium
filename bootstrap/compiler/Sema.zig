@@ -2200,7 +2200,9 @@ fn checkRangeOutOfBounds(self: *Sema, start: Value, end: Value, lhs_pointer: Typ
 
             return error.UnexpectedValue;
         }
-    } else if (end == .int and lhs_pointer.child_type.* == .array and
+    }
+
+    if (end == .int and lhs_pointer.child_type.* == .array and
         end.int > lhs_pointer.child_type.array.len)
     {
         self.error_info = .{ .message = "range end out of bounds", .source_loc = SourceLoc.find(self.file.buffer, token_start) };
