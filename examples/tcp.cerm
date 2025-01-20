@@ -102,10 +102,8 @@ fn printfd(fd s32, str []const u8) {
     std::os::linux::write(fd, str.ptr as usize, str.len);
 }
 
-const STDOUT = 1;
-
 fn print(str []const u8) {
-    printfd(STDOUT, str);
+    printfd(std::os::linux::STDOUT, str);
 }
 
 fn main() {

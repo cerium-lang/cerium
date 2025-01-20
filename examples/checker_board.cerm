@@ -2,10 +2,8 @@ module examples::checker_board;
 
 import "std/os/linux.cerm";
 
-const STDOUT = 1;
-
 fn print(str []const u8) {
-    std::os::linux::write(STDOUT, str.ptr as usize, str.len);
+    std::os::linux::write(std::os::linux::STDOUT, str.ptr as usize, str.len);
 }
 
 fn main() {

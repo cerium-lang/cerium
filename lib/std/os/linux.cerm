@@ -98,6 +98,10 @@ fn read(fd s32, bufferptr usize, count usize) usize {
     return syscall3(SYS::read, (&fd as *u32).*, bufferptr, count);
 }
 
+const STDIN = 0;
+const STDOUT = 1;
+const STDERR = 2;
+
 fn write(fd s32, bufferptr usize, count usize) usize {
     return syscall3(SYS::write, (&fd as *u32).*, bufferptr, count);
 }

@@ -2,19 +2,17 @@ module examples::fizz_buzz;
 
 import "std/os/linux.cerm";
 
-const STDOUT = 1;
-
 fn printi(n u32) {
     if n > 9 {
         printi(n / 10);
         n = n % 10;
     }
 
-    std::os::linux::write(STDOUT, &('0' + n) as usize, 1);
+    std::os::linux::write(std::os::linux::STDOUT, &('0' + n) as usize, 1);
 }
 
 fn prints(str []const u8) {
-    std::os::linux::write(STDOUT, str.ptr as usize, str.len);
+    std::os::linux::write(std::os::linux::STDOUT, str.ptr as usize, str.len);
 }
 
 fn main() {
