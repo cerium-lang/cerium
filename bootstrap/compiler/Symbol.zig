@@ -5,15 +5,8 @@ const Compilation = @import("Compilation.zig");
 
 const Symbol = @This();
 
-tag: Tag,
 name: Name,
 type: Type,
-
-pub const Tag = enum {
-    local,
-    global,
-    builtin,
-};
 
 pub const Type = union(enum) {
     void,

@@ -38,7 +38,6 @@ scopes: std.ArrayListUnmanaged(Scope(Variable)) = .{},
 pub const Error = std.mem.Allocator.Error;
 
 pub const Variable = struct {
-    tag: Symbol.Tag,
     type: Type,
     pointer: c.LLVMValueRef,
 };
@@ -161,7 +160,6 @@ fn renderExternals(self: *LlvmBackend, symbols: []const Symbol) Error!void {
             self.allocator,
             symbol.name.buffer,
             .{
-                .tag = .global,
                 .pointer = pointer,
                 .type = symbol.type,
             },
@@ -173,15 +171,16 @@ fn renderGlobalVariables(self: *LlvmBackend, global_variables: []const Air.Defin
     for (global_variables) |global_variable| {
         const symbol = global_variable.symbol;
 
-        std.debug.assert(symbol.tag == .global);
-
         const llvm_type = try self.llvmType(symbol.type);
 
-        const variable_pointer = c.LLVMAddGlobal(
-            self.module,
-            llvm_type,
-            try self.allocator.dupeZ(u8, global_variable.symbol.name.buffer),
-        );
+        const variable_pointer = if (self.scope.get(symbol.name.buffer)) |variable|
+            variable.pointer
+        else
+            c.LLVMAddGlobal(
+                self.module,
+                llvm_type,
+                try self.allocator.dupeZ(u8, global_variable.symbol.name.buffer),
+            );
 
         c.LLVMSetLinkage(
             variable_pointer,
@@ -205,7 +204,6 @@ fn renderGlobalVariables(self: *LlvmBackend, global_variables: []const Air.Defin
             self.allocator,
             symbol.name.buffer,
             .{
-                .tag = symbol.tag,
                 .type = symbol.type,
                 .pointer = variable_pointer,
             },
@@ -217,11 +215,14 @@ fn renderFunctions(self: *LlvmBackend, functions: []const Air.Definition) Error!
     for (functions) |function| {
         const symbol = function.symbol;
 
-        const function_pointer = c.LLVMAddFunction(
-            self.module,
-            try self.allocator.dupeZ(u8, symbol.name.buffer),
-            try self.llvmType(symbol.type.pointer.child_type.*),
-        );
+        const function_pointer = if (self.scope.get(symbol.name.buffer)) |variable|
+            variable.pointer
+        else
+            c.LLVMAddFunction(
+                self.module,
+                try self.allocator.dupeZ(u8, symbol.name.buffer),
+                try self.llvmType(symbol.type.pointer.child_type.*),
+            );
 
         c.LLVMSetLinkage(
             function_pointer,
@@ -237,7 +238,6 @@ fn renderFunctions(self: *LlvmBackend, functions: []const Air.Definition) Error!
             .{
                 .pointer = function_pointer,
                 .type = symbol.type,
-                .tag = symbol.tag,
             },
         );
     }
@@ -904,7 +904,6 @@ fn renderParameters(self: *LlvmBackend, symbols: []const Symbol) Error!void {
             .{
                 .pointer = parameter_pointer,
                 .type = symbol.type,
-                .tag = symbol.tag,
             },
         );
     }
@@ -912,20 +911,6 @@ fn renderParameters(self: *LlvmBackend, symbols: []const Symbol) Error!void {
 
 fn renderVariable(self: *LlvmBackend, symbol: Symbol) Error!void {
     const llvm_type = try self.llvmType(symbol.type);
-
-    if (self.scope.get(symbol.name.buffer)) |variable| {
-        if (variable.tag == .global) {
-            var register = self.stack.popOrNull() orelse Register{ .value = c.LLVMGetUndef(llvm_type), .type = symbol.type };
-
-            try self.unaryImplicitCast(&register, symbol.type);
-
-            _ = c.LLVMSetInitializer(variable.pointer, register.value);
-
-            return;
-        }
-    }
-
-    std.debug.assert(symbol.tag == .local);
 
     const current_block = c.LLVMGetInsertBlock(self.builder);
     const first_block = c.LLVMGetFirstBasicBlock(self.function_value);
@@ -944,7 +929,6 @@ fn renderVariable(self: *LlvmBackend, symbol: Symbol) Error!void {
         self.allocator,
         symbol.name.buffer,
         .{
-            .tag = symbol.tag,
             .type = symbol.type,
             .pointer = variable_pointer,
         },

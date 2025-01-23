@@ -87,12 +87,12 @@ const Value = union(enum) {
 };
 
 pub const Variable = struct {
-    tag: Symbol.Tag,
     type: Type,
     maybe_prefixed: ?[]const u8 = null,
     maybe_value: ?Value = null,
     is_const: bool = false,
     is_comptime: bool = false,
+    is_builtin: bool = false,
     is_type_alias: bool = false,
 };
 
@@ -137,7 +137,7 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
         inline for (.{ "void", "bool" }, .{ .void, .bool }) |name, @"type"| {
             self.scope.putAssumeCapacity(name, .{
                 .type = @"type",
-                .tag = .builtin,
+                .is_builtin = true,
                 .is_type_alias = true,
             });
         }
@@ -162,14 +162,14 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
                     .bits = c_char_bits,
                 },
             },
-            .tag = .builtin,
+            .is_builtin = true,
             .is_type_alias = true,
         });
 
         inline for (.{ "c_uchar", "c_ushort", "c_uint", "c_ulong", "c_ulonglong", "usize" }, .{ c_char_bits, c_ushort_bits, c_uint_bits, c_ulong_bits, c_ulonglong_bits, ptr_bits }) |name, bits| {
             self.scope.putAssumeCapacity(name, .{
                 .type = .{ .int = .{ .signedness = .unsigned, .bits = @intCast(bits) } },
-                .tag = .builtin,
+                .is_builtin = true,
                 .is_type_alias = true,
             });
         }
@@ -177,7 +177,7 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
         inline for (.{ "c_schar", "c_short", "c_int", "c_long", "c_longlong", "ssize" }, .{ c_char_bits, c_short_bits, c_int_bits, c_long_bits, c_longlong_bits, ptr_bits }) |name, bits| {
             self.scope.putAssumeCapacity(name, .{
                 .type = .{ .int = .{ .signedness = .signed, .bits = @intCast(bits) } },
-                .tag = .builtin,
+                .is_builtin = true,
                 .is_type_alias = true,
             });
         }
@@ -190,7 +190,7 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
         for (unsigned_int_names, 0..) |name, bits| {
             self.scope.putAssumeCapacity(name, .{
                 .type = .{ .int = .{ .signedness = .unsigned, .bits = @intCast(bits) } },
-                .tag = .builtin,
+                .is_builtin = true,
                 .is_type_alias = true,
             });
         }
@@ -200,7 +200,7 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
         for (signed_int_names, 0..) |name, bits| {
             self.scope.putAssumeCapacity(name, .{
                 .type = .{ .int = .{ .signedness = .signed, .bits = @intCast(bits) } },
-                .tag = .builtin,
+                .is_builtin = true,
                 .is_type_alias = true,
             });
         }
@@ -214,7 +214,7 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
         inline for (.{ "f16", "f32", "f64", "c_float", "c_double" }, .{ 16, 32, 64, c_float_bits, c_double_bits }) |float_type, i| {
             self.scope.putAssumeCapacity(float_type, .{
                 .type = .{ .float = .{ .bits = @intCast(i) } },
-                .tag = .builtin,
+                .is_builtin = true,
                 .is_type_alias = true,
             });
         }
@@ -228,10 +228,10 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
         inline for (.{ "builtin::target::os", "builtin::target::arch", "builtin::target::abi" }, .{ builtin_target_os, builtin_target_arch, builtin_target_abi }) |builtin_name, builtin_value| {
             self.scope.putAssumeCapacity(builtin_name, .{
                 .type = Type.intFittingRange(builtin_value, builtin_value),
-                .tag = .builtin,
                 .maybe_value = .{ .int = builtin_value },
                 .is_const = true,
                 .is_comptime = true,
+                .is_builtin = true,
             });
         }
     }
@@ -240,10 +240,10 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
         inline for (.{ "true", "false" }, .{ true, false }) |boolean_name, boolean_value| {
             self.scope.putAssumeCapacity(boolean_name, .{
                 .type = .bool,
-                .tag = .builtin,
                 .maybe_value = .{ .boolean = boolean_value },
                 .is_const = true,
                 .is_comptime = true,
+                .is_builtin = true,
             });
         }
     }
@@ -397,7 +397,7 @@ fn import(self: *Sema, file_path: Name) Error!void {
         var variable = variable_entry.value_ptr.*;
         const old_variable_name = variable_entry.key_ptr.*;
 
-        if (variable.tag == .builtin) continue;
+        if (variable.is_builtin) continue;
 
         const new_variable_name = if (import_root) blk: {
             if (variable.maybe_prefixed == null) variable.maybe_prefixed = old_variable_name;
@@ -595,7 +595,6 @@ fn analyzeTypeAlias(self: *Sema, type_alias: Sir.SubSymbol) Error!Type {
 
                 try self.scope.put(self.allocator, enum_field_entry, .{
                     .type = enum_type,
-                    .tag = type_alias.tag,
                     .maybe_value = enum_field_value,
                     .is_const = true,
                     .is_comptime = true,
@@ -623,7 +622,6 @@ fn analyzeTypeAliases(self: *Sema) Error!void {
 
         try self.scope.put(self.allocator, type_alias.name.buffer, .{
             .type = .void,
-            .tag = type_alias.tag,
             .is_type_alias = true,
         });
     }
@@ -647,10 +645,7 @@ fn analyzeExternals(self: *Sema) Error!void {
 
         const symbol = try self.analyzeSubSymbol(external);
 
-        try self.scope.put(self.allocator, external.name.buffer, .{
-            .type = symbol.type,
-            .tag = symbol.tag,
-        });
+        try self.scope.put(self.allocator, external.name.buffer, .{ .type = symbol.type });
 
         try self.air.external_declarations.append(self.allocator, symbol);
     }
@@ -678,7 +673,6 @@ fn analyzeGlobalConstants(self: *Sema) Error!void {
         }
 
         try self.scope.put(self.allocator, symbol.name.buffer, .{
-            .tag = symbol.tag,
             .type = value.getType(),
             .is_comptime = true,
             .is_const = true,
@@ -704,7 +698,6 @@ fn analyzeGlobalVariables(self: *Sema) Error!void {
 
         const definition = try self.air.global_variables.getOrPutValue(self.allocator, prefixed_name, .{
             .symbol = .{
-                .tag = symbol.tag,
                 .type = symbol.type,
                 .name = .{ .buffer = prefixed_name, .token_start = global_variable.subsymbol.name.token_start },
             },
@@ -738,7 +731,6 @@ fn analyzeGlobalVariables(self: *Sema) Error!void {
         }
 
         try self.scope.put(self.allocator, symbol.name.buffer, .{
-            .tag = symbol.tag,
             .type = definition.value_ptr.symbol.type,
             .maybe_prefixed = maybe_prefixed,
         });
@@ -777,7 +769,6 @@ fn analyzeFunctions(self: *Sema) Error!void {
             else
                 null,
             .type = symbol.type,
-            .tag = symbol.tag,
         });
     }
 
@@ -797,7 +788,6 @@ fn analyzeFunctions(self: *Sema) Error!void {
                 .symbol = .{
                     .name = .{ .buffer = prefixed_name, .token_start = function.subsymbol.name.token_start },
                     .type = variable.type,
-                    .tag = variable.tag,
                 },
                 .exported = function.exported,
             });
@@ -1273,7 +1263,6 @@ fn analyzeReference(self: *Sema) Error!void {
                     .variable = .{
                         .name = .{ .buffer = anon_var_name, .token_start = 0 },
                         .type = rhs_type,
-                        .tag = .local,
                     },
                 },
             );
@@ -1288,7 +1277,6 @@ fn analyzeReference(self: *Sema) Error!void {
                 .symbol = .{
                     .name = .{ .buffer = anon_var_name, .token_start = 0 },
                     .type = rhs_type,
-                    .tag = .global,
                 },
                 .exported = false,
             });
@@ -1721,10 +1709,7 @@ fn analyzeParameters(self: *Sema, subsymbols: []const Sir.SubSymbol) Error!void 
 
         symbols.appendAssumeCapacity(symbol);
 
-        try self.scope.put(self.allocator, symbol.name.buffer, .{
-            .type = symbol.type,
-            .tag = symbol.tag,
-        });
+        try self.scope.put(self.allocator, symbol.name.buffer, .{ .type = symbol.type });
     }
 
     try self.air_instructions.append(self.allocator, .{ .parameters = try symbols.toOwnedSlice(self.allocator) });
@@ -1743,7 +1728,6 @@ fn analyzeConstant(self: *Sema, subsymbol: Sir.SubSymbol) Error!void {
     }
 
     try self.scope.put(self.allocator, symbol.name.buffer, .{
-        .tag = symbol.tag,
         .type = value.getType(),
         .is_comptime = true,
         .is_const = true,
@@ -1765,7 +1749,7 @@ fn analyzeVariable(self: *Sema, infer: bool, subsymbol: Sir.SubSymbol) Error!voi
         return error.UnexpectedType;
     }
 
-    var variable: Variable = .{ .type = symbol.type, .tag = symbol.tag };
+    var variable: Variable = .{ .type = symbol.type };
 
     variable.maybe_prefixed = null;
 
@@ -2061,7 +2045,6 @@ fn analyzeSubType(self: *Sema, subtype: Sir.SubType) Error!Type {
 
 fn analyzeSubSymbol(self: *Sema, subsymbol: Sir.SubSymbol) Error!Symbol {
     return Symbol{
-        .tag = subsymbol.tag,
         .name = subsymbol.name,
         .type = try self.analyzeSubType(subsymbol.subtype),
     };

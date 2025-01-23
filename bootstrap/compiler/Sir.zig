@@ -263,7 +263,6 @@ pub const SubType = union(enum) {
 pub const SubSymbol = struct {
     name: Name,
     subtype: SubType,
-    tag: Symbol.Tag,
 };
 
 pub const Parser = struct {
@@ -386,9 +385,9 @@ pub const Parser = struct {
 
             .keyword_asm => return self.parseGlobalAssembly(),
 
-            .keyword_fn => return self.parseFunctionDeclaration(.global, false, false),
+            .keyword_fn => return self.parseFunctionDeclaration(false, false),
 
-            .keyword_const, .keyword_var => try self.parseVariableDeclaration(.global, false, false),
+            .keyword_const, .keyword_var => try self.parseVariableDeclaration(true, false, false),
 
             .keyword_type => try self.parseTypeAlias(),
 
@@ -408,7 +407,7 @@ pub const Parser = struct {
 
     fn parseStmt(self: *Parser, expect_semicolon: bool) Error!void {
         switch (self.peekToken().tag) {
-            .keyword_const, .keyword_var => try self.parseVariableDeclaration(.local, false, false),
+            .keyword_const, .keyword_var => try self.parseVariableDeclaration(false, false, false),
 
             .keyword_switch => return self.parseSwitch(),
 
@@ -452,9 +451,9 @@ pub const Parser = struct {
         _ = self.nextToken();
 
         if (self.peekToken().tag == .keyword_fn) {
-            try self.parseFunctionDeclaration(.global, true, false);
+            try self.parseFunctionDeclaration(true, false);
         } else if (self.peekToken().tag == .keyword_var) {
-            try self.parseVariableDeclaration(.global, true, false);
+            try self.parseVariableDeclaration(true, true, false);
         } else if (self.peekToken().tag == .keyword_const) {
             self.error_info = .{ .message = "'const' is declaring a compile time constant and cannot be used with 'extern'", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
 
@@ -470,9 +469,9 @@ pub const Parser = struct {
         _ = self.nextToken();
 
         if (self.peekToken().tag == .keyword_fn) {
-            try self.parseFunctionDeclaration(.global, false, true);
+            try self.parseFunctionDeclaration(false, true);
         } else if (self.peekToken().tag == .keyword_var) {
-            try self.parseVariableDeclaration(.global, false, true);
+            try self.parseVariableDeclaration(true, false, true);
 
             if (!self.eatToken(.semicolon)) {
                 self.error_info = .{ .message = "expected a ';'", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
@@ -506,7 +505,6 @@ pub const Parser = struct {
 
     fn parseFunctionDeclaration(
         self: *Parser,
-        comptime tag: Symbol.Tag,
         comptime external: bool,
         comptime exported: bool,
     ) Error!void {
@@ -552,7 +550,6 @@ pub const Parser = struct {
         };
 
         const subsymbol: SubSymbol = .{
-            .tag = tag,
             .name = name,
             .subtype = function_pointer_subtype,
         };
@@ -622,7 +619,6 @@ pub const Parser = struct {
             }
 
             try paramters.append(self.allocator, .{
-                .tag = .local,
                 .name = try self.parseName(),
                 .subtype = try self.parseSubType(),
             });
@@ -639,7 +635,7 @@ pub const Parser = struct {
 
     fn parseVariableDeclaration(
         self: *Parser,
-        comptime tag: Symbol.Tag,
+        comptime global: bool,
         comptime external: bool,
         comptime exported: bool,
     ) Error!void {
@@ -655,7 +651,6 @@ pub const Parser = struct {
             try self.parseSubType();
 
         const subsymbol: SubSymbol = .{
-            .tag = tag,
             .name = name,
             .subtype = maybe_subtype orelse .{ .pure = .void },
         };
@@ -672,7 +667,7 @@ pub const Parser = struct {
             return error.UnexpectedToken;
         }
 
-        if (tag == .global) {
+        if (global) {
             const definition = if (is_const)
                 try self.sir.global_constants.getOrPut(self.allocator, name.buffer)
             else
@@ -692,7 +687,7 @@ pub const Parser = struct {
             try self.parseExpr(.lowest);
         }
 
-        if (tag == .local) {
+        if (!global) {
             try self.sir_instructions.append(
                 self.allocator,
                 if (maybe_subtype != null)
@@ -729,7 +724,6 @@ pub const Parser = struct {
         const subtype = try self.parseSubType();
 
         const subsymbol: SubSymbol = .{
-            .tag = .global,
             .name = name,
             .subtype = subtype,
         };
@@ -1786,7 +1780,6 @@ pub const Parser = struct {
                     try fields_hashset.put(self.allocator, name.buffer, {});
 
                     try subsymbols.append(self.allocator, .{
-                        .tag = .local,
                         .name = name,
                         .subtype = try self.parseSubType(),
                     });
