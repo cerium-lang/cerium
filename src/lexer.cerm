@@ -431,6 +431,7 @@ fn Lexer::next(self *Lexer) Token {
 
                 '.' => {
                     result.tag = Token::Tag::float;
+                    state = Lexer::State::number_period;
                 }, 
 
                 else => {
@@ -439,6 +440,22 @@ fn Lexer::next(self *Lexer) Token {
                     break;
                 },
             },
+
+            Lexer::State::number_period => switch (ch) {
+                '.' => {
+                    result.tag = Token::Tag::int;
+                    self.index = self.index - 1;
+                    result.range.end = self.index;
+
+                    break;
+                },
+
+                else => {
+                    state = Lexer::State::number;
+
+                    continue;
+                },
+            }
 
             Lexer::State::forward_slash => switch (ch) {
                 '/' => {
