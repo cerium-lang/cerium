@@ -81,14 +81,13 @@ pub const File = struct {
 };
 
 pub const CompiledFile = struct {
-    module: []const u8,
     sir: Sir,
     scope: Symbol.Scope(Sema.Variable),
 };
 
 pub fn emit(
     self: Compilation,
-    airs: []const Air,
+    air: Air,
     output_file_path: [:0]const u8,
     output_kind: root.OutputKind,
     code_model: root.CodeModel,
@@ -96,7 +95,7 @@ pub fn emit(
     var backend = try LlvmBackend.init(self.allocator, &self);
     defer backend.deinit();
 
-    try backend.render(airs);
+    try backend.render(air);
 
     try backend.emit(output_file_path, output_kind, code_model);
 }

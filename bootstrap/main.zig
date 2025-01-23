@@ -492,7 +492,7 @@ pub const Cli = struct {
             },
         };
 
-        var sema = Sema.init(self.allocator, &compilation, compilation_file) catch |err| {
+        var sema = Sema.init(self.allocator, &compilation, compilation_file, sir_parser.sir) catch |err| {
             std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
 
             return 1;
@@ -500,7 +500,7 @@ pub const Cli = struct {
 
         defer sema.deinit();
 
-        sema.analyze(sir_parser.sir) catch |err| switch (err) {
+        sema.analyze() catch |err| switch (err) {
             error.OutOfMemory => {
                 std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
 
@@ -519,13 +519,7 @@ pub const Cli = struct {
             },
         };
 
-        const airs = sema.airs.toOwnedSlice(self.allocator) catch |err| {
-            std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
-
-            return 1;
-        };
-
-        sir_parser.sir.instructions.deinit(self.allocator);
+        sir_parser.sir.deinit(self.allocator);
 
         switch (output_kind) {
             .assembly => {
@@ -540,13 +534,11 @@ pub const Cli = struct {
 
                 defer self.allocator.free(assembly_file_path);
 
-                compilation.emit(airs, assembly_file_path, output_kind, code_model) catch |err| {
+                compilation.emit(sema.air, assembly_file_path, output_kind, code_model) catch |err| {
                     std.debug.print("Error: could not emit assembly file: {s}\n", .{errorDescription(err)});
 
                     return 1;
                 };
-
-                self.allocator.free(airs);
             },
 
             .object, .executable => {
@@ -561,13 +553,11 @@ pub const Cli = struct {
 
                 defer self.allocator.free(object_file_path);
 
-                compilation.emit(airs, object_file_path, output_kind, code_model) catch |err| {
+                compilation.emit(sema.air, object_file_path, output_kind, code_model) catch |err| {
                     std.debug.print("Error: could not emit object file: {s}\n", .{errorDescription(err)});
 
                     return 1;
                 };
-
-                self.allocator.free(airs);
 
                 if (output_kind == .executable) {
                     const linker_exit_code = compilation.link(
@@ -614,7 +604,7 @@ pub const Cli = struct {
                     return 1;
                 };
 
-                Air.passes.format.print(ir_file.writer(), airs) catch |err| {
+                Air.passes.format.print(ir_file.writer(), sema.air) catch |err| {
                     std.debug.print("Error: could not emit intermediate representation: {s}\n", .{errorDescription(err)});
 
                     return 1;
