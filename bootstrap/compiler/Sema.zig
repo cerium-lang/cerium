@@ -826,10 +826,6 @@ fn analyzeInstruction(self: *Sema, instruction: Sir.Instruction) Error!void {
 
         .write => |token_start| try self.analyzeWrite(token_start),
         .read => |token_start| try self.analyzeRead(token_start),
-        .pre_element => |token_start| try self.analyzePreElement(token_start),
-        .element => |token_start| try self.analyzeElement(token_start),
-        .slice => |token_start| try self.analyzeSlice(token_start),
-        .field => |name| try self.analyzeField(name),
         .reference => try self.analyzeReference(),
 
         .add => |token_start| try self.analyzeArithmetic(.add, token_start),
@@ -851,8 +847,6 @@ fn analyzeInstruction(self: *Sema, instruction: Sir.Instruction) Error!void {
 
         .call => |call| try self.analyzeCall(call),
 
-        .parameters => |subsymbols| try self.analyzeParameters(subsymbols),
-
         .constant => |subsymbol| try self.analyzeConstant(subsymbol),
 
         .variable => |variable| try self.analyzeVariable(false, variable),
@@ -860,6 +854,10 @@ fn analyzeInstruction(self: *Sema, instruction: Sir.Instruction) Error!void {
 
         .set => |name| try self.analyzeSet(name),
         .get => |name| try self.analyzeGet(name),
+        .pre_get_element => |token_start| try self.analyzePreGetElement(token_start),
+        .get_element => |token_start| try self.analyzeGetElement(token_start),
+        .get_field => |name| try self.analyzeGetField(name),
+        .make_slice => |token_start| try self.analyzeMakeSlice(token_start),
 
         .block => |block| try self.analyzeBlock(block),
         .br => |br| try self.analyzeBr(br),
@@ -1093,7 +1091,7 @@ fn analyzeRead(self: *Sema, token_start: u32) Error!void {
     try self.stack.append(self.allocator, .{ .runtime = rhs_pointer.child_type.* });
 }
 
-fn analyzePreElement(self: *Sema, token_start: u32) Error!void {
+fn analyzePreGetElement(self: *Sema, token_start: u32) Error!void {
     const lhs = self.stack.getLast();
     const lhs_type = lhs.getType();
 
@@ -1119,7 +1117,7 @@ fn analyzePreElement(self: *Sema, token_start: u32) Error!void {
     }
 }
 
-fn analyzeElement(self: *Sema, token_start: u32) Error!void {
+fn analyzeGetElement(self: *Sema, token_start: u32) Error!void {
     const index = self.stack.pop();
 
     const usize_type: Type = .{ .int = .{ .signedness = .unsigned, .bits = self.compilation.env.target.ptrBitWidth() } };
@@ -1142,7 +1140,7 @@ fn analyzeElement(self: *Sema, token_start: u32) Error!void {
     try self.stack.append(self.allocator, .{ .runtime = child_type.* });
 }
 
-fn analyzeSlice(self: *Sema, token_start: u32) Error!void {
+fn analyzeMakeSlice(self: *Sema, token_start: u32) Error!void {
     const end = self.stack.pop();
     const start = self.stack.pop();
 
@@ -1174,7 +1172,7 @@ fn analyzeSlice(self: *Sema, token_start: u32) Error!void {
     });
 }
 
-fn analyzeField(self: *Sema, name: Name) Error!void {
+fn analyzeGetField(self: *Sema, name: Name) Error!void {
     const rhs_type = self.stack.getLast().getType();
 
     if (rhs_type == .@"struct" or (rhs_type == .pointer and rhs_type.pointer.size == .slice))

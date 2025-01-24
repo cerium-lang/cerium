@@ -69,14 +69,6 @@ pub const Instruction = union(enum) {
     write: u32,
     /// Read the data that the pointer is pointing to
     read: u32,
-    /// Should be used before parsing the index of element access (i.e array[index]) or slicing (i.e array[start..end])
-    pre_element: u32,
-    /// Get an element in a "size many" pointer
-    element: u32,
-    /// Make a new slice out of a "size many" pointer
-    slice: u32,
-    /// Get a field in a struct
-    field: Name,
     /// Add two integers or floats or pointers on the top of the stack
     add: u32,
     /// Subtract two integers or floats or pointers on the top of the stack
@@ -115,6 +107,14 @@ pub const Instruction = union(enum) {
     set: Name,
     /// Get a value of a variable
     get: Name,
+    /// Should be used before parsing the index of element access (i.e array[index]) or slicing (i.e array[start..end])
+    pre_get_element: u32,
+    /// Get an element in a "size many" pointer
+    get_element: u32,
+    /// Get a field in a struct
+    get_field: Name,
+    /// Make a new slice out of a "size many" pointer
+    make_slice: u32,
     /// Start a new block
     block: u32,
     /// Unconditionally branch to a block
@@ -1597,7 +1597,7 @@ pub const Parser = struct {
                     try self.sir_instructions.append(self.allocator, .duplicate);
                     try self.sir_instructions.append(self.allocator, .{ .reverse = 3 });
                     try self.sir_instructions.append(self.allocator, .{ .write = operator_token.range.start });
-                } else if (last_instruction == .element or last_instruction == .field) {
+                } else if (last_instruction == .get_element or last_instruction == .get_field) {
                     try self.sir_instructions.append(self.allocator, last_instruction);
                     try self.sir_instructions.append(self.allocator, .reference);
                     try self.parseExpr(Precedence.from(operator_token));
@@ -1699,7 +1699,7 @@ pub const Parser = struct {
     fn parseSubscript(self: *Parser) Error!void {
         const open_bracket_start = self.nextToken().range.start;
 
-        try self.sir_instructions.append(self.allocator, .{ .pre_element = open_bracket_start });
+        try self.sir_instructions.append(self.allocator, .{ .pre_get_element = open_bracket_start });
 
         try self.parseExpr(.lowest);
 
@@ -1708,7 +1708,7 @@ pub const Parser = struct {
         if (slicing) {
             try self.parseExpr(.lowest);
 
-            try self.sir_instructions.append(self.allocator, .{ .slice = open_bracket_start });
+            try self.sir_instructions.append(self.allocator, .{ .make_slice = open_bracket_start });
         }
 
         if (!self.eatToken(.close_bracket)) {
@@ -1718,7 +1718,7 @@ pub const Parser = struct {
         }
 
         if (!slicing) {
-            try self.sir_instructions.append(self.allocator, .{ .element = open_bracket_start });
+            try self.sir_instructions.append(self.allocator, .{ .get_element = open_bracket_start });
         }
     }
 
@@ -1730,7 +1730,7 @@ pub const Parser = struct {
         } else {
             const name = try self.parseName();
 
-            try self.sir_instructions.append(self.allocator, .{ .field = name });
+            try self.sir_instructions.append(self.allocator, .{ .get_field = name });
         }
     }
 
