@@ -15,11 +15,11 @@ pub const State = enum {
     char_literal,
     char_literal_back_slash,
     number,
-    number_period,
-    forward_slash,
+    number_saw_period,
+    divide,
     comment,
-    equal_sign,
-    bang,
+    assign,
+    bool_not,
     period,
     double_period,
     less_than,
@@ -131,16 +131,16 @@ pub fn next(self: *Lexer) Token {
 
             '=' => {
                 result.range.start = self.index;
-                result.tag = .equal_sign;
+                result.tag = .assign;
                 self.index += 1;
-                continue :state .equal_sign;
+                continue :state .assign;
             },
 
             '!' => {
                 result.range.start = self.index;
-                result.tag = .bang;
+                result.tag = .bool_not;
                 self.index += 1;
-                continue :state .bang;
+                continue :state .bool_not;
             },
 
             '<' => {
@@ -161,7 +161,7 @@ pub fn next(self: *Lexer) Token {
                 result.range.start = self.index;
                 self.index += 1;
                 result.range.end = self.index;
-                result.tag = .tilde;
+                result.tag = .bit_not;
             },
 
             '.' => {
@@ -175,7 +175,7 @@ pub fn next(self: *Lexer) Token {
                 result.range.start = self.index;
                 self.index += 1;
                 result.range.end = self.index;
-                result.tag = .percent;
+                result.tag = .modulo;
             },
 
             '+' => {
@@ -202,29 +202,29 @@ pub fn next(self: *Lexer) Token {
             '/' => {
                 result.range.start = self.index;
                 self.index += 1;
-                result.tag = .forward_slash;
-                continue :state .forward_slash;
+                result.tag = .divide;
+                continue :state .divide;
             },
 
             '&' => {
                 result.range.start = self.index;
                 self.index += 1;
                 result.range.end = self.index;
-                result.tag = .ampersand;
+                result.tag = .bit_and;
             },
 
             '|' => {
                 result.range.start = self.index;
                 self.index += 1;
                 result.range.end = self.index;
-                result.tag = .pipe;
+                result.tag = .bit_or;
             },
 
             '^' => {
                 result.range.start = self.index;
                 self.index += 1;
                 result.range.end = self.index;
-                result.tag = .caret;
+                result.tag = .bit_xor;
             },
 
             ',' => {
@@ -348,7 +348,7 @@ pub fn next(self: *Lexer) Token {
             '.' => {
                 result.tag = .float;
                 self.index += 1;
-                continue :state .number_period;
+                continue :state .number_saw_period;
             },
 
             else => {
@@ -356,7 +356,7 @@ pub fn next(self: *Lexer) Token {
             },
         },
 
-        .number_period => switch (self.buffer[self.index]) {
+        .number_saw_period => switch (self.buffer[self.index]) {
             '.' => {
                 result.tag = .int;
                 self.index -= 1;
@@ -366,7 +366,7 @@ pub fn next(self: *Lexer) Token {
             else => continue :state .number,
         },
 
-        .forward_slash => switch (self.buffer[self.index]) {
+        .divide => switch (self.buffer[self.index]) {
             '/' => {
                 self.index += 1;
                 continue :state .comment;
@@ -395,11 +395,11 @@ pub fn next(self: *Lexer) Token {
             },
         },
 
-        .equal_sign => switch (self.buffer[self.index]) {
+        .assign => switch (self.buffer[self.index]) {
             '=' => {
                 self.index += 1;
                 result.range.end = self.index;
-                result.tag = .double_equal_sign;
+                result.tag = .eql;
             },
 
             '>' => {
@@ -413,11 +413,11 @@ pub fn next(self: *Lexer) Token {
             },
         },
 
-        .bang => switch (self.buffer[self.index]) {
+        .bool_not => switch (self.buffer[self.index]) {
             '=' => {
                 self.index += 1;
                 result.range.end = self.index;
-                result.tag = .bang_equal_sign;
+                result.tag = .not_eql;
             },
 
             else => {
@@ -454,7 +454,7 @@ pub fn next(self: *Lexer) Token {
             '<' => {
                 self.index += 1;
                 result.range.end = self.index;
-                result.tag = .double_less_than;
+                result.tag = .left_shift;
             },
 
             else => {
@@ -466,7 +466,7 @@ pub fn next(self: *Lexer) Token {
             '>' => {
                 self.index += 1;
                 result.range.end = self.index;
-                result.tag = .double_greater_than;
+                result.tag = .right_shift;
             },
 
             else => {

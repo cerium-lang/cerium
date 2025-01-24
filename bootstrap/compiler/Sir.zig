@@ -643,7 +643,7 @@ pub const Parser = struct {
 
         const name = try self.parseName();
 
-        const maybe_subtype = if (self.peekToken().tag == .equal_sign or is_const)
+        const maybe_subtype = if (self.peekToken().tag == .assign or is_const)
             null
         else
             try self.parseSubType();
@@ -659,7 +659,7 @@ pub const Parser = struct {
 
         const has_initializer = self.peekToken().tag != .semicolon or is_const;
 
-        if (has_initializer and !self.eatToken(.equal_sign)) {
+        if (has_initializer and !self.eatToken(.assign)) {
             self.error_info = .{ .message = "expected a '='", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
 
             return error.UnexpectedToken;
@@ -713,7 +713,7 @@ pub const Parser = struct {
 
         const name = try self.parseName();
 
-        if (!self.eatToken(.equal_sign)) {
+        if (!self.eatToken(.assign)) {
             self.error_info = .{ .message = "expected a '='", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
 
             return error.UnexpectedToken;
@@ -1089,14 +1089,14 @@ pub const Parser = struct {
 
         fn from(token: Token) Precedence {
             return switch (token.tag) {
-                .equal_sign => .assign,
-                .less_than, .greater_than, .double_equal_sign, .bang_equal_sign => .comparison,
+                .assign => .assign,
+                .less_than, .greater_than, .eql, .not_eql => .comparison,
                 .plus, .minus => .sum,
-                .star, .forward_slash, .percent => .product,
-                .ampersand => .bit_and,
-                .pipe => .bit_or,
-                .caret => .bit_xor,
-                .double_less_than, .double_greater_than => .shift,
+                .star, .divide, .modulo => .product,
+                .bit_and => .bit_and,
+                .bit_or => .bit_or,
+                .bit_xor => .bit_xor,
+                .left_shift, .right_shift => .shift,
                 .keyword_as => .cast,
                 .open_paren => .call,
                 .open_bracket => .subscript,
@@ -1131,7 +1131,7 @@ pub const Parser = struct {
 
             .open_paren => try self.parseParentheses(),
 
-            .minus, .bang, .tilde, .ampersand => try self.parseUnaryOperation(),
+            .minus, .bool_not, .bit_not, .bit_and => try self.parseUnaryOperation(),
 
             else => {
                 self.error_info = .{ .message = "expected a statement or an expression", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
@@ -1508,15 +1508,15 @@ pub const Parser = struct {
                 try self.sir_instructions.append(self.allocator, .{ .negate = operator_token.range.start });
             },
 
-            .bang => {
+            .bool_not => {
                 try self.sir_instructions.append(self.allocator, .{ .bool_not = operator_token.range.start });
             },
 
-            .tilde => {
+            .bit_not => {
                 try self.sir_instructions.append(self.allocator, .{ .bit_not = operator_token.range.start });
             },
 
-            .ampersand => {
+            .bit_and => {
                 try self.sir_instructions.append(self.allocator, .reference);
             },
 
@@ -1529,18 +1529,18 @@ pub const Parser = struct {
             .plus,
             .minus,
             .star,
-            .forward_slash,
-            .percent,
-            .equal_sign,
+            .divide,
+            .modulo,
+            .assign,
             .less_than,
             .greater_than,
-            .double_less_than,
-            .double_greater_than,
-            .ampersand,
-            .pipe,
-            .caret,
-            .double_equal_sign,
-            .bang_equal_sign,
+            .left_shift,
+            .right_shift,
+            .bit_and,
+            .bit_or,
+            .bit_xor,
+            .eql,
+            .not_eql,
             => try self.parseBinaryOperation(),
 
             .keyword_as => try self.parseCast(),
@@ -1562,32 +1562,12 @@ pub const Parser = struct {
     fn parseBinaryOperation(self: *Parser) Error!void {
         const operator_token = self.nextToken();
 
-        if (operator_token.tag != .equal_sign) {
+        if (operator_token.tag != .assign) {
             try self.parseExpr(Precedence.from(operator_token));
         }
 
         switch (operator_token.tag) {
-            .plus => {
-                try self.sir_instructions.append(self.allocator, .{ .add = operator_token.range.start });
-            },
-
-            .minus => {
-                try self.sir_instructions.append(self.allocator, .{ .sub = operator_token.range.start });
-            },
-
-            .star => {
-                try self.sir_instructions.append(self.allocator, .{ .mul = operator_token.range.start });
-            },
-
-            .forward_slash => {
-                try self.sir_instructions.append(self.allocator, .{ .div = operator_token.range.start });
-            },
-
-            .percent => {
-                try self.sir_instructions.append(self.allocator, .{ .rem = operator_token.range.start });
-            },
-
-            .equal_sign => {
+            .assign => {
                 const last_instruction = self.sir_instructions.pop();
 
                 if (last_instruction == .read) {
@@ -1613,6 +1593,34 @@ pub const Parser = struct {
                 }
             },
 
+            .eql, .not_eql => {
+                try self.sir_instructions.append(self.allocator, .{ .eql = operator_token.range.start });
+
+                if (operator_token.tag == .not_eql) {
+                    try self.sir_instructions.append(self.allocator, .{ .bool_not = operator_token.range.start });
+                }
+            },
+
+            .plus => {
+                try self.sir_instructions.append(self.allocator, .{ .add = operator_token.range.start });
+            },
+
+            .minus => {
+                try self.sir_instructions.append(self.allocator, .{ .sub = operator_token.range.start });
+            },
+
+            .star => {
+                try self.sir_instructions.append(self.allocator, .{ .mul = operator_token.range.start });
+            },
+
+            .divide => {
+                try self.sir_instructions.append(self.allocator, .{ .div = operator_token.range.start });
+            },
+
+            .modulo => {
+                try self.sir_instructions.append(self.allocator, .{ .rem = operator_token.range.start });
+            },
+
             .less_than => {
                 try self.sir_instructions.append(self.allocator, .{ .lt = operator_token.range.start });
             },
@@ -1621,32 +1629,24 @@ pub const Parser = struct {
                 try self.sir_instructions.append(self.allocator, .{ .gt = operator_token.range.start });
             },
 
-            .double_less_than => {
+            .left_shift => {
                 try self.sir_instructions.append(self.allocator, .{ .shl = operator_token.range.start });
             },
 
-            .double_greater_than => {
+            .right_shift => {
                 try self.sir_instructions.append(self.allocator, .{ .shr = operator_token.range.start });
             },
 
-            .ampersand => {
+            .bit_and => {
                 try self.sir_instructions.append(self.allocator, .{ .bit_and = operator_token.range.start });
             },
 
-            .pipe => {
+            .bit_or => {
                 try self.sir_instructions.append(self.allocator, .{ .bit_or = operator_token.range.start });
             },
 
-            .caret => {
+            .bit_xor => {
                 try self.sir_instructions.append(self.allocator, .{ .bit_xor = operator_token.range.start });
-            },
-
-            .double_equal_sign, .bang_equal_sign => {
-                try self.sir_instructions.append(self.allocator, .{ .eql = operator_token.range.start });
-
-                if (operator_token.tag == .bang_equal_sign) {
-                    try self.sir_instructions.append(self.allocator, .{ .bool_not = operator_token.range.start });
-                }
             },
 
             else => unreachable,
@@ -1837,7 +1837,7 @@ pub const Parser = struct {
 
                     try fields_hashset.put(self.allocator, name.buffer, {});
 
-                    const value = if (self.eatToken(.equal_sign)) blk: {
+                    const value = if (self.eatToken(.assign)) blk: {
                         if (self.peekToken().tag != .int) {
                             self.error_info = .{ .message = "expected an integer", .source_loc = SourceLoc.find(self.buffer, self.peekToken().range.start) };
 

@@ -19,29 +19,29 @@ type Token::Tag = enum {
     close_brace,
     open_bracket,
     close_bracket,
-    bang,
-    tilde,
-    ampersand,
-    pipe,
-    caret,
-    comma,
-    period,
     double_period,
     triple_period,
-    percent,
     colon,
     semicolon,
+    comma,
+    period,
     plus,
     minus,
     star,
+    divide,
+    modulo,
+    bool_not,
+    bit_not,
+    bit_and,
+    bit_or,
+    bit_xor,
     less_than,
-    double_less_than,
+    left_shift,
     greater_than,
-    double_greater_than,
-    forward_slash,
-    bang_equal_sign,
-    equal_sign,
-    double_equal_sign,
+    right_shift,
+    eql,
+    not_eql,
+    assign,
     fat_arrow,
 };
 
@@ -63,10 +63,10 @@ type Lexer::State = enum {
     char_literal,
     char_literal_back_slash,
     number,
-    forward_slash,
+    divide,
     comment,
-    equal_sign,
-    bang,
+    assign,
+    bool_not,
     period,
     double_period,
     less_than,
@@ -130,10 +130,10 @@ fn Lexer::next(self *Lexer) Token {
                 },
 
                 '/' => {
-                    result.tag = Token::Tag::forward_slash;
+                    result.tag = Token::Tag::divide;
                     result.range.start = self.index;
 
-                    state = Lexer::State::forward_slash;
+                    state = Lexer::State::divide;
                 },
 
                 '(' => {
@@ -200,21 +200,21 @@ fn Lexer::next(self *Lexer) Token {
                 },
 
                 '=' => {
-                    result.tag = Token::Tag::equal_sign;
+                    result.tag = Token::Tag::assign;
                     result.range.start = self.index;
 
-                    state = Lexer::State::equal_sign;
+                    state = Lexer::State::assign;
                 },
 
                 '!' => {
-                    result.tag = Token::Tag::bang;
+                    result.tag = Token::Tag::bool_not;
                     result.range.start = self.index;
 
-                    state = Lexer::State::bang;
+                    state = Lexer::State::bool_not;
                 },
 
                 '~' => {
-                    result.tag = Token::Tag::tilde;
+                    result.tag = Token::Tag::bit_not;
                     result.range.start = self.index;
                     self.index = self.index + 1;
                     result.range.end = self.index;
@@ -257,7 +257,7 @@ fn Lexer::next(self *Lexer) Token {
                 },
 
                 '%' => {
-                    result.tag = Token::Tag::percent;
+                    result.tag = Token::Tag::modulo;
                     result.range.start = self.index;
                     self.index = self.index + 1;
                     result.range.end = self.index;
@@ -275,7 +275,7 @@ fn Lexer::next(self *Lexer) Token {
                 },
 
                 '&' => {
-                    result.tag = Token::Tag::ampersand;
+                    result.tag = Token::Tag::bit_and;
                     result.range.start = self.index;
                     self.index = self.index + 1;
                     result.range.end = self.index;
@@ -284,7 +284,7 @@ fn Lexer::next(self *Lexer) Token {
                 },
 
                 '|' => {
-                    result.tag = Token::Tag::pipe;
+                    result.tag = Token::Tag::bit_or;
                     result.range.start = self.index;
                     self.index = self.index + 1;
                     result.range.end = self.index;
@@ -293,7 +293,7 @@ fn Lexer::next(self *Lexer) Token {
                 },
 
                 '^' => {
-                    result.tag = Token::Tag::caret;
+                    result.tag = Token::Tag::bit_xor;
                     result.range.start = self.index;
                     self.index = self.index + 1;
                     result.range.end = self.index;
@@ -455,9 +455,9 @@ fn Lexer::next(self *Lexer) Token {
 
                     continue;
                 },
-            }
+            },
 
-            Lexer::State::forward_slash => switch (ch) {
+            Lexer::State::divide => switch (ch) {
                 '/' => {
                     state = Lexer::State::comment;
                 },
@@ -485,9 +485,9 @@ fn Lexer::next(self *Lexer) Token {
                 else => {},
             },
 
-            Lexer::State::equal_sign => switch (ch) {
+            Lexer::State::assign => switch (ch) {
                 '=' => {
-                    result.tag = Token::Tag::double_equal_sign;
+                    result.tag = Token::Tag::eql;
                     self.index = self.index + 1;
                     result.range.end = self.index;
 
@@ -509,9 +509,9 @@ fn Lexer::next(self *Lexer) Token {
                 },
             },
 
-            Lexer::State::bang => switch (ch) {
+            Lexer::State::bool_not => switch (ch) {
                 '=' => {
-                    result.tag = Token::Tag::bang_equal_sign;
+                    result.tag = Token::Tag::not_eql;
                     self.index = self.index + 1;
                     result.range.end = self.index;
 
@@ -557,7 +557,7 @@ fn Lexer::next(self *Lexer) Token {
 
             Lexer::State::less_than => switch (ch) {
                 '<' => {
-                    result.tag = Token::Tag::double_less_than;
+                    result.tag = Token::Tag::left_shift;
                     self.index = self.index + 1;
                     result.range.end = self.index;
 
@@ -573,7 +573,7 @@ fn Lexer::next(self *Lexer) Token {
 
             Lexer::State::greater_than => switch (ch) {
                 '>' => {
-                    result.tag = Token::Tag::double_greater_than;
+                    result.tag = Token::Tag::right_shift;
                     self.index = self.index + 1;
                     result.range.end = self.index;
 
