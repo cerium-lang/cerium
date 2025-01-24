@@ -33,8 +33,6 @@ pub const Definition = struct {
 };
 
 pub const Instruction = union(enum) {
-    /// Import a module
-    import: Name,
     /// Duplicate the top of the stack
     duplicate,
     /// Reverse the stack into nth depth

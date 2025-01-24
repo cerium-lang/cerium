@@ -841,6 +841,8 @@ fn analyzeInstruction(self: *Sema, instruction: Sir.Instruction) Error!void {
         .shl => |token_start| try self.analyzeBitwiseShift(.left, token_start),
         .shr => |token_start| try self.analyzeBitwiseShift(.right, token_start),
 
+        .parameters => |subsymbols| try self.analyzeParameters(subsymbols),
+
         .cast => |cast| try self.analyzeCast(cast),
 
         .inline_assembly => |inline_assembly| try self.analyzeInlineAssembly(inline_assembly),
@@ -869,8 +871,6 @@ fn analyzeInstruction(self: *Sema, instruction: Sir.Instruction) Error!void {
 
         .ret => |token_start| try self.analyzeReturn(true, token_start),
         .ret_void => |token_start| try self.analyzeReturn(false, token_start),
-
-        else => {},
     }
 }
 
