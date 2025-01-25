@@ -16,14 +16,23 @@ pub const State = enum {
     char_literal_back_slash,
     number,
     number_saw_period,
+    plus,
+    minus,
+    star,
     divide,
+    modulo,
+    bit_and,
+    bit_or,
+    bit_xor,
+    less_than,
+    greater_than,
+    left_shift,
+    right_shift,
     comment,
     assign,
     bool_not,
     period,
     double_period,
-    less_than,
-    greater_than,
 };
 
 pub fn init(buffer: [:0]const u8) Lexer {
@@ -171,32 +180,25 @@ pub fn next(self: *Lexer) Token {
                 continue :state .period;
             },
 
-            '%' => {
-                result.range.start = self.index;
-                self.index += 1;
-                result.range.end = self.index;
-                result.tag = .modulo;
-            },
-
             '+' => {
                 result.range.start = self.index;
                 self.index += 1;
-                result.range.end = self.index;
                 result.tag = .plus;
+                continue :state .plus;
             },
 
             '-' => {
                 result.range.start = self.index;
                 self.index += 1;
-                result.range.end = self.index;
                 result.tag = .minus;
+                continue :state .minus;
             },
 
             '*' => {
                 result.range.start = self.index;
                 self.index += 1;
-                result.range.end = self.index;
                 result.tag = .star;
+                continue :state .star;
             },
 
             '/' => {
@@ -206,25 +208,32 @@ pub fn next(self: *Lexer) Token {
                 continue :state .divide;
             },
 
+            '%' => {
+                result.range.start = self.index;
+                self.index += 1;
+                result.tag = .modulo;
+                continue :state .modulo;
+            },
+
             '&' => {
                 result.range.start = self.index;
                 self.index += 1;
-                result.range.end = self.index;
                 result.tag = .bit_and;
+                continue :state .bit_and;
             },
 
             '|' => {
                 result.range.start = self.index;
                 self.index += 1;
-                result.range.end = self.index;
                 result.tag = .bit_or;
+                continue :state .bit_or;
             },
 
             '^' => {
                 result.range.start = self.index;
                 self.index += 1;
-                result.range.end = self.index;
                 result.tag = .bit_xor;
+                continue :state .bit_xor;
             },
 
             ',' => {
@@ -366,10 +375,100 @@ pub fn next(self: *Lexer) Token {
             else => continue :state .number,
         },
 
+        .plus => switch (self.buffer[self.index]) {
+            '=' => {
+                self.index += 1;
+                result.range.end = self.index;
+                result.tag = .plus_assign;
+            },
+
+            else => {
+                result.range.end = self.index;
+            },
+        },
+
+        .minus => switch (self.buffer[self.index]) {
+            '=' => {
+                self.index += 1;
+                result.range.end = self.index;
+                result.tag = .minus_assign;
+            },
+
+            else => {
+                result.range.end = self.index;
+            },
+        },
+
+        .star => switch (self.buffer[self.index]) {
+            '=' => {
+                self.index += 1;
+                result.range.end = self.index;
+                result.tag = .star_assign;
+            },
+
+            else => {
+                result.range.end = self.index;
+            },
+        },
+
         .divide => switch (self.buffer[self.index]) {
             '/' => {
                 self.index += 1;
                 continue :state .comment;
+            },
+
+            '=' => {
+                self.index += 1;
+                result.range.end = self.index;
+                result.tag = .divide_assign;
+            },
+
+            else => {
+                result.range.end = self.index;
+            },
+        },
+
+        .modulo => switch (self.buffer[self.index]) {
+            '=' => {
+                self.index += 1;
+                result.range.end = self.index;
+                result.tag = .modulo_assign;
+            },
+
+            else => {
+                result.range.end = self.index;
+            },
+        },
+
+        .bit_and => switch (self.buffer[self.index]) {
+            '=' => {
+                self.index += 1;
+                result.range.end = self.index;
+                result.tag = .bit_and_assign;
+            },
+
+            else => {
+                result.range.end = self.index;
+            },
+        },
+
+        .bit_or => switch (self.buffer[self.index]) {
+            '=' => {
+                self.index += 1;
+                result.range.end = self.index;
+                result.tag = .bit_or_assign;
+            },
+
+            else => {
+                result.range.end = self.index;
+            },
+        },
+
+        .bit_xor => switch (self.buffer[self.index]) {
+            '=' => {
+                self.index += 1;
+                result.range.end = self.index;
+                result.tag = .bit_xor_assign;
             },
 
             else => {
@@ -453,8 +552,8 @@ pub fn next(self: *Lexer) Token {
         .less_than => switch (self.buffer[self.index]) {
             '<' => {
                 self.index += 1;
-                result.range.end = self.index;
                 result.tag = .left_shift;
+                continue :state .left_shift;
             },
 
             else => {
@@ -465,8 +564,32 @@ pub fn next(self: *Lexer) Token {
         .greater_than => switch (self.buffer[self.index]) {
             '>' => {
                 self.index += 1;
-                result.range.end = self.index;
                 result.tag = .right_shift;
+                continue :state .right_shift;
+            },
+
+            else => {
+                result.range.end = self.index;
+            },
+        },
+
+        .left_shift => switch (self.buffer[self.index]) {
+            '=' => {
+                self.index += 1;
+                result.range.end = self.index;
+                result.tag = .left_shift_assign;
+            },
+
+            else => {
+                result.range.end = self.index;
+            },
+        },
+
+        .right_shift => switch (self.buffer[self.index]) {
+            '=' => {
+                self.index += 1;
+                result.range.end = self.index;
+                result.tag = .right_shift_assign;
             },
 
             else => {

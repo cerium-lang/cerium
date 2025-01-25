@@ -1089,7 +1089,18 @@ pub const Parser = struct {
 
         fn from(token: Token) Precedence {
             return switch (token.tag) {
-                .assign => .assign,
+                .plus_assign,
+                .minus_assign,
+                .star_assign,
+                .divide_assign,
+                .modulo_assign,
+                .bit_and_assign,
+                .bit_or_assign,
+                .bit_xor_assign,
+                .left_shift_assign,
+                .right_shift_assign,
+                .assign,
+                => .assign,
                 .less_than, .greater_than, .eql, .not_eql => .comparison,
                 .plus, .minus => .sum,
                 .star, .divide, .modulo => .product,
@@ -1531,7 +1542,6 @@ pub const Parser = struct {
             .star,
             .divide,
             .modulo,
-            .assign,
             .less_than,
             .greater_than,
             .left_shift,
@@ -1539,6 +1549,17 @@ pub const Parser = struct {
             .bit_and,
             .bit_or,
             .bit_xor,
+            .plus_assign,
+            .minus_assign,
+            .star_assign,
+            .divide_assign,
+            .modulo_assign,
+            .bit_and_assign,
+            .bit_or_assign,
+            .bit_xor_assign,
+            .left_shift_assign,
+            .right_shift_assign,
+            .assign,
             .eql,
             .not_eql,
             => try self.parseBinaryOperation(),
@@ -1562,30 +1583,124 @@ pub const Parser = struct {
     fn parseBinaryOperation(self: *Parser) Error!void {
         const operator_token = self.nextToken();
 
-        if (operator_token.tag != .assign) {
-            try self.parseExpr(Precedence.from(operator_token));
+        const precedence = Precedence.from(operator_token);
+
+        if (precedence != .assign) {
+            try self.parseExpr(precedence);
         }
 
         switch (operator_token.tag) {
-            .assign => {
+            .plus_assign,
+            .minus_assign,
+            .star_assign,
+            .divide_assign,
+            .modulo_assign,
+            .bit_and_assign,
+            .bit_or_assign,
+            .bit_xor_assign,
+            .left_shift_assign,
+            .right_shift_assign,
+            .assign,
+            => {
+                const maybe_additional_operator_token: ?Token = if (operator_token.tag != .assign)
+                    .{
+                        .tag = switch (operator_token.tag) {
+                            .plus_assign => .plus,
+                            .minus_assign => .minus,
+                            .star_assign => .star,
+                            .divide_assign => .divide,
+                            .modulo_assign => .modulo,
+                            .bit_and_assign => .bit_and,
+                            .bit_or_assign => .bit_or,
+                            .bit_xor_assign => .bit_xor,
+                            .left_shift_assign => .left_shift,
+                            .right_shift_assign => .right_shift,
+
+                            else => unreachable,
+                        },
+                        .range = operator_token.range,
+                    }
+                else
+                    null;
+
                 const last_instruction = self.sir_instructions.pop();
 
-                if (last_instruction == .read) {
-                    try self.parseExpr(Precedence.from(operator_token));
-                    try self.sir_instructions.append(self.allocator, .duplicate);
-                    try self.sir_instructions.append(self.allocator, .{ .reverse = 3 });
-                    try self.sir_instructions.append(self.allocator, .{ .write = operator_token.range.start });
-                } else if (last_instruction == .get_element or last_instruction == .get_field) {
-                    try self.sir_instructions.append(self.allocator, last_instruction);
-                    try self.sir_instructions.append(self.allocator, .reference);
-                    try self.parseExpr(Precedence.from(operator_token));
-                    try self.sir_instructions.append(self.allocator, .duplicate);
-                    try self.sir_instructions.append(self.allocator, .{ .reverse = 3 });
-                    try self.sir_instructions.append(self.allocator, .{ .write = operator_token.range.start });
+                if (last_instruction == .get_element or last_instruction == .get_field) {
+                    try self.sir_instructions.appendSlice(self.allocator, &.{ last_instruction, .reference });
+
+                    try self.parseExpr(precedence);
+
+                    if (maybe_additional_operator_token) |additional_operator_token| {
+                        try self.sir_instructions.appendSlice(
+                            self.allocator,
+                            &.{
+                                .{ .reverse = 2 },
+                                .duplicate,
+                                .{ .read = operator_token.range.start },
+                                .{ .reverse = 2 },
+                                .{ .reverse = 3 },
+                            },
+                        );
+
+                        try self.emitBinaryOperation(additional_operator_token);
+                    }
+
+                    try self.sir_instructions.appendSlice(
+                        self.allocator,
+                        &.{
+                            .duplicate,
+                            .{ .reverse = 3 },
+                            .{ .write = operator_token.range.start },
+                        },
+                    );
+                } else if (last_instruction == .read) {
+                    try self.parseExpr(precedence);
+
+                    if (maybe_additional_operator_token) |additional_operator_token| {
+                        try self.sir_instructions.appendSlice(
+                            self.allocator,
+                            &.{
+                                .{ .reverse = 2 },
+                                .duplicate,
+                                .{ .read = operator_token.range.start },
+                                .{ .reverse = 2 },
+                                .{ .reverse = 3 },
+                            },
+                        );
+
+                        try self.emitBinaryOperation(additional_operator_token);
+                    }
+
+                    try self.sir_instructions.appendSlice(
+                        self.allocator,
+                        &.{
+                            .duplicate,
+                            .{ .reverse = 3 },
+                            .{ .write = operator_token.range.start },
+                        },
+                    );
                 } else if (last_instruction == .get) {
-                    try self.parseExpr(Precedence.from(operator_token));
-                    try self.sir_instructions.append(self.allocator, .duplicate);
-                    try self.sir_instructions.append(self.allocator, .{ .set = last_instruction.get });
+                    try self.parseExpr(precedence);
+
+                    if (maybe_additional_operator_token) |additional_operator_token| {
+                        try self.sir_instructions.appendSlice(
+                            self.allocator,
+                            &.{
+                                last_instruction,
+                                .{ .reverse = 2 },
+                            },
+                        );
+
+                        try self.emitBinaryOperation(additional_operator_token);
+                    }
+
+                    try self.sir_instructions.appendSlice(
+                        self.allocator,
+                        &.{
+                            .duplicate,
+                            .{ .set = last_instruction.get },
+                        },
+                    );
                 } else {
                     self.error_info = .{ .message = "cannot assign to value", .source_loc = SourceLoc.find(self.buffer, operator_token.range.start) };
 
@@ -1593,6 +1708,12 @@ pub const Parser = struct {
                 }
             },
 
+            else => try self.emitBinaryOperation(operator_token),
+        }
+    }
+
+    fn emitBinaryOperation(self: *Parser, operator_token: Token) Error!void {
+        switch (operator_token.tag) {
             .eql, .not_eql => {
                 try self.sir_instructions.append(self.allocator, .{ .eql = operator_token.range.start });
 
@@ -1601,53 +1722,18 @@ pub const Parser = struct {
                 }
             },
 
-            .plus => {
-                try self.sir_instructions.append(self.allocator, .{ .add = operator_token.range.start });
-            },
-
-            .minus => {
-                try self.sir_instructions.append(self.allocator, .{ .sub = operator_token.range.start });
-            },
-
-            .star => {
-                try self.sir_instructions.append(self.allocator, .{ .mul = operator_token.range.start });
-            },
-
-            .divide => {
-                try self.sir_instructions.append(self.allocator, .{ .div = operator_token.range.start });
-            },
-
-            .modulo => {
-                try self.sir_instructions.append(self.allocator, .{ .rem = operator_token.range.start });
-            },
-
-            .less_than => {
-                try self.sir_instructions.append(self.allocator, .{ .lt = operator_token.range.start });
-            },
-
-            .greater_than => {
-                try self.sir_instructions.append(self.allocator, .{ .gt = operator_token.range.start });
-            },
-
-            .left_shift => {
-                try self.sir_instructions.append(self.allocator, .{ .shl = operator_token.range.start });
-            },
-
-            .right_shift => {
-                try self.sir_instructions.append(self.allocator, .{ .shr = operator_token.range.start });
-            },
-
-            .bit_and => {
-                try self.sir_instructions.append(self.allocator, .{ .bit_and = operator_token.range.start });
-            },
-
-            .bit_or => {
-                try self.sir_instructions.append(self.allocator, .{ .bit_or = operator_token.range.start });
-            },
-
-            .bit_xor => {
-                try self.sir_instructions.append(self.allocator, .{ .bit_xor = operator_token.range.start });
-            },
+            .plus => try self.sir_instructions.append(self.allocator, .{ .add = operator_token.range.start }),
+            .minus => try self.sir_instructions.append(self.allocator, .{ .sub = operator_token.range.start }),
+            .star => try self.sir_instructions.append(self.allocator, .{ .mul = operator_token.range.start }),
+            .divide => try self.sir_instructions.append(self.allocator, .{ .div = operator_token.range.start }),
+            .modulo => try self.sir_instructions.append(self.allocator, .{ .rem = operator_token.range.start }),
+            .less_than => try self.sir_instructions.append(self.allocator, .{ .lt = operator_token.range.start }),
+            .greater_than => try self.sir_instructions.append(self.allocator, .{ .gt = operator_token.range.start }),
+            .left_shift => try self.sir_instructions.append(self.allocator, .{ .shl = operator_token.range.start }),
+            .right_shift => try self.sir_instructions.append(self.allocator, .{ .shr = operator_token.range.start }),
+            .bit_and => try self.sir_instructions.append(self.allocator, .{ .bit_and = operator_token.range.start }),
+            .bit_or => try self.sir_instructions.append(self.allocator, .{ .bit_or = operator_token.range.start }),
+            .bit_xor => try self.sir_instructions.append(self.allocator, .{ .bit_xor = operator_token.range.start }),
 
             else => unreachable,
         }

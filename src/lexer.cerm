@@ -19,12 +19,13 @@ type Token::Tag = enum {
     close_brace,
     open_bracket,
     close_bracket,
+    comma,
+    period,
     double_period,
     triple_period,
     colon,
     semicolon,
-    comma,
-    period,
+    fat_arrow,
     plus,
     minus,
     star,
@@ -36,13 +37,22 @@ type Token::Tag = enum {
     bit_or,
     bit_xor,
     less_than,
-    left_shift,
     greater_than,
+    left_shift,
     right_shift,
     eql,
     not_eql,
+    plus_assign,
+    minus_assign,
+    star_assign,
+    divide_assign,
+    modulo_assign,
+    bit_and_assign,
+    bit_or_assign,
+    bit_xor_assign,
+    left_shift_assign,
+    right_shift_assign,
     assign,
-    fat_arrow,
 };
 
 type Token::Range = struct {
@@ -63,14 +73,24 @@ type Lexer::State = enum {
     char_literal,
     char_literal_back_slash,
     number,
+    number_saw_period,
+    plus,
+    minus,
+    star,
     divide,
+    modulo,
+    bit_and,
+    bit_or,
+    bit_xor,
+    less_than,
+    greater_than,
+    left_shift,
+    right_shift,
     comment,
     assign,
     bool_not,
     period,
     double_period,
-    less_than,
-    greater_than,
 };
 
 fn Lexer::next(self *Lexer) Token {
@@ -108,7 +128,7 @@ fn Lexer::next(self *Lexer) Token {
 
                 '"' => {
                     result.tag = Token::Tag::string_literal;
-                    self.index = self.index + 1;
+                    self.index += 1;
                     result.range.start = self.index;
 
                     state = Lexer::State::string_literal;
@@ -116,7 +136,7 @@ fn Lexer::next(self *Lexer) Token {
 
                 '\'' => {
                     result.tag = Token::Tag::char_literal;
-                    self.index = self.index + 1;
+                    self.index += 1;
                     result.range.start = self.index;
 
                     state = Lexer::State::char_literal;
@@ -129,17 +149,10 @@ fn Lexer::next(self *Lexer) Token {
                     state = Lexer::State::number;
                 },
 
-                '/' => {
-                    result.tag = Token::Tag::divide;
-                    result.range.start = self.index;
-
-                    state = Lexer::State::divide;
-                },
-
                 '(' => {
                     result.tag = Token::Tag::open_paren;
                     result.range.start = self.index;
-                    self.index = self.index + 1;
+                    self.index += 1;
                     result.range.end = self.index;
 
                     break;
@@ -148,7 +161,7 @@ fn Lexer::next(self *Lexer) Token {
                 ')' => {
                     result.tag = Token::Tag::close_paren;
                     result.range.start = self.index;
-                    self.index = self.index + 1;
+                    self.index += 1;
                     result.range.end = self.index;
 
                     break;
@@ -157,7 +170,7 @@ fn Lexer::next(self *Lexer) Token {
                 '{' => {
                     result.tag = Token::Tag::open_brace;
                     result.range.start = self.index;
-                    self.index = self.index + 1;
+                    self.index += 1;
                     result.range.end = self.index;
 
                     break;
@@ -166,7 +179,7 @@ fn Lexer::next(self *Lexer) Token {
                 '}' => {
                     result.tag = Token::Tag::close_brace;
                     result.range.start = self.index;
-                    self.index = self.index + 1;
+                    self.index += 1;
                     result.range.end = self.index;
 
                     break;
@@ -175,7 +188,7 @@ fn Lexer::next(self *Lexer) Token {
                 '[' => {
                     result.tag = Token::Tag::open_bracket;
                     result.range.start = self.index;
-                    self.index = self.index + 1;
+                    self.index += 1;
                     result.range.end = self.index;
 
                     break;
@@ -184,7 +197,7 @@ fn Lexer::next(self *Lexer) Token {
                 ']' => {
                     result.tag = Token::Tag::close_bracket;
                     result.range.start = self.index;
-                    self.index = self.index + 1;
+                    self.index += 1;
                     result.range.end = self.index; 
 
                     break;
@@ -193,7 +206,7 @@ fn Lexer::next(self *Lexer) Token {
                 ';' => {
                     result.tag = Token::Tag::semicolon;
                     result.range.start = self.index;
-                    self.index = self.index + 1;
+                    self.index += 1;
                     result.range.end = self.index;
 
                     break;
@@ -216,7 +229,7 @@ fn Lexer::next(self *Lexer) Token {
                 '~' => {
                     result.tag = Token::Tag::bit_not;
                     result.range.start = self.index;
-                    self.index = self.index + 1;
+                    self.index += 1;
                     result.range.end = self.index;
 
                     break;
@@ -232,43 +245,42 @@ fn Lexer::next(self *Lexer) Token {
                 '+' => {
                     result.tag = Token::Tag::plus;
                     result.range.start = self.index;
-                    self.index = self.index + 1;
-                    result.range.end = self.index;
 
-                    break;
+                    state = Lexer::State::plus;
                 },
 
                 '-' => {
                     result.tag = Token::Tag::minus;
                     result.range.start = self.index;
-                    self.index = self.index + 1;
-                    result.range.end = self.index;
 
-                    break;
+                    state = Lexer::State::minus;
                 },
 
                 '*' => {
                     result.tag = Token::Tag::star;
                     result.range.start = self.index;
-                    self.index = self.index + 1;
-                    result.range.end = self.index;
 
-                    break;
+                    state = Lexer::State::star;
+                },
+
+                '/' => {
+                    result.tag = Token::Tag::divide;
+                    result.range.start = self.index;
+
+                    state = Lexer::State::divide;
                 },
 
                 '%' => {
                     result.tag = Token::Tag::modulo;
                     result.range.start = self.index;
-                    self.index = self.index + 1;
-                    result.range.end = self.index;
 
-                    break;
+                    state = Lexer::State::modulo;
                 },
 
                 ',' => {
                     result.tag = Token::Tag::comma;
                     result.range.start = self.index;
-                    self.index = self.index + 1;
+                    self.index += 1;
                     result.range.end = self.index;
 
                     break;
@@ -277,34 +289,28 @@ fn Lexer::next(self *Lexer) Token {
                 '&' => {
                     result.tag = Token::Tag::bit_and;
                     result.range.start = self.index;
-                    self.index = self.index + 1;
-                    result.range.end = self.index;
 
-                    break;
+                    state = Lexer::State::bit_and;
                 },
 
                 '|' => {
                     result.tag = Token::Tag::bit_or;
                     result.range.start = self.index;
-                    self.index = self.index + 1;
-                    result.range.end = self.index;
 
-                    break;
+                    state = Lexer::State::bit_or;
                 },
 
                 '^' => {
                     result.tag = Token::Tag::bit_xor;
                     result.range.start = self.index;
-                    self.index = self.index + 1;
-                    result.range.end = self.index;
 
-                    break;
+                    state = Lexer::State::bit_xor;
                 },
 
                 ':' => {
                     result.tag = Token::Tag::colon;
                     result.range.start = self.index;
-                    self.index = self.index + 1;
+                    self.index += 1;
                     result.range.end = self.index;
 
                     break;
@@ -327,7 +333,7 @@ fn Lexer::next(self *Lexer) Token {
                 else => {
                     result.tag = Token::Tag::invalid;
                     result.range.start = self.index;
-                    self.index = self.index + 1;
+                    self.index += 1;
                     result.range.end = self.index;
 
                     break;
@@ -351,7 +357,7 @@ fn Lexer::next(self *Lexer) Token {
                 0, '\n' => {
                     result.tag = Token::Tag::invalid;
                     result.range.start = self.index;
-                    self.index = self.index + 1;
+                    self.index += 1;
                     result.range.end = self.index;
 
                     break;
@@ -359,7 +365,7 @@ fn Lexer::next(self *Lexer) Token {
 
                 '"' => {
                     result.range.end = self.index;
-                    self.index = self.index + 1;
+                    self.index += 1;
 
                     break;
                 },
@@ -375,7 +381,7 @@ fn Lexer::next(self *Lexer) Token {
                 0, '\n' => {
                     result.tag = Token::Tag::invalid;
                     result.range.start = self.index;
-                    self.index = self.index + 1;
+                    self.index += 1;
                     result.range.end = self.index;
 
                     break;
@@ -390,7 +396,7 @@ fn Lexer::next(self *Lexer) Token {
                 0, '\n' => {
                     result.tag = Token::Tag::invalid;
                     result.range.start = self.index;
-                    self.index = self.index + 1;
+                    self.index += 1;
                     result.range.end = self.index;
 
                     break;
@@ -402,7 +408,7 @@ fn Lexer::next(self *Lexer) Token {
 
                 '\'' => {
                     result.range.end = self.index;
-                    self.index = self.index + 1;
+                    self.index += 1;
 
                     break;
                 },
@@ -415,7 +421,7 @@ fn Lexer::next(self *Lexer) Token {
                 0, '\n' => {
                     result.tag = Token::Tag::invalid;
                     result.range.start = self.index;
-                    self.index = self.index + 1;
+                    self.index += 1;
                     result.range.end = self.index;
 
                     break;
@@ -431,7 +437,7 @@ fn Lexer::next(self *Lexer) Token {
 
                 '.' => {
                     result.tag = Token::Tag::float;
-                    state = Lexer::State::number_period;
+                    state = Lexer::State::number_saw_period;
                 }, 
 
                 else => {
@@ -441,10 +447,10 @@ fn Lexer::next(self *Lexer) Token {
                 },
             },
 
-            Lexer::State::number_period => switch (ch) {
+            Lexer::State::number_saw_period => switch (ch) {
                 '.' => {
                     result.tag = Token::Tag::int;
-                    self.index = self.index - 1;
+                    self.index -= 1;
                     result.range.end = self.index;
 
                     break;
@@ -457,9 +463,140 @@ fn Lexer::next(self *Lexer) Token {
                 },
             },
 
+            Lexer::State::plus => switch (ch) {
+                '=' => {
+                    self.index += 1;
+                    result.range.end = self.index;
+                    result.tag = Token::Tag::plus_assign;
+
+                    break;
+                },
+
+                else => {
+                    result.range.end = self.index;
+
+                    break;
+                },
+            },
+
+            Lexer::State::minus => switch (ch) {
+                '=' => {
+                    self.index += 1;
+                    result.range.end = self.index;
+                    result.tag = Token::Tag::minus_assign;
+
+                    break;
+                },
+
+                else => {
+                    result.range.end = self.index;
+
+                    break;
+                },
+            },
+
+            Lexer::State::star => switch (ch) {
+                '=' => {
+                    self.index += 1;
+                    result.range.end = self.index;
+                    result.tag = Token::Tag::star_assign;
+
+                    break;
+                },
+
+                else => {
+                    result.range.end = self.index;
+
+                    break;
+                },
+            },
+
+
             Lexer::State::divide => switch (ch) {
                 '/' => {
                     state = Lexer::State::comment;
+                },
+
+                '=' => {
+                    self.index += 1;
+                    result.range.end = self.index;
+                    result.tag = Token::Tag::divide_assign;
+
+                    break;
+                },
+
+                else => {
+                    result.range.end = self.index;
+
+                    break;
+                },
+            },
+
+            Lexer::State::modulo => switch (ch) {
+                '=' => {
+                    self.index += 1;
+                    result.range.end = self.index;
+                    result.tag = Token::Tag::modulo_assign;
+
+                    break;
+                },
+
+                else => {
+                    result.range.end = self.index;
+
+                    break;
+                },
+            },
+
+            Lexer::State::less_than => switch (ch) {
+                '<' => {
+                    result.tag = Token::Tag::left_shift;
+                    state = Lexer::State::left_shift;
+                },
+
+                else => {
+                    result.range.end = self.index;
+
+                    break;
+                },
+            },
+
+            Lexer::State::greater_than => switch (ch) {
+                '>' => {
+                    result.tag = Token::Tag::right_shift;
+                    state = Lexer::State::right_shift;
+                },
+
+                else => {
+                    result.range.end = self.index;
+
+                    break;
+                },
+            },
+
+            Lexer::State::left_shift => switch (ch) {
+                '=' => {
+                    self.index += 1;
+                    result.range.end = self.index;
+                    result.tag = Token::Tag::left_shift_assign;
+
+                    break;
+                },
+
+                else => {
+                    result.range.end = self.index;
+
+                    break;
+                },
+            },
+            
+            Lexer::State::right_shift => switch (ch) {
+                '=' => {
+                    self.index += 1;
+                    result.range.end = self.index;
+                    result.tag = Token::Tag::right_shift_assign;
+
+                    break;
                 },
 
                 else => {
@@ -488,7 +625,7 @@ fn Lexer::next(self *Lexer) Token {
             Lexer::State::assign => switch (ch) {
                 '=' => {
                     result.tag = Token::Tag::eql;
-                    self.index = self.index + 1;
+                    self.index += 1;
                     result.range.end = self.index;
 
                     break;
@@ -496,7 +633,7 @@ fn Lexer::next(self *Lexer) Token {
 
                 '>' => {
                     result.tag = Token::Tag::fat_arrow;
-                    self.index = self.index + 1;
+                    self.index += 1;
                     result.range.end = self.index;
 
                     break;
@@ -512,7 +649,7 @@ fn Lexer::next(self *Lexer) Token {
             Lexer::State::bool_not => switch (ch) {
                 '=' => {
                     result.tag = Token::Tag::not_eql;
-                    self.index = self.index + 1;
+                    self.index += 1;
                     result.range.end = self.index;
 
                     break;
@@ -528,7 +665,6 @@ fn Lexer::next(self *Lexer) Token {
             Lexer::State::period => switch (ch) {
                 '.' => {
                     result.tag = Token::Tag::double_period;
-
                     state = Lexer::State::double_period;
                 },
 
@@ -542,39 +678,7 @@ fn Lexer::next(self *Lexer) Token {
             Lexer::State::double_period => switch (ch) {
                 '.' => {
                     result.tag = Token::Tag::triple_period;
-                    self.index = self.index + 1;
-                    result.range.end = self.index;
-
-                    break;
-                },
-
-                else => {
-                    result.range.end = self.index;
-
-                    break;
-                },
-            },
-
-            Lexer::State::less_than => switch (ch) {
-                '<' => {
-                    result.tag = Token::Tag::left_shift;
-                    self.index = self.index + 1;
-                    result.range.end = self.index;
-
-                    break;
-                },
-
-                else => {
-                    result.range.end = self.index;
-
-                    break;
-                },
-            },
-
-            Lexer::State::greater_than => switch (ch) {
-                '>' => {
-                    result.tag = Token::Tag::right_shift;
-                    self.index = self.index + 1;
+                    self.index += 1;
                     result.range.end = self.index;
 
                     break;
@@ -590,7 +694,7 @@ fn Lexer::next(self *Lexer) Token {
             else => {},
         }
 
-        self.index = self.index + 1;
+        self.index += 1;
     }
 
     return result;
