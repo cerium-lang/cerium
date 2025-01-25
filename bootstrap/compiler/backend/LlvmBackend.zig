@@ -696,7 +696,7 @@ fn renderComparison(self: *LlvmBackend, comptime operation: ComparisonOperation)
                     .eql => c.LLVMBuildICmp(self.builder, c.LLVMIntEQ, lhs.value, rhs.value, ""),
                 },
 
-                .type = if (operation != .eql) lhs.type else .bool,
+                .type = .bool,
             },
         );
     } else {
@@ -709,7 +709,7 @@ fn renderComparison(self: *LlvmBackend, comptime operation: ComparisonOperation)
                     .eql => c.LLVMBuildFCmp(self.builder, c.LLVMRealOEQ, lhs.value, rhs.value, ""),
                 },
 
-                .type = if (operation != .eql) lhs.type else .bool,
+                .type = .bool,
             },
         );
     }
