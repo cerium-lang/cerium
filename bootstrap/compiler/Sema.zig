@@ -874,6 +874,22 @@ fn analyzeInstruction(self: *Sema, instruction: Sir.Instruction) Error!void {
     }
 }
 
+fn modifyScope(self: *Sema, comptime start: bool) Error!void {
+    if (start) {
+        const local_scope = try self.scopes.addOne(self.allocator);
+        local_scope.* = .{ .maybe_parent = self.scope };
+        self.scope = local_scope;
+
+        try self.air_instructions.append(self.allocator, .start_scope);
+    } else {
+        self.scope.deinit(self.allocator);
+        self.scope = self.scope.maybe_parent.?;
+        _ = self.scopes.pop();
+
+        try self.air_instructions.append(self.allocator, .end_scope);
+    }
+}
+
 fn analyzeDuplicate(self: *Sema) Error!void {
     try self.stack.append(self.allocator, self.stack.getLast());
     try self.air_instructions.append(self.allocator, .duplicate);
@@ -1892,23 +1908,7 @@ fn analyzeSwitch(self: *Sema, @"switch": Sir.Instruction.Switch) Error!void {
     });
 }
 
-fn modifyScope(self: *Sema, start: bool) Error!void {
-    if (start) {
-        const local_scope = try self.scopes.addOne(self.allocator);
-        local_scope.* = .{ .maybe_parent = self.scope };
-        self.scope = local_scope;
-
-        try self.air_instructions.append(self.allocator, .start_scope);
-    } else {
-        self.scope.deinit(self.allocator);
-        self.scope = self.scope.maybe_parent.?;
-        _ = self.scopes.pop();
-
-        try self.air_instructions.append(self.allocator, .end_scope);
-    }
-}
-
-fn analyzeReturn(self: *Sema, with_value: bool, token_start: u32) Error!void {
+fn analyzeReturn(self: *Sema, comptime with_value: bool, token_start: u32) Error!void {
     const return_type = self.function_type.pointer.child_type.*.function.return_type.*;
 
     if (with_value) {

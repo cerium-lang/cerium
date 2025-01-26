@@ -343,6 +343,18 @@ fn renderInstruction(self: *LlvmBackend, air_instruction: Air.Instruction) Error
     }
 }
 
+fn modifyScope(self: *LlvmBackend, comptime start: bool) Error!void {
+    if (start) {
+        const local_scope = try self.scopes.addOne(self.allocator);
+        local_scope.* = .{ .maybe_parent = self.scope };
+        self.scope = local_scope;
+    } else {
+        self.scope.deinit(self.allocator);
+        self.scope = self.scope.maybe_parent.?;
+        _ = self.scopes.pop();
+    }
+}
+
 fn renderString(self: *LlvmBackend, string: []const u8) Error!void {
     const string_type = Type.string(string.len + 1); // +1 for the null termination
 
@@ -1018,19 +1030,7 @@ fn renderSwitch(self: *LlvmBackend, @"switch": Air.Instruction.Switch) Error!voi
     }
 }
 
-fn modifyScope(self: *LlvmBackend, start: bool) Error!void {
-    if (start) {
-        const local_scope = try self.scopes.addOne(self.allocator);
-        local_scope.* = .{ .maybe_parent = self.scope };
-        self.scope = local_scope;
-    } else {
-        self.scope.deinit(self.allocator);
-        self.scope = self.scope.maybe_parent.?;
-        _ = self.scopes.pop();
-    }
-}
-
-fn renderReturn(self: *LlvmBackend, with_value: bool) Error!void {
+fn renderReturn(self: *LlvmBackend, comptime with_value: bool) Error!void {
     const current_block = c.LLVMGetInsertBlock(self.builder);
     const previous_terminator = c.LLVMGetBasicBlockTerminator(current_block);
     if (previous_terminator != null) return;
