@@ -92,7 +92,9 @@ pub fn emit(
     c.LLVMInitializeAllAsmParsers();
     c.LLVMInitializeAllAsmPrinters();
 
-    const target_triple = try llvmTargetTripleZ(self.allocator, self.compilation.env.target);
+    const target = self.compilation.env.target;
+
+    const target_triple = try llvmTargetTripleZ(self.allocator, target);
     defer self.allocator.free(target_triple);
 
     _ = c.LLVMSetTarget(self.module, target_triple);
@@ -101,11 +103,16 @@ pub fn emit(
 
     _ = c.LLVMGetTargetFromTriple(target_triple, &llvm_target, null);
 
+    const llvm_cpu_name = target.cpu.model.llvm_name orelse "generic";
+
+    const llvm_cpu_features = try llvmCpuFeaturesZ(self.allocator, target);
+    defer self.allocator.free(llvm_cpu_features);
+
     const target_machine = c.LLVMCreateTargetMachine(
         llvm_target,
         target_triple,
-        "generic",
-        "",
+        llvm_cpu_name,
+        llvm_cpu_features,
         c.LLVMCodeGenLevelDefault,
         c.LLVMRelocPIC,
         switch (code_model) {
@@ -1260,6 +1267,49 @@ pub fn llvmTargetTripleZ(allocator: std.mem.Allocator, target: std.Target) ![:0]
     try llvm_triple.appendSlice(llvm_abi);
 
     return llvm_triple.toOwnedSliceSentinel(0);
+}
+
+fn llvmCpuFeaturesZ(allocator: std.mem.Allocator, target: std.Target) std.mem.Allocator.Error![:0]u8 {
+    var llvm_cpu_features = std.ArrayList(u8).init(allocator);
+
+    var llvm_cpu_disabled_features = std.ArrayList(u8).init(allocator);
+    defer llvm_cpu_disabled_features.deinit();
+
+    const all_features_list = target.cpu.arch.allFeaturesList();
+
+    for (all_features_list) |feature| {
+        if (feature.llvm_name) |llvm_name| {
+            const is_enabled = target.cpu.features.isEnabled(feature.index);
+
+            if (is_enabled) {
+                try llvm_cpu_features.ensureUnusedCapacity(llvm_name.len + 2);
+
+                llvm_cpu_features.appendAssumeCapacity('+');
+                llvm_cpu_features.appendSliceAssumeCapacity(llvm_name);
+                llvm_cpu_features.appendAssumeCapacity(',');
+            } else {
+                try llvm_cpu_disabled_features.ensureUnusedCapacity(llvm_name.len + 2);
+
+                llvm_cpu_disabled_features.appendAssumeCapacity('-');
+                llvm_cpu_disabled_features.appendSliceAssumeCapacity(llvm_name);
+                llvm_cpu_disabled_features.appendAssumeCapacity(',');
+            }
+        }
+    }
+
+    // Append disabled features after enabled ones so their effect doesn't get overwritten
+    try llvm_cpu_features.appendSlice(llvm_cpu_disabled_features.items);
+
+    if (llvm_cpu_features.items.len == 0) {
+        try llvm_cpu_features.append(0);
+    } else {
+        std.debug.assert(llvm_cpu_features.items[llvm_cpu_features.items.len - 1] == ',');
+        llvm_cpu_features.items[llvm_cpu_features.items.len - 1] = 0;
+    }
+
+    llvm_cpu_features.shrinkAndFree(llvm_cpu_features.items.len);
+
+    return llvm_cpu_features.items[0 .. llvm_cpu_features.items.len - 1 :0];
 }
 
 fn llvmType(self: *LlvmBackend, @"type": Type) Error!c.LLVMTypeRef {
