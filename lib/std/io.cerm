@@ -6,7 +6,7 @@ import "std/os/linux.cerm";
 fn printfd(fd s32, str []const u8) {
     // String's length contains the null terminator which we don't want to print
     if str[str.len - 1] == 0 {
-        str.len = str.len - 1;
+        str.len -= 1;
     }
 
     std::os::linux::write(fd, str.ptr as usize, str.len);
@@ -20,7 +20,7 @@ fn print(str []const u8) {
 fn numprint(n u64) {
     if n > 9 {
         numprint(n / 10);
-        n = n % 10;
+        n %= 10;
     }
 
     var buf [1]u8;

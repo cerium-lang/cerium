@@ -3,9 +3,9 @@ module examples::fizz_buzz;
 import "std/io.cerm";
 
 fn main() {
-    var i u32 = 0;
+    var i u32 = 1;
 
-    while (i = i + 1) < 16 {
+    while i < 16 {
         if i % 3 == 0 {
             if i % 5 == 0 {
                 std::io::print("FizzBuzz\n");
@@ -18,5 +18,7 @@ fn main() {
             std::io::numprint(i);
             std::io::print("\n");
         }
+
+        i += 1;
     }
 }

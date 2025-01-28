@@ -22,7 +22,7 @@ fn noise() {
 
         DrawPixel(GetRandomValue(0, GetRenderWidth()), GetRandomValue(0, GetRenderHeight()), color);
 
-        i = i + 1;
+        i += 1;
     }
 }
 
@@ -111,10 +111,10 @@ fn graph() {
 
             DrawPixel(draw_position.x as c_int, draw_position.y as c_int, draw_color);
 
-            position.x = position.x + 1.0;
+            position.x += 1.0;
         }
 
-        position.y = position.y + 1.0;
+        position.y += 1.0;
     }
 }
 
