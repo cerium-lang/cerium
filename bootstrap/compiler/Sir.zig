@@ -95,7 +95,8 @@ pub const Instruction = union(enum) {
     call: Call,
     /// Declare function parameters
     parameters: []const SubSymbol,
-    /// Declare a constant that is replaced at compile time and acts as a placeholder for a value
+    /// Define a constant that is replaced at compile time and acts as a placeholder for a value
+    /// Pops the value from the stack and doesn't need `set` instruction after it unlike `variable`
     constant: SubSymbol,
     /// Declare a variable that is only known at runtime and doesn't get replaced by the compiler
     variable: SubSymbol,
@@ -702,7 +703,7 @@ pub const Parser = struct {
                     },
             );
 
-            if (has_initializer) {
+            if (!is_const and has_initializer) {
                 try self.sir_instructions.append(self.allocator, .{ .set = name });
             }
         }

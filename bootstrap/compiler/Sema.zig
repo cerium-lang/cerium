@@ -1733,7 +1733,7 @@ fn analyzeConstant(self: *Sema, subsymbol: Sir.SubSymbol) Error!void {
     const symbol = try self.analyzeSubSymbol(subsymbol);
     if (self.scope.get(symbol.name.buffer) != null) try self.reportRedeclaration(symbol.name);
 
-    const value = self.stack.getLast();
+    const value = self.stack.pop();
 
     if (value == .runtime) {
         self.error_info = .{ .message = "expected the constant value to be compile time known", .source_loc = SourceLoc.find(self.file.buffer, symbol.name.token_start) };
@@ -1782,11 +1782,7 @@ fn analyzeSet(self: *Sema, name: Name) Error!void {
 
     try self.checkUnaryImplicitCast(value, variable.type, name.token_start);
 
-    if (variable.is_comptime and variable.maybe_value == null) {
-        _ = self.air_instructions.pop();
-
-        variable.maybe_value = value;
-    } else if (variable.is_const) {
+    if (variable.is_const) {
         self.error_info = .{ .message = "cannot mutate the value of a constant", .source_loc = SourceLoc.find(self.file.buffer, name.token_start) };
 
         return error.UnexpectedMutation;
