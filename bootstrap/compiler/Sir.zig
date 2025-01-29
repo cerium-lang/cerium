@@ -1102,7 +1102,7 @@ pub const Parser = struct {
                 .right_shift_assign,
                 .assign,
                 => .assign,
-                .less_than, .greater_than, .eql, .not_eql => .comparison,
+                .less_than, .greater_than, .less_or_eql, .greater_or_eql, .eql, .not_eql => .comparison,
                 .plus, .minus => .sum,
                 .star, .divide, .modulo => .product,
                 .bit_and => .bit_and,
@@ -1545,6 +1545,8 @@ pub const Parser = struct {
             .modulo,
             .less_than,
             .greater_than,
+            .less_or_eql,
+            .greater_or_eql,
             .left_shift,
             .right_shift,
             .bit_and,
@@ -1715,14 +1717,6 @@ pub const Parser = struct {
 
     fn emitBinaryOperation(self: *Parser, operator_token: Token) Error!void {
         switch (operator_token.tag) {
-            .eql, .not_eql => {
-                try self.sir_instructions.append(self.allocator, .{ .eql = operator_token.range.start });
-
-                if (operator_token.tag == .not_eql) {
-                    try self.sir_instructions.append(self.allocator, .{ .bool_not = operator_token.range.start });
-                }
-            },
-
             .plus => try self.sir_instructions.append(self.allocator, .{ .add = operator_token.range.start }),
             .minus => try self.sir_instructions.append(self.allocator, .{ .sub = operator_token.range.start }),
             .star => try self.sir_instructions.append(self.allocator, .{ .mul = operator_token.range.start }),
@@ -1730,11 +1724,27 @@ pub const Parser = struct {
             .modulo => try self.sir_instructions.append(self.allocator, .{ .rem = operator_token.range.start }),
             .less_than => try self.sir_instructions.append(self.allocator, .{ .lt = operator_token.range.start }),
             .greater_than => try self.sir_instructions.append(self.allocator, .{ .gt = operator_token.range.start }),
+            .eql => try self.sir_instructions.append(self.allocator, .{ .eql = operator_token.range.start }),
             .left_shift => try self.sir_instructions.append(self.allocator, .{ .shl = operator_token.range.start }),
             .right_shift => try self.sir_instructions.append(self.allocator, .{ .shr = operator_token.range.start }),
             .bit_and => try self.sir_instructions.append(self.allocator, .{ .bit_and = operator_token.range.start }),
             .bit_or => try self.sir_instructions.append(self.allocator, .{ .bit_or = operator_token.range.start }),
             .bit_xor => try self.sir_instructions.append(self.allocator, .{ .bit_xor = operator_token.range.start }),
+
+            .not_eql => {
+                try self.sir_instructions.append(self.allocator, .{ .eql = operator_token.range.start });
+                try self.sir_instructions.append(self.allocator, .{ .bool_not = operator_token.range.start });
+            },
+
+            .less_or_eql => {
+                try self.sir_instructions.append(self.allocator, .{ .gt = operator_token.range.start });
+                try self.sir_instructions.append(self.allocator, .{ .bool_not = operator_token.range.start });
+            },
+
+            .greater_or_eql => {
+                try self.sir_instructions.append(self.allocator, .{ .lt = operator_token.range.start });
+                try self.sir_instructions.append(self.allocator, .{ .bool_not = operator_token.range.start });
+            },
 
             else => unreachable,
         }

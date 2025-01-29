@@ -38,6 +38,8 @@ type Token::Tag = enum {
     bit_xor,
     less_than,
     greater_than,
+    less_or_eql,
+    greater_or_eql,
     left_shift,
     right_shift,
     eql,
@@ -554,6 +556,14 @@ fn Lexer::next(self *Lexer) Token {
                     state = Lexer::State::left_shift;
                 },
 
+                '=' => {
+                    self.index += 1;
+                    result.range.end = self.index;
+                    result.tag = Token::Tag::less_or_eql;
+
+                    break;
+                },
+
                 else => {
                     result.range.end = self.index;
 
@@ -565,6 +575,14 @@ fn Lexer::next(self *Lexer) Token {
                 '>' => {
                     result.tag = Token::Tag::right_shift;
                     state = Lexer::State::right_shift;
+                },
+
+                '=' => {
+                    self.index += 1;
+                    result.range.end = self.index;
+                    result.tag = Token::Tag::greater_or_eql;
+
+                    break;
                 },
 
                 else => {

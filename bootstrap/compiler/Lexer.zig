@@ -556,6 +556,12 @@ pub fn next(self: *Lexer) Token {
                 continue :state .left_shift;
             },
 
+            '=' => {
+                self.index += 1;
+                result.range.end = self.index;
+                result.tag = .less_or_eql;
+            },
+
             else => {
                 result.range.end = self.index;
             },
@@ -566,6 +572,12 @@ pub fn next(self: *Lexer) Token {
                 self.index += 1;
                 result.tag = .right_shift;
                 continue :state .right_shift;
+            },
+
+            '=' => {
+                self.index += 1;
+                result.range.end = self.index;
+                result.tag = .greater_or_eql;
             },
 
             else => {

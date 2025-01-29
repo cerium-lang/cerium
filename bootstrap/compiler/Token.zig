@@ -36,6 +36,8 @@ pub const Tag = enum(u8) {
     bit_xor,
     less_than,
     greater_than,
+    less_or_eql,
+    greater_or_eql,
     left_shift,
     right_shift,
     eql,
