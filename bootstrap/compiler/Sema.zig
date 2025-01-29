@@ -88,11 +88,11 @@ const Value = union(enum) {
 
 pub const Variable = struct {
     type: Type,
+    visibility: Symbol.Visibility,
     maybe_prefixed: ?[]const u8 = null,
     maybe_value: ?Value = null,
     is_const: bool = false,
     is_comptime: bool = false,
-    is_builtin: bool = false,
     is_type_alias: bool = false,
 };
 
@@ -137,7 +137,7 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
         inline for (.{ "void", "bool" }, .{ .void, .bool }) |name, @"type"| {
             self.scope.putAssumeCapacity(name, .{
                 .type = @"type",
-                .is_builtin = true,
+                .visibility = .private,
                 .is_type_alias = true,
             });
         }
@@ -162,14 +162,14 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
                     .bits = c_char_bits,
                 },
             },
-            .is_builtin = true,
+            .visibility = .private,
             .is_type_alias = true,
         });
 
         inline for (.{ "c_uchar", "c_ushort", "c_uint", "c_ulong", "c_ulonglong", "usize" }, .{ c_char_bits, c_ushort_bits, c_uint_bits, c_ulong_bits, c_ulonglong_bits, ptr_bits }) |name, bits| {
             self.scope.putAssumeCapacity(name, .{
                 .type = .{ .int = .{ .signedness = .unsigned, .bits = @intCast(bits) } },
-                .is_builtin = true,
+                .visibility = .private,
                 .is_type_alias = true,
             });
         }
@@ -177,7 +177,7 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
         inline for (.{ "c_schar", "c_short", "c_int", "c_long", "c_longlong", "ssize" }, .{ c_char_bits, c_short_bits, c_int_bits, c_long_bits, c_longlong_bits, ptr_bits }) |name, bits| {
             self.scope.putAssumeCapacity(name, .{
                 .type = .{ .int = .{ .signedness = .signed, .bits = @intCast(bits) } },
-                .is_builtin = true,
+                .visibility = .private,
                 .is_type_alias = true,
             });
         }
@@ -190,7 +190,7 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
         for (unsigned_int_names, 0..) |name, bits| {
             self.scope.putAssumeCapacity(name, .{
                 .type = .{ .int = .{ .signedness = .unsigned, .bits = @intCast(bits) } },
-                .is_builtin = true,
+                .visibility = .private,
                 .is_type_alias = true,
             });
         }
@@ -200,7 +200,7 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
         for (signed_int_names, 0..) |name, bits| {
             self.scope.putAssumeCapacity(name, .{
                 .type = .{ .int = .{ .signedness = .signed, .bits = @intCast(bits) } },
-                .is_builtin = true,
+                .visibility = .private,
                 .is_type_alias = true,
             });
         }
@@ -214,7 +214,7 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
         inline for (.{ "f16", "f32", "f64", "c_float", "c_double" }, .{ 16, 32, 64, c_float_bits, c_double_bits }) |float_type, i| {
             self.scope.putAssumeCapacity(float_type, .{
                 .type = .{ .float = .{ .bits = @intCast(i) } },
-                .is_builtin = true,
+                .visibility = .private,
                 .is_type_alias = true,
             });
         }
@@ -228,10 +228,10 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
         inline for (.{ "builtin::target::os", "builtin::target::arch", "builtin::target::abi" }, .{ builtin_target_os, builtin_target_arch, builtin_target_abi }) |builtin_name, builtin_value| {
             self.scope.putAssumeCapacity(builtin_name, .{
                 .type = Type.intFittingRange(builtin_value, builtin_value),
+                .visibility = .private,
                 .maybe_value = .{ .int = builtin_value },
                 .is_const = true,
                 .is_comptime = true,
-                .is_builtin = true,
             });
         }
     }
@@ -240,10 +240,10 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
         inline for (.{ "true", "false" }, .{ true, false }) |boolean_name, boolean_value| {
             self.scope.putAssumeCapacity(boolean_name, .{
                 .type = .bool,
+                .visibility = .private,
                 .maybe_value = .{ .boolean = boolean_value },
                 .is_const = true,
                 .is_comptime = true,
-                .is_builtin = true,
             });
         }
     }
@@ -397,7 +397,7 @@ fn import(self: *Sema, file_path: Name) Error!void {
         var variable = variable_entry.value_ptr.*;
         const old_variable_name = variable_entry.key_ptr.*;
 
-        if (variable.is_builtin) continue;
+        if (variable.visibility == .private) continue;
 
         const new_variable_name = if (import_root) blk: {
             if (variable.maybe_prefixed == null) variable.maybe_prefixed = old_variable_name;
@@ -412,6 +412,8 @@ fn import(self: *Sema, file_path: Name) Error!void {
         if (self.used_variables.get(new_variable_name)) |_| {
             try sema.used_variables.put(self.allocator, old_variable_name, {});
         }
+
+        variable.visibility = .private;
 
         try self.scope.put(self.allocator, new_variable_name, variable);
     }
@@ -595,6 +597,7 @@ fn analyzeTypeAlias(self: *Sema, type_alias: Sir.SubSymbol) Error!Type {
 
                 try self.scope.put(self.allocator, enum_field_entry, .{
                     .type = enum_type,
+                    .visibility = type_alias.visibility,
                     .maybe_value = enum_field_value,
                     .is_const = true,
                     .is_comptime = true,
@@ -622,6 +625,7 @@ fn analyzeTypeAliases(self: *Sema) Error!void {
 
         try self.scope.put(self.allocator, type_alias.name.buffer, .{
             .type = .void,
+            .visibility = type_alias.visibility,
             .is_type_alias = true,
         });
     }
@@ -645,7 +649,7 @@ fn analyzeExternals(self: *Sema) Error!void {
 
         const symbol = try self.analyzeSubSymbol(external);
 
-        try self.scope.put(self.allocator, external.name.buffer, .{ .type = symbol.type });
+        try self.scope.put(self.allocator, external.name.buffer, .{ .type = symbol.type, .visibility = symbol.visibility });
 
         try self.air.external_declarations.append(self.allocator, symbol);
     }
@@ -674,6 +678,7 @@ fn analyzeGlobalConstants(self: *Sema) Error!void {
 
         try self.scope.put(self.allocator, symbol.name.buffer, .{
             .type = value.getType(),
+            .visibility = global_constant.subsymbol.visibility,
             .is_comptime = true,
             .is_const = true,
             .maybe_value = value,
@@ -700,6 +705,7 @@ fn analyzeGlobalVariables(self: *Sema) Error!void {
             .symbol = .{
                 .type = symbol.type,
                 .name = .{ .buffer = prefixed_name, .token_start = global_variable.subsymbol.name.token_start },
+                .visibility = global_variable.subsymbol.visibility,
             },
             .exported = global_variable.exported,
         });
@@ -732,6 +738,7 @@ fn analyzeGlobalVariables(self: *Sema) Error!void {
 
         try self.scope.put(self.allocator, symbol.name.buffer, .{
             .type = definition.value_ptr.symbol.type,
+            .visibility = symbol.visibility,
             .maybe_prefixed = maybe_prefixed,
         });
     }
@@ -764,11 +771,12 @@ fn analyzeFunctions(self: *Sema) Error!void {
         }
 
         try self.scope.put(self.allocator, symbol.name.buffer, .{
+            .type = symbol.type,
+            .visibility = symbol.visibility,
             .maybe_prefixed = if (!function.exported)
                 try prefix(self.allocator, self.sir.module_name, symbol.name.buffer)
             else
                 null,
-            .type = symbol.type,
         });
     }
 
@@ -788,6 +796,7 @@ fn analyzeFunctions(self: *Sema) Error!void {
                 .symbol = .{
                     .name = .{ .buffer = prefixed_name, .token_start = function.subsymbol.name.token_start },
                     .type = variable.type,
+                    .visibility = function.subsymbol.visibility,
                 },
                 .exported = function.exported,
             });
@@ -1275,8 +1284,9 @@ fn analyzeReference(self: *Sema) Error!void {
                 self.allocator,
                 .{
                     .variable = .{
-                        .name = .{ .buffer = anon_var_name, .token_start = 0 },
                         .type = rhs_type,
+                        .visibility = .private,
+                        .name = .{ .buffer = anon_var_name, .token_start = 0 },
                     },
                 },
             );
@@ -1289,8 +1299,9 @@ fn analyzeReference(self: *Sema) Error!void {
         } else {
             const definition = try self.air.global_variables.getOrPutValue(self.allocator, anon_var_name, .{
                 .symbol = .{
-                    .name = .{ .buffer = anon_var_name, .token_start = 0 },
                     .type = rhs_type,
+                    .visibility = .private,
+                    .name = .{ .buffer = anon_var_name, .token_start = 0 },
                 },
                 .exported = false,
             });
@@ -1723,7 +1734,7 @@ fn analyzeParameters(self: *Sema, subsymbols: []const Sir.SubSymbol) Error!void 
 
         symbols.appendAssumeCapacity(symbol);
 
-        try self.scope.put(self.allocator, symbol.name.buffer, .{ .type = symbol.type });
+        try self.scope.put(self.allocator, symbol.name.buffer, .{ .type = symbol.type, .visibility = symbol.visibility });
     }
 
     try self.air_instructions.append(self.allocator, .{ .parameters = try symbols.toOwnedSlice(self.allocator) });
@@ -1743,6 +1754,7 @@ fn analyzeConstant(self: *Sema, subsymbol: Sir.SubSymbol) Error!void {
 
     try self.scope.put(self.allocator, symbol.name.buffer, .{
         .type = value.getType(),
+        .visibility = symbol.visibility,
         .is_comptime = true,
         .is_const = true,
         .maybe_value = value,
@@ -1763,7 +1775,7 @@ fn analyzeVariable(self: *Sema, infer: bool, subsymbol: Sir.SubSymbol) Error!voi
         return error.UnexpectedType;
     }
 
-    var variable: Variable = .{ .type = symbol.type };
+    var variable: Variable = .{ .type = symbol.type, .visibility = symbol.visibility };
 
     variable.maybe_prefixed = null;
 
@@ -2041,6 +2053,7 @@ fn analyzeSubSymbol(self: *Sema, subsymbol: Sir.SubSymbol) Error!Symbol {
     return Symbol{
         .name = subsymbol.name,
         .type = try self.analyzeSubType(subsymbol.subtype),
+        .visibility = subsymbol.visibility,
     };
 }
 

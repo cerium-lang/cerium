@@ -7,6 +7,12 @@ const Symbol = @This();
 
 name: Name,
 type: Type,
+visibility: Visibility,
+
+pub const Visibility = enum {
+    public,
+    private,
+};
 
 pub const Type = union(enum) {
     void,

@@ -2,7 +2,7 @@ module examples::checker_board;
 
 import "std/io.cerm";
 
-fn main() {
+pub fn main() {
     var i s32 = 0;
 
     while i < 8 {

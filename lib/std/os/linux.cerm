@@ -1,7 +1,7 @@
 module std::os::linux;
 
 // x86_64 specific declaration
-type SYS = enum usize {
+pub type SYS = enum usize {
     read = 0,
     write = 1,
     open = 2,
@@ -379,7 +379,7 @@ type SYS = enum usize {
 };
 
 // x86_64 specific declaration
-fn syscall1(code SYS, arg1 usize) usize {
+pub fn syscall1(code SYS, arg1 usize) usize {
     return asm {
         "syscall"
         : "={rax}" (usize)
@@ -390,7 +390,7 @@ fn syscall1(code SYS, arg1 usize) usize {
 }
 
 // x86_64 specific declaration
-fn syscall2(code SYS, arg1 usize, arg2 usize) usize {
+pub fn syscall2(code SYS, arg1 usize, arg2 usize) usize {
     return asm {
         "syscall"
         : "={rax}" (usize)
@@ -402,7 +402,7 @@ fn syscall2(code SYS, arg1 usize, arg2 usize) usize {
 }
 
 // x86_64 specific declaration
-fn syscall3(code SYS, arg1 usize, arg2 usize, arg3 usize) usize {
+pub fn syscall3(code SYS, arg1 usize, arg2 usize, arg3 usize) usize {
     return asm {
         "syscall"
         : "={rax}" (usize)
@@ -415,7 +415,7 @@ fn syscall3(code SYS, arg1 usize, arg2 usize, arg3 usize) usize {
 }
 
 // x86_64 specific declaration
-fn syscall4(code SYS, arg1 usize, arg2 usize, arg3 usize, arg4 usize) usize {
+pub fn syscall4(code SYS, arg1 usize, arg2 usize, arg3 usize, arg4 usize) usize {
     return asm {
         "syscall"
         : "={rax}" (usize)
@@ -429,7 +429,7 @@ fn syscall4(code SYS, arg1 usize, arg2 usize, arg3 usize, arg4 usize) usize {
 }
 
 // x86_64 specific declaration
-fn syscall5(code SYS, arg1 usize, arg2 usize, arg3 usize, arg4 usize, arg5 usize) usize {
+pub fn syscall5(code SYS, arg1 usize, arg2 usize, arg3 usize, arg4 usize, arg5 usize) usize {
     return asm {
         "syscall"
         : "={rax}" (usize)
@@ -444,7 +444,7 @@ fn syscall5(code SYS, arg1 usize, arg2 usize, arg3 usize, arg4 usize, arg5 usize
 }
 
 // x86_64 specific declaration
-fn syscall6(code SYS, arg1 usize, arg2 usize, arg3 usize, arg4 usize, arg5 usize, arg6 usize) usize {
+pub fn syscall6(code SYS, arg1 usize, arg2 usize, arg3 usize, arg4 usize, arg5 usize, arg6 usize) usize {
     return asm {
         "syscall"
         : "={rax}" (usize)
@@ -459,39 +459,39 @@ fn syscall6(code SYS, arg1 usize, arg2 usize, arg3 usize, arg4 usize, arg5 usize
     };
 }
 
-fn read(fd s32, bufferptr usize, count usize) usize {
+pub fn read(fd s32, bufferptr usize, count usize) usize {
     return syscall3(SYS::read, (&fd as *u32).*, bufferptr, count);
 }
 
-const STDIN = 0;
-const STDOUT = 1;
-const STDERR = 2;
+pub const STDIN = 0;
+pub const STDOUT = 1;
+pub const STDERR = 2;
 
-fn write(fd s32, bufferptr usize, count usize) usize {
+pub fn write(fd s32, bufferptr usize, count usize) usize {
     return syscall3(SYS::write, (&fd as *u32).*, bufferptr, count);
 }
 
-fn open(path [*]const u8, flags u32) s32 {
+pub fn open(path [*]const u8, flags u32) s32 {
     return (&(syscall2(SYS::open, path as usize, flags) as u32) as *s32).*;
 }
 
-fn close(fd s32) s32 {
+pub fn close(fd s32) s32 {
     return (&(syscall1(SYS::close, (&fd as *u32).* as usize) as u32) as *s32).*;
 }
 
-type timespec = struct {
+pub type timespec = struct {
     sec ssize,
     nsec ssize,
 };
 
-type uid_t = u32;
-type gid_t = u32;
-type off_t = s64;
-type ino_t = u64;
-type dev_t = u64;
+pub type uid_t = u32;
+pub type gid_t = u32;
+pub type off_t = s64;
+pub type ino_t = u64;
+pub type dev_t = u64;
 
 // x86_64 specific declaration
-type Stat = struct {
+pub type Stat = struct {
     dev dev_t,
     ino ino_t,
     nlink usize,
@@ -509,13 +509,13 @@ type Stat = struct {
     __unused [3]ssize,
 };
 
-type statx_timestamp = struct {
+pub type statx_timestamp = struct {
     sec s64,
     nsec u32,
     __pad1 u32,
 };
 
-type Statx = struct {
+pub type Statx = struct {
     mask u32,
     blksize u32,
     attributes u64,
@@ -539,101 +539,101 @@ type Statx = struct {
     __pad2 [14]u64,
 };
 
-fn stat(path [*]const u8, statbuf *Stat) usize {
+pub fn stat(path [*]const u8, statbuf *Stat) usize {
     return syscall2(SYS::stat, path as usize, statbuf as usize);
 }
 
-fn lstat(path [*]const u8, statbuf *Stat) usize {
+pub fn lstat(path [*]const u8, statbuf *Stat) usize {
     return syscall2(SYS::lstat, path as usize, statbuf as usize);
 }
 
-fn fstat(fd s32, statbuf *Stat) usize {
+pub fn fstat(fd s32, statbuf *Stat) usize {
     return syscall2(SYS::fstat, (&fd as *u32).* as usize, statbuf as usize);
 }
 
-fn fstatat(dirfd s32, path [*]const u8, statbuf *Stat, flags u32) usize {
+pub fn fstatat(dirfd s32, path [*]const u8, statbuf *Stat, flags u32) usize {
     return syscall5(SYS::fstatat64, (&dirfd as *u32).*, path as usize, statbuf as usize, flags);
 }
 
-fn statx(dirfd s32, path [*]const u8, flags u32, mask u32, statxbuf *Statx) usize {
+pub fn statx(dirfd s32, path [*]const u8, flags u32, mask u32, statxbuf *Statx) usize {
     return syscall6(SYS::statx, (&dirfd as *u32).*, path as usize, flags, mask, statxbuf as usize);
 }
 
-fn sendfile(outfd s32, infd s32, offset *i64, count usize) usize {
+pub fn sendfile(outfd s32, infd s32, offset *s64, count usize) usize {
     return syscall6(SYS::sendfile, (&outfd as *u32).*, (&infd as *u32).*, offset as usize, count, 0);
 }
 
-fn sendto(fd s32, buf [*]const u8, len usize, flags u32, addr *const sockaddr, addrlen socklen_t) usize {
+pub fn sendto(fd s32, buf [*]const u8, len usize, flags u32, addr *const sockaddr, addrlen socklen_t) usize {
     return syscall6(SYS::sendto, (&fd as *u32).*, buf as usize, len, flags, addr as usize, addrlen);
 }
 
-fn access(path [*]const u8, mode u32) usize {
+pub fn access(path [*]const u8, mode u32) usize {
     return syscall3(SYS::access, path as usize, mode, 0);
 }
 
-const AF_INET = 2;
-const SOCK_STREAM = 1;
+pub const AF_INET = 2;
+pub const SOCK_STREAM = 1;
 
-fn socket(domain u32, type_ u32, protocol u32) s32 {
+pub fn socket(domain u32, type_ u32, protocol u32) s32 {
     return (&(syscall3(SYS::socket, domain, type_, protocol) as u32) as *s32).*;
 }
 
-const SOL_SOCKET = 1;
-const SO_REUSEADDR = 2;
-const SO_REUSEPORT = 15;
+pub const SOL_SOCKET = 1;
+pub const SO_REUSEADDR = 2;
+pub const SO_REUSEPORT = 15;
 
-fn setsockopt(fd s32, level u32, optname u32, optvalptr usize, optlen usize) {
+pub fn setsockopt(fd s32, level u32, optname u32, optvalptr usize, optlen usize) {
     syscall5(SYS::setsockopt, (&fd as *u32).*, level, optname, optvalptr, optlen);
 }
 
-type sa_family_t = u16;
-type in_port_t = u16;
-type socklen_t = u32;
+pub type sa_family_t = u16;
+pub type in_port_t = u16;
+pub type socklen_t = u32;
 
-type sockaddr = struct {
+pub type sockaddr = struct {
    family sa_family_t,
    data [14]u8,
 };
 
-type sockaddr::in = struct {
+pub type sockaddr::in = struct {
     family sa_family_t,
     port in_port_t,
     addr u32,
     zero [8]u8,
 };
 
-fn accept(fd s32, addr *sockaddr, addrlenptr *socklen_t) s32 {
+pub fn accept(fd s32, addr *sockaddr, addrlenptr *socklen_t) s32 {
     return (&(syscall4(SYS::accept, (&fd as *u32).*, addr as usize, addrlenptr as usize, 0) as u32) as *s32).*;
 }
 
-fn bind(fd s32, addr *const sockaddr, addrlen socklen_t) usize {
+pub fn bind(fd s32, addr *const sockaddr, addrlen socklen_t) usize {
     return syscall3(SYS::bind, (&fd as *u32).*, addr as usize, addrlen as usize);
 }
 
-fn listen(fd s32, backlog u32) usize {
+pub fn listen(fd s32, backlog u32) usize {
     return syscall2(SYS::listen, (&fd as *u32).*, backlog);
 }
 
-fn exit(status u8) {
+pub fn exit(status u8) {
     syscall1(SYS::exit, status);
 }
 
-fn exit_group(status u8) {
+pub fn exit_group(status u8) {
     syscall1(SYS::exit_group, status);
 }
 
-fn mmap(addr usize, length usize, prot u32, flags u32, fd s32, offset s64) usize {
+pub fn mmap(addr usize, length usize, prot u32, flags u32, fd s32, offset s64) usize {
     return syscall6(SYS::mmap, addr, length, prot, flags, (&fd as *u32).*, (&offset as *u64).*);
 }
 
-fn mprotect(addr usize, length usize, prot u32) s32 {
+pub fn mprotect(addr usize, length usize, prot u32) s32 {
     return (&(syscall3(SYS::mprotect, addr, length, prot) as u32) as *s32).*;
 }
 
-fn munmap(addr usize, length usize) s32 {
+pub fn munmap(addr usize, length usize) s32 {
     return (&(syscall2(SYS::munmap, addr, length) as u32) as *s32).*;
 }
 
-fn mremap(old_addr usize, old_len usize, new_len usize, flags u32, new_addr usize) usize {
+pub fn mremap(old_addr usize, old_len usize, new_len usize, flags u32, new_addr usize) usize {
     return syscall5(SYS::mremap, old_addr, old_len, new_len, flags, new_addr);
 }

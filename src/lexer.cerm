@@ -1,11 +1,11 @@
 module cerium::lexer;
 
-type Token = struct {
+pub type Token = struct {
     tag Token::Tag,
     range Token::Range,
 };
 
-type Token::Tag = enum {
+pub type Token::Tag = enum {
     eof,
     invalid,
     identifier,
@@ -57,12 +57,12 @@ type Token::Tag = enum {
     assign,
 };
 
-type Token::Range = struct {
+pub type Token::Range = struct {
     start usize,
     end usize,
 };
 
-type Lexer = struct {
+pub type Lexer = struct {
     index usize,
     buffer [*]const u8,
 };
@@ -95,7 +95,7 @@ type Lexer::State = enum {
     double_period,
 };
 
-fn Lexer::next(self *Lexer) Token {
+pub fn Lexer::next(self *Lexer) Token {
     var result Token;
 
     result.tag = Token::Tag::eof;

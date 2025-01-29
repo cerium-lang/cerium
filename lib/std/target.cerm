@@ -1,6 +1,6 @@
 module std::target;
 
-type Os = enum {
+pub type Os = enum {
     freestanding,
     other,
 
@@ -60,7 +60,7 @@ type Os = enum {
     // - shadermodel
 };
 
-type Cpu::Arch = enum {
+pub type Cpu::Arch = enum {
     amdgcn,
     arc,
     arm,
@@ -129,7 +129,7 @@ type Cpu::Arch = enum {
     // - tcele
 };
 
-type Abi = enum {
+pub type Abi = enum {
     none,
     gnu,
     gnuabin32,

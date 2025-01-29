@@ -99,7 +99,7 @@ fn echo(client Client) {
     }
 }
 
-fn main() {
+pub fn main() {
     var server Server;
     var client Client;
 

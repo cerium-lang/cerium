@@ -2,6 +2,6 @@ module examples::hello;
 
 import "std/io.cerm";
 
-fn main() {
+pub fn main() {
     std::io::println("Hello, World!");
 }

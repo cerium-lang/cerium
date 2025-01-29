@@ -2,7 +2,7 @@ module examples::fizz_buzz;
 
 import "std/io.cerm";
 
-fn main() {
+pub fn main() {
     var i u32 = 1;
 
     while i < 16 {

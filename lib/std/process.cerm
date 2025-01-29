@@ -2,6 +2,6 @@ module std::process;
 
 import "os/linux.cerm";
 
-fn exit(status u8) {
+pub fn exit(status u8) {
     std::os::linux::exit_group(status);
 }

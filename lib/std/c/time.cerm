@@ -1,5 +1,5 @@
 module std::c;
 
-type time_t = c_long;
+pub type time_t = c_long;
 
-extern fn time(timer *time_t) time_t;
+pub extern fn time(timer *time_t) time_t;
