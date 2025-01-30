@@ -492,7 +492,9 @@ pub const Cli = struct {
             },
         };
 
-        var sema = Sema.init(self.allocator, &compilation, compilation_file, sir_parser.sir) catch |err| {
+        var air: Air = .{};
+
+        var sema = Sema.init(self.allocator, &compilation, compilation_file, sir_parser.sir, &air) catch |err| {
             std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
 
             return 1;
@@ -534,7 +536,7 @@ pub const Cli = struct {
 
                 defer self.allocator.free(assembly_file_path);
 
-                compilation.emit(sema.air, assembly_file_path, output_kind, code_model) catch |err| {
+                compilation.emit(air, assembly_file_path, output_kind, code_model) catch |err| {
                     std.debug.print("Error: could not emit assembly file: {s}\n", .{errorDescription(err)});
 
                     return 1;
@@ -553,7 +555,7 @@ pub const Cli = struct {
 
                 defer self.allocator.free(object_file_path);
 
-                compilation.emit(sema.air, object_file_path, output_kind, code_model) catch |err| {
+                compilation.emit(air, object_file_path, output_kind, code_model) catch |err| {
                     std.debug.print("Error: could not emit object file: {s}\n", .{errorDescription(err)});
 
                     return 1;
@@ -604,7 +606,7 @@ pub const Cli = struct {
                     return 1;
                 };
 
-                Air.passes.format.print(ir_file.writer(), sema.air) catch |err| {
+                Air.passes.format.print(ir_file.writer(), air) catch |err| {
                     std.debug.print("Error: could not emit intermediate representation: {s}\n", .{errorDescription(err)});
 
                     return 1;

@@ -81,6 +81,8 @@ pub const File = struct {
 };
 
 pub const CompiledFile = struct {
+    path: []const u8,
+    buffer: [:0]const u8,
     sir: Sir,
     scope: Symbol.Scope(Sema.Variable),
 };

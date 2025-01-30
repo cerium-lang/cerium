@@ -23,7 +23,7 @@ compilation: *Compilation,
 file: Compilation.File,
 
 sir: Sir,
-air: Air = .{},
+air: *Air,
 
 air_instructions: *std.ArrayListUnmanaged(Air.Instruction) = undefined,
 
@@ -31,8 +31,6 @@ stack: std.ArrayListUnmanaged(Value) = .{},
 
 scopes: std.ArrayListUnmanaged(Scope(Variable)),
 scope: *Scope(Variable),
-
-used_variables: std.StringArrayHashMapUnmanaged(void) = .{},
 
 function_type: Type = undefined,
 
@@ -87,12 +85,13 @@ const Value = union(enum) {
 };
 
 pub const Variable = struct {
+    air_name: []const u8 = undefined,
     type: Type,
     visibility: Symbol.Visibility,
-    maybe_prefixed: ?[]const u8 = null,
-    maybe_value: ?Value = null,
+    maybe_other_owner: ?Compilation.CompiledFile = null,
+    maybe_function_definition: ?*Sir.Definition = null,
+    maybe_comptime_value: ?Value = null,
     is_const: bool = false,
-    is_comptime: bool = false,
     is_type_alias: bool = false,
 };
 
@@ -105,6 +104,7 @@ pub fn init(
     compilation: *Compilation,
     file: Compilation.File,
     sir: Sir,
+    air: *Air,
 ) Error!Sema {
     var scopes: @FieldType(Sema, "scopes") = .{};
 
@@ -118,6 +118,7 @@ pub fn init(
         .scopes = scopes,
         .scope = global_scope,
         .sir = sir,
+        .air = air,
     };
 
     try sema.putBuiltinConstants();
@@ -229,9 +230,8 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
             self.scope.putAssumeCapacity(builtin_name, .{
                 .type = Type.intFittingRange(builtin_value, builtin_value),
                 .visibility = .private,
-                .maybe_value = .{ .int = builtin_value },
+                .maybe_comptime_value = .{ .int = builtin_value },
                 .is_const = true,
-                .is_comptime = true,
             });
         }
     }
@@ -241,9 +241,8 @@ fn putBuiltinConstants(self: *Sema) std.mem.Allocator.Error!void {
             self.scope.putAssumeCapacity(boolean_name, .{
                 .type = .bool,
                 .visibility = .private,
-                .maybe_value = .{ .boolean = boolean_value },
+                .maybe_comptime_value = .{ .boolean = boolean_value },
                 .is_const = true,
-                .is_comptime = true,
             });
         }
     }
@@ -332,16 +331,12 @@ fn import(self: *Sema, file_path: Name) Error!void {
         break :blk .{ .path = import_file_path, .buffer = import_file_buffer };
     };
 
-    var sema = try Sema.init(self.allocator, self.compilation, compilation_file, undefined);
-
-    defer {
-        sema.air.deinit(sema.allocator);
-        sema.deinit();
-    }
+    var sema = try Sema.init(self.allocator, self.compilation, compilation_file, undefined, self.air);
+    defer sema.deinit();
 
     if (maybe_compiled_file) |compiled_file| {
         sema.sir = compiled_file.sir;
-        sema.scope.items = try compiled_file.scope.items.clone(self.allocator);
+        sema.scope.items = compiled_file.scope.items;
     } else {
         var sir_parser = try Sir.Parser.init(self.allocator, self.compilation.env, compilation_file.buffer);
         defer sir_parser.deinit();
@@ -385,128 +380,40 @@ fn import(self: *Sema, file_path: Name) Error!void {
         sema.sir.global_assembly.shrinkAndFree(self.allocator, 0);
         sema.sir.external_declarations.shrinkAndFree(self.allocator, 0);
 
-        try self.compilation.compiled_files.put(self.allocator, compilation_file.path, .{
+        const compiled_file: Compilation.CompiledFile = .{
+            .path = compilation_file.path,
+            .buffer = compilation_file.buffer,
             .sir = sema.sir,
             .scope = .{ .items = try sema.scope.items.clone(self.allocator) },
-        });
+        };
+
+        try self.compilation.compiled_files.put(self.allocator, compilation_file.path, compiled_file);
+
+        maybe_compiled_file = compiled_file;
     }
 
     var variable_entry_iterator = sema.scope.iterator();
 
     while (variable_entry_iterator.next()) |variable_entry| {
+        if (variable_entry.value_ptr.visibility == .private) continue;
+
         var variable = variable_entry.value_ptr.*;
         const old_variable_name = variable_entry.key_ptr.*;
 
-        if (variable.visibility == .private) continue;
-
-        const new_variable_name = if (import_root) blk: {
-            if (variable.maybe_prefixed == null) variable.maybe_prefixed = old_variable_name;
-            break :blk try prefix(self.allocator, "root", old_variable_name);
-        } else if (variable.maybe_prefixed) |prefixed_name|
-            prefixed_name
-        else blk: {
-            variable.maybe_prefixed = old_variable_name;
-            break :blk try prefix(self.allocator, sema.sir.module_name, old_variable_name);
-        };
-
-        if (self.used_variables.get(new_variable_name)) |_| {
-            try sema.used_variables.put(self.allocator, old_variable_name, {});
-        }
+        const new_variable_name = if (import_root)
+            try prefix(self.allocator, "root", old_variable_name)
+        else
+            try prefix(self.allocator, sema.sir.module_name, old_variable_name);
 
         variable.visibility = .private;
 
+        variable.maybe_other_owner = maybe_compiled_file;
+
         try self.scope.put(self.allocator, new_variable_name, variable);
     }
-
-    sema.scope.clearRetainingCapacity();
-
-    // Unreachable case: it will not allocate since we used `clearRetainingCapacity`
-    sema.putBuiltinConstants() catch unreachable;
-
-    sema.analyze() catch |err| {
-        switch (err) {
-            error.OutOfMemory => std.debug.print("Error: {s}\n", .{root.Cli.errorDescription(err)}),
-
-            else => std.debug.print("{s}:{}:{}: {s}\n", .{
-                compilation_file.path,
-                sema.error_info.?.source_loc.line,
-                sema.error_info.?.source_loc.column,
-                sema.error_info.?.message,
-            }),
-        }
-
-        self.error_info = .{ .message = "import file failed in semantic analysis pass", .source_loc = SourceLoc.find(self.file.buffer, file_path.token_start) };
-
-        return error.ImportFailed;
-    };
-
-    try self.air.global_assembly.appendSlice(self.allocator, sema.air.global_assembly.items);
-    try self.air.external_declarations.appendSlice(self.allocator, sema.air.external_declarations.items);
-
-    for (sema.air.global_variables.values()) |global_variable| {
-        try self.air.global_variables.put(self.allocator, global_variable.symbol.name.buffer, .{
-            .exported = global_variable.exported,
-            .symbol = global_variable.symbol,
-            .instructions = try global_variable.instructions.clone(self.allocator),
-        });
-    }
-
-    for (sema.air.functions.values()) |function| {
-        try self.air.functions.put(self.allocator, function.symbol.name.buffer, .{
-            .exported = function.exported,
-            .symbol = function.symbol,
-            .instructions = try function.instructions.clone(self.allocator),
-        });
-    }
-}
-
-fn collectUsedVariablesHelper(self: *Sema, next_used_variables: *@FieldType(Sema, "used_variables"), sir_instructions: []const Sir.Instruction) Error!void {
-    for (sir_instructions) |sir_instruction|
-        switch (sir_instruction) {
-            .get => |name| {
-                const gop_entry = try next_used_variables.getOrPut(self.allocator, name.buffer);
-
-                if (!gop_entry.found_existing) {
-                    if (self.sir.functions.get(name.buffer)) |other_function| {
-                        try self.collectUsedVariablesHelper(next_used_variables, other_function.instructions.items);
-                    }
-
-                    gop_entry.value_ptr.* = {};
-                }
-            },
-
-            else => {},
-        };
-}
-
-fn collectUsedVariables(self: *Sema) Error!void {
-    for (self.sir.functions.values()) |function| {
-        if (function.exported) {
-            try self.collectUsedVariablesHelper(&self.used_variables, function.instructions.items);
-
-            try self.used_variables.put(self.allocator, function.subsymbol.name.buffer, {});
-        }
-    }
-
-    var next_used_variables: @FieldType(Sema, "used_variables") = .{};
-
-    for (self.used_variables.keys()) |used_variable| {
-        if (self.sir.functions.get(used_variable)) |function| {
-            try self.collectUsedVariablesHelper(&next_used_variables, function.instructions.items);
-        }
-    }
-
-    try self.used_variables.ensureUnusedCapacity(self.allocator, next_used_variables.count());
-
-    for (next_used_variables.keys()) |next_used_variable|
-        self.used_variables.putAssumeCapacity(next_used_variable, {});
-
-    next_used_variables.deinit(self.allocator);
 }
 
 pub fn analyze(self: *Sema) Error!void {
-    try self.collectUsedVariables();
-
     for (self.sir.imports.items) |file_path| {
         try self.import(file_path);
     }
@@ -598,9 +505,8 @@ fn analyzeTypeAlias(self: *Sema, type_alias: Sir.SubSymbol) Error!Type {
                 try self.scope.put(self.allocator, enum_field_entry, .{
                     .type = enum_type,
                     .visibility = type_alias.visibility,
-                    .maybe_value = enum_field_value,
+                    .maybe_comptime_value = enum_field_value,
                     .is_const = true,
-                    .is_comptime = true,
                 });
             }
 
@@ -633,10 +539,16 @@ fn analyzeTypeAliases(self: *Sema) Error!void {
     type_alias_circular_targets.deinit(self.allocator);
 
     for (self.sir.type_aliases.values()) |type_alias| {
-        const variable = self.scope.getPtr(type_alias.name.buffer).?;
+        const variable = self.scope.get(type_alias.name.buffer).?;
 
         if (variable.type == .void) {
-            variable.type = try self.analyzeTypeAlias(type_alias);
+            const analyzed_type = try self.analyzeTypeAlias(type_alias);
+
+            // You may ask why?
+            // Because `analyzeTypeAlias` may cause the scope items to be reallocated, we can't use `getPtr` before `analyzeTypeAlias`
+            const variable_pointer = self.scope.getPtr(type_alias.name.buffer).?;
+
+            variable_pointer.type = analyzed_type;
         }
     }
 }
@@ -649,7 +561,15 @@ fn analyzeExternals(self: *Sema) Error!void {
 
         const symbol = try self.analyzeSubSymbol(external);
 
-        try self.scope.put(self.allocator, external.name.buffer, .{ .type = symbol.type, .visibility = symbol.visibility });
+        try self.scope.put(
+            self.allocator,
+            external.name.buffer,
+            .{
+                .air_name = external.name.buffer,
+                .type = symbol.type,
+                .visibility = symbol.visibility,
+            },
+        );
 
         try self.air.external_declarations.append(self.allocator, symbol);
     }
@@ -676,13 +596,16 @@ fn analyzeGlobalConstants(self: *Sema) Error!void {
             return error.ExpectedCompiletimeConstant;
         }
 
-        try self.scope.put(self.allocator, symbol.name.buffer, .{
-            .type = value.getType(),
-            .visibility = global_constant.subsymbol.visibility,
-            .is_comptime = true,
-            .is_const = true,
-            .maybe_value = value,
-        });
+        try self.scope.put(
+            self.allocator,
+            symbol.name.buffer,
+            .{
+                .type = value.getType(),
+                .visibility = global_constant.subsymbol.visibility,
+                .is_const = true,
+                .maybe_comptime_value = value,
+            },
+        );
     }
 }
 
@@ -694,21 +617,23 @@ fn analyzeGlobalVariables(self: *Sema) Error!void {
 
         const symbol = try self.analyzeSubSymbol(global_variable.subsymbol);
 
-        const maybe_prefixed = if (!global_variable.exported)
+        const air_name = if (!global_variable.exported)
             try prefix(self.allocator, self.sir.module_name, symbol.name.buffer)
         else
-            null;
+            symbol.name.buffer;
 
-        const prefixed_name = maybe_prefixed orelse global_variable.subsymbol.name.buffer;
-
-        const definition = try self.air.global_variables.getOrPutValue(self.allocator, prefixed_name, .{
-            .symbol = .{
-                .type = symbol.type,
-                .name = .{ .buffer = prefixed_name, .token_start = global_variable.subsymbol.name.token_start },
-                .visibility = global_variable.subsymbol.visibility,
+        const definition = try self.air.global_variables.getOrPutValue(
+            self.allocator,
+            air_name,
+            .{
+                .symbol = .{
+                    .type = symbol.type,
+                    .name = .{ .buffer = air_name, .token_start = global_variable.subsymbol.name.token_start },
+                    .visibility = global_variable.subsymbol.visibility,
+                },
+                .exported = global_variable.exported,
             },
-            .exported = global_variable.exported,
-        });
+        );
 
         if (definition.found_existing) continue;
 
@@ -736,18 +661,55 @@ fn analyzeGlobalVariables(self: *Sema) Error!void {
             }
         }
 
-        try self.scope.put(self.allocator, symbol.name.buffer, .{
-            .type = definition.value_ptr.symbol.type,
-            .visibility = symbol.visibility,
-            .maybe_prefixed = maybe_prefixed,
-        });
+        try self.scope.put(
+            self.allocator,
+            symbol.name.buffer,
+            .{
+                .air_name = air_name,
+                .type = definition.value_ptr.symbol.type,
+                .visibility = symbol.visibility,
+            },
+        );
+    }
+}
+
+fn analyzeFunction(self: *Sema, variable: Variable, function: *Sir.Definition) Error!void {
+    const definition = try self.air.functions.getOrPutValue(
+        self.allocator,
+        variable.air_name,
+        .{
+            .symbol = .{
+                .name = .{ .buffer = variable.air_name, .token_start = function.subsymbol.name.token_start },
+                .type = variable.type,
+                .visibility = function.subsymbol.visibility,
+            },
+            .exported = function.exported,
+        },
+    );
+
+    if (definition.found_existing) return;
+
+    const previous_function_type = self.function_type;
+    self.function_type = variable.type;
+    defer self.function_type = previous_function_type;
+
+    const previous_air_instructions = self.air_instructions;
+    self.air_instructions = &definition.value_ptr.instructions;
+    defer self.air_instructions = previous_air_instructions;
+
+    const previous_scope = self.scope;
+    self.scope = &self.scopes.items[0];
+    defer self.scope = previous_scope;
+
+    for (function.instructions.items) |sir_instruction| {
+        try self.analyzeInstruction(sir_instruction);
     }
 }
 
 fn analyzeFunctions(self: *Sema) Error!void {
     var max_scope_depth: usize = 0;
 
-    for (self.sir.functions.values()) |function| {
+    for (self.sir.functions.values()) |*function| {
         if (self.scope.get(function.subsymbol.name.buffer) != null) try self.reportRedeclaration(function.subsymbol.name);
 
         const symbol = try self.analyzeSubSymbol(function.subsymbol);
@@ -770,13 +732,16 @@ fn analyzeFunctions(self: *Sema) Error!void {
             }
         }
 
+        const air_name = if (!function.exported)
+            try prefix(self.allocator, self.sir.module_name, symbol.name.buffer)
+        else
+            symbol.name.buffer;
+
         try self.scope.put(self.allocator, symbol.name.buffer, .{
+            .air_name = air_name,
             .type = symbol.type,
             .visibility = symbol.visibility,
-            .maybe_prefixed = if (!function.exported)
-                try prefix(self.allocator, self.sir.module_name, symbol.name.buffer)
-            else
-                null,
+            .maybe_function_definition = function,
         });
     }
 
@@ -786,30 +751,11 @@ fn analyzeFunctions(self: *Sema) Error!void {
 
     try self.air.functions.ensureTotalCapacity(self.allocator, self.sir.functions.count());
 
-    for (self.used_variables.keys()) |used_variable| {
-        if (self.sir.functions.get(used_variable)) |function| {
+    for (self.sir.functions.values()) |*function| {
+        if (function.exported) {
             const variable = self.scope.get(function.subsymbol.name.buffer).?;
 
-            const prefixed_name = variable.maybe_prefixed orelse function.subsymbol.name.buffer;
-
-            const definition = try self.air.functions.getOrPutValue(self.allocator, prefixed_name, .{
-                .symbol = .{
-                    .name = .{ .buffer = prefixed_name, .token_start = function.subsymbol.name.token_start },
-                    .type = variable.type,
-                    .visibility = function.subsymbol.visibility,
-                },
-                .exported = function.exported,
-            });
-
-            if (definition.found_existing) continue;
-
-            self.function_type = variable.type;
-
-            self.air_instructions = &definition.value_ptr.instructions;
-
-            for (function.instructions.items) |sir_instruction| {
-                try self.analyzeInstruction(sir_instruction);
-            }
+            try self.analyzeFunction(variable, function);
         }
     }
 }
@@ -1730,11 +1676,20 @@ fn analyzeParameters(self: *Sema, subsymbols: []const Sir.SubSymbol) Error!void 
 
     for (subsymbols) |subsymbol| {
         const symbol = try self.analyzeSubSymbol(subsymbol);
+        if (self.scope.get(symbol.name.buffer)) |variab| std.debug.print("{}\n", .{variab});
         if (self.scope.get(symbol.name.buffer) != null) try self.reportRedeclaration(symbol.name);
 
         symbols.appendAssumeCapacity(symbol);
 
-        try self.scope.put(self.allocator, symbol.name.buffer, .{ .type = symbol.type, .visibility = symbol.visibility });
+        try self.scope.put(
+            self.allocator,
+            symbol.name.buffer,
+            .{
+                .air_name = symbol.name.buffer,
+                .type = symbol.type,
+                .visibility = symbol.visibility,
+            },
+        );
     }
 
     try self.air_instructions.append(self.allocator, .{ .parameters = try symbols.toOwnedSlice(self.allocator) });
@@ -1752,13 +1707,16 @@ fn analyzeConstant(self: *Sema, subsymbol: Sir.SubSymbol) Error!void {
         return error.ExpectedCompiletimeConstant;
     }
 
-    try self.scope.put(self.allocator, symbol.name.buffer, .{
-        .type = value.getType(),
-        .visibility = symbol.visibility,
-        .is_comptime = true,
-        .is_const = true,
-        .maybe_value = value,
-    });
+    try self.scope.put(
+        self.allocator,
+        symbol.name.buffer,
+        .{
+            .type = value.getType(),
+            .visibility = symbol.visibility,
+            .is_const = true,
+            .maybe_comptime_value = value,
+        },
+    );
 }
 
 fn analyzeVariable(self: *Sema, infer: bool, subsymbol: Sir.SubSymbol) Error!void {
@@ -1775,13 +1733,13 @@ fn analyzeVariable(self: *Sema, infer: bool, subsymbol: Sir.SubSymbol) Error!voi
         return error.UnexpectedType;
     }
 
-    var variable: Variable = .{ .type = symbol.type, .visibility = symbol.visibility };
-
-    variable.maybe_prefixed = null;
+    const variable: Variable = .{
+        .air_name = symbol.name.buffer,
+        .type = symbol.type,
+        .visibility = symbol.visibility,
+    };
 
     try self.scope.put(self.allocator, symbol.name.buffer, variable);
-
-    if (variable.maybe_prefixed) |prefixed_name| symbol.name.buffer = prefixed_name;
 
     try self.air_instructions.append(self.allocator, .{ .variable = symbol });
 }
@@ -1799,16 +1757,57 @@ fn analyzeSet(self: *Sema, name: Name) Error!void {
 
         return error.UnexpectedMutation;
     } else {
-        try self.air_instructions.append(self.allocator, .{ .get_variable_ptr = variable.maybe_prefixed orelse name.buffer });
+        try self.air_instructions.append(self.allocator, .{ .get_variable_ptr = variable.air_name });
         try self.air_instructions.append(self.allocator, .write);
     }
 }
 
 fn analyzeGet(self: *Sema, name: Name) Error!void {
     const variable = self.scope.get(name.buffer) orelse try self.reportNotDeclared(name);
-    if (variable.is_type_alias) try self.reportTypeNotExpression(name);
 
-    if (variable.maybe_value) |value| {
+    if (variable.is_type_alias) {
+        try self.reportTypeNotExpression(name);
+    }
+
+    if (variable.maybe_function_definition) |function| {
+        if (variable.maybe_other_owner) |compiled_file| {
+            var sema = try Sema.init(
+                self.allocator,
+                self.compilation,
+                .{ .path = compiled_file.path, .buffer = compiled_file.buffer },
+                compiled_file.sir,
+                self.air,
+            );
+
+            defer sema.deinit();
+
+            sema.scope.items = compiled_file.scope.items;
+
+            sema.analyzeFunction(variable, function) catch |err| {
+                switch (err) {
+                    error.OutOfMemory => std.debug.print("Error: {s}\n", .{root.Cli.errorDescription(err)}),
+
+                    else => std.debug.print("{s}:{}:{}: {s}\n", .{
+                        compiled_file.path,
+                        sema.error_info.?.source_loc.line,
+                        sema.error_info.?.source_loc.column,
+                        sema.error_info.?.message,
+                    }),
+                }
+
+                self.error_info = .{
+                    .message = "a function could not be imported because of semantic analysis failure",
+                    .source_loc = SourceLoc.find(self.file.buffer, name.token_start),
+                };
+
+                return error.ImportFailed;
+            };
+        } else {
+            try self.analyzeFunction(variable, function);
+        }
+    }
+
+    if (variable.maybe_comptime_value) |value| {
         switch (value) {
             .string => |string| try self.air_instructions.append(self.allocator, .{ .string = string }),
             .int => |int| try self.air_instructions.append(self.allocator, .{ .int = int }),
@@ -1819,7 +1818,7 @@ fn analyzeGet(self: *Sema, name: Name) Error!void {
 
         try self.stack.append(self.allocator, value);
     } else {
-        try self.air_instructions.append(self.allocator, .{ .get_variable_ptr = variable.maybe_prefixed orelse name.buffer });
+        try self.air_instructions.append(self.allocator, .{ .get_variable_ptr = variable.air_name });
 
         if (variable.type.getFunction() == null) {
             try self.air_instructions.append(self.allocator, .read);
