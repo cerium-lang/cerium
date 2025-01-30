@@ -1,6 +1,4 @@
-module tests::scoping;
-
-fn main() {
+pub fn main() {
     var a u8 = 4;
     var b u8 = 4;
     var c u8 = 4;

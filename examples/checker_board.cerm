@@ -1,5 +1,3 @@
-module examples::checker_board;
-
 import "std/io.cerm";
 
 pub fn main() {

@@ -465,7 +465,7 @@ pub const Cli = struct {
             .none => .{ .path = root_file_path, .buffer = root_file_buffer },
         };
 
-        var sir_parser = Sir.Parser.init(self.allocator, compilation.env, compilation_file.buffer) catch |err| {
+        var sir_parser = Sir.Parser.init(self.allocator, compilation.env, compilation_file) catch |err| {
             std.debug.print("Error: {s}\n", .{Cli.errorDescription(err)});
 
             return 1;

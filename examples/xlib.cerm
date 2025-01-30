@@ -7,8 +7,6 @@
 //                      with xlib and C runtime library and C math library
 //    i.e: `cc xlib_example.o -lX11 -o xlib_example`
 
-module examples::xlib;
-
 import "std/c/io.cerm";
 import "std/c/time.cerm";
 import "std/c/random.cerm";

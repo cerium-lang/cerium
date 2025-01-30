@@ -1,5 +1,3 @@
-module examples::fizz_buzz;
-
 import "std/io.cerm";
 
 pub fn main() {

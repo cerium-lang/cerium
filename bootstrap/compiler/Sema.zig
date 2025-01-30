@@ -338,7 +338,7 @@ fn import(self: *Sema, file_path: Name) Error!void {
         sema.sir = compiled_file.sir;
         sema.scope.items = compiled_file.scope.items;
     } else {
-        var sir_parser = try Sir.Parser.init(self.allocator, self.compilation.env, compilation_file.buffer);
+        var sir_parser = try Sir.Parser.init(self.allocator, self.compilation.env, compilation_file);
         defer sir_parser.deinit();
 
         sir_parser.parse() catch |err| {

@@ -1,5 +1,3 @@
-module cerium::lexer;
-
 pub type Token = struct {
     tag Token::Tag,
     range Token::Range,

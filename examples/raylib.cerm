@@ -7,8 +7,6 @@
 //                      with Raylib and C runtime library and C math library
 //    i.e: `cc raylib_example.o -l:libraylib.a -lm -o raylib_example`
 
-module examples::raylib;
-
 fn noise() {
     var color Color;
 

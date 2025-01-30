@@ -1,5 +1,3 @@
-module examples::fizz_buzz;
-
 import "std/os/linux.cerm";
 import "std/process.cerm";
 import "std/io.cerm";
