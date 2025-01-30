@@ -1676,7 +1676,6 @@ fn analyzeParameters(self: *Sema, subsymbols: []const Sir.SubSymbol) Error!void 
 
     for (subsymbols) |subsymbol| {
         const symbol = try self.analyzeSubSymbol(subsymbol);
-        if (self.scope.get(symbol.name.buffer)) |variab| std.debug.print("{}\n", .{variab});
         if (self.scope.get(symbol.name.buffer) != null) try self.reportRedeclaration(symbol.name);
 
         symbols.appendAssumeCapacity(symbol);
