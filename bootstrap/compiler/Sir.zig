@@ -1102,6 +1102,9 @@ pub const Parser = struct {
             }
         }
 
+        self.defer_stack.shrinkRetainingCapacity(self.defer_stack.items.len - self.scope_defer_count);
+        self.scope_defer_count = 0;
+
         if (returns_value) {
             try self.sir_instructions.append(self.allocator, .{ .ret = return_keyword_start });
         } else {
