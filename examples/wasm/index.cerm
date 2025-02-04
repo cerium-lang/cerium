@@ -1,0 +1,49 @@
+// A little Web Assembly experiment to render random noise colors
+//
+// Compilation Guide:
+// 1. Change your working directory to `examples/wasm`
+// 2. Get a Cerium compiler, compile the example into wasm file with the default runner being disabled
+//    i.e: `cerium compile index.cerm --output index.wasm --emit object --runner none --target wasm32-wasi`
+// 3. Get a Wasm linker, link the wasm file with `allow-undefined`, `--export-all`, `--no-entry` options
+//    i.e: `wasm-ld -o index.wasm index.wasm --no-entry --export-all --allow-undefined`
+// 4. Start a new http server in `examples/wasm` directory
+//    i.e: `python3 -m http.server`
+// 5. Open the http server in your browser
+//    i.e: `firefox localhost:8000`
+
+extern fn set_color(r u8, g u8, b u8);
+extern fn draw_point(x u32, y u32);
+extern fn rand(end u32) u32;
+
+extern fn get_width() u32;
+extern fn get_height() u32;
+
+var width u32;
+var height u32;
+
+fn noise() {
+    var i u8 = 0;
+
+    while i < 255 {
+        var r = rand(255) as u8;
+        var g = rand(255) as u8;
+        var b = rand(255) as u8;
+
+        var x = rand(width);
+        var y = rand(height);
+
+        set_color(r, g, b);
+        draw_point(x, y);
+
+        i += 1;
+    }
+}
+
+export fn setup() {
+    width = get_width();
+    height = get_height();
+}
+
+export fn draw() {
+    noise();
+}
