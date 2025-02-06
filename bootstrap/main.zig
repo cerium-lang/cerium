@@ -408,8 +408,8 @@ pub const Cli = struct {
         target: std.Target,
         code_model: CodeModel,
     ) u8 {
-        const cerium_lib_dir = Compilation.Environment.openCeriumLibrary() catch {
-            std.debug.print("Error: could not open the cerium library directory\n", .{});
+        const barq_lib_dir = Compilation.Environment.openBarqLibrary() catch {
+            std.debug.print("Error: could not open the barq library directory\n", .{});
 
             return 1;
         };
@@ -430,7 +430,7 @@ pub const Cli = struct {
             self.allocator,
             .{ .path = root_file_path, .buffer = root_file_buffer },
             .{
-                .cerium_lib_dir = cerium_lib_dir,
+                .barq_lib_dir = barq_lib_dir,
                 .target = target,
             },
         );
@@ -441,7 +441,7 @@ pub const Cli = struct {
 
                 var runner_file_path_buffer: [std.fs.max_path_bytes]u8 = undefined;
 
-                const runner_file_path = cerium_lib_dir.realpath(relative_runner_file_path, &runner_file_path_buffer) catch |err| {
+                const runner_file_path = barq_lib_dir.realpath(relative_runner_file_path, &runner_file_path_buffer) catch |err| {
                     std.debug.print("Error: could not find executable runner file path: {s}\n", .{errorDescription(err)});
 
                     return 1;

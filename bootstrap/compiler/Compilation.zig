@@ -1,6 +1,6 @@
 //! Compilation.
 //!
-//! A wrapper around the compilation pipeline of Cerium.
+//! A wrapper around the compilation pipeline of Barq.
 
 const std = @import("std");
 const root = @import("root");
@@ -23,11 +23,11 @@ compiled_files: std.StringHashMapUnmanaged(CompiledFile) = .{},
 env: Environment,
 
 pub const Environment = struct {
-    cerium_lib_dir: std.fs.Dir,
+    barq_lib_dir: std.fs.Dir,
     target: std.Target,
 
-    /// Open the Cerium library directory by finding `lib/cerium` or `lib`
-    pub fn openCeriumLibrary() !std.fs.Dir {
+    /// Open the Barq library directory by finding `lib/barq` or `lib`
+    pub fn openBarqLibrary() !std.fs.Dir {
         var self_exe_dir_path_buf: [std.fs.max_path_bytes]u8 = undefined;
 
         const self_exe_dir_path = try std.fs.selfExeDirPath(&self_exe_dir_path_buf);
@@ -42,11 +42,11 @@ pub const Environment = struct {
         while (!opened) {
             opened = true;
 
-            // We first try to open `lib/cerium` directory so we differentiate between
-            // `/usr/lib` and `/usr/lib/cerium` if the executable is in `/usr/bin`
-            dir = dir.openDir("lib" ++ std.fs.path.sep_str ++ "cerium", .{}) catch |err| switch (err) {
+            // We first try to open `lib/barq` directory so we differentiate between
+            // `/usr/lib` and `/usr/lib/barq` if the executable is in `/usr/bin`
+            dir = dir.openDir("lib" ++ std.fs.path.sep_str ++ "barq", .{}) catch |err| switch (err) {
                 error.FileNotFound => blk: {
-                    // Ok so we didn't find `lib/cerium` let's now try the more generic `lib`
+                    // Ok so we didn't find `lib/barq` let's now try the more generic `lib`
                     break :blk dir.openDir("lib", .{}) catch |another_err| switch (another_err) {
                         error.FileNotFound => {
                             opened = false;

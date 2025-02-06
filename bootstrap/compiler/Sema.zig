@@ -263,7 +263,7 @@ fn import(self: *Sema, file_path: Name) Error!void {
         else
             ".";
 
-        const import_file = self.compilation.env.cerium_lib_dir.openFile(file_path.buffer, .{}) catch nested_blk: {
+        const import_file = self.compilation.env.barq_lib_dir.openFile(file_path.buffer, .{}) catch nested_blk: {
             const parent_dir = std.fs.cwd().openDir(parent_dir_path, .{}) catch |err| {
                 var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
@@ -294,7 +294,7 @@ fn import(self: *Sema, file_path: Name) Error!void {
         };
 
         const import_file_path = if (in_lib_dir)
-            self.compilation.env.cerium_lib_dir.realpathAlloc(self.allocator, file_path.buffer) catch |err| {
+            self.compilation.env.barq_lib_dir.realpathAlloc(self.allocator, file_path.buffer) catch |err| {
                 var error_message_buf: std.ArrayListUnmanaged(u8) = .{};
 
                 try error_message_buf.writer(self.allocator).print(

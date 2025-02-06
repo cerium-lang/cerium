@@ -5,7 +5,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const exe = b.addExecutable(.{
-        .name = "cerium",
+        .name = "barq",
         .root_source_file = b.path("bootstrap/main.zig"),
         .target = target,
         .optimize = optimize,
@@ -28,7 +28,7 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&run_cmd.step);
 
     const exe_check = b.addExecutable(.{
-        .name = "cerium",
+        .name = "barq",
         .root_source_file = b.path("bootstrap/main.zig"),
         .target = target,
         .optimize = optimize,
