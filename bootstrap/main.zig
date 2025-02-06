@@ -437,7 +437,7 @@ pub const Cli = struct {
 
         const compilation_file: Compilation.File = switch (runner_kind) {
             .executable => blk: {
-                const relative_runner_file_path = "std" ++ std.fs.path.sep_str ++ "runner" ++ std.fs.path.sep_str ++ "exe.cerm";
+                const relative_runner_file_path = "std" ++ std.fs.path.sep_str ++ "runner" ++ std.fs.path.sep_str ++ "exe.bq";
 
                 var runner_file_path_buffer: [std.fs.max_path_bytes]u8 = undefined;
 

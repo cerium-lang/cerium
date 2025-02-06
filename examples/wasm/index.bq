@@ -3,7 +3,7 @@
 // Compilation Guide:
 // 1. Change your working directory to `examples/wasm`
 // 2. Get a Barq compiler, compile the example into wasm file with the default runner being disabled
-//    i.e: `barq compile index.cerm --output index.wasm --emit object --runner none --target wasm32-wasi`
+//    i.e: `barq compile index.bq --output index.wasm --emit object --runner none --target wasm32-wasi`
 // 3. Get a Wasm linker, link the wasm file with `allow-undefined`, `--export-all`, `--no-entry` options
 //    i.e: `wasm-ld -o index.wasm index.wasm --no-entry --export-all --allow-undefined`
 // 4. Start a new http server in `examples/wasm` directory

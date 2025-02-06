@@ -2,14 +2,14 @@
 //
 // Compilation Guide:
 // 1. Get a Barq compiler, compile the example into object file with the default runner being disabled
-//    i.e: `barq compile examples/xlib.cerm --output xlib_example.o --emit object --runner none`
+//    i.e: `barq compile examples/xlib.bq --output xlib_example.o --emit object --runner none`
 // 2. Get a C compiler, use it to link the object file produced by Barq
 //                      with xlib and C runtime library and C math library
 //    i.e: `cc xlib_example.o -lX11 -o xlib_example`
 
-import "std/c/io.cerm";
-import "std/c/time.cerm";
-import "std/c/random.cerm";
+import "std/c/io.bq";
+import "std/c/time.bq";
+import "std/c/random.bq";
 
 export fn main() u8 {
     var display = XOpenDisplay(0 as [*]const u8);

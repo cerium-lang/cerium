@@ -1,6 +1,6 @@
 module std::runner::exe;
 
-import "std/process.cerm";
+import "std/process.bq";
 
 import "root";
 

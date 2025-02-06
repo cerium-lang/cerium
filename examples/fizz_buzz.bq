@@ -1,4 +1,4 @@
-import "std/io.cerm";
+import "std/io.bq";
 
 pub fn main() {
     var i u32 = 1;

@@ -1,4 +1,4 @@
-import "std/io.cerm";
+import "std/io.bq";
 
 pub fn main() {
     std::io::println("Hello, World!");

@@ -1,6 +1,6 @@
 module std::io;
 
-import "os/linux.cerm";
+import "os/linux.bq";
 
 // TODO: This is a temporary solution until we have a proper files implementation which must work on all platforms
 pub fn printfd(fd s32, str []const u8) {

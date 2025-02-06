@@ -1,6 +1,6 @@
 module std::process;
 
-import "os/linux.cerm";
+import "os/linux.bq";
 
 pub fn exit(status u8) {
     std::os::linux::exit_group(status);

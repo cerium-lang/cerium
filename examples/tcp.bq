@@ -1,6 +1,6 @@
-import "std/os/linux.cerm";
-import "std/process.cerm";
-import "std/io.cerm";
+import "std/os/linux.bq";
+import "std/process.bq";
+import "std/io.bq";
 
 type Server = struct {
     fd s32,
