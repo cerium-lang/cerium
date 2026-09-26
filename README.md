@@ -77,7 +77,7 @@ backend rather than a v0 dependency.
 ## Status
 
 A design in progress. The specification is internally consistent at the moment;
-`specs/review/` holds one file per review, named `review-YYYYMMDD-NN.md`.
+`review/` holds one file per review, named `review-YYYYMMDD-NN.md`.
 
 Still open:
 
