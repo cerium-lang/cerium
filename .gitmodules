@@ -1,0 +1,4 @@
+[submodule "qbe"]
+	path = qbe
+	url = https://github.com/mivinci/qbe
+	ignore = dirty

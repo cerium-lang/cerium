@@ -63,6 +63,17 @@ such as `is_same` written as a struct with two impls. What none of them has is
 how the pieces are pinned down: overlap is checked where the impls are declared,
 not where they are instantiated, and `mut`, though part of the type, is not deep.
 
+## Implementation
+
+Stage 0 of the compiler is **C89** — no host framework, one bare Makefile,
+`src/vec.h` as the container layer. Codegen goes through
+[QBE](https://c9x.me/compile/): the compiler emits `.ssa` text, runs `qbe`
+as a subprocess, and the system `cc` links. The submodule at `qbe/` points
+at a [fork](https://github.com/mivinci/qbe) that tracks upstream master —
+pinned by commit, moved by `tools/sync-qbe.sh`. The goal is self-hosting:
+the compiler rewritten in xyz itself, with LLVM held as a v1+ release
+backend rather than a v0 dependency.
+
 ## Status
 
 A design in progress. The specification is internally consistent at the moment;
