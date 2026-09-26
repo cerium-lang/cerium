@@ -1,7 +1,7 @@
 .POSIX:
 .SUFFIXES: .c .o
 
-# xyz-cc, stage 0. C89, no host framework; src/vec.h is the container layer.
+# xyz, stage 0. C89, no host framework; src/vec.h is the container layer.
 # qbe builds from the submodule; the system cc links whatever qbe emits.
 
 CC      = cc
@@ -9,7 +9,7 @@ CFLAGS  = -std=c89 -pedantic -Wall -Wextra -g
 
 SRC     = $(wildcard src/*.c)
 OBJ     = $(SRC:.c=.o)
-BIN     = xyz-cc
+BIN     = xyz
 
 QBE_BIN = qbe/qbe
 

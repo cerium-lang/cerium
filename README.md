@@ -16,22 +16,22 @@ notation and the terms every chapter uses.
 
 | file | continues | what it defines |
 | --- | --- | --- |
-| [00-preliminaries.md](./spec/00-preliminaries.md) | — | notation; `slot`, `place`, compile-time known |
-| [01-types.md](./spec/01-types.md) | `00` | types and `mut`, arrays, slices, structs, pointers, enums, strings, attributes, panic |
-| [02-layout.md](./spec/02-layout.md) | `01` | size and alignment, layout attributes |
-| [03-move.md](./spec/03-move.md) | `02` | move semantics, `Copy`, `Drop`, `@take` |
-| [04-generics.md](./spec/04-generics.md) | `03` | generics, specialization, shape patterns, variadics |
-| [05-traits.md](./spec/05-traits.md) | `04` | traits, associated items, inherent impls, `Option` |
-| [06-dispatch.md](./spec/06-dispatch.md) | `05` | `dyn A`, dynamic dispatch, object safety |
-| [07-operators.md](./spec/07-operators.md) | `05` | operators as trait methods, `Add`/`Ord`/`Eq` |
-| [08-reflection.md](./spec/08-reflection.md) | `07` | compile-time execution, `TypeInfo`, the builtin table |
-| [09-match.md](./spec/09-match.md) | `01` | pattern matching |
-| [10-iteration.md](./spec/10-iteration.md) | `05`, `09` | `Iterator`, `for`, `if`, `return` |
-| [11-namespaces.md](./spec/11-namespaces.md) | `01` | a directory is a namespace, `use`, name resolution |
-| [12-projects.md](./spec/12-projects.md) | `11` | compilation unit, one artifact, `main` and exit codes, what v0 does not carry |
-| [13-testing.md](./spec/13-testing.md) | `12` | `#[test]`, the test artifact and its runner |
-| [14-macros.md](./spec/14-macros.md) | `08` | the case against a user-defined macro system (not settled) |
-| [15-grammar.md](./spec/15-grammar.md) | — | the grammar in EBNF, closed: lexing, expressions, types, declarations, statements, patterns |
+| [00-preliminaries.md](./specs/00-preliminaries.md) | — | notation; `slot`, `place`, compile-time known |
+| [01-types.md](./specs/01-types.md) | `00` | types and `mut`, arrays, slices, structs, pointers, enums, strings, attributes, panic |
+| [02-layout.md](./specs/02-layout.md) | `01` | size and alignment, layout attributes |
+| [03-move.md](./specs/03-move.md) | `02` | move semantics, `Copy`, `Drop`, `@take` |
+| [04-generics.md](./specs/04-generics.md) | `03` | generics, specialization, shape patterns, variadics |
+| [05-traits.md](./specs/05-traits.md) | `04` | traits, associated items, inherent impls, `Option` |
+| [06-dispatch.md](./specs/06-dispatch.md) | `05` | `dyn A`, dynamic dispatch, object safety |
+| [07-operators.md](./specs/07-operators.md) | `05` | operators as trait methods, `Add`/`Ord`/`Eq` |
+| [08-reflection.md](./specs/08-reflection.md) | `07` | compile-time execution, `TypeInfo`, the builtin table |
+| [09-match.md](./specs/09-match.md) | `01` | pattern matching |
+| [10-iteration.md](./specs/10-iteration.md) | `05`, `09` | `Iterator`, `for`, `if`, `return` |
+| [11-namespaces.md](./specs/11-namespaces.md) | `01` | a directory is a namespace, `use`, name resolution |
+| [12-projects.md](./specs/12-projects.md) | `11` | compilation unit, one artifact, `main` and exit codes, what v0 does not carry |
+| [13-testing.md](./specs/13-testing.md) | `12` | `#[test]`, the test artifact and its runner |
+| [14-macros.md](./specs/14-macros.md) | `08` | the case against a user-defined macro system (not settled) |
+| [15-grammar.md](./specs/15-grammar.md) | — | the grammar in EBNF, closed: lexing, expressions, types, declarations, statements, patterns |
 
 ## What xyz guarantees
 
@@ -77,7 +77,7 @@ backend rather than a v0 dependency.
 ## Status
 
 A design in progress. The specification is internally consistent at the moment;
-`spec/review/` holds one file per review, named `review-YYYYMMDD-NN.md`.
+`specs/review/` holds one file per review, named `review-YYYYMMDD-NN.md`.
 
 Still open:
 
