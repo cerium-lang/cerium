@@ -1,0 +1,6 @@
+fn main() -> i32 {
+  let mut x = 5;
+  x = x * 3;
+  x = x + 7;
+  x
+}

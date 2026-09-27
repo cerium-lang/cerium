@@ -354,6 +354,14 @@ tysame(Type *a, Type *b)
 }
 
 Type *
+derefthrough(Type *t)
+{
+  while (t && (t->k == Typtr || t->k == Tymut))
+    t = t->t;
+  return t;
+}
+
+Type *
 gsubst(Type *t, Ast **gps, Type **tys, usize n)
 {
   Type **as;

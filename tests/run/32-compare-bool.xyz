@@ -1,0 +1,13 @@
+fn main() -> i32 {
+  let a = 1 < 2;
+  let b = 2 <= 1;
+  let c = 3 == 3;
+  let d = 3 != 3;
+  let e: u8 = 200;
+  let f = e > 100;
+  let g = -1 < 0;
+  let h: f32 = 1.5;
+  let i = h >= 1.5;
+  @cast<i32>(a) + 2*@cast<i32>(b) + 4*@cast<i32>(c) + 8*@cast<i32>(d)
+    + 16*@cast<i32>(f) + 32*@cast<i32>(g) + 64*@cast<i32>(i)
+}

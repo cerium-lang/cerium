@@ -10,9 +10,10 @@
 # rejected with a diagnostic on stderr and a nonzero exit.
 #
 # tests/run is codegen's: every *.xyz compiles to a binary whose
-# exit code the matching .expect names (stdout compares once M3b
-# gives the language a way to print). It needs qbe/qbe built -- a
-# checkout without it skips the section rather than failing.
+# exit code the matching .expect names; an optional .stdout holds
+# the bytes it must print (#[extern(C)] write is how the language
+# prints until M3c). It needs qbe/qbe built -- a checkout without
+# it skips the section rather than failing.
 set -u
 cd "$(dirname "$0")/.."
 
@@ -49,7 +50,8 @@ rejected() { # $1: the directory, $2: the dump flag (-a or -T)
   done
 }
 
-runthem() { # $1: the directory; an .expect of "!" wants rejection
+runthem() { # $1: the directory; an .expect of "!" wants rejection,
+  # an optional .stdout holds the bytes the binary must print
   tmp=$(mktemp -d)
   for f in "$1"/*.xyz; do
     [ -e "$f" ] || continue
@@ -74,14 +76,20 @@ runthem() { # $1: the directory; an .expect of "!" wants rejection
       fail=1
       continue
     fi
-    "$tmp/out"
+    "$tmp/out" >"$tmp/stdout"
     got=$?
     if [ "$got" != "$exp" ]; then
       echo "FAIL $f (exit $got, want $exp)"
       fail=1
-    else
-      echo "ok   $f"
+      continue
     fi
+    s="${f%.xyz}.stdout"
+    if [ -f "$s" ] && ! cmp -s "$s" "$tmp/stdout"; then
+      echo "FAIL $f (stdout $(head -c 40 "$tmp/stdout" | tr '\n' ' ')...)"
+      fail=1
+      continue
+    fi
+    echo "ok   $f"
   done
   rm -rf "$tmp"
 }
