@@ -70,10 +70,13 @@ struct Vh {
 #define VEC_HDRSZ ((usize) sizeof(Vh))
 
 /* C89 版 alignof：sizeof(struct{char;T;}) - sizeof(T) == alignof(T)
- * 别用 offsetof 里现定义结构体 —— clang 判 C23 扩展 */
+ * 别用 offsetof 里现定义结构体 —— clang 判 C23 扩展
+ * 单行是刻意的：clang-format 会把宏里的匿名 struct 拆成多行，关掉 */
+/* clang-format off */
 #define valignof(t) ((usize)(sizeof(struct { char c; t d_; }) - sizeof(t)))
+/* clang-format on */
 
-#define vhdr(p) ((Vh *) ((char *) (p) -VEC_HDRSZ))
+#define vhdr(p) ((Vh *) ((char *) (p) - VEC_HDRSZ))
 
 #define vnew(t, n)      ((t *) valloc_(sizeof(t), valignof(t), (usize) (n)))
 #define vfree(p)        ((p) = vfree_((p)))
@@ -87,7 +90,7 @@ struct Vh {
   ((void) sizeof((*(pp))[0] = *(e)),                                                               \
    (void) sizeof(char[1 - 2 * (sizeof((*(pp))[0]) != sizeof(*(e)))]))
 
-#define vappend(pp, e) (*(pp) = vappend_(*(pp), (VEC_TYPCHK(pp, e), (e))))
+#define vappend(pp, e)     (*(pp) = vappend_(*(pp), (VEC_TYPCHK(pp, e), (e))))
 #define vresize(pp, n)     (*(pp) = vresize_(*(pp), (usize) (n)))
 #define vinsert(pp, i, e)  (*(pp) = vinsert_(*(pp), (usize) (i), (VEC_TYPCHK(pp, e), (e))))
 #define vremove(p, i)      vremove_((p), (usize) (i))
@@ -370,9 +373,7 @@ vinsert_(void *p, usize i, const void *e)
   h = vhdr(p); /* vreserve_ 可能换了地址 */
 
   if (i < h->len)
-    memmove((char *) p + (i + 1) * h->esiz,
-            (char *) p + i * h->esiz,
-            (h->len - i) * h->esiz);
+    memmove((char *) p + (i + 1) * h->esiz, (char *) p + i * h->esiz, (h->len - i) * h->esiz);
 
   if (j != (usize) -1) {
     /* 让位的时候索引 >= i 的元素整体右移了一位，源也跟着走 */
@@ -400,9 +401,7 @@ vremove_(void *p, usize i)
     voom("remove out of range");
 
   if (i + 1 < h->len)
-    memmove((char *) p + i * h->esiz,
-            (char *) p + (i + 1) * h->esiz,
-            (h->len - i - 1) * h->esiz);
+    memmove((char *) p + i * h->esiz, (char *) p + (i + 1) * h->esiz, (h->len - i - 1) * h->esiz);
   h->len--;
 }
 

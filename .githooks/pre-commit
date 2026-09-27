@@ -1,0 +1,19 @@
+#!/bin/sh
+# pre-commit -- format staged C sources before they land.
+# Installed by `make hooks` (git config core.hooksPath .githooks).
+# clang-format missing is a warning, not a blocker: CI runs fmt-check
+# as the hard gate; the hook is convenience for the machines that have it.
+
+files=$(git diff --cached --name-only --diff-filter=ACM -- '*.c' '*.h')
+[ -z "$files" ] && exit 0
+
+if ! command -v clang-format >/dev/null 2>&1; then
+  echo "pre-commit: clang-format not found, skipping (CI will check)" >&2
+  exit 0
+fi
+
+# shellcheck disable=SC2086
+clang-format -i $files || exit 1
+
+# shellcheck disable=SC2086
+git add $files

@@ -31,7 +31,16 @@ $(QBE_BIN):
 test: $(BIN) $(QBE_BIN)
 	@echo "test: golden tests land with the lexer"
 
+fmt:
+	clang-format -i src/*.c src/*.h
+
+fmt-check:
+	clang-format --dry-run --Werror src/*.c src/*.h
+
+hooks:
+	git config core.hooksPath .githooks
+
 clean:
 	rm -f $(OBJ) $(BIN)
 
-.PHONY: all test clean
+.PHONY: all test fmt fmt-check hooks clean

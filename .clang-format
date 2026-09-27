@@ -1,0 +1,41 @@
+# xyz style: qbe-lineage C89.
+#   return type on its own line, function brace on its own line,
+#   struct/enum brace attached, 2-space indent, pointers bind right,
+#   macro bodies aligned. The ground truth is src/vec.h — formatting
+#   it with this file must produce zero diff.
+Language: Cpp
+BasedOnStyle: LLVM
+ColumnLimit: 100
+IndentWidth: 2
+UseTab: Never
+
+# functions: qbe shape — "void *\nname(args)\n{"
+AlwaysBreakAfterReturnType: TopLevelDefinitions
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction: true
+  AfterControlStatement: Never
+  AfterStruct: false
+  AfterEnum: false
+  AfterUnion: false
+  AfterExternBlock: false
+  IndentBraces: false
+  SplitEmptyFunction: false
+  SplitEmptyRecord: false
+
+PointerAlignment: Right
+SpaceAfterCStyleCast: true
+AlignConsecutiveMacros:
+  Enabled: true
+  AcrossEmptyLines: false
+  AcrossComments: false
+AlignEscapedNewlines: Right
+AlignTrailingComments: true
+
+AllowShortIfStatementsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: None
+AllowShortLoopsOnASingleLine: false
+KeepEmptyLinesAtTheStartOfBlocks: false
+IndentCaseLabels: false
+SortIncludes: false
+InsertBraces: false

@@ -11,5 +11,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: true
+      - run: make fmt-check
       - run: make CC=${{ matrix.cc }}
       - run: make test

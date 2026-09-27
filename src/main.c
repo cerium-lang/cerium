@@ -5,6 +5,8 @@
  * read .xyz, lex, parse, check, emit .ssa, run qbe, call cc.
  */
 
-int main(void) {
-    return 0;
+int
+main(void)
+{
+  return 0;
 }
