@@ -15,8 +15,10 @@
  * same in any dump.
  */
 
+#define _POSIX_C_SOURCE 2 /* getopt, the POSIX.2 one; c89 hides it */
+
 #include <stdio.h>
-#include <string.h>
+#include <unistd.h>
 
 #include "ast.h"
 #include "check.h"
@@ -118,15 +120,42 @@ dumpcheck_file(const char *path)
   return 0;
 }
 
+static int
+usage(void)
+{
+  fprintf(stderr, "usage: xyz -t file | xyz -a file | xyz -T file\n");
+  return 1;
+}
+
 int
 main(int argc, char **argv)
 {
-  if (argc == 3 && strcmp(argv[1], "-t") == 0)
-    return dumptoks(argv[2]);
-  if (argc == 3 && strcmp(argv[1], "-a") == 0)
-    return dumpast_file(argv[2]);
-  if (argc == 3 && strcmp(argv[1], "-T") == 0)
-    return dumpcheck_file(argv[2]);
-  fprintf(stderr, "usage: xyz -t file | xyz -a file | xyz -T file\n");
-  return 1;
+  const char *file = 0;
+  int mode = 0;
+  int c;
+
+  while ((c = getopt(argc, argv, "a:t:T:")) != -1) {
+    switch (c) {
+    case 'a':
+    case 't':
+    case 'T':
+      if (mode) /* one mode, one file */
+        return usage();
+      mode = c;
+      file = optarg;
+      break;
+    default: /* '?': getopt already said why */
+      return usage();
+    }
+  }
+  if (!mode || optind != argc) /* a file and nothing after it */
+    return usage();
+  switch (mode) {
+  case 't':
+    return dumptoks(file);
+  case 'a':
+    return dumpast_file(file);
+  default:
+    return dumpcheck_file(file);
+  }
 }
