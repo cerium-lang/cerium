@@ -1,0 +1,28 @@
+(file
+  (type Pair<T, U> (T, U))
+  (type Swap<T, U> (U, T))
+  (type Defaulted<T, U> (T, U))
+  (type D0 (i32, i32))
+  (type D1 (f64, f64))
+  (type D2 (f64, bool))
+  (type Chain<A, B, C> (A, B, C))
+  (type C1 (u8, (u8, u8), (u8, u8)))
+  (type Id<T> T)
+  (type Twice<T> (T, T))
+  (struct Box
+    (field v T))
+  (enum Either
+    (variant Left = 0 L)
+    (variant Right = 1 R))
+  (type Boxed Box<Either<u8, ?f64>>)
+  (type Nested ((i32, i32), (i32, i32)))
+  (enum Err
+    (variant Bad = 0)
+    (variant Worse = 1))
+  (type Opt ?i32)
+  (type Res Err?i32)
+  (type Deep ??i32)
+  (trait Sized)
+  (fn swap fn((T, U)) -> (U, T))
+  (fn constlen fn([N]i32) -> usize)
+  (fn mix fn([N]T, fn(T) -> T) -> ?T))

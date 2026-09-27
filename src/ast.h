@@ -43,7 +43,7 @@
   /* types */                                                                  \
   X(Ntopt, "topt") X(Ntresult, "tresult") X(Ntptr, "tptr")                     \
   X(Ntarray, "tarray") X(Nttuple, "ttuple") X(Ntfn, "tfn")                     \
-  X(Ntdyn, "tdyn") X(Nttype, "ttype")                                          \
+  X(Ntdyn, "tdyn") X(Nttype, "ttype") /* mut: dyn mut A */                      \
   /* items */                                                                  \
   X(Nfn, "fn") X(Nstruct, "struct") X(Nunion, "union") X(Nenum, "enum")        \
   X(Ntrait, "trait") X(Nimpl, "impl") X(Ntypedef, "typedef")                   \
@@ -75,6 +75,8 @@ struct Ast
 {
   Nk k;
   unsigned line, col;
+  int pub;     /* items only: visible outside the namespace
+                * (11-namespaces.md) */
   Ast **attrs; /* items, variants, fields, parameters -- the four
                 * slots the grammar gives attributes to; else NULL */
   union
@@ -139,6 +141,7 @@ struct Ast
       Ast *e; /* Ntry, Nreturn, Nexprstmt, Ntopt, Ninit's value,
                   Npfield's sub-pattern */
     } n1;
+    /* Ntdyn borrows un: e is the trait path, mut is "dyn mut A" */
     struct
     {
       Ast *e;       /* the indexed/ranged/... base */
@@ -163,7 +166,8 @@ struct Ast
     } blk;
     struct
     {
-      Ast *len; /* Nint, or NULL for [] */
+      Ast *len; /* Nint, or an Npath naming a const parameter,
+                   or NULL for [] */
       int mut;
       Ast *t;
       Ast **es;
@@ -205,6 +209,7 @@ struct Ast
     {
       char *name;
       Ast **gparams;
+      Ast *tag; /* "enum X(u32)": the tag type, or NULL */
       Ast **variants;
     } en;
     struct
@@ -258,6 +263,8 @@ struct Ast
       Ast **bounds; /* Npath vector */
       Ast *dflt;    /* = T, or NULL */
       int pack;     /* ...name */
+      int cnst;     /* const N: T -- a value parameter (08) */
+      Ast *t;       /* its type, cnst only */
     } gp;
     struct
     {
@@ -321,6 +328,10 @@ enum
  * the caller fills the union. Anything set to NULL where a vector is
  * wanted means "empty". */
 Ast *mk(Nk k);
+
+/* raw arena bytes for the passes after the tree: types and symbols
+ * outlive it, and nothing is freed either */
+void *arenaalloc(usize n);
 
 /* copy the lexer's current string value out of its reused buffer */
 char *mkstr(void);

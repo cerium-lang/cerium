@@ -52,6 +52,14 @@ bump(usize n)
   return p;
 }
 
+/* raw arena bytes for the other passes -- types and symbols are as
+ * permanent as the tree is, and none of them is ever freed either */
+void *
+arenaalloc(usize n)
+{
+  return bump(n);
+}
+
 Ast *
 mk(Nk k)
 {
@@ -267,6 +275,14 @@ dumpflags(unsigned f)
     printf(" r");
   if (f & STRF_ML)
     printf(" ml");
+}
+
+/* the pub flag of an item, as " pub" before the name */
+static void
+putpub(Ast *n)
+{
+  if (n->pub)
+    printf(" pub");
 }
 
 /* a path: bare segments inline, [::] first when rooted; a segment
@@ -509,10 +525,13 @@ dumpnode(Ast *n, int i)
     child(n->v.fnty.ret, i);
     break;
   case Ntdyn:
-    child(n->v.n1.e, i);
+    if (n->v.un.mut)
+      printf(" mut");
+    child(n->v.un.e, i);
     break;
   case Nfn:
     putattrs(n);
+    putpub(n);
     printf(" %s", n->v.fn.name);
     for (v = n->v.fn.gparams, j = 0; v && j < vlen(v); j++)
       child(v[j], i);
@@ -527,6 +546,7 @@ dumpnode(Ast *n, int i)
   case Nunion:
   case Ntrait:
     putattrs(n);
+    putpub(n);
     printf(" %s", n->v.ty.name);
     for (v = n->v.ty.gparams, j = 0; v && j < vlen(v); j++)
       child(v[j], i);
@@ -535,9 +555,11 @@ dumpnode(Ast *n, int i)
     break;
   case Nenum:
     putattrs(n);
+    putpub(n);
     printf(" %s", n->v.en.name);
     for (v = n->v.en.gparams, j = 0; v && j < vlen(v); j++)
       child(v[j], i);
+    child(n->v.en.tag, i);
     for (v = n->v.en.variants, j = 0; v && j < vlen(v); j++)
       child(v[j], i);
     break;
@@ -558,6 +580,7 @@ dumpnode(Ast *n, int i)
     break;
   case Nimpl:
     putattrs(n);
+    putpub(n);
     for (v = n->v.impl.gparams, j = 0; v && j < vlen(v); j++)
       child(v[j], i);
     child(n->v.impl.path, i);
@@ -571,6 +594,7 @@ dumpnode(Ast *n, int i)
     break;
   case Ntypedef:
     putattrs(n);
+    putpub(n);
     printf(" %s", n->v.td.name);
     for (v = n->v.td.gparams, j = 0; v && j < vlen(v); j++)
       child(v[j], i);
@@ -587,6 +611,7 @@ dumpnode(Ast *n, int i)
   case Nconst:
   case Nstatic:
     putattrs(n);
+    putpub(n);
     if (n->k == Nstatic && n->v.cst.mut)
       printf(" mut");
     printf(" %s", n->v.cst.name);
@@ -610,12 +635,15 @@ dumpnode(Ast *n, int i)
   case Ngparam:
     if (n->v.gp.pack)
       printf(" ...");
+    if (n->v.gp.cnst)
+      printf(" const");
     printf(" %s", n->v.gp.name);
     for (v = n->v.gp.bounds, j = 0; v && j < vlen(v); j++)
       child(v[j], i);
     if (n->v.gp.dflt)
       printf(" =");
     child(n->v.gp.dflt, i);
+    child(n->v.gp.t, i);
     break;
   case Nlet:
     if (n->v.let.mut)

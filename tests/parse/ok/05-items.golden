@@ -154,4 +154,43 @@
 (static mut M
   (path i32)
   (int 6))
+
+(fn pub pubfn
+  (param x
+    (path i32))
+  (path i32)
+  (block
+    (path x)))
+
+(struct pub PubS
+  (field a
+    (path u32)))
+
+(union pub PubU
+  (field a
+    (path u16))
+  (field b
+    (path u32)))
+
+(enum pub PubE
+  (variant A)
+  (variant B))
+
+(trait pub PubT
+  (fn m
+    (param self
+      (tptr
+        (path Self)))
+    (unit)))
+
+(typedef pub PubA
+  (path i32))
+
+(const pub PUBC
+  (path usize)
+  (int 4))
+
+(static pub PUBS
+  (path u32)
+  (int 1))
 )

@@ -104,4 +104,44 @@
     (path
       (seg Read
         (path Item)))))
+
+(typedef WithConstGp
+  (gparam T)
+  (gparam const N
+    (path usize))
+  (tarray
+    (path N)
+    (path T)))
+
+(enum Tagged
+  (path u32)
+  (variant A 0)
+  (variant B)
+  (variant C 10)
+  (variant D)
+  (variant Circle
+    (path f32))
+  (variant Rect
+    (field w
+      (path f32))
+    (field mut h
+      (path f32)))
+  (variant Unit2))
+
+(enum Plain
+  (variant Less)
+  (variant Equal)
+  (variant Greater))
+
+(enum GenEnum
+  (gparam T)
+  (path u8)
+  (variant Nil)
+  (variant Cons
+    (path T)
+    (path u8)))
+
+(typedef Dm
+  (tdyn mut
+    (path Read)))
 )

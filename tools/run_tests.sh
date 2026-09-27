@@ -1,12 +1,13 @@
 #!/bin/sh
 # run_tests.sh -- the golden tests.
 #
-# tests/lex and tests/parse split by pass: every lex/ok/*.xyz must
-# dump exactly its .golden as a token stream (regenerate one with:
-# ./xyz -t tests/lex/ok/NN.xyz > tests/lex/ok/NN.golden -- after
-# checking the dump by hand), every parse/ok/*.xyz as an AST (ditto
-# with -a), and every err/*.xyz under either must be rejected with
-# a diagnostic on stderr and a nonzero exit.
+# tests/lex, tests/parse and tests/check split by pass: every lex/ok
+#/*.xyz must dump exactly its .golden as a token stream (regenerate
+# one with: ./xyz -t tests/lex/ok/NN.xyz > tests/lex/ok/NN.golden --
+# after checking the dump by hand), every parse/ok/*.xyz as an AST
+# (ditto with -a), every check/ok/*.xyz as resolved declarations
+# (ditto with -T), and every err/*.xyz under any of them must be
+# rejected with a diagnostic on stderr and a nonzero exit.
 set -u
 cd "$(dirname "$0")/.."
 
@@ -31,11 +32,11 @@ golden() { # $1: the directory, $2: the dump flag
   done
 }
 
-rejected() { # $1: the directory
+rejected() { # $1: the directory, $2: the dump flag (-a or -T)
   for f in "$1"/*.xyz; do
     [ -e "$f" ] || continue
-    if ./xyz -a "$f" >/dev/null 2>&1; then
-      echo "FAIL $f (parsed cleanly; an error was expected)"
+    if ./xyz "${2:--a}" "$f" >/dev/null 2>&1; then
+      echo "FAIL $f (accepted; an error was expected)"
       fail=1
     else
       echo "ok   $f"
@@ -45,7 +46,9 @@ rejected() { # $1: the directory
 
 golden tests/lex/ok -t
 golden tests/parse/ok -a
-rejected tests/lex/err
-rejected tests/parse/err
+golden tests/check/ok -T
+rejected tests/lex/err -t
+rejected tests/parse/err -a
+rejected tests/check/err -T
 
 exit $fail

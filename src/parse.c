@@ -253,7 +253,8 @@ prefixtype(void)
     n->v.un.e = prefixtype();
     return n;
   }
-  case Tlbracket: { /* [ [integer] ] [mut] T */
+  case Tlbracket: { /* [ [length] ] [mut] T -- the length is an
+                     * integer or a const-parameter name (08) */
     Ast *n;
 
     next();
@@ -265,6 +266,16 @@ prefixtype(void)
       l = mk(Nint);
       l->v.i.num = mknum();
       n->v.arrlit.len = l;
+    } else if (peek() == Tident) {
+      next();
+      n->v.arrlit.len = mk(Npath);
+      n->v.arrlit.len->v.path.segs = vnew(Ast *, 1);
+      {
+        Ast *s = mk(Nseg);
+
+        s->v.seg.name = mkstr();
+        vappend(&n->v.arrlit.len->v.path.segs, &s);
+      }
     }
     want(Trbracket, "]");
     if (accept(Tmut))
@@ -327,7 +338,9 @@ prefixtype(void)
 
     next();
     n = mk(Ntdyn);
-    n->v.n1.e = typepath();
+    if (accept(Tmut)) /* dyn mut A: the writable handle (06) */
+      n->v.un.mut = 1;
+    n->v.un.e = typepath();
     return n;
   }
   case Ttype:
@@ -1173,11 +1186,13 @@ forstmt(int cnst)
 }
 
 static Ast *
-constitem(Ast **at) /* the "const" is peeked; block-level has no attrs */
+constitem(Ast **at, int pub) /* the "const" is peeked; block-level
+                              * has no attrs and no pub */
 {
   Ast *n = mk(Nconst);
 
   n->attrs = at;
+  n->pub = pub;
   next();
   n->v.cst.name = wantident("a const name");
   want(Tcolon, ":");
@@ -1232,7 +1247,7 @@ statement(void)
       return forstmt(1);
     }
     lexunsnap(s);
-    return constitem(0);
+    return constitem(0, 0);
   }
   default:
     perr("internal: statement dispatch");
@@ -1459,8 +1474,24 @@ genericparams(void) /* the "<" is peeked */
   for (;;) {
     Ast *g = mk(Ngparam);
 
-    if (accept(Tdotdotdot))
+    if (accept(Tdotdotdot)) {
       g->v.gp.pack = 1;
+    } else if (peek() == Tconst) { /* a value parameter, an array
+                                    * length (08-reflection.md) */
+      next();
+      g->v.gp.cnst = 1;
+      g->v.gp.name = wantident("a generic parameter");
+      want(Tcolon, ":");
+      g->v.gp.t = type_();
+      npush(&v, g);
+      if (peek() == Tcomma) {
+        next();
+        if (peek() == Tgt || peek() == Tshr)
+          break;
+        continue;
+      }
+      break;
+    }
     g->v.gp.name = wantident("a generic parameter");
     if (accept(Tcolon)) {
       for (;;) {
@@ -1489,11 +1520,13 @@ genericparams(void) /* the "<" is peeked */
 }
 
 static Ast *
-fnitem(Ast **at) /* the "fn" is peeked */
+fnitem(Ast **at, int pub) /* the "fn" is peeked; trait and impl
+                           * members carry no pub of their own */
 {
   Ast *n = mk(Nfn);
 
   n->attrs = at;
+  n->pub = pub;
   next();
   n->v.fn.name = wantident("a function name");
   if (peek() == Tlt)
@@ -1631,7 +1664,7 @@ traitmember(void)
     return n;
   }
   default:
-    return fnitem(attrs());
+    return fnitem(attrs(), 0);
   }
 }
 
@@ -1664,7 +1697,7 @@ implmember(void)
     return n;
   }
   default:
-    return fnitem(attrs());
+    return fnitem(attrs(), 0);
   }
 }
 
@@ -1718,17 +1751,21 @@ Ast *
 parseitem(void)
 {
   Ast **at = attrs();
+  int pub;
   Ast *n;
 
+  pub = accept(Tpub); /* after the attributes (01-types.md:
+                       * "#[extern(C)] pub fn triple") */
   switch (peek()) {
   case Tfn:
-    return fnitem(at);
+    return fnitem(at, pub);
   case Tstruct:
   case Tunion: {
     Ast *car;
 
     n = mk(peek() == Tstruct ? Nstruct : Nunion);
     n->attrs = at;
+    n->pub = pub;
     next();
     n->v.ty.name = wantident("a type name");
     if (peek() == Tlt)
@@ -1742,10 +1779,15 @@ parseitem(void)
 
     n = mk(Nenum);
     n->attrs = at;
+    n->pub = pub;
     next();
     n->v.en.name = wantident("an enum name");
     if (peek() == Tlt)
       n->v.en.gparams = genericparams();
+    if (accept(Tlparen)) { /* the tag type: enum X(u32) */
+      n->v.en.tag = type_();
+      want(Trparen, ")");
+    }
     car = variants();
     n->v.en.variants = car->v.en.variants;
     return n;
@@ -1753,6 +1795,7 @@ parseitem(void)
   case Ttrait: {
     n = mk(Ntrait);
     n->attrs = at;
+    n->pub = pub;
     next();
     n->v.ty.name = wantident("a trait name");
     if (peek() == Tlt)
@@ -1769,6 +1812,7 @@ parseitem(void)
   case Timpl: {
     n = mk(Nimpl);
     n->attrs = at;
+    n->pub = pub;
     next();
     if (peek() == Tlt)
       n->v.impl.gparams = genericparams();
@@ -1787,6 +1831,7 @@ parseitem(void)
   case Ttype: { /* type X = T; */
     n = mk(Ntypedef);
     n->attrs = at;
+    n->pub = pub;
     next();
     n->v.td.name = wantident("a type name");
     if (peek() == Tlt)
@@ -1799,16 +1844,18 @@ parseitem(void)
   case Tuse: {
     n = mk(Nuse);
     n->attrs = at;
+    n->pub = pub;
     next();
     usetree(n);
     want(Tsemi, ";");
     return n;
   }
   case Tconst:
-    return constitem(at);
+    return constitem(at, pub);
   case Tstatic: {
     n = mk(Nstatic);
     n->attrs = at;
+    n->pub = pub;
     next();
     if (accept(Tmut))
       n->v.cst.mut = 1;

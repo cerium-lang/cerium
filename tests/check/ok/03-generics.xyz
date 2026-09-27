@@ -1,0 +1,38 @@
+type Pair<T, U> = (T, U);
+type Swap<T, U> = Pair<U, T>;
+type Defaulted<T = i32, U = T> = (T, U);
+type D0 = Defaulted;
+type D1 = Defaulted<f64>;
+type D2 = Defaulted<f64, bool>;
+type Chain<A, B = Pair<A, A>, C = B> = (A, B, C);
+type C1 = Chain<u8>;
+type Id<T> = T;
+type Twice<T> = (Id<T>, Id<T>);
+
+struct Box<T> {
+  v: T,
+}
+
+enum Either<L, R> {
+  Left(L),
+  Right(R),
+}
+
+type Boxed = Box<Either<u8, ?f64>>;
+type Nested = Pair<Pair<i32, i32>, Pair<i32, i32>>;
+enum Err {
+  Bad,
+  Worse,
+}
+
+type Opt = ?i32;
+type Res = Err?i32;
+type Deep = ??i32;
+
+trait Sized {
+  fn size(self: *Self) -> usize;
+}
+
+fn swap<T, U>(p: Pair<T, U>) -> Pair<U, T>;
+fn constlen<const N: usize>(a: [N]i32) -> usize;
+fn mix<const N: usize, T>(a: [N]T, f: fn(T) -> T) -> ?T;

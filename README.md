@@ -79,7 +79,7 @@ A fresh clone builds with:
 ```
 git clone --recurse-submodules <url>
 cd xyz && make          # gcc; make CC=clang works too
-make test               # the golden tests: lexer, parser, rejections
+make test               # the golden tests: lexer, parser, checker, rejections
 ```
 
 The `qbe/` submodule only matters once codegen lands —
@@ -88,10 +88,15 @@ once per checkout so commits format what they stage.
 
 The lexer and the parser are in: `xyz -t file.xyz` dumps the token
 stream — position, kind, value — and `xyz -a file.xyz` dumps the parse
-tree as S-expressions, one node a line, children indented. `tests/lex`
-and `tests/parse` hold the golden tests, split by pass: `ok/` has one
-`.golden` per `.xyz` that the dumps must reproduce exactly, `err/` has
-inputs that must be rejected (`tools/run_tests.sh`).
+tree as S-expressions, one node a line, children indented. The type
+checker has started landing: `xyz -T file.xyz` declares every name in
+the file and resolves every type a declaration carries — aliases
+expand to their targets, `?T`/`E?T` build on the prelude's
+`Option`/`Result`, and `dyn A` names its trait — then dumps the
+result per item (`src/resolve.c`). `tests/lex`, `tests/parse` and
+`tests/check` hold the golden tests, split by pass: `ok/` has one
+`.golden` per `.xyz` that the dumps must reproduce exactly, `err/`
+has inputs that must be rejected (`tools/run_tests.sh`).
 
 ## Status
 

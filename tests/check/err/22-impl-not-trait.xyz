@@ -1,0 +1,3 @@
+struct S {}
+struct T {}
+impl S for T {}
