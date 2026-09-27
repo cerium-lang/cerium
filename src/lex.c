@@ -133,7 +133,7 @@ static void
 ungc(void)
 {
   if (npos == 0)
-    dieinternal("ungc underflow");
+    die("internal: ungc underflow");
   npos--;
   line = clog[npos].line;
   col = clog[npos].col;

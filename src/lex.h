@@ -20,8 +20,8 @@
 #ifndef LEX_H
 #define LEX_H
 
-/* util.h: die() -- one way out for the whole compiler */
-#include "util.h"
+/* die.h: die() -- one exit path for the whole compiler */
+#include "die.h"
 
 #include "vec.h"
 
