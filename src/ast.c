@@ -1,6 +1,6 @@
 /* ast.c -- node building and the S-expression dump.
  *
- * The dump is the golden-test contract (tests/parse): one node a
+ * The dump is the golden-test contract (tests/parse/ok): one node a
  * line, children indented two under their parent, leaf values inline.
  * Atoms print as themselves: "mut", "const", "let" for the for-head
  * shapes, "_" for a missing range end, "=" before a generic default

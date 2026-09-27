@@ -2,9 +2,9 @@
  *
  * Two modes:
  *   xyz -t file -- the token stream, one token a line (the lexer's
- *                  golden tests, tests/ok, diff against this)
+ *                  golden tests, tests/lex/ok, diff against this)
  *   xyz -a file -- the AST as S-expressions (the parser's golden
- *                  tests, tests/parse, diff against this)
+ *                  tests, tests/parse/ok, diff against this)
  *
  * Both formats are contracts -- changing either rewrites goldens.
  * The escapes in both are the lexer's own closed set (\n \t \r \0 \'
@@ -18,6 +18,7 @@
 #include "ast.h"
 #include "lex.h"
 #include "parse.h"
+#include "vec.h"
 
 static void
 dumpflags(unsigned f)
@@ -76,17 +77,21 @@ dumptoks(const char *path)
 static int
 dumpast_file(const char *path)
 {
-  lexinit(path);
-  printf("(file");
-  for (;;) {
-    Ast *it;
+  Ast **items = vnew(Ast *, 16);
+  usize i;
 
-    while (peek() != Teof) {
-      it = parseitem();
-      putchar('\n');
-      dumpast(it);
-    }
-    break;
+  lexinit(path);
+  while (peek() != Teof) {
+    Ast *it = parseitem();
+
+    vappend(&items, &it); /* nothing prints until the whole file
+                           * parses -- a rejection must not leave
+                           * "(file" stranded on stdout */
+  }
+  printf("(file");
+  for (i = 0; i < vlen(items); i++) {
+    putchar('\n');
+    dumpast(items[i]);
   }
   printf(")\n");
   return 0;

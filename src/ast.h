@@ -15,7 +15,7 @@
  *
  * The dump (ast.c) is S-expressions and a golden-test contract:
  * (kind field ...), one node a line, children indented. Changing it
- * rewrites every .golden under tests/parse/.
+ * rewrites every .golden under tests/parse/ok/.
  */
 
 #ifndef AST_H

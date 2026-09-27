@@ -1,56 +1,51 @@
 #!/bin/sh
 # run_tests.sh -- the golden tests.
 #
-# Every tests/ok/*.xyz must dump exactly its .golden as a token
-# stream (regenerate one with: ./xyz -t tests/ok/NN.xyz >
-# tests/ok/NN.golden -- after checking the dump by hand). Every
-# tests/parse/*.xyz must dump exactly its .golden as an AST (ditto
-# with -a). Every tests/err/*.xyz must be rejected with a diagnostic
-# on stderr and a nonzero exit.
+# tests/lex and tests/parse split by pass: every lex/ok/*.xyz must
+# dump exactly its .golden as a token stream (regenerate one with:
+# ./xyz -t tests/lex/ok/NN.xyz > tests/lex/ok/NN.golden -- after
+# checking the dump by hand), every parse/ok/*.xyz as an AST (ditto
+# with -a), and every err/*.xyz under either must be rejected with
+# a diagnostic on stderr and a nonzero exit.
 set -u
 cd "$(dirname "$0")/.."
 
 fail=0
 
-for f in tests/ok/*.xyz; do
-  g="${f%.xyz}.golden"
-  if [ ! -f "$g" ]; then
-    echo "FAIL $f (no .golden)"
-    fail=1
-    continue
-  fi
-  if ./xyz -t "$f" 2>/dev/null | diff -u "$g" - >/dev/null; then
-    echo "ok   $f"
-  else
-    echo "FAIL $f"
-    ./xyz -t "$f" 2>/dev/null | diff -u "$g" - | sed 's/^/     /'
-    fail=1
-  fi
-done
+golden() { # $1: the directory, $2: the dump flag
+  for f in "$1"/*.xyz; do
+    [ -e "$f" ] || continue
+    g="${f%.xyz}.golden"
+    if [ ! -f "$g" ]; then
+      echo "FAIL $f (no .golden)"
+      fail=1
+      continue
+    fi
+    if ./xyz "$2" "$f" 2>/dev/null | diff -u "$g" - >/dev/null; then
+      echo "ok   $f"
+    else
+      echo "FAIL $f"
+      ./xyz "$2" "$f" 2>/dev/null | diff -u "$g" - | sed 's/^/     /'
+      fail=1
+    fi
+  done
+}
 
-for f in tests/parse/*.xyz; do
-  g="${f%.xyz}.golden"
-  if [ ! -f "$g" ]; then
-    echo "FAIL $f (no .golden)"
-    fail=1
-    continue
-  fi
-  if ./xyz -a "$f" 2>/dev/null | diff -u "$g" - >/dev/null; then
-    echo "ok   $f"
-  else
-    echo "FAIL $f"
-    ./xyz -a "$f" 2>/dev/null | diff -u "$g" - | sed 's/^/     /'
-    fail=1
-  fi
-done
+rejected() { # $1: the directory
+  for f in "$1"/*.xyz; do
+    [ -e "$f" ] || continue
+    if ./xyz -a "$f" >/dev/null 2>&1; then
+      echo "FAIL $f (parsed cleanly; an error was expected)"
+      fail=1
+    else
+      echo "ok   $f"
+    fi
+  done
+}
 
-for f in tests/err/*.xyz; do
-  if ./xyz -t "$f" >/dev/null 2>&1; then
-    echo "FAIL $f (lexed cleanly; an error was expected)"
-    fail=1
-  else
-    echo "ok   $f"
-  fi
-done
+golden tests/lex/ok -t
+golden tests/parse/ok -a
+rejected tests/lex/err
+rejected tests/parse/err
 
 exit $fail

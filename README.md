@@ -88,10 +88,10 @@ once per checkout so commits format what they stage.
 
 The lexer and the parser are in: `xyz -t file.xyz` dumps the token
 stream — position, kind, value — and `xyz -a file.xyz` dumps the parse
-tree as S-expressions, one node a line, children indented. `tests/ok`
-and `tests/parse` hold one `.golden` per `.xyz` that the dumps must
-reproduce exactly (`tools/run_tests.sh`); `tests/err` holds inputs that
-must be rejected.
+tree as S-expressions, one node a line, children indented. `tests/lex`
+and `tests/parse` hold the golden tests, split by pass: `ok/` has one
+`.golden` per `.xyz` that the dumps must reproduce exactly, `err/` has
+inputs that must be rejected (`tools/run_tests.sh`).
 
 ## Status
 
