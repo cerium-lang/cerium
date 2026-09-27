@@ -52,7 +52,7 @@ prelude(void)
   Ast *rt = mkgp("T"); /* Result's own T */
   Ast *re = mkgp("E");
   Ast **ogps, **rgps;
-  struct Variant *ov, *rv;
+  Variant *ov, *rv;
   Type **some, *ok, *err;
 
   /* Option<T> */
@@ -100,7 +100,7 @@ prelude(void)
   sym_copy = mkmarker("Copy");
   sym_drop = mkmarker("Drop");
   {
-    struct Member *dm = arenaalloc(sizeof *dm);
+    Member *dm = arenaalloc(sizeof *dm);
     Type **ps = tyargs(1);
 
     memset(dm, 0, sizeof *dm);

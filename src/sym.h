@@ -16,6 +16,13 @@
 #include "ast.h"
 #include "type.h"
 
+/* this header's own types, typedef'd in one place so use sites drop
+ * the struct -- the pattern ast.h and type.h set. Sym's typedef
+ * lives in type.h, which needs the forward reference. */
+typedef struct Field Field;
+typedef struct Variant Variant;
+typedef struct Member Member;
+
 enum
 {
   Snone,
@@ -50,11 +57,11 @@ struct Variant
   char *name;
   u64 disc;
   int hasdisc;
-  int named;            /* named payload rather than positional */
-  struct Field *fields; /* named payload, or NULL */
-  usize nfields;        /* the named payload's count */
-  Type **payload;       /* positional payload types, or NULL */
-  usize npayload;       /* the positional payload's count */
+  int named;      /* named payload rather than positional */
+  Field *fields;  /* named payload, or NULL */
+  usize nfields;  /* the named payload's count */
+  Type **payload; /* positional payload types, or NULL */
+  usize npayload; /* the positional payload's count */
 };
 
 /* a member of a trait or an impl: a method, an associated type, or
@@ -81,17 +88,17 @@ struct Sym
 {
   char *name;
   int kind;
-  int pub;       /* unused until namespaces land */
-  Ast *decl;     /* the declaring item, or NULL for the prelude */
-  Ast **gparams; /* the Ngparam nodes, ngparams of them */
-  usize ngparams;
-  struct Sym *next; /* same-name overloads, fn only (04-generics.md) */
+  int pub;        /* unused until namespaces land */
+  Ast *decl;      /* the declaring item, or NULL for the prelude */
+  Ast **gparams;  /* the Ngparam nodes */
+  usize ngparams; /* their count */
+  Sym *next;      /* same-name overloads, fn only (04-generics.md) */
 
   /* Stype */
   int tykind;
-  struct Field *fields;
+  Field *fields;
   usize nfields;
-  struct Variant *variants;
+  Variant *variants;
   usize nvariants;
   Type *tagty;   /* the enum tag type, or NULL when compiler-picked */
   Type *aliasty; /* an alias: the resolved target */
@@ -103,7 +110,7 @@ struct Sym
   Type *cty;
   /* Strait, Simpl: the members, in declaration order. A trait's
    * carry the declared signatures; an impl's the resolved ones. */
-  struct Member *members;
+  Member *members;
   usize nmembers;
   /* Simpl: the resolved head. ipath is the trait (a trait impl) or
    * the type itself (an inherent one); ifort is what a trait impl

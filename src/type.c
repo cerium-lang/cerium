@@ -355,6 +355,7 @@ tysame(Type *a, Type *b)
 
 /* -- the printable form ------------------------------------------------- */
 
+typedef struct SBuf SBuf; /* the buffer tysprint writes into, below */
 struct SBuf
 {
   char *p;
@@ -362,14 +363,14 @@ struct SBuf
 };
 
 static void
-sbputs(struct SBuf *b, const char *s)
+sbputs(SBuf *b, const char *s)
 {
   while (*s && b->p < b->end)
     *b->p++ = *s++;
 }
 
 static void
-sbputu(struct SBuf *b, u64 v)
+sbputu(SBuf *b, u64 v)
 {
   char d[20]; /* 2^64-1 is 20 digits */
   int n = 0;
@@ -404,11 +405,11 @@ isres(Type *t)
   return t->k == Tyenum && t->sym == sym_result && t->nargs == 2;
 }
 
-static void sbfmt(struct SBuf *b, Type *t);
+static void sbfmt(SBuf *b, Type *t);
 
 /* the sym kinds and dyn: a name, then <args> when there are any */
 static void
-sbname(struct SBuf *b, Type *t)
+sbname(SBuf *b, Type *t)
 {
   usize i;
 
@@ -425,7 +426,7 @@ sbname(struct SBuf *b, Type *t)
 }
 
 static void
-sbfmt(struct SBuf *b, Type *t)
+sbfmt(SBuf *b, Type *t)
 {
   usize i;
 
@@ -532,7 +533,7 @@ sbfmt(struct SBuf *b, Type *t)
 char *
 tysprint(char *buf, usize n, Type *t)
 {
-  struct SBuf b;
+  SBuf b;
 
   if (n == 0)
     return buf;

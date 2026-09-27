@@ -33,6 +33,13 @@
 #include "sym.h"
 #include "type.h"
 
+/* the checker's file-local types -- typedef'd in one place so use
+ * sites drop the struct, the pattern ast.h and type.h set */
+typedef struct Bind Bind;
+typedef struct Env Env;
+typedef struct TSub TSub;
+typedef struct SpecSub SpecSub;
+
 /* -- diagnostics ------------------------------------------------------- */
 
 void
@@ -60,14 +67,14 @@ struct Bind
 
 struct Env
 {
-  struct Bind *b;
+  Bind *b;
   usize n;
   Sym *strait; /* resolving a trait's members: Self::X projects */
   Sym *impl;   /* resolving an impl's: Self::X is the supplied type */
 };
 
 static Type *
-envfind(struct Env *env, char *name)
+envfind(Env *env, char *name)
 {
   usize i;
 
@@ -77,10 +84,10 @@ envfind(struct Env *env, char *name)
   return 0;
 }
 
-static struct Env
+static Env
 envnone(void)
 {
-  struct Env env;
+  Env env;
 
   env.b = 0;
   env.n = 0;
@@ -90,10 +97,10 @@ envnone(void)
 }
 
 /* one more binding, on a fresh array -- envs are small and rare */
-static struct Env
-envpush(struct Env *e, char *name, Type *t)
+static Env
+envpush(Env *e, char *name, Type *t)
 {
-  struct Env r;
+  Env r;
 
   r.strait = e->strait;
   r.impl = e->impl;
@@ -117,10 +124,10 @@ selfty(void)
 /* the outer bindings, then these parameters' own on top of them --
  * a member fn's own generics shadow the impl's. outer may be NULL:
  * a top-level declaration has nothing outside it */
-static struct Env
-envgparams(struct Env *outer, Ast **gps, usize n)
+static Env
+envgparams(Env *outer, Ast **gps, usize n)
 {
-  struct Env o, r;
+  Env o, r;
   usize i;
 
   if (!outer) {
@@ -142,8 +149,8 @@ envgparams(struct Env *outer, Ast **gps, usize n)
 
 /* -- type resolution --------------------------------------------------- */
 
-static Type *rty(Ast *t, struct Env *env);
-static Type *rpath(Ast *p, struct Env *env);
+static Type *rty(Ast *t, Env *env);
+static Type *rpath(Ast *p, Env *env);
 
 /* the scalar type names are keywords in type position: they resolve
  * before the environment and the symbol table are consulted, and no
@@ -179,7 +186,7 @@ prim(const char *name)
 static Type *
 aliastarget(Sym *s)
 {
-  struct Env env;
+  Env env;
 
   if (s->aliasty)
     return s->aliasty;
@@ -197,7 +204,7 @@ aliastarget(Sym *s)
 static Type *
 aliasinst(Sym *s, Type **args, usize nargs, Ast *at)
 {
-  struct Env env;
+  Env env;
   usize i, n = s->ngparams;
   Type **all;
   Ast *target;
@@ -230,7 +237,7 @@ aliasinst(Sym *s, Type **args, usize nargs, Ast *at)
 /* the generic arguments of a path segment, resolved; $$ and ^^ wait
  * for the compile-time evaluator */
 static Type **
-rargs(Ast *seg, struct Env *env, usize *np)
+rargs(Ast *seg, Env *env, usize *np)
 {
   Ast **as = seg->v.seg.args;
   usize n = vlen(as);
@@ -283,7 +290,7 @@ tysprint1(Type *t)
 }
 
 /* a member by name, or NULL (traits and impls) */
-static struct Member *
+static Member *
 memberfind(Sym *s, const char *name)
 {
   usize i;
@@ -296,7 +303,7 @@ memberfind(Sym *s, const char *name)
 
 /* a path in type position */
 static Type *
-rpath(Ast *p, struct Env *env)
+rpath(Ast *p, Env *env)
 {
   Ast **segs = p->v.path.segs;
   usize nsegs = vlen(segs);
@@ -312,7 +319,7 @@ rpath(Ast *p, struct Env *env)
      * a trait's own declaration, the supplied type in an impl */
     char *nm = segs[1]->v.seg.name;
     Sym *owner = env->strait ? env->strait : env->impl;
-    struct Member *m = memberfind(owner, nm);
+    Member *m = memberfind(owner, nm);
 
     if (segs[1]->v.seg.args)
       cerrat(p, "'%s' takes no type arguments", nm);
@@ -412,7 +419,7 @@ fits(u64 v, Type *t)
 }
 
 static Type *
-rty(Ast *t, struct Env *env)
+rty(Ast *t, Env *env)
 {
   switch (t->k) {
   case Nunit:
@@ -502,9 +509,9 @@ rty(Ast *t, struct Env *env)
 /* a fn signature, against an env that already holds the outer
  * bindings -- the fn's own generics shadow them (04-generics.md) */
 static Type *
-resolvefnsig(Ast *it, struct Env *env)
+resolvefnsig(Ast *it, Env *env)
 {
-  struct Env e = envgparams(env, it->v.fn.gparams, vlen(it->v.fn.gparams));
+  Env e = envgparams(env, it->v.fn.gparams, vlen(it->v.fn.gparams));
   usize n = vlen(it->v.fn.params);
   Type **ps = n ? tyargs(n) : 0;
   usize i, j;
@@ -527,10 +534,10 @@ resolvefn(Sym *s)
 }
 
 /* the fields of a struct or union, and of a named enum payload */
-static struct Field *
-resolvefields(Ast **fs, struct Env *env, usize n, int isunion)
+static Field *
+resolvefields(Ast **fs, Env *env, usize n, int isunion)
 {
-  struct Field *fields = n ? arenaalloc(n * sizeof *fields) : 0;
+  Field *fields = n ? arenaalloc(n * sizeof *fields) : 0;
   usize i, j;
 
   memset(fields, 0, n * sizeof *fields);
@@ -553,7 +560,7 @@ static void
 resolvestruct(Sym *s)
 {
   Ast *it = s->decl;
-  struct Env env = envgparams(0, it->v.ty.gparams, vlen(it->v.ty.gparams));
+  Env env = envgparams(0, it->v.ty.gparams, vlen(it->v.ty.gparams));
 
   s->nfields = vlen(it->v.ty.fields);
   s->fields = resolvefields(it->v.ty.fields, &env, s->nfields, s->tykind == TYunion);
@@ -563,7 +570,7 @@ static void
 resolveenum(Sym *s)
 {
   Ast *it = s->decl;
-  struct Env env = envgparams(0, it->v.en.gparams, vlen(it->v.en.gparams));
+  Env env = envgparams(0, it->v.en.gparams, vlen(it->v.en.gparams));
   usize n = vlen(it->v.en.variants);
   u64 next = 0;
   usize i, j;
@@ -578,7 +585,7 @@ resolveenum(Sym *s)
   memset(s->variants, 0, n * sizeof *s->variants);
   for (i = 0; i < n; i++) {
     Ast *v = it->v.en.variants[i];
-    struct Variant *dv = &s->variants[i];
+    Variant *dv = &s->variants[i];
 
     for (j = 0; j < i; j++)
       if (strcmp(v->v.variant.name, it->v.en.variants[j]->v.variant.name) == 0)
@@ -614,7 +621,7 @@ resolveenum(Sym *s)
  * arguments: they are its own parameters, bound by this impl
  * (05-traits.md). Defaults fill the tail, the alias rule again. */
 static Type *
-rtraitpath(Ast *p, struct Env *env)
+rtraitpath(Ast *p, Env *env)
 {
   Ast **segs = p->v.path.segs;
   Ast *seg;
@@ -657,7 +664,7 @@ static void
 resolveimpl(Sym *s)
 {
   Ast *it = s->decl;
-  struct Env env = envgparams(0, it->v.impl.gparams, vlen(it->v.impl.gparams));
+  Env env = envgparams(0, it->v.impl.gparams, vlen(it->v.impl.gparams));
 
   if (it->v.impl.fort) { /* a trait impl: the path names the trait */
     s->ipath = rtraitpath(it->v.impl.path, &env);
@@ -677,7 +684,7 @@ static void
 resolvetrait(Sym *s)
 {
   Ast *it = s->decl;
-  struct Env env = envgparams(0, it->v.ty.gparams, vlen(it->v.ty.gparams));
+  Env env = envgparams(0, it->v.ty.gparams, vlen(it->v.ty.gparams));
   Ast **ms = it->v.ty.members;
   usize n = vlen(ms);
   usize i, j;
@@ -689,7 +696,7 @@ resolvetrait(Sym *s)
   memset(s->members, 0, n * sizeof *s->members);
   for (i = 0; i < n; i++) {
     Ast *m = ms[i];
-    struct Member *dm = &s->members[i];
+    Member *dm = &s->members[i];
 
     for (j = 0; j < i; j++)
       if (strcmp(itemname(m), itemname(ms[j])) == 0)
@@ -724,7 +731,7 @@ static void
 resolveimplmembers(Sym *s)
 {
   Ast *it = s->decl;
-  struct Env env = envgparams(0, it->v.impl.gparams, vlen(it->v.impl.gparams));
+  Env env = envgparams(0, it->v.impl.gparams, vlen(it->v.impl.gparams));
   Ast **ms = it->v.impl.members;
   usize n = vlen(ms);
   int round;
@@ -747,7 +754,7 @@ resolveimplmembers(Sym *s)
 
     for (i = 0; i < n; i++) {
       Ast *m = ms[i];
-      struct Member *dm = &s->members[i];
+      Member *dm = &s->members[i];
       int isfn = m->k == Nfn;
 
       if ((round == 0) == isfn)
@@ -794,7 +801,7 @@ struct TSub
 };
 
 static Type *
-tsubst(Type *t, struct TSub *sub)
+tsubst(Type *t, TSub *sub)
 {
   usize i;
 
@@ -807,7 +814,7 @@ tsubst(Type *t, struct TSub *sub)
         return sub->ty[i];
     return t;
   case Typroj: {
-    struct Member *m = memberfind(sub->is, t->name);
+    Member *m = memberfind(sub->is, t->name);
 
     if (m && m->kind == Mtype && t->sym == sub->is->ipath->sym)
       return m->val;
@@ -864,7 +871,7 @@ static void
 checkimplcomplete(Sym *s)
 {
   Sym *ts = s->ipath->sym;
-  struct TSub sub;
+  TSub sub;
   usize i;
 
   sub.gp = ts->gparams;
@@ -873,8 +880,8 @@ checkimplcomplete(Sym *s)
   sub.selfty = s->ifort;
   sub.is = s;
   for (i = 0; i < ts->nmembers; i++) {
-    struct Member *tm = &ts->members[i];
-    struct Member *im = memberfind(s, tm->name);
+    Member *tm = &ts->members[i];
+    Member *im = memberfind(s, tm->name);
 
     if (!im)
       cerrat(s->decl, "'%s' is missing from the impl", tm->name);
@@ -913,7 +920,7 @@ struct SpecSub
   usize n;
 };
 
-static int spec1(Type *a, Type *b, struct SpecSub *s);
+static int spec1(Type *a, Type *b, SpecSub *s);
 
 /* the child of a slot kind, Tymut unwrapped, and whether it had one */
 static Type *
@@ -924,7 +931,7 @@ slotchild(Type *t, int *mut)
 }
 
 static int
-spec1(Type *a, Type *b, struct SpecSub *s)
+spec1(Type *a, Type *b, SpecSub *s)
 {
   usize i;
 
@@ -997,7 +1004,7 @@ spec1(Type *a, Type *b, struct SpecSub *s)
 static int
 specializes(Type *a, Type *b)
 {
-  struct SpecSub s;
+  SpecSub s;
 
   memset(&s, 0, sizeof s);
   return spec1(a, b, &s);
@@ -1280,7 +1287,7 @@ checkfile(Ast **items)
       break;
     case Nconst:
     case Nstatic: {
-      struct Env env = envnone();
+      Env env = envnone();
 
       s->cty = rty(it->v.cst.t, &env);
       break;
@@ -1342,7 +1349,7 @@ dumpmembers(Sym *s, int i)
   usize j;
 
   for (j = 0; j < s->nmembers; j++) {
-    struct Member *m = &s->members[j];
+    Member *m = &s->members[j];
 
     printf("\n");
     ind(i + 2);
@@ -1404,7 +1411,7 @@ dumpitem(Ast *it, Sym *s, int i)
       tyfmt(s->tagty);
     }
     for (j = 0; j < s->nvariants; j++) {
-      struct Variant *v = &s->variants[j];
+      Variant *v = &s->variants[j];
 
       printf("\n");
       ind(i + 2);
