@@ -8,6 +8,11 @@
 # (ditto with -a), every check/ok/*.xyz as resolved declarations
 # (ditto with -T), and every err/*.xyz under any of them must be
 # rejected with a diagnostic on stderr and a nonzero exit.
+#
+# tests/run is codegen's: every *.xyz compiles to a binary whose
+# exit code the matching .expect names (stdout compares once M3b
+# gives the language a way to print). It needs qbe/qbe built -- a
+# checkout without it skips the section rather than failing.
 set -u
 cd "$(dirname "$0")/.."
 
@@ -44,11 +49,53 @@ rejected() { # $1: the directory, $2: the dump flag (-a or -T)
   done
 }
 
+runthem() { # $1: the directory; an .expect of "!" wants rejection
+  tmp=$(mktemp -d)
+  for f in "$1"/*.xyz; do
+    [ -e "$f" ] || continue
+    g="${f%.xyz}.expect"
+    if [ ! -f "$g" ]; then
+      echo "FAIL $f (no .expect)"
+      fail=1
+      continue
+    fi
+    exp=$(cat "$g")
+    if [ "$exp" = "!" ]; then
+      if ./xyz -c "$f" -o "$tmp/out" 2>/dev/null; then
+        echo "FAIL $f (compiled; a rejection was expected)"
+        fail=1
+      else
+        echo "ok   $f"
+      fi
+      continue
+    fi
+    if ! ./xyz -c "$f" -o "$tmp/out" 2>"$tmp/err"; then
+      echo "FAIL $f (rejected: $(head -1 "$tmp/err"))"
+      fail=1
+      continue
+    fi
+    "$tmp/out"
+    got=$?
+    if [ "$got" != "$exp" ]; then
+      echo "FAIL $f (exit $got, want $exp)"
+      fail=1
+    else
+      echo "ok   $f"
+    fi
+  done
+  rm -rf "$tmp"
+}
+
 golden tests/lex/ok -t
 golden tests/parse/ok -a
 golden tests/check/ok -T
 rejected tests/lex/err -t
 rejected tests/parse/err -a
 rejected tests/check/err -T
+if [ -x qbe/qbe ]; then
+  runthem tests/run
+else
+  echo "skipped tests/run -- build qbe first: make qbe/qbe"
+fi
 
 exit $fail

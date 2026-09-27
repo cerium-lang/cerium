@@ -121,6 +121,11 @@ Type *tyres(Type *t, Type *e); /* E?T is Result<T, E> */
  * places that talk about it */
 int tysame(Type *a, Type *b);
 
+/* substitute generic parameters by the types a call or an instance
+ * bound them to: every Typaram that names one of gps reads as the
+ * tys slot in step with it */
+Type *gsubst(Type *t, Ast **gps, Type **tys, usize n);
+
 /* the printable form, expanded: aliases are already gone, and the
  * sugar is spelled back -- ?T, E?T, [3]mut u8. tysprint writes a
  * NUL-terminated string into buf and returns it; tyfmt prints to

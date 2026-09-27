@@ -1,0 +1,3 @@
+#[packed] #[align(16)]
+struct P { a: u8, b: u32 }
+fn main() -> usize { @sizeof<P>() }

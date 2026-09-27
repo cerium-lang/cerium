@@ -643,59 +643,8 @@ varfind(Sym *s, const char *name)
 }
 
 /* substitute generic parameters in a fn's signature by the types the
- * call bound them to: id(3) gives T = i32, so the return reads i32 */
-static Type *
-gsubst(Type *t, Ast **gps, Type **tys, usize n)
-{
-  usize i;
-
-  if (!t)
-    return t;
-  switch (t->k) {
-  case Typaram:
-    for (i = 0; i < n; i++)
-      if (t->gp == gps[i])
-        return tys[i];
-    return t;
-  case Typtr:
-    return typtr(gsubst(t->t, gps, tys, n));
-  case Tyslice:
-    return tyslice(gsubst(t->t, gps, tys, n));
-  case Tymut:
-    return tymut(gsubst(t->t, gps, tys, n));
-  case Tyarray:
-    return tyarray(t->n, gsubst(t->t, gps, tys, n));
-  case Tytuple: {
-    Type **as = t->nargs ? tyargs(t->nargs) : 0;
-
-    for (i = 0; i < t->nargs; i++)
-      as[i] = gsubst(t->args[i], gps, tys, n);
-    return tytuple(as, t->nargs);
-  }
-  case Tyfn: {
-    Type **as = t->nargs ? tyargs(t->nargs) : 0;
-
-    for (i = 0; i < t->nargs; i++)
-      as[i] = gsubst(t->args[i], gps, tys, n);
-    return tyfn(as, t->nargs, gsubst(t->t, gps, tys, n));
-  }
-  case Tyenum:
-  case Tystruct:
-  case Tyunion:
-  case Tytrait:
-  case Tydyn: {
-    Type **as = t->sym->ngparams && t->nargs ? tyargs(t->nargs) : 0;
-
-    for (i = 0; i < t->nargs; i++)
-      as[i] = gsubst(t->args[i], gps, tys, n);
-    return t->k == Tydyn    ? tydyn(t->sym, as, t->nargs, t->mut)
-           : t->k == Tyenum ? tyopt(gsubst(t->args[0], gps, tys, n))
-                            : tysym(t->sym, as, t->nargs);
-  }
-  default:
-    return t;
-  }
-}
+ * call bound them to: id(3) gives T = i32, so the return reads i32.
+ * Lives in type.c now -- the emitter's layouts need it too. */
 
 /* bind a signature's generic parameters from one argument's type:
  * walking both in step, a Typaram on the left records the right */
