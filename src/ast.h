@@ -73,12 +73,12 @@ const char *nkname(Nk k);
 typedef struct Ast Ast;
 struct Ast
 {
-  Nk k;
+  Nk       k;
   unsigned line, col;
-  int pub;     /* items only: visible outside the namespace
-                * (11-namespaces.md) */
-  Ast **attrs; /* items, variants, fields, parameters -- the four
-                * slots the grammar gives attributes to; else NULL */
+  int      pub; /* items only: visible outside the namespace
+                 * (11-namespaces.md) */
+  Ast **attrs;  /* items, variants, fields, parameters -- the four
+                 * slots the grammar gives attributes to; else NULL */
   union
   {
     struct
@@ -87,18 +87,18 @@ struct Ast
     } i;
     struct
     {
-      Ast *e;  /* the tuple */
-      u64 idx; /* the index */
-    } tup;     /* Ntupidx -- a pointer and a u64, so it cannot borrow
-                * n1/i: the union would overlap them */
+      Ast *e;   /* the tuple */
+      u64  idx; /* the index */
+    } tup;      /* Ntupidx -- a pointer and a u64, so it cannot borrow
+                 * n1/i: the union would overlap them */
     struct
     {
       double flt;
     } f;
     struct
     {
-      char *s;        /* value bytes, NUL-terminated for the dump */
-      usize len;      /* byte count */
+      char    *s;     /* value bytes, NUL-terminated for the dump */
+      usize    len;   /* byte count */
       unsigned flags; /* Nstr: STRF_* */
     } s;
     struct
@@ -108,7 +108,7 @@ struct Ast
     struct
     {
       Ast **segs; /* Npath: Nseg vector */
-      int root;   /* leading "::" */
+      int   root; /* leading "::" */
     } path;
     struct
     {
@@ -118,17 +118,17 @@ struct Ast
     struct
     {
       Ast *l, *r;
-      Tok op; /* Nbin, Nassign; unused for Nrange */
+      Tok  op; /* Nbin, Nassign; unused for Nrange */
     } bin;
     struct
     {
       Ast *e;
-      Tok op;  /* Nun: the operator token */
-      int mut; /* Nun: &mut; Ntptr: *mut */
+      Tok  op;  /* Nun: the operator token */
+      int  mut; /* Nun: &mut; Ntptr: *mut */
     } un;
     struct
     {
-      Ast *f;     /* Ncall, Nbuiltin: the callee */
+      Ast  *f;    /* Ncall, Nbuiltin: the callee */
       Ast **args; /* Ncall, Nbuiltin, Nmatch: args or arms */
     } call;
     struct
@@ -149,12 +149,12 @@ struct Ast
     } ridx;
     struct
     {
-      Ast *e;
+      Ast  *e;
       char *name;
     } fld; /* Nfield */
     struct
     {
-      int cnst; /* const if/match/for */
+      int  cnst; /* const if/match/for */
       Ast *cond;
       Ast *then; /* Nblock */
       Ast *els;  /* Nif or Nblock, or NULL */
@@ -162,32 +162,32 @@ struct Ast
     struct
     {
       Ast **stmts;
-      Ast *tail; /* the block's value, or NULL */
+      Ast  *tail; /* the block's value, or NULL */
     } blk;
     struct
     {
       Ast *len; /* Nint, or an Npath naming a const parameter,
                    or NULL for [] */
-      int mut;
-      Ast *t;
+      int   mut;
+      Ast  *t;
       Ast **es;
     } arrlit;
     struct
     {
-      Ast *path;   /* Npath */
+      Ast  *path;  /* Npath */
       Ast **inits; /* Ninit vector */
     } slit;
     struct
     {
       Ast **caps;   /* Ncap vector */
       Ast **params; /* Nparam vector */
-      Ast *ret;     /* or NULL */
-      Ast *body;    /* Nblock */
+      Ast  *ret;    /* or NULL */
+      Ast  *body;   /* Nblock */
     } clos;
     struct
     {
-      int byref; /* & or &mut capture */
-      int mut;   /* mut x, or &mut x */
+      int   byref; /* & or &mut capture */
+      int   mut;   /* mut x, or &mut x */
       char *name;
     } cap;
     struct
@@ -195,8 +195,8 @@ struct Ast
       char *name;    /* Nfn, Nstruct, ...: the declared name */
       Ast **gparams; /* Ngparam vector, or NULL */
       Ast **params;  /* Nparam vector, or NULL */
-      Ast *ret;      /* or NULL */
-      Ast *body;     /* Nblock, or NULL for the ";" form */
+      Ast  *ret;     /* or NULL */
+      Ast  *body;    /* Nblock, or NULL for the ";" form */
     } fn;
     struct
     {
@@ -209,95 +209,95 @@ struct Ast
     {
       char *name;
       Ast **gparams;
-      Ast *tag; /* "enum X(u32)": the tag type, or NULL */
+      Ast  *tag; /* "enum X(u32)": the tag type, or NULL */
       Ast **variants;
     } en;
     struct
     {
       Ast **attrs;
       char *name; /* Nvariant, Nfield */
-      u64 disc;   /* Nvariant: "= integer", when hasdisc */
-      int hasdisc;
+      u64   disc; /* Nvariant: "= integer", when hasdisc */
+      int   hasdisc;
       Ast **payload; /* Nvariant: types or Nfield list, or NULL */
-      int named;     /* payload braces rather than parens */
-      int mut;       /* Nfield */
-      Ast *t;        /* Nfield's type */
+      int   named;   /* payload braces rather than parens */
+      int   mut;     /* Nfield */
+      Ast  *t;       /* Nfield's type */
     } variant;       /* Nvariant, Nfield */
     struct
     {
       Ast **gparams; /* impl's own */
-      Ast *path;     /* the trait or the type */
-      Ast *fort;     /* impl ... for T, or NULL (inherent) */
+      Ast  *path;    /* the trait or the type */
+      Ast  *fort;    /* impl ... for T, or NULL (inherent) */
       Ast **members;
     } impl;
     struct
     {
       char *name;
       Ast **gparams;
-      Ast *t; /* the aliased type */
+      Ast  *t; /* the aliased type */
     } td;
     struct
     {
-      Ast *path;  /* Npath; a nested Nuse hangs off subs */
+      Ast  *path; /* Npath; a nested Nuse hangs off subs */
       Ast **subs; /* nested use trees */
-      int star;   /* ::* */
+      int   star; /* ::* */
     } use;
     struct
     {
       Ast **attrs;
-      int mut;    /* static mut, let mut */
+      int   mut;  /* static mut, let mut */
       char *name; /* const/static: the name */
-      Ast *t;
-      Ast *e;
+      Ast  *t;
+      Ast  *e;
     } cst; /* Nconst, Nstatic */
     struct
     {
-      int mut;
-      int cnst; /* parameter: the argument is compile-time known */
+      int   mut;
+      int   cnst; /* parameter: the argument is compile-time known */
       char *name;
-      Ast *t;
+      Ast  *t;
     } param; /* Nparam, and let's shape below is close enough */
     struct
     {
       char *name;   /* the generic parameter, or the pack's */
       Ast **bounds; /* Npath vector */
-      Ast *dflt;    /* = T, or NULL */
-      int pack;     /* ...name */
-      int cnst;     /* const N: T -- a value parameter (08) */
-      Ast *t;       /* its type, cnst only */
+      Ast  *dflt;   /* = T, or NULL */
+      int   pack;   /* ...name */
+      int   cnst;   /* const N: T -- a value parameter (08) */
+      Ast  *t;      /* its type, cnst only */
     } gp;
     struct
     {
-      int mut;
+      int  mut;
       Ast *pat;
       Ast *t; /* : T, or NULL */
       Ast *e; /* = e */
     } let;
     struct
     {
-      int cnst;
-      int shape;  /* FCOND, FLET, FIN (below) */
+      int  cnst;
+      int  shape; /* FCOND, FLET, FIN (below) */
       Ast *a, *b; /* per shape: the condition; the pattern and the
                       source; the pattern and the iterable */
       Ast *body;
     } forx;
     struct
     {
-      Ast *path;     /* Npath */
+      Ast  *path;    /* Npath */
       Ast **payload; /* patterns or Npfield list, or NULL */
-      int named;     /* braces */
-      int rest;      /* ".." */
+      int   named;   /* braces */
+      int   rest;    /* ".." */
     } ppath;
     struct
     {
       Ast **fields; /* Npfield vector */
-      int rest;     /* ".." */
+      int   rest;   /* ".." */
     } pstruct;
     struct
     {
       char *name;
-      Ast *e; /* Ninit: the value; Npfield: the sub-pattern, or NULL */
-    } init;   /* Ninit, Npfield -- name and child must coexist */
+      Ast  *e; /* Ninit: the value; Npfield: the sub-pattern, or NULL */
+    } init;    /* Ninit, Npfield -- name and child must coexist */
     struct
     {
       char *name;  /* @name */
@@ -307,7 +307,7 @@ struct Ast
     struct
     {
       Ast **args; /* the parameter types, anonymous (01-types.md) */
-      Ast *ret;
+      Ast  *ret;
     } fnty; /* Ntfn */
     struct
     {
@@ -335,7 +335,7 @@ void *arenaalloc(usize n);
 
 /* copy the lexer's current string value out of its reused buffer */
 char *mkstr(void);
-u64 mknum(void);
+u64   mknum(void);
 
 /* the S-expression dump: one node, then its children indented */
 void dumpast(Ast *n);

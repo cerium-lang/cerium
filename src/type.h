@@ -25,7 +25,7 @@
 
 #include "ast.h"
 
-typedef struct Sym Sym; /* sym.h; a declaration, never dereferenced here */
+typedef struct Sym  Sym; /* sym.h; a declaration, never dereferenced here */
 typedef struct Type Type;
 
 typedef unsigned char u8; /* the tree's u64 (lex.h) has no smaller kin */
@@ -77,16 +77,16 @@ enum
 
 struct Type
 {
-  u8 k;        /* one of Ty* above */
-  u8 num;      /* Tyint: IN_* */
-  u8 mut;      /* Tydyn: dyn mut A */
-  u64 n;       /* Tyarray: the length, when it is a number */
+  u8    k;     /* one of Ty* above */
+  u8    num;   /* Tyint: IN_* */
+  u8    mut;   /* Tydyn: dyn mut A */
+  u64   n;     /* Tyarray: the length, when it is a number */
   usize nargs; /* the args count below */
-  Sym *sym;    /* Tystruct/Tyunion/Tyenum/Tytrait/Tydyn/Typroj: the declaration */
-  Ast *gp;     /* Typaram: the Ngparam; Tyarray: the length, when it is a
+  Sym  *sym;   /* Tystruct/Tyunion/Tyenum/Tytrait/Tydyn/Typroj: the declaration */
+  Ast  *gp;    /* Typaram: the Ngparam; Tyarray: the length, when it is a
                 * const-parameter reference */
   Type **args; /* nargs slots, or NULL when none */
-  Type *t;     /* Typtr/Tyslice/Tyarray/Tymut: the child; Tyfn/Typroj: the
+  Type  *t;    /* Typtr/Tyslice/Tyarray/Tymut: the child; Tyfn/Typroj: the
                 * return / the Self */
   char *name;  /* Typroj: the associated type's name */
 };
@@ -126,6 +126,6 @@ int tysame(Type *a, Type *b);
  * NUL-terminated string into buf and returns it; tyfmt prints to
  * stdout, the dump's sink. */
 char *tysprint(char *buf, usize n, Type *t);
-void tyfmt(Type *t);
+void  tyfmt(Type *t);
 
 #endif

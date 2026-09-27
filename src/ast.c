@@ -26,9 +26,9 @@
 typedef struct Chunk Chunk; /* the arena's link, for the bump below */
 struct Chunk
 {
-  Chunk *next;         /* the chunk list, newest first */
-  usize used;          /* bytes handed out of mem */
-  char mem[64 * 1024]; /* the storage, one malloc */
+  Chunk *next;           /* the chunk list, newest first */
+  usize  used;           /* bytes handed out of mem */
+  char   mem[64 * 1024]; /* the storage, one malloc */
 };
 static Chunk *chunks;
 
@@ -36,7 +36,7 @@ static void *
 bump(usize n)
 {
   Chunk *c = chunks;
-  char *p;
+  char  *p;
 
   n = (n + 7u) & ~(usize) 7u; /* 8-byte alignment: nodes carry
                                * pointers and doubles */
@@ -78,7 +78,7 @@ char *
 mkstr(void)
 {
   Token *t = lexcur();
-  char *s = bump(t->v.str.len + 1);
+  char  *s = bump(t->v.str.len + 1);
 
   memcpy(s, t->v.str.s, t->v.str.len);
   s[t->v.str.len] = 0;
@@ -226,7 +226,7 @@ void
 dumpu64(u64 v)
 {
   char d[20]; /* 2^64-1 is 20 digits */
-  int n = 0;
+  int  n = 0;
 
   do {
     d[n++] = (char) ('0' + (int) (v % 10));
@@ -318,7 +318,7 @@ putattrs(Ast *n)
   usize i;
 
   for (a = n->attrs, i = 0; a && i < vlen(a); i++) {
-    Ast *at = a[i];
+    Ast  *at = a[i];
     Ast **args;
     usize j;
 

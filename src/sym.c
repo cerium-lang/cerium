@@ -93,7 +93,7 @@ symfind(const char *name)
 Sym *
 symdecl(const char *name, int kind, Ast *decl, Ast **gparams, usize ngparams)
 {
-  Sym *s;
+  Sym  *s;
   usize i;
 
   if (tbln * 4u >= tblcap * 3u)

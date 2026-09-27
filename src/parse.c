@@ -30,7 +30,7 @@ static void
 perr(const char *fmt, ...)
 {
   va_list ap;
-  Token *t = lexcur();
+  Token  *t = lexcur();
 
   fprintf(stderr, "%s:%u:%u: ", lexpath(), t->line, t->col);
   va_start(ap, fmt);
@@ -172,14 +172,14 @@ attrs(void)
 
 /* -- types -------------------------------------------------------------- */
 
-static Ast *type_(void);
-static Ast *expr(void);
-static Ast *postfix(void);
-static Ast *primary(void);
-static Ast *orexpr(void);
-static Ast *pattern(void);
-static Ast *block(void);
-static Ast *statement(void);
+static Ast  *type_(void);
+static Ast  *expr(void);
+static Ast  *postfix(void);
+static Ast  *primary(void);
+static Ast  *orexpr(void);
+static Ast  *pattern(void);
+static Ast  *block(void);
+static Ast  *statement(void);
 static Ast **parameters(void);
 
 /* a path in type position: "<" after a segment is generic arguments,
@@ -400,8 +400,8 @@ static Ast **
 tryargs(void)
 {
   LexSnap *snap;
-  Ast **args = 0;
-  Tok after;
+  Ast    **args = 0;
+  Tok      after;
 
   snap = lexsnap();
   next();               /* "<" */
@@ -630,7 +630,7 @@ static Ast *
 cmpexpr(void) /* no chaining: one operator, at most */
 {
   Ast *l = bitorexpr();
-  Tok op = peek();
+  Tok  op = peek();
 
   switch (op) {
   case Tlt:
@@ -675,7 +675,7 @@ unary(void)
   case Ttilde:
   case Tcaret2:
   case Tdollar2: {
-    Tok op = next();
+    Tok  op = next();
     Ast *n = mk(Nun);
 
     n->v.un.op = op;
@@ -862,7 +862,7 @@ isbuiltin(const char *name)
   static const char *const names[] = {"sizeof",   "alignof",      "offset", "cast",
                                       "typeinfo", "typeof",       "field",  "count",
                                       "take",     "compileError", 0};
-  usize i;
+  usize                    i;
 
   for (i = 0; names[i]; i++)
     if (strcmp(name, names[i]) == 0)
@@ -915,7 +915,7 @@ static Ast *
 arraylit(void) /* the "[" is peeked */
 {
   Ast *n = mk(Narraylit);
-  int save = headctx;
+  int  save = headctx;
 
   headctx = 0; /* inside the literal, a "{ " is a literal again */
   next();
@@ -1043,7 +1043,7 @@ primary(void)
   }
   case Tlparen: {
     Ast *n;
-    int save = headctx;
+    int  save = headctx;
 
     headctx = 0; /* inside the parens, a "{ " is a literal again */
     next();
@@ -1281,7 +1281,7 @@ static Ast *
 block(void)
 {
   Ast *n = mk(Nblock);
-  int done = 0;
+  int  done = 0;
 
   want(Tlbrace, "{");
   for (;;) {
@@ -1773,8 +1773,8 @@ Ast *
 parseitem(void)
 {
   Ast **at = attrs();
-  int pub;
-  Ast *n;
+  int   pub;
+  Ast  *n;
 
   pub = accept(Tpub); /* after the attributes (01-types.md:
                        * "#[extern(C)] pub fn triple") */

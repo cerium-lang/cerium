@@ -131,8 +131,8 @@ int
 main(int argc, char **argv)
 {
   const char *file = 0;
-  int mode = 0;
-  int c;
+  int         mode = 0;
+  int         c;
 
   while ((c = getopt(argc, argv, "a:t:T:")) != -1) {
     switch (c) {

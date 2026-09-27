@@ -48,12 +48,12 @@ mkmarker(const char *name)
 void
 prelude(void)
 {
-  Ast *ot = mkgp("T"); /* Option's T */
-  Ast *rt = mkgp("T"); /* Result's own T */
-  Ast *re = mkgp("E");
-  Ast **ogps, **rgps;
+  Ast     *ot = mkgp("T"); /* Option's T */
+  Ast     *rt = mkgp("T"); /* Result's own T */
+  Ast     *re = mkgp("E");
+  Ast    **ogps, **rgps;
   Variant *ov, *rv;
-  Type **some, *ok, *err;
+  Type   **some, *ok, *err;
 
   /* Option<T> */
   ogps = arenaalloc(1 * sizeof *ogps);
@@ -101,7 +101,7 @@ prelude(void)
   sym_drop = mkmarker("Drop");
   {
     Member *dm = arenaalloc(sizeof *dm);
-    Type **ps = tyargs(1);
+    Type  **ps = tyargs(1);
 
     memset(dm, 0, sizeof *dm);
     dm->name = "drop";

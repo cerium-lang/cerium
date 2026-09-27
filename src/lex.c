@@ -12,9 +12,9 @@
 
 #include "lex.h"
 
-static FILE *inf;
+static FILE       *inf;
 static const char *inpath = "<stdin>";
-static unsigned line = 1, col = 1; /* position of the NEXT character */
+static unsigned    line = 1, col = 1; /* position of the NEXT character */
 
 static Token cur;   /* the token peek/next last produced */
 static Token thead; /* peeked token; t == Txxx means empty */
@@ -35,7 +35,7 @@ static char *buf;   /* reused value buffer, NUL-terminated */
 
 static struct
 {
-  int c;
+  int      c;
   unsigned line, col; /* the seat this character sits at */
 } clog[64];
 static int nread; /* characters pulled from the file */
@@ -45,7 +45,7 @@ static int eofseen;
 /* the backtracking stack (defined far below) keeps rewind points in
  * the log's coordinates; a compaction shifts them along */
 static void snapshiftdown(int off);
-static int snapshotkeep(int floor);
+static int  snapshotkeep(int floor);
 
 static void
 clogput(int c)
@@ -263,7 +263,7 @@ parseu64(const char *s, int base, int *ovf)
 static struct
 {
   const char *name;
-  Tok t;
+  Tok         t;
 } kwtab[] = {
     {"fn", Tfn},       {"struct", Tstruct}, {"enum", Tenum},         {"union", Tunion},
     {"trait", Ttrait}, {"impl", Timpl},     {"type", Ttype},         {"use", Tuse},
@@ -406,8 +406,8 @@ lexident(int c0)
 static void
 lexnumber(int c0) /* c0 is a digit */
 {
-  int base = 10, c = c0, isflt = 0, ovf;
-  char *end;
+  int    base = 10, c = c0, isflt = 0, ovf;
+  char  *end;
   double d;
 
   bufclear();
@@ -606,9 +606,9 @@ static void
 lexmultiline(int flags)
 {
   usize *lstarts = vnew(usize, 0); /* buf offset where each content line starts */
-  usize lineoff, nlines = 0, i, w, clen;
-  char *closing;
-  int c, c2, c3;
+  usize  lineoff, nlines = 0, i, w, clen;
+  char  *closing;
+  int    c, c2, c3;
 
   c = gc();
   if (c != '\n')
@@ -732,7 +732,7 @@ lexmultiline(int flags)
 static Token
 lex(void)
 {
-  int c, c2, c3;
+  int      c, c2, c3;
   unsigned sl, sc;
 
   /* blanks and comments are equivalent */
@@ -999,12 +999,12 @@ nextgt(void)
 
 struct LexSnap
 {
-  LexSnap *prev;      /* the stack, innermost first */
-  int npos;           /* the cursor, in the log's current coordinates */
-  unsigned line, col; /* where the snapshot was taken */
-  Token thead, cur;   /* the saved slots */
-  usize blen;         /* vlen(buf) at the snapshot point */
-  char bcont[1];      /* [vlen(buf)] follows */
+  LexSnap *prev;       /* the stack, innermost first */
+  int      npos;       /* the cursor, in the log's current coordinates */
+  unsigned line, col;  /* where the snapshot was taken */
+  Token    thead, cur; /* the saved slots */
+  usize    blen;       /* vlen(buf) at the snapshot point */
+  char     bcont[1];   /* [vlen(buf)] follows */
 };
 
 static LexSnap *live;
@@ -1033,7 +1033,7 @@ LexSnap *
 lexsnap(void)
 {
   LexSnap *s;
-  usize n = vlen(buf);
+  usize    n = vlen(buf);
 
   s = malloc(sizeof *s + n);
   if (!s)

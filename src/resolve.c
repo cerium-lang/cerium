@@ -35,9 +35,9 @@
 
 /* the checker's file-local types -- typedef'd in one place so use
  * sites drop the struct, the pattern ast.h and type.h set */
-typedef struct Bind Bind;
-typedef struct Env Env;
-typedef struct TSub TSub;
+typedef struct Bind    Bind;
+typedef struct Env     Env;
+typedef struct TSub    TSub;
 typedef struct SpecSub SpecSub;
 
 /* -- diagnostics ------------------------------------------------------- */
@@ -67,10 +67,10 @@ struct Bind
 
 struct Env
 {
-  Bind *b;     /* the bindings, innermost last */
-  usize n;     /* their count */
-  Sym *strait; /* resolving a trait's members: Self::X projects */
-  Sym *impl;   /* resolving an impl's: Self::X is the supplied type */
+  Bind *b;      /* the bindings, innermost last */
+  usize n;      /* their count */
+  Sym  *strait; /* resolving a trait's members: Self::X projects */
+  Sym  *impl;   /* resolving an impl's: Self::X is the supplied type */
 };
 
 static Type *
@@ -127,7 +127,7 @@ selfty(void)
 static Env
 envgparams(Env *outer, Ast **gps, usize n)
 {
-  Env o, r;
+  Env   o, r;
   usize i;
 
   if (!outer) {
@@ -162,7 +162,7 @@ prim(const char *name)
   static const struct
   {
     const char *n;
-    int num;
+    int         num;
   } ps[] = {
       {"i8", IN_I8},       {"i16", IN_I16},     {"i32", IN_I32}, {"i64", IN_I64}, {"i128", IN_I128},
       {"u8", IN_U8},       {"u16", IN_U16},     {"u32", IN_U32}, {"u64", IN_U64}, {"u128", IN_U128},
@@ -204,10 +204,10 @@ aliastarget(Sym *s)
 static Type *
 aliasinst(Sym *s, Type **args, usize nargs, Ast *at)
 {
-  Env env;
-  usize i, n = s->ngparams;
+  Env    env;
+  usize  i, n = s->ngparams;
   Type **all;
-  Ast *target;
+  Ast   *target;
 
   if (nargs > n)
     cerrat(at, "'%s' takes %lu type argument%s, not %lu", s->name, (unsigned long) n,
@@ -239,10 +239,10 @@ aliasinst(Sym *s, Type **args, usize nargs, Ast *at)
 static Type **
 rargs(Ast *seg, Env *env, usize *np)
 {
-  Ast **as = seg->v.seg.args;
-  usize n = vlen(as);
+  Ast  **as = seg->v.seg.args;
+  usize  n = vlen(as);
   Type **ts;
-  usize i;
+  usize  i;
 
   if (!n) {
     *np = 0;
@@ -282,9 +282,9 @@ itemname(Ast *it)
 static char *
 tysprint1(Type *t)
 {
-  static char bufs[4][256];
+  static char     bufs[4][256];
   static unsigned which;
-  char *b = bufs[which++ & 3u];
+  char           *b = bufs[which++ & 3u];
 
   return tysprint(b, sizeof bufs[0], t);
 }
@@ -305,20 +305,20 @@ memberfind(Sym *s, const char *name)
 static Type *
 rpath(Ast *p, Env *env)
 {
-  Ast **segs = p->v.path.segs;
-  usize nsegs = vlen(segs);
-  Ast *seg;
-  Sym *s;
-  char *name;
+  Ast  **segs = p->v.path.segs;
+  usize  nsegs = vlen(segs);
+  Ast   *seg;
+  Sym   *s;
+  char  *name;
   Type **args;
-  usize nargs;
+  usize  nargs;
 
   if (nsegs == 2 && !p->v.path.root && strcmp(segs[0]->v.seg.name, "Self") == 0 &&
       (env->strait || env->impl)) {
     /* Self::X, the associated type (05-traits.md): a projection in
      * a trait's own declaration, the supplied type in an impl */
-    char *nm = segs[1]->v.seg.name;
-    Sym *owner = env->strait ? env->strait : env->impl;
+    char   *nm = segs[1]->v.seg.name;
+    Sym    *owner = env->strait ? env->strait : env->impl;
     Member *m = memberfind(owner, nm);
 
     if (segs[1]->v.seg.args)
@@ -372,7 +372,7 @@ rpath(Ast *p, Env *env)
   /* defaults fill the missing tail, the alias rule again */
   if (nargs < s->ngparams) {
     Type **full = tyargs(s->ngparams);
-    usize i;
+    usize  i;
 
     for (i = 0; i < nargs; i++)
       full[i] = args[i];
@@ -439,7 +439,7 @@ rty(Ast *t, Env *env)
   }
   case Ntarray: {
     Type *elem = rty(t->v.arrlit.t, env);
-    Ast *len = t->v.arrlit.len;
+    Ast  *len = t->v.arrlit.len;
 
     if (t->v.arrlit.mut)
       elem = tymut(elem);
@@ -459,18 +459,18 @@ rty(Ast *t, Env *env)
     }
   }
   case Nttuple: {
-    usize n = vlen(t->v.list.ts);
+    usize  n = vlen(t->v.list.ts);
     Type **ts = n ? tyargs(n) : 0;
-    usize i;
+    usize  i;
 
     for (i = 0; i < n; i++)
       ts[i] = rty(t->v.list.ts[i], env);
     return tytuple(ts, n);
   }
   case Ntfn: {
-    usize n = vlen(t->v.fnty.args);
+    usize  n = vlen(t->v.fnty.args);
     Type **ts = n ? tyargs(n) : 0;
-    usize i;
+    usize  i;
 
     for (i = 0; i < n; i++)
       ts[i] = rty(t->v.fnty.args[i], env);
@@ -511,10 +511,10 @@ rty(Ast *t, Env *env)
 static Type *
 resolvefnsig(Ast *it, Env *env)
 {
-  Env e = envgparams(env, it->v.fn.gparams, vlen(it->v.fn.gparams));
-  usize n = vlen(it->v.fn.params);
+  Env    e = envgparams(env, it->v.fn.gparams, vlen(it->v.fn.gparams));
+  usize  n = vlen(it->v.fn.params);
   Type **ps = n ? tyargs(n) : 0;
-  usize i, j;
+  usize  i, j;
 
   for (i = 0; i < n; i++) {
     Ast *p = it->v.fn.params[i];
@@ -538,7 +538,7 @@ static Field *
 resolvefields(Ast **fs, Env *env, usize n, int isunion)
 {
   Field *fields = n ? arenaalloc(n * sizeof *fields) : 0;
-  usize i, j;
+  usize  i, j;
 
   memset(fields, 0, n * sizeof *fields);
   for (i = 0; i < n; i++) {
@@ -560,7 +560,7 @@ static void
 resolvestruct(Sym *s)
 {
   Ast *it = s->decl;
-  Env env = envgparams(0, it->v.ty.gparams, vlen(it->v.ty.gparams));
+  Env  env = envgparams(0, it->v.ty.gparams, vlen(it->v.ty.gparams));
 
   s->nfields = vlen(it->v.ty.fields);
   s->fields = resolvefields(it->v.ty.fields, &env, s->nfields, s->tykind == TYunion);
@@ -569,10 +569,10 @@ resolvestruct(Sym *s)
 static void
 resolveenum(Sym *s)
 {
-  Ast *it = s->decl;
-  Env env = envgparams(0, it->v.en.gparams, vlen(it->v.en.gparams));
+  Ast  *it = s->decl;
+  Env   env = envgparams(0, it->v.en.gparams, vlen(it->v.en.gparams));
   usize n = vlen(it->v.en.variants);
-  u64 next = 0;
+  u64   next = 0;
   usize i, j;
 
   if (it->v.en.tag) {
@@ -584,7 +584,7 @@ resolveenum(Sym *s)
   s->variants = n ? arenaalloc(n * sizeof *s->variants) : 0;
   memset(s->variants, 0, n * sizeof *s->variants);
   for (i = 0; i < n; i++) {
-    Ast *v = it->v.en.variants[i];
+    Ast     *v = it->v.en.variants[i];
     Variant *dv = &s->variants[i];
 
     for (j = 0; j < i; j++)
@@ -623,11 +623,11 @@ resolveenum(Sym *s)
 static Type *
 rtraitpath(Ast *p, Env *env)
 {
-  Ast **segs = p->v.path.segs;
-  Ast *seg;
-  Sym *s;
+  Ast  **segs = p->v.path.segs;
+  Ast   *seg;
+  Sym   *s;
   Type **args;
-  usize nargs;
+  usize  nargs;
 
   if (vlen(segs) != 1 || p->v.path.root)
     cerrat(p, "expected a trait name after impl");
@@ -643,7 +643,7 @@ rtraitpath(Ast *p, Env *env)
            s->ngparams == 1 ? "" : "s", (unsigned long) nargs);
   if (nargs < s->ngparams) {
     Type **full = tyargs(s->ngparams);
-    usize i;
+    usize  i;
 
     for (i = 0; i < nargs; i++)
       full[i] = args[i];
@@ -664,7 +664,7 @@ static void
 resolveimpl(Sym *s)
 {
   Ast *it = s->decl;
-  Env env = envgparams(0, it->v.impl.gparams, vlen(it->v.impl.gparams));
+  Env  env = envgparams(0, it->v.impl.gparams, vlen(it->v.impl.gparams));
 
   if (it->v.impl.fort) { /* a trait impl: the path names the trait */
     s->ipath = rtraitpath(it->v.impl.path, &env);
@@ -683,8 +683,8 @@ resolveimpl(Sym *s)
 static void
 resolvetrait(Sym *s)
 {
-  Ast *it = s->decl;
-  Env env = envgparams(0, it->v.ty.gparams, vlen(it->v.ty.gparams));
+  Ast  *it = s->decl;
+  Env   env = envgparams(0, it->v.ty.gparams, vlen(it->v.ty.gparams));
   Ast **ms = it->v.ty.members;
   usize n = vlen(ms);
   usize i, j;
@@ -695,7 +695,7 @@ resolvetrait(Sym *s)
   s->members = n ? arenaalloc(n * sizeof *s->members) : 0;
   memset(s->members, 0, n * sizeof *s->members);
   for (i = 0; i < n; i++) {
-    Ast *m = ms[i];
+    Ast    *m = ms[i];
     Member *dm = &s->members[i];
 
     for (j = 0; j < i; j++)
@@ -730,11 +730,11 @@ resolvetrait(Sym *s)
 static void
 resolveimplmembers(Sym *s)
 {
-  Ast *it = s->decl;
-  Env env = envgparams(0, it->v.impl.gparams, vlen(it->v.impl.gparams));
+  Ast  *it = s->decl;
+  Env   env = envgparams(0, it->v.impl.gparams, vlen(it->v.impl.gparams));
   Ast **ms = it->v.impl.members;
   usize n = vlen(ms);
-  int round;
+  int   round;
 
   env.impl = s;
   env = envpush(&env, "Self", s->ifort ? s->ifort : s->ipath);
@@ -753,9 +753,9 @@ resolveimplmembers(Sym *s)
     usize i, j;
 
     for (i = 0; i < n; i++) {
-      Ast *m = ms[i];
+      Ast    *m = ms[i];
       Member *dm = &s->members[i];
-      int isfn = m->k == Nfn;
+      int     isfn = m->k == Nfn;
 
       if ((round == 0) == isfn)
         continue;
@@ -793,11 +793,11 @@ resolveimplmembers(Sym *s)
  * and each projection the type the impl supplied */
 struct TSub
 {
-  Ast **gp;     /* the trait's parameters */
-  Type **ty;    /* the head's arguments, parallel */
-  usize n;      /* their count */
-  Type *selfty; /* the impl's type, what Self becomes */
-  Sym *is;      /* the impl: Typroj name -> the supplied type */
+  Ast  **gp;     /* the trait's parameters */
+  Type **ty;     /* the head's arguments, parallel */
+  usize  n;      /* their count */
+  Type  *selfty; /* the impl's type, what Self becomes */
+  Sym   *is;     /* the impl: Typroj name -> the supplied type */
 };
 
 static Type *
@@ -870,8 +870,8 @@ tsubst(Type *t, TSub *sub)
 static void
 checkimplcomplete(Sym *s)
 {
-  Sym *ts = s->ipath->sym;
-  TSub sub;
+  Sym  *ts = s->ipath->sym;
+  TSub  sub;
   usize i;
 
   sub.gp = ts->gparams;
@@ -915,7 +915,7 @@ checkimplcomplete(Sym *s)
  * way the spec's table lists (mutable matches the subset). */
 struct SpecSub
 {
-  Ast *gp[16];  /* the variables b has bound, so far */
+  Ast  *gp[16]; /* the variables b has bound, so far */
   Type *ty[16]; /* what each one landed on, parallel */
   usize n;      /* their count */
 };
@@ -953,7 +953,7 @@ spec1(Type *a, Type *b, SpecSub *s)
   case Tyslice:
   case Tyarray: {
     Type *ac, *bc;
-    int am, bm;
+    int   am, bm;
 
     if (b->k == Tyarray) {
       if (a->gp || b->gp)
@@ -1027,7 +1027,7 @@ disjoint(Type *a, Type *b)
   case Typtr:
   case Tyslice: {
     Type *ac, *bc;
-    int am, bm;
+    int   am, bm;
 
     ac = slotchild(a->t, &am);
     bc = slotchild(b->t, &bm);
@@ -1035,7 +1035,7 @@ disjoint(Type *a, Type *b)
   }
   case Tyarray: {
     Type *ac, *bc;
-    int am, bm;
+    int   am, bm;
 
     if (a->gp || b->gp)
       return a->gp == b->gp ? disjoint(a->t, b->t) : 0; /* a variable can bind */
@@ -1083,7 +1083,7 @@ collectbounds(Sym *s, Sym **out)
 
     for (j = 0; j < vlen(bs); j++) {
       Ast **segs = bs[j]->v.path.segs;
-      Sym *t;
+      Sym  *t;
 
       if (vlen(segs) != 1)
         cerrat(bs[j], "a bound is a trait's name");
@@ -1115,7 +1115,7 @@ boundscontain(Sym **bs, usize n, Sym *t)
 static int
 boundsincl(Sym *a, Sym *b)
 {
-  Sym *aa[16], *bb[16];
+  Sym  *aa[16], *bb[16];
   usize na = collectbounds(a, aa), nb = collectbounds(b, bb), i;
 
   for (i = 0; i < nb; i++)
@@ -1129,7 +1129,7 @@ boundsincl(Sym *a, Sym *b)
 static int
 boundsexclude(Sym *a, Sym *b)
 {
-  Sym *aa[16], *bb[16];
+  Sym  *aa[16], *bb[16];
   usize na = collectbounds(a, aa), nb = collectbounds(b, bb);
 
   return (boundscontain(aa, na, sym_copy) && boundscontain(bb, nb, sym_drop)) ||
@@ -1144,7 +1144,7 @@ checkoverlap(Sym *a, Sym *b)
 {
   Type *fa = a->ifort ? a->ifort : a->ipath;
   Type *fb = b->ifort ? b->ifort : b->ipath;
-  int ab, ba;
+  int   ab, ba;
 
   if (!!a->ifort != !!b->ifort)
     return; /* a trait impl and an inherent one never share a slot */
@@ -1180,12 +1180,12 @@ declare(Ast **items)
 
   syms = vnew(Sym *, n ? n : 1);
   for (i = 0; i < n; i++) {
-    Ast *it = items[i];
+    Ast        *it = items[i];
     const char *name = 0;
-    int kind = Snone;
-    Ast **gps = 0;
-    usize ngps = 0;
-    Sym *s = 0;
+    int         kind = Snone;
+    Ast       **gps = 0;
+    usize       ngps = 0;
+    Sym        *s = 0;
 
     switch (it->k) {
     case Nfn:

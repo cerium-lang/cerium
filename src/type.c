@@ -25,7 +25,7 @@
 /* -- interning --------------------------------------------------------- */
 
 static Type **tbl; /* open addressing; a NULL slot is empty */
-static usize tblcap, tbln;
+static usize  tblcap, tbln;
 
 static unsigned
 mix(unsigned h, unsigned x)
@@ -57,7 +57,7 @@ static unsigned
 thash(Type *t)
 {
   unsigned h = (unsigned) t->k;
-  usize i;
+  usize    i;
 
   h = mix(h, (unsigned) t->num);
   h = mix(h, (unsigned) t->mut);
@@ -102,9 +102,9 @@ teq(Type *a, Type *b)
 static void
 grow(void)
 {
-  usize newcap = tblcap ? tblcap * 2u : 1024u;
+  usize  newcap = tblcap ? tblcap * 2u : 1024u;
   Type **nt = arenaalloc(newcap * sizeof *nt);
-  usize i;
+  usize  i;
 
   memset(nt, 0, newcap * sizeof *nt);
   for (i = 0; i < tblcap; i++) {
@@ -127,7 +127,7 @@ static Type *
 intern(Type *t)
 {
   unsigned h;
-  usize i;
+  usize    i;
 
   if (tbln * 4u >= tblcap * 3u)
     grow();
@@ -373,7 +373,7 @@ static void
 sbputu(SBuf *b, u64 v)
 {
   char d[20]; /* 2^64-1 is 20 digits */
-  int n = 0;
+  int  n = 0;
 
   do {
     d[n++] = (char) ('0' + (int) (v % 10));
