@@ -1,0 +1,14 @@
+/* the four prefixes, the closed escape set, bytes; _1000 is an
+ * identifier, and a sign is an operator elsewhere */
+let s = "hi\n\t\x41\0";
+let w = c"x";
+let r = r"a\b";
+let cr = cr"c";
+let e = "";
+let ce = c"";
+let by = 'A';
+let nl = '\n';
+let hi = '\xff';
+let _1000 = 1;
+c "x" r "y" cr "z"
+-1

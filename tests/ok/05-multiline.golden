@@ -1,0 +1,21 @@
+2:1 Tlet
+2:5 Tident s
+2:7 Teq
+2:9 Tstr 18 "{\n  \"lang\": true\n}" ml
+6:6 Tsemi
+8:1 Tlet
+8:5 Tident t
+8:7 Teq
+8:9 Tstr 4 "a\n\nb" ml
+12:6 Tsemi
+14:1 Tlet
+14:5 Tident u
+14:7 Teq
+14:9 Tstr 4 "x\\n\0" c r ml
+16:6 Tsemi
+18:1 Tlet
+18:5 Tident v
+18:7 Teq
+18:9 Tstr 2 "q\0" c ml
+20:6 Tsemi
+21:1 Teof

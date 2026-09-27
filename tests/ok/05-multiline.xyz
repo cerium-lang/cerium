@@ -1,0 +1,20 @@
+/* the spec's JSON example, an exempt empty line, raw and c forms */
+let s = """
+  {
+    "lang": true
+  }
+  """;
+
+let t = """
+  a
+
+  b
+  """;
+
+let u = cr"""
+  x\n
+  """;
+
+let v = c"""
+  q
+  """;

@@ -1,0 +1,5 @@
+/* every keyword, in spec order: 22 + 2 reserved (15-grammar.md) */
+fn struct enum union trait impl type use
+pub let const static mut dyn true false
+if match for in break continue return
+macro defer
