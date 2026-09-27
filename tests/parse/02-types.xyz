@@ -1,0 +1,16 @@
+type Alias = i32;
+type Opt = ?u32;
+type NestedOpt = ??u32;
+type Res = Str?u32;
+type Ptr = *u8;
+type MutPtr = *mut u8;
+type Arr = [4]u8;
+type MutArr = [4]mut u8;
+type Slc = []u8;
+type MutSlc = []mut u8;
+type Tup = (i32, f32);
+type Unit = ();
+type F = fn(i32) -> i32;
+type D = dyn Read;
+type Gen = Vec<Vec<u32>>;
+type T2 = type;

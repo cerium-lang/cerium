@@ -1,0 +1,10 @@
+fn main() {
+    let (a, b) = t;
+    let { w, h } = r;
+    let Rect { w, .. } = s;
+    let Some(v) | None = x;
+    let _ = 1;
+    let (p, (q, r)) = nested;
+    let Unit = unit;
+    for (i, j) in pairs { }
+}

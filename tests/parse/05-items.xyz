@@ -1,0 +1,39 @@
+struct Point { x: f32, y: f32 }
+struct Mut { mut a: i32 }
+struct G<T> { v: T }
+#[repr(C)]
+struct Repr { a: u8 }
+
+union U { a: i32, b: f32 }
+
+enum Shape {
+    Unit,
+    Circle(f32),
+    Rect { w: f32, h: f32 },
+    #[doc("named")]
+    Tagged = 3,
+}
+
+trait Read {
+    type Item;
+    const BUF: usize;
+    fn read(self: *mut Self) -> ?Item;
+}
+
+impl Read for File {
+    type Item = u8;
+    const BUF: usize = 4;
+    fn read(self: *mut Self) -> ?Item { None }
+}
+
+impl<T> Vec<T> {
+    fn len(self: *Self) -> usize { 0 }
+}
+
+use a::b::{c, d};
+use a::*;
+use ::b::c;
+
+const C: i32 = 4;
+static S: i32 = 5;
+static mut M: i32 = 6;

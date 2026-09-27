@@ -1,0 +1,43 @@
+(file
+(fn main ()
+  (block
+    (let
+      (ptuple
+        (ppath (path a))
+        (ppath (path b)))
+      (path t))
+    (let
+      (pstruct
+        (pfield w)
+        (pfield h))
+      (path r))
+    (let
+      (ppath (path Rect)
+        (pfield w) ..)
+      (path s))
+    (let
+      (por
+        (ppath (path Some)
+          (ppath (path v)))
+        (ppath (path None)))
+      (path x))
+    (let
+      (wild)
+      (int 1))
+    (let
+      (ptuple
+        (ppath (path p))
+        (ptuple
+          (ppath (path q))
+          (ppath (path r))))
+      (path nested))
+    (let
+      (ppath (path Unit))
+      (path unit))
+    (for in
+      (ptuple
+        (ppath (path i))
+        (ppath (path j)))
+      (path pairs)
+      (block))))
+)

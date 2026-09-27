@@ -1,0 +1,127 @@
+(file
+(fn cond ()
+  (path bool)
+  (block
+    (bool true)))
+
+(fn next ()
+  (topt
+    (path i32))
+  (block
+    (path None)))
+
+(fn main ()
+  (path i32)
+  (block
+    (expr
+      (if
+        (call
+          (path cond))
+        (block
+          (int 1))
+        (if
+          (bool true)
+          (block
+            (int 2))
+          (block
+            (int 3)))))
+    (expr
+      (const-if
+        (bin <
+          (int 1)
+          (int 2))
+        (block)
+        (block)))
+    (expr
+      (match
+        (path opt)
+        (arm
+          (ppath (path Some)
+            (ppath (path v)))
+          (path v))
+        (arm
+          (ppath (path None))
+          (int 0))))
+    (expr
+      (match
+        (path shape)
+        (arm
+          (ppath (path Circle)
+            (ppath (path r)))
+          (path r))
+        (arm
+          (ppath (path Rect)
+            (pfield w)
+            (pfield h))
+          (path w))
+        (arm
+          (ppath (path Rect)
+            (pfield w) ..)
+          (path w))
+        (arm
+          (ptuple
+            (ppath (path a))
+            (ppath (path b)))
+          (path a))
+        (arm
+          (por
+            (ppath (path One))
+            (ppath (path Two))
+            (ppath (path Three)))
+          (int 4))
+        (arm
+          (wild)
+          (int 0))))
+    (for
+      (bin <
+        (path a)
+        (int 10))
+      (block
+        (assign =
+          (path a)
+          (bin +
+            (path a)
+            (int 1)))))
+    (for let
+      (ppath (path Some)
+        (ppath (path v)))
+      (call
+        (path next))
+      (block
+        (expr
+          (call
+            (path use_it)
+            (path v)))))
+    (for in
+      (ppath (path i))
+      (range
+        (int 0)
+        (int 10))
+      (block
+        (assign =
+          (path sum)
+          (bin +
+            (path sum)
+            (path i)))))
+    (const-for in
+      (ppath (path i))
+      (range
+        (int 0)
+        (int 4))
+      (block
+        (assign =
+          (path sum)
+          (bin +
+            (path sum)
+            (path i)))))
+    (for
+      (bool true)
+      (block
+        (break)))
+    (for
+      (bool true)
+      (block
+        (continue)))
+    (return
+      (int 3))))
+)

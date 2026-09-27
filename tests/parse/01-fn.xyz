@@ -1,0 +1,18 @@
+fn add(a: i32, b: i32) -> i32 { a + b }
+
+fn empty() {}
+
+fn decl(a: u32) -> u32;
+
+#[inline(always)]
+fn attributed(x: f32) -> f32 { x }
+
+fn generics<T: Add + Clone = u32, ...Ts>(v: T, const N: u32, mut r: i32) -> T { v }
+
+fn withparamattr(#[a] x: i32, #[b] c: i8, y: i64) {}
+
+fn main() -> i32 {
+    let mut a: i32 = 42;
+    a = a + 1;
+    a
+}

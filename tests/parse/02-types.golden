@@ -1,0 +1,71 @@
+(file
+(typedef Alias
+  (path i32))
+
+(typedef Opt
+  (topt
+    (path u32)))
+
+(typedef NestedOpt
+  (topt
+    (topt
+      (path u32))))
+
+(typedef Res
+  (tresult
+    (path Str)
+    (path u32)))
+
+(typedef Ptr
+  (tptr
+    (path u8)))
+
+(typedef MutPtr
+  (tptr mut
+    (path u8)))
+
+(typedef Arr
+  (tarray
+    (int 4)
+    (path u8)))
+
+(typedef MutArr
+  (tarray
+    (int 4) mut
+    (path u8)))
+
+(typedef Slc
+  (tarray _
+    (path u8)))
+
+(typedef MutSlc
+  (tarray _ mut
+    (path u8)))
+
+(typedef Tup
+  (ttuple
+    (path i32)
+    (path f32)))
+
+(typedef Unit
+  (unit))
+
+(typedef F
+  (tfn
+    (path i32)
+    (path i32)))
+
+(typedef D
+  (tdyn
+    (path Read)))
+
+(typedef Gen
+  (path
+    (seg Vec
+      (path
+        (seg Vec
+          (path u32))))))
+
+(typedef T2
+  (ttype))
+)

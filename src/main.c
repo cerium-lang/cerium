@@ -1,76 +1,23 @@
 /* main.c -- xyz, stage 0: the driver.
  *
- * One mode so far: "xyz -t file" dumps the token stream, one token a
- * line. The golden tests diff against exactly this output, which makes
- * the format a contract -- changing it rewrites every .golden.
+ * Two modes:
+ *   xyz -t file -- the token stream, one token a line (the lexer's
+ *                  golden tests, tests/ok, diff against this)
+ *   xyz -a file -- the AST as S-expressions (the parser's golden
+ *                  tests, tests/parse, diff against this)
  *
- *   LINE:COL KIND [VALUE]
- *     Tint    -- the digits, decimal
- *     Tflt    -- %g
- *     Tident  -- the name
- *     Tstr    -- BYTELEN "escaped bytes" [c] [r] [ml]
- *     Tbyte   -- 'escaped byte'
- *
- * The dump escapes are the lexer's own closed set (\n \t \r \0 \' \"
- * \\ \xNN), so what a literal spelled and what it holds read the same.
+ * Both formats are contracts -- changing either rewrites goldens.
+ * The escapes in both are the lexer's own closed set (\n \t \r \0 \'
+ * \" \\ \xNN), so what a literal spelled and what it holds read the
+ * same in either dump.
  */
 
 #include <stdio.h>
 #include <string.h>
 
+#include "ast.h"
 #include "lex.h"
-
-static void
-dumpu64(u64 v) /* C89 printf has no %llu; the digits are spelled out */
-{
-  char d[20]; /* 2^64-1 is 20 digits */
-  int n = 0;
-
-  do {
-    d[n++] = (char) ('0' + (int) (v % 10));
-    v /= 10;
-  } while (v != 0);
-  while (n > 0)
-    putchar(d[--n]);
-}
-
-static void
-dumpbody(const char *s, usize n)
-{
-  usize i;
-
-  for (i = 0; i < n; i++) {
-    unsigned char c = (unsigned char) s[i];
-
-    switch (c) {
-    case '\n':
-      printf("\\n");
-      continue;
-    case '\t':
-      printf("\\t");
-      continue;
-    case '\r':
-      printf("\\r");
-      continue;
-    case 0:
-      printf("\\0");
-      continue;
-    case '\'':
-      printf("\\'");
-      continue;
-    case '"':
-      printf("\\\"");
-      continue;
-    case '\\':
-      printf("\\\\");
-      continue;
-    }
-    if (c < 0x20 || c > 0x7e)
-      printf("\\x%02x", c);
-    else
-      putchar(c);
-  }
-}
+#include "parse.h"
 
 static void
 dumpflags(unsigned f)
@@ -100,13 +47,13 @@ dumptok(Token *t)
     break;
   case Tstr:
     printf(" %lu \"", (unsigned long) t->v.str.len);
-    dumpbody(t->v.str.s, t->v.str.len);
+    dumpstr(t->v.str.s, t->v.str.len);
     putchar('"');
     dumpflags(t->v.str.flags);
     break;
   case Tbyte:
     printf(" '");
-    dumpbody(t->v.str.s, 1);
+    dumpstr(t->v.str.s, 1);
     putchar('\'');
     break;
   default: /* the tokens with no value */
@@ -126,11 +73,32 @@ dumptoks(const char *path)
   return 0;
 }
 
+static int
+dumpast_file(const char *path)
+{
+  lexinit(path);
+  printf("(file");
+  for (;;) {
+    Node *it;
+
+    while (peek() != Teof) {
+      it = parseitem();
+      putchar('\n');
+      dumpast(it);
+    }
+    break;
+  }
+  printf(")\n");
+  return 0;
+}
+
 int
 main(int argc, char **argv)
 {
   if (argc == 3 && strcmp(argv[1], "-t") == 0)
     return dumptoks(argv[2]);
-  fprintf(stderr, "usage: xyz -t file\n");
+  if (argc == 3 && strcmp(argv[1], "-a") == 0)
+    return dumpast_file(argv[2]);
+  fprintf(stderr, "usage: xyz -t file | xyz -a file\n");
   return 1;
 }

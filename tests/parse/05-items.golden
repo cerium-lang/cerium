@@ -1,0 +1,98 @@
+(file
+(struct Point
+  (field x
+    (path f32))
+  (field y
+    (path f32)))
+
+(struct Mut
+  (field mut a
+    (path i32)))
+
+(struct G
+  (gparam T)
+  (field v
+    (path T)))
+
+(struct (attr repr (path C)) Repr
+  (field a
+    (path u8)))
+
+(union U
+  (field a
+    (path i32))
+  (field b
+    (path f32)))
+
+(enum Shape
+  (variant Unit)
+  (variant Circle
+    (path f32))
+  (variant Rect
+    (field w
+      (path f32))
+    (field h
+      (path f32)))
+  (variant (attr doc (str 5 "named")) Tagged 3))
+
+(trait Read
+  (typedef Item)
+  (const BUF
+    (path usize))
+  (fn read
+    (param self
+      (tptr mut
+        (path Self)))
+    (topt
+      (path Item))))
+
+(impl
+  (path Read) (for
+    (path File))
+  (typedef Item
+    (path u8))
+  (const BUF
+    (path usize)
+    (int 4))
+  (fn read
+    (param self
+      (tptr mut
+        (path Self)))
+    (topt
+      (path Item))
+    (block
+      (path None))))
+
+(impl
+  (gparam T)
+  (path
+    (seg Vec
+      (path T)))
+  (fn len
+    (param self
+      (tptr
+        (path Self)))
+    (path usize)
+    (block
+      (int 0))))
+
+(use (path a b)
+  (use (path c))
+  (use (path d)))
+
+(use (path a) *)
+
+(use (path :: b c))
+
+(const C
+  (path i32)
+  (int 4))
+
+(static S
+  (path i32)
+  (int 5))
+
+(static mut M
+  (path i32)
+  (int 6))
+)
