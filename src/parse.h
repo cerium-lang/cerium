@@ -6,6 +6,6 @@
 #include "ast.h"
 
 /* parse one item; the lexer must be at its first token */
-Node *parseitem(void);
+Ast *parseitem(void);
 
 #endif

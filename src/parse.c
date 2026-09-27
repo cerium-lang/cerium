@@ -45,10 +45,10 @@ perr(const char *fmt, ...)
 /* vappend, but a NULL vector starts itself: a fresh node's vector
  * fields are NULL (calloc), and most lists in the tree stay short */
 static void
-npush(Node ***vp, Node *n)
+npush(Ast ***vp, Ast *n)
 {
   if (!*vp)
-    *vp = vnew(Node *, 8);
+    *vp = vnew(Ast *, 8);
   vappend(vp, &n);
 }
 
@@ -93,18 +93,18 @@ wantident(const char *what)
 
 /* -- attributes -------------------------------------------------------- */
 
-static Node *
+static Ast *
 attrarg(void)
 {
-  Node *n;
+  Ast *n;
 
   switch (peek()) {
   case Tident: {
     next();
     n = mk(Npath);
-    n->v.path.segs = vnew(Node *, 2);
+    n->v.path.segs = vnew(Ast *, 2);
     {
-      Node *s = mk(Nseg);
+      Ast *s = mk(Nseg);
       s->v.seg.name = mkstr();
       npush(&n->v.path.segs, s);
     }
@@ -134,68 +134,71 @@ attrarg(void)
   return 0; /* unreachable */
 }
 
-static Node **
+static Ast **
 attrs(void)
 {
-  Node **v = 0;
+  Ast **v = 0;
 
   while (peek() == Thashlbracket) {
-    Node *a;
+    next();    /* "#[" */
+    for (;;) { /* "#[a, b]" is "#[a] #[b]" (01-types.md) */
+      Ast *a = mk(Nattr);
 
-    next(); /* "#[" */
-    a = mk(Nattr);
-    a->v.seg.name = wantident("attribute name");
-    if (accept(Tlparen)) {
-      if (peek() != Trparen) {
-        for (;;) {
-          Node *g = attrarg();
-          npush(&a->v.seg.args, g);
-          if (peek() == Tcomma) {
-            next();
-            if (peek() == Trparen)
-              break;
-            continue;
+      a->v.seg.name = wantident("attribute name");
+      if (accept(Tlparen)) {
+        if (peek() != Trparen) {
+          for (;;) {
+            Ast *g = attrarg();
+            npush(&a->v.seg.args, g);
+            if (peek() == Tcomma) {
+              next();
+              if (peek() == Trparen)
+                break;
+              continue;
+            }
+            break;
           }
-          break;
         }
+        want(Trparen, ")");
       }
-      want(Trparen, ")");
+      npush(&v, a);
+      if (!accept(Tcomma))
+        break;
     }
     want(Trbracket, "]");
-    npush(&v, a);
   }
   return v;
 }
 
 /* -- types -------------------------------------------------------------- */
 
-static Node *type_(void);
-static Node *expr(void);
-static Node *postfix(void);
-static Node *primary(void);
-static Node *orexpr(void);
-static Node *pattern(void);
-static Node *block(void);
-static Node *statement(void);
-static Node **parameters(void);
+static Ast *type_(void);
+static Ast *expr(void);
+static Ast *postfix(void);
+static Ast *primary(void);
+static Ast *orexpr(void);
+static Ast *pattern(void);
+static Ast *block(void);
+static Ast *statement(void);
+static Ast **parameters(void);
 
 /* a path in type position: "<" after a segment is generic arguments,
  * unconditionally -- a type grammar has no comparison to be */
-static Node *
+static Ast *
 typepath(void)
 {
-  Node *n = mk(Npath);
+  Ast *n = mk(Npath);
 
   n->v.path.root = accept(Tcoloncolon);
-  n->v.path.segs = vnew(Node *, 4);
+  n->v.path.segs = vnew(Ast *, 4);
   for (;;) {
-    Node *s = mk(Nseg);
+    Ast *s = mk(Nseg);
 
     s->v.seg.name = wantident("a path segment");
     if (peek() == Tlt) {
       next();
       for (;;) {
-        Node *a;
+        Ast *a;
 
         if (peek() == Tdollar2 || peek() == Tcaret2) {
           Tok op = next();
@@ -228,12 +231,12 @@ typepath(void)
   return n;
 }
 
-static Node *
+static Ast *
 prefixtype(void)
 {
   switch (peek()) {
   case Tquestion: {
-    Node *n;
+    Ast *n;
 
     next();
     n = mk(Ntopt);
@@ -241,7 +244,7 @@ prefixtype(void)
     return n;
   }
   case Tstar: {
-    Node *n;
+    Ast *n;
 
     next();
     n = mk(Ntptr);
@@ -251,12 +254,12 @@ prefixtype(void)
     return n;
   }
   case Tlbracket: { /* [ [integer] ] [mut] T */
-    Node *n;
+    Ast *n;
 
     next();
     n = mk(Ntarray);
     if (peek() == Tint) {
-      Node *l;
+      Ast *l;
 
       next();
       l = mk(Nint);
@@ -278,15 +281,15 @@ prefixtype(void)
   case Tcoloncolon:
     return typepath();
   case Tlparen: { /* () or a tuple type */
-    Node *n;
+    Ast *n;
 
     next();
     if (accept(Trparen))
       return mk(Nunit);
     n = mk(Nttuple);
-    n->v.list.ts = vnew(Node *, 4);
+    n->v.list.ts = vnew(Ast *, 4);
     for (;;) {
-      Node *t = type_();
+      Ast *t = type_();
 
       npush(&n->v.list.ts, t);
       if (peek() == Tcomma) {
@@ -303,7 +306,7 @@ prefixtype(void)
   case Tfn: { /* fn(A, B) -> T -- the types are anonymous, no names
                * (01-types.md; the 15-grammar parameters reuse is a
                * spec bug, recorded in the PR) */
-    Node *n;
+    Ast *n;
 
     next();
     n = mk(Ntfn);
@@ -320,7 +323,7 @@ prefixtype(void)
     return n;
   }
   case Tdyn: {
-    Node *n;
+    Ast *n;
 
     next();
     n = mk(Ntdyn);
@@ -336,13 +339,13 @@ prefixtype(void)
   return 0; /* unreachable */
 }
 
-static Node *
+static Ast *
 type_(void) /* result_type: prefix [ "?" prefix ] */
 {
-  Node *t = prefixtype();
+  Ast *t = prefixtype();
 
   if (accept(Tquestion)) {
-    Node *n = mk(Ntresult);
+    Ast *n = mk(Ntresult);
 
     n->v.n2.a = t;
     n->v.n2.b = prefixtype();
@@ -380,11 +383,11 @@ startsatype(void)
 /* "<" is peeked. Trial: parse generic arguments, then demand one of
  * ( :: . after the closing ">" -- else rewind and let the caller
  * read a comparison. This is the production the ">>" split serves. */
-static Node **
+static Ast **
 tryargs(void)
 {
   LexSnap *snap;
-  Node **args = 0;
+  Ast **args = 0;
   Tok after;
 
   snap = lexsnap();
@@ -394,7 +397,7 @@ tryargs(void)
     return 0;
   }
   for (;;) {
-    Node *a;
+    Ast *a;
 
     if (peek() == Tdollar2 || peek() == Tcaret2) {
       Tok op = next();
@@ -429,15 +432,15 @@ tryargs(void)
 
 /* a path in expression position: each segment's "<" is tried as
  * generic arguments, and only the trial commits */
-static Node *
+static Ast *
 exprpath(void)
 {
-  Node *n = mk(Npath);
+  Ast *n = mk(Npath);
 
   n->v.path.root = accept(Tcoloncolon);
-  n->v.path.segs = vnew(Node *, 4);
+  n->v.path.segs = vnew(Ast *, 4);
   for (;;) {
-    Node *s = mk(Nseg);
+    Ast *s = mk(Nseg);
 
     s->v.seg.name = wantident("a path segment");
     if (peek() == Tlt) {
@@ -470,10 +473,10 @@ exprpath(void)
   return n;
 }
 
-static Node *
+static Ast *
 ifexpr(int cnst)
 {
-  Node *n = mk(cnst ? Ncif : Nif);
+  Ast *n = mk(cnst ? Ncif : Nif);
 
   next();      /* if */
   headctx = 1; /* the trailing "{" opens the then-block */
@@ -492,10 +495,10 @@ ifexpr(int cnst)
   return n;
 }
 
-static Node *
+static Ast *
 matchexpr(void)
 {
-  Node *n = mk(Nmatch);
+  Ast *n = mk(Nmatch);
 
   next();               /* match */
   headctx = 1;          /* the trailing "{" opens the arms */
@@ -503,7 +506,7 @@ matchexpr(void)
   headctx = 0;
   want(Tlbrace, "{");
   while (peek() != Trbrace) {
-    Node *a = mk(Narm);
+    Ast *a = mk(Narm);
 
     a->v.n2.a = pattern();
     want(Tfatarrow, "=>");
@@ -518,13 +521,13 @@ matchexpr(void)
   return n;
 }
 
-static Node *
+static Ast *
 rangeexpr(void)
 {
-  Node *l = orexpr();
+  Ast *l = orexpr();
 
   if (peek() == Tdotdot) {
-    Node *n;
+    Ast *n;
 
     next();
     n = mk(Nrange);
@@ -537,7 +540,7 @@ rangeexpr(void)
   return l;
 }
 
-static Node *
+static Ast *
 expr(void)
 {
   if (peek() == Tconst) {
@@ -555,16 +558,16 @@ expr(void)
 
 /* the binary chain: one function per level, tightest at the bottom */
 
-static Node *orexpr(void);
-static Node *andexpr(void);
-static Node *cmpexpr(void);
-static Node *bitorexpr(void);
-static Node *bitxorexpr(void);
-static Node *bitandexpr(void);
-static Node *shiftexpr(void);
-static Node *addexpr(void);
-static Node *mulexpr(void);
-static Node *unary(void);
+static Ast *orexpr(void);
+static Ast *andexpr(void);
+static Ast *cmpexpr(void);
+static Ast *bitorexpr(void);
+static Ast *bitxorexpr(void);
+static Ast *bitandexpr(void);
+static Ast *shiftexpr(void);
+static Ast *addexpr(void);
+static Ast *mulexpr(void);
+static Ast *unary(void);
 
 static int
 isany(Tok t, Tok a, Tok b)
@@ -573,13 +576,13 @@ isany(Tok t, Tok a, Tok b)
 }
 
 #define BINLEVEL(name, sub, isop)                                                                  \
-  static Node *name(void)                                                                          \
+  static Ast *name(void)                                                                           \
   {                                                                                                \
-    Node *l = sub();                                                                               \
+    Ast *l = sub();                                                                                \
     for (;;) {                                                                                     \
       Tok op = peek();                                                                             \
       if (isop(op)) {                                                                              \
-        Node *n;                                                                                   \
+        Ast *n;                                                                                    \
         next();                                                                                    \
         n = mk(Nbin);                                                                              \
         n->v.bin.op = op;                                                                          \
@@ -610,10 +613,10 @@ BINLEVEL(shiftexpr, addexpr, ISSHIFT)
 BINLEVEL(addexpr, mulexpr, ISADD)
 BINLEVEL(mulexpr, unary, ISMUL)
 
-static Node *
+static Ast *
 cmpexpr(void) /* no chaining: one operator, at most */
 {
-  Node *l = bitorexpr();
+  Ast *l = bitorexpr();
   Tok op = peek();
 
   switch (op) {
@@ -623,7 +626,7 @@ cmpexpr(void) /* no chaining: one operator, at most */
   case Tge:
   case Teqeq:
   case Tne: {
-    Node *n;
+    Ast *n;
 
     next();
     n = mk(Nbin);
@@ -648,7 +651,7 @@ cmpexpr(void) /* no chaining: one operator, at most */
   }
 }
 
-static Node *
+static Ast *
 unary(void)
 {
   switch (peek()) {
@@ -660,7 +663,7 @@ unary(void)
   case Tcaret2:
   case Tdollar2: {
     Tok op = next();
-    Node *n = mk(Nun);
+    Ast *n = mk(Nun);
 
     n->v.un.op = op;
     if (op == Tamp && accept(Tmut))
@@ -673,15 +676,15 @@ unary(void)
   }
 }
 
-static Node *
-callargs(Node *n) /* the "(" is consumed; fills n->v.call.args */
+static Ast *
+callargs(Ast *n) /* the "(" is consumed; fills n->v.call.args */
 {
   int save = headctx;
 
   headctx = 0; /* inside the argument list, a "{ " is a literal */
   if (peek() != Trparen) {
     for (;;) {
-      Node *a;
+      Ast *a;
 
       if (peek() == Tdotdotdot) {
         next();
@@ -705,17 +708,17 @@ callargs(Node *n) /* the "(" is consumed; fills n->v.call.args */
   return n;
 }
 
-static Node *
+static Ast *
 postfix(void)
 {
-  Node *e = primary();
+  Ast *e = primary();
 
   for (;;) {
     switch (peek()) {
     case Tdot: {
       next();
       if (peek() == Tint) {
-        Node *n;
+        Ast *n;
 
         next();
         n = mk(Ntupidx);
@@ -723,7 +726,7 @@ postfix(void)
         n->v.tup.idx = mknum();
         e = n;
       } else {
-        Node *n = mk(Naccess);
+        Ast *n = mk(Naccess);
 
         n->v.fld.e = e;
         n->v.fld.name = wantident("a field name");
@@ -737,7 +740,7 @@ postfix(void)
       headctx = 0; /* inside the brackets, a "{ " is a literal again */
       next();
       if (peek() == Tdotdot) { /* [..hi] or [..] */
-        Node *n = mk(Nrangeindex);
+        Ast *n = mk(Nrangeindex);
 
         next();
         n->v.ridx.e = e;
@@ -749,9 +752,9 @@ postfix(void)
         continue;
       }
       {
-        Node *ix = orexpr(); /* not expr(): a ".." here closes the
-                              * range, it is not a range operator */
-        Node *n;
+        Ast *ix = orexpr(); /* not expr(): a ".." here closes the
+                             * range, it is not a range operator */
+        Ast *n;
 
         if (peek() == Tdotdot) { /* [lo..hi] or [lo..] */
           next();
@@ -773,7 +776,7 @@ postfix(void)
       continue;
     }
     case Tlparen: {
-      Node *n = mk(Ncall);
+      Ast *n = mk(Ncall);
 
       next();
       n->v.call.f = e;
@@ -781,7 +784,7 @@ postfix(void)
       continue;
     }
     case Tquestion: {
-      Node *n;
+      Ast *n;
 
       next();
       n = mk(Ntry);
@@ -795,16 +798,16 @@ postfix(void)
   }
 }
 
-static Node *
+static Ast *
 closure(void) /* the "fn" is peeked */
 {
-  Node *n = mk(Nclosure);
+  Ast *n = mk(Nclosure);
 
   next(); /* fn */
   want(Tlbracket, "[");
   if (peek() != Trbracket) {
     for (;;) {
-      Node *c = mk(Ncap);
+      Ast *c = mk(Ncap);
 
       if (accept(Tamp)) {
         c->v.cap.byref = 1;
@@ -835,17 +838,17 @@ closure(void) /* the "fn" is peeked */
   return n;
 }
 
-static Node *
+static Ast *
 builtin(void) /* the "@" is peeked */
 {
-  Node *n = mk(Nbuiltin);
+  Ast *n = mk(Nbuiltin);
 
   next(); /* @ */
   n->v.blt.name = wantident("a builtin name");
   if (peek() == Tlt) {
     next();
     for (;;) {
-      Node *a;
+      Ast *a;
 
       if (peek() == Tdollar2 || peek() == Tcaret2) {
         Tok op = next();
@@ -873,16 +876,16 @@ builtin(void) /* the "@" is peeked */
   return n;
 }
 
-static Node *
+static Ast *
 arraylit(void) /* the "[" is peeked */
 {
-  Node *n = mk(Narraylit);
+  Ast *n = mk(Narraylit);
   int save = headctx;
 
   headctx = 0; /* inside the literal, a "{ " is a literal again */
   next();
   if (peek() == Tint) {
-    Node *l;
+    Ast *l;
 
     next();
     l = mk(Nint);
@@ -896,7 +899,7 @@ arraylit(void) /* the "[" is peeked */
   want(Tlbrace, "{");
   if (peek() != Trbrace) {
     for (;;) {
-      Node *e = expr();
+      Ast *e = expr();
 
       npush(&n->v.arrlit.es, e);
       if (peek() == Tcomma) {
@@ -913,9 +916,9 @@ arraylit(void) /* the "[" is peeked */
   return n;
 }
 
-static Node *
-fieldinits(Node *n, Node ***slot) /* "{ f: e, ... }" is peeked; the
-                                   * vector slot is the caller's to name */
+static Ast *
+fieldinits(Ast *n, Ast ***slot) /* "{ f: e, ... }" is peeked; the
+                                 * vector slot is the caller's to name */
 {
   int save = headctx;
 
@@ -923,7 +926,7 @@ fieldinits(Node *n, Node ***slot) /* "{ f: e, ... }" is peeked; the
   next();      /* { */
   if (peek() != Trbrace) {
     for (;;) {
-      Node *fi = mk(Ninit);
+      Ast *fi = mk(Ninit);
 
       fi->v.init.name = wantident("a field name");
       want(Tcolon, ":");
@@ -943,13 +946,13 @@ fieldinits(Node *n, Node ***slot) /* "{ f: e, ... }" is peeked; the
   return n;
 }
 
-static Node *
+static Ast *
 primary(void)
 {
   switch (peek()) {
   case Ttrue:
   case Tfalse: {
-    Node *n;
+    Ast *n;
 
     n = mk(Nbool);
     n->v.i.num = peek() == Ttrue;
@@ -957,7 +960,7 @@ primary(void)
     return n;
   }
   case Tint: {
-    Node *n;
+    Ast *n;
 
     next();
     n = mk(Nint);
@@ -965,7 +968,7 @@ primary(void)
     return n;
   }
   case Tflt: {
-    Node *n;
+    Ast *n;
 
     next();
     n = mk(Nflt);
@@ -973,7 +976,7 @@ primary(void)
     return n;
   }
   case Tbyte: {
-    Node *n;
+    Ast *n;
 
     next();
     n = mk(Nbyte);
@@ -982,7 +985,7 @@ primary(void)
     return n;
   }
   case Tstr: {
-    Node *n;
+    Ast *n;
 
     next();
     n = mk(Nstr);
@@ -993,10 +996,10 @@ primary(void)
   }
   case Tident:
   case Tcoloncolon: {
-    Node *p = exprpath();
+    Ast *p = exprpath();
 
     if (peek() == Tlbrace && !headctx) { /* struct literal */
-      Node *n = mk(Nstructlit);
+      Ast *n = mk(Nstructlit);
 
       n->v.slit.path = p;
       return fieldinits(n, &n->v.slit.inits);
@@ -1004,7 +1007,7 @@ primary(void)
     return p;
   }
   case Tlparen: {
-    Node *n;
+    Ast *n;
     int save = headctx;
 
     headctx = 0; /* inside the parens, a "{ " is a literal again */
@@ -1014,17 +1017,17 @@ primary(void)
       return mk(Nunit);
     }
     {
-      Node *e1 = expr();
+      Ast *e1 = expr();
 
       if (peek() == Tcomma) { /* a tuple */
         n = mk(Ntuple);
-        n->v.list.ts = vnew(Node *, 4);
+        n->v.list.ts = vnew(Ast *, 4);
         npush(&n->v.list.ts, e1);
         while (accept(Tcomma)) {
           if (peek() == Trparen)
             break;
           {
-            Node *e = expr();
+            Ast *e = expr();
 
             npush(&n->v.list.ts, e);
           }
@@ -1041,7 +1044,7 @@ primary(void)
   case Tlbracket:
     return arraylit();
   case Tlbrace: { /* bare struct literal */
-    Node *n = mk(Nbarestructlit);
+    Ast *n = mk(Nbarestructlit);
 
     return fieldinits(n, &n->v.list.ts);
   }
@@ -1057,13 +1060,13 @@ primary(void)
 
 /* -- statements --------------------------------------------------------- */
 
-static Node **
+static Ast **
 parameters(void)
 {
-  Node **v = vnew(Node *, 4);
+  Ast **v = vnew(Ast *, 4);
 
   for (;;) {
-    Node *p = mk(Nparam);
+    Ast *p = mk(Nparam);
 
     p->attrs = attrs();
     if (accept(Tconst))
@@ -1085,10 +1088,10 @@ parameters(void)
   return v;
 }
 
-static Node *
+static Ast *
 letstmt(void)
 {
-  Node *n = mk(Nlet);
+  Ast *n = mk(Nlet);
 
   next(); /* let */
   if (accept(Tmut))
@@ -1102,10 +1105,10 @@ letstmt(void)
   return n;
 }
 
-static Node *
+static Ast *
 jumpstmt(void)
 {
-  Node *n;
+  Ast *n;
 
   switch (peek()) {
   case Treturn:
@@ -1127,10 +1130,10 @@ jumpstmt(void)
   return n;
 }
 
-static Node *
+static Ast *
 forstmt(int cnst)
 {
-  Node *n = mk(cnst ? Ncfor : Nfor);
+  Ast *n = mk(cnst ? Ncfor : Nfor);
 
   next();               /* for */
   if (peek() == Tlet) { /* for let PAT = e */
@@ -1146,7 +1149,7 @@ forstmt(int cnst)
 
     headctx = 1; /* the trailing "{" opens the body */
     {
-      Node *e = expr();
+      Ast *e = expr();
 
       if (peek() == Tin) { /* it was a pattern after all */
         headctx = 0;
@@ -1169,10 +1172,10 @@ forstmt(int cnst)
   return n;
 }
 
-static Node *
-constitem(Node **at) /* the "const" is peeked; block-level has no attrs */
+static Ast *
+constitem(Ast **at) /* the "const" is peeked; block-level has no attrs */
 {
-  Node *n = mk(Nconst);
+  Ast *n = mk(Nconst);
 
   n->attrs = at;
   next();
@@ -1202,7 +1205,7 @@ isassignop(Tok t)
   }
 }
 
-static Node *
+static Ast *
 statement(void)
 {
   switch (peek()) {
@@ -1237,10 +1240,10 @@ statement(void)
   return 0; /* unreachable */
 }
 
-static Node *
+static Ast *
 block(void)
 {
-  Node *n = mk(Nblock);
+  Ast *n = mk(Nblock);
   int done = 0;
 
   want(Tlbrace, "{");
@@ -1266,10 +1269,10 @@ block(void)
       continue;
     }
     { /* an expression: statement, assignment, or the tail */
-      Node *e = expr();
+      Ast *e = expr();
 
       if (isassignop(peek())) {
-        Node *a = mk(Nassign);
+        Ast *a = mk(Nassign);
 
         a->v.bin.op = next();
         a->v.bin.l = e;
@@ -1279,7 +1282,7 @@ block(void)
         continue;
       }
       if (peek() == Tsemi) {
-        Node *s = mk(Nexprstmt);
+        Ast *s = mk(Nexprstmt);
 
         next();
         s->v.n1.e = e;
@@ -1301,10 +1304,10 @@ block(void)
 
 /* -- patterns ------------------------------------------------------------ */
 
-static Node *
+static Ast *
 pfield(void)
 {
-  Node *n = mk(Npfield);
+  Ast *n = mk(Npfield);
 
   n->v.init.name = wantident("a field");
   if (accept(Tcolon))
@@ -1312,7 +1315,7 @@ pfield(void)
   return n;
 }
 
-static Node *
+static Ast *
 unitpattern(void)
 {
   if (peek() == Tident && strcmp(lexcur()->v.str.s, "_") == 0) {
@@ -1322,14 +1325,14 @@ unitpattern(void)
   switch (peek()) {
   case Tident:
   case Tcoloncolon: {
-    Node *n = mk(Nppath);
+    Ast *n = mk(Nppath);
 
     n->v.ppath.path = typepath();
     if (peek() == Tlparen) { /* positional payload */
       next();
       if (peek() != Trparen) {
         for (;;) {
-          Node *p = pattern();
+          Ast *p = pattern();
 
           npush(&n->v.ppath.payload, p);
           if (peek() == Tcomma) {
@@ -1352,7 +1355,7 @@ unitpattern(void)
         n->v.ppath.rest = 1;
       } else if (peek() != Trbrace) {
         for (;;) {
-          Node *f = pfield();
+          Ast *f = pfield();
 
           npush(&n->v.ppath.payload, f);
           if (peek() == Tcomma) {
@@ -1372,12 +1375,12 @@ unitpattern(void)
     return n;
   }
   case Tlparen: { /* tuple pattern, () included */
-    Node *n = mk(Nptuple);
+    Ast *n = mk(Nptuple);
 
     next();
     if (peek() != Trparen) {
       for (;;) {
-        Node *p = pattern();
+        Ast *p = pattern();
 
         npush(&n->v.list.ts, p);
         if (peek() == Tcomma) {
@@ -1393,7 +1396,7 @@ unitpattern(void)
     return n;
   }
   case Tlbrace: { /* bare struct pattern */
-    Node *n = mk(Npstruct);
+    Ast *n = mk(Npstruct);
 
     next();
     if (peek() == Tdotdot) {
@@ -1401,7 +1404,7 @@ unitpattern(void)
       n->v.pstruct.rest = 1;
     } else if (peek() != Trbrace) {
       for (;;) {
-        Node *f = pfield();
+        Ast *f = pfield();
 
         npush(&n->v.pstruct.fields, f);
         if (peek() == Tcomma) {
@@ -1424,20 +1427,20 @@ unitpattern(void)
   return 0; /* unreachable */
 }
 
-static Node *
+static Ast *
 pattern(void)
 {
-  Node *u = unitpattern();
+  Ast *u = unitpattern();
 
   if (peek() != Tbar)
     return u;
   {
-    Node *n = mk(Npor);
+    Ast *n = mk(Npor);
 
-    n->v.list.ts = vnew(Node *, 4);
+    n->v.list.ts = vnew(Ast *, 4);
     npush(&n->v.list.ts, u);
     while (accept(Tbar)) {
-      Node *v = unitpattern();
+      Ast *v = unitpattern();
 
       npush(&n->v.list.ts, v);
     }
@@ -1447,21 +1450,21 @@ pattern(void)
 
 /* -- items --------------------------------------------------------------- */
 
-static Node **
+static Ast **
 genericparams(void) /* the "<" is peeked */
 {
-  Node **v = vnew(Node *, 4);
+  Ast **v = vnew(Ast *, 4);
 
   next();
   for (;;) {
-    Node *g = mk(Ngparam);
+    Ast *g = mk(Ngparam);
 
     if (accept(Tdotdotdot))
       g->v.gp.pack = 1;
     g->v.gp.name = wantident("a generic parameter");
     if (accept(Tcolon)) {
       for (;;) {
-        Node *b = typepath(); /* a bound is a path */
+        Ast *b = typepath(); /* a bound is a path */
 
         npush(&g->v.gp.bounds, b);
         if (accept(Tplus))
@@ -1485,10 +1488,10 @@ genericparams(void) /* the "<" is peeked */
   return v;
 }
 
-static Node *
-fnitem(Node **at) /* the "fn" is peeked */
+static Ast *
+fnitem(Ast **at) /* the "fn" is peeked */
 {
-  Node *n = mk(Nfn);
+  Ast *n = mk(Nfn);
 
   n->attrs = at;
   next();
@@ -1508,10 +1511,10 @@ fnitem(Node **at) /* the "fn" is peeked */
   return n;
 }
 
-static Node *
+static Ast *
 fieldnode(void) /* attributes [mut] ident : type */
 {
-  Node *n = mk(Nfield);
+  Ast *n = mk(Nfield);
 
   n->attrs = attrs();
   if (accept(Tmut))
@@ -1522,11 +1525,11 @@ fieldnode(void) /* attributes [mut] ident : type */
   return n;
 }
 
-static Node *
+static Ast *
 fields(void) /* inside the braces, peeked at "{" */
 {
-  Node *n = mk(Nstruct); /* carrier; the caller lifts v.ty.fields */
-  Node *f;
+  Ast *n = mk(Nstruct); /* carrier; the caller lifts v.ty.fields */
+  Ast *f;
 
   next();
   while (peek() != Trbrace && peek() != Teof) {
@@ -1542,14 +1545,14 @@ fields(void) /* inside the braces, peeked at "{" */
   return n;
 }
 
-static Node *
+static Ast *
 variants(void)
 {
-  Node *n = mk(Nenum); /* carrier; the caller lifts v.en.variants */
+  Ast *n = mk(Nenum); /* carrier; the caller lifts v.en.variants */
 
   next(); /* { */
   while (peek() != Trbrace && peek() != Teof) {
-    Node *v = mk(Nvariant);
+    Ast *v = mk(Nvariant);
 
     v->attrs = attrs();
     v->v.variant.name = wantident("a variant name");
@@ -1563,7 +1566,7 @@ variants(void)
       next();
       if (peek() != Trparen) {
         for (;;) {
-          Node *t = type_();
+          Ast *t = type_();
 
           npush(&v->v.variant.payload, t);
           if (peek() == Tcomma) {
@@ -1577,7 +1580,7 @@ variants(void)
       }
       want(Trparen, ")");
     } else if (peek() == Tlbrace) { /* named payload: fields */
-      Node *f;
+      Ast *f;
 
       v->v.variant.named = 1;
       next();
@@ -1603,12 +1606,12 @@ variants(void)
   return n;
 }
 
-static Node *
+static Ast *
 traitmember(void)
 {
   switch (peek()) {
   case Ttype: { /* type X; */
-    Node *n;
+    Ast *n;
 
     next();
     n = mk(Ntypedef);
@@ -1617,7 +1620,7 @@ traitmember(void)
     return n;
   }
   case Tconst: { /* const X: T; */
-    Node *n;
+    Ast *n;
 
     next();
     n = mk(Nconst);
@@ -1632,12 +1635,12 @@ traitmember(void)
   }
 }
 
-static Node *
+static Ast *
 implmember(void)
 {
   switch (peek()) {
   case Tconst: { /* const X: T = e; */
-    Node *n;
+    Ast *n;
 
     next();
     n = mk(Nconst);
@@ -1650,7 +1653,7 @@ implmember(void)
     return n;
   }
   case Ttype: { /* type X = T; */
-    Node *n;
+    Ast *n;
 
     next();
     n = mk(Ntypedef);
@@ -1665,15 +1668,15 @@ implmember(void)
   }
 }
 
-static Node *
-usetree(Node *n) /* fills v.use; the leading path is next */
+static Ast *
+usetree(Ast *n) /* fills v.use; the leading path is next */
 {
-  Node *p = mk(Npath);
+  Ast *p = mk(Npath);
 
   p->v.path.root = accept(Tcoloncolon);
-  p->v.path.segs = vnew(Node *, 4);
+  p->v.path.segs = vnew(Ast *, 4);
   for (;;) {
-    Node *s = mk(Nseg);
+    Ast *s = mk(Nseg);
 
     s->v.seg.name = wantident("a path segment");
     npush(&p->v.path.segs, s);
@@ -1690,7 +1693,7 @@ usetree(Node *n) /* fills v.use; the leading path is next */
       n->v.use.path = p;
       next();
       while (peek() != Trbrace) {
-        Node *sub = mk(Nuse);
+        Ast *sub = mk(Nuse);
 
         usetree(sub);
         npush(&n->v.use.subs, sub);
@@ -1711,18 +1714,18 @@ usetree(Node *n) /* fills v.use; the leading path is next */
   return n;
 }
 
-Node *
+Ast *
 parseitem(void)
 {
-  Node **at = attrs();
-  Node *n;
+  Ast **at = attrs();
+  Ast *n;
 
   switch (peek()) {
   case Tfn:
     return fnitem(at);
   case Tstruct:
   case Tunion: {
-    Node *car;
+    Ast *car;
 
     n = mk(peek() == Tstruct ? Nstruct : Nunion);
     n->attrs = at;
@@ -1735,7 +1738,7 @@ parseitem(void)
     return n;
   }
   case Tenum: {
-    Node *car;
+    Ast *car;
 
     n = mk(Nenum);
     n->attrs = at;
@@ -1756,7 +1759,7 @@ parseitem(void)
       n->v.ty.gparams = genericparams();
     want(Tlbrace, "{");
     while (peek() != Trbrace && peek() != Teof) {
-      Node *m = traitmember();
+      Ast *m = traitmember();
 
       npush(&n->v.ty.members, m);
     }
@@ -1774,7 +1777,7 @@ parseitem(void)
       n->v.impl.fort = type_();
     want(Tlbrace, "{");
     while (peek() != Trbrace && peek() != Teof) {
-      Node *m = implmember();
+      Ast *m = implmember();
 
       npush(&n->v.impl.members, m);
     }

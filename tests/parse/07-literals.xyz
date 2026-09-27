@@ -1,24 +1,39 @@
 fn main() {
-    let a = 42;
-    let b = 3.14;
-    let c = 'x';
-    let d = "hello";
-    let e = c"raw";
-    let f = r"reg.*ex";
-    let g = """
+  let a = 42;
+  let b = 3.14;
+  let c = 'x';
+  let d = "hello";
+  let e = c"raw";
+  let f = r"reg.*ex";
+  let g = """
 multi
 line
 """;
-    let h = [3]u32{1, 2, 3};
-    let i = [3]mut u32{1, 2, 3};
-    let j = Point{x: 1.0, y: 2.0};
-    let k = {x: 1.0, y: 2.0};
-    let l = fn[mut n](x: i32) -> i32 { x + n };
-    let m = fn[](y: i32) { y };
-    let n = fn[x, &y, &mut z]() { 0 };
-    let o = @size_of<i32>();
-    let p = @cast<u32>(a);
-    let q = @noparens();
-    let r = (1, 2);
-    let s = ();
+  let h = [3]u32{1, 2, 3};
+  let i = [3]mut u32{1, 2, 3};
+  let j = Point{x: 1.0, y: 2.0};
+  let k = {x: 1.0, y: 2.0};
+  let l = fn[mut n](x: i32) -> i32 { x + n };
+  let m = fn[](y: i32) { y };
+  let n = fn[x, &y, &mut z]() { 0 };
+  let o = @size_of<i32>();
+  let p = @cast<u32>(a);
+  let q = @noparens();
+  let r = (1, 2);
+  let s = ();
+  let t = (1,);
+  let a2 = "";
+  let b2 = 1.5e3;
+  let b3 = 2e-2;
+  let a3 = 0xFF;
+  let a4 = 0o77;
+  let a5 = 0b1010;
+  let c2 = cr"raw\0";
+  let d2 = "a\nb\x41";
+  let s2 = []u32{4, 5};
+  let t2 = [0]u32{};
+  let u2 = Point{x: 1.0,};
+  let v2 = c"""
+byte
+""";
 }

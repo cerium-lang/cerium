@@ -79,7 +79,7 @@ dumpast_file(const char *path)
   lexinit(path);
   printf("(file");
   for (;;) {
-    Node *it;
+    Ast *it;
 
     while (peek() != Teof) {
       it = parseitem();

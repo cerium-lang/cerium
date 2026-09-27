@@ -18,6 +18,20 @@
   (field a
     (path u8)))
 
+(struct Empty)
+
+(struct Trail
+  (field a
+    (path i32))
+  (field b
+    (path i32)))
+
+(struct FieldAttr
+  (field (attr a) x
+    (path i32))
+  (field (attr b) (attr c) y
+    (path i32)))
+
 (union U
   (field a
     (path i32))
@@ -35,6 +49,14 @@
       (path f32)))
   (variant (attr doc (str 5 "named")) Tagged 3))
 
+(enum Void)
+
+(enum Opt
+  (gparam T)
+  (variant Some
+    (path T))
+  (variant None))
+
 (trait Read
   (typedef Item)
   (const BUF
@@ -45,6 +67,23 @@
         (path Self)))
     (topt
       (path Item))))
+
+(trait Eq
+  (gparam T)
+  (fn eq
+    (param self
+      (tptr
+        (path Self)))
+    (param o
+      (tptr
+        (path T)))
+    (path bool)))
+
+(trait Default
+  (fn d ()
+    (path i32)
+    (block
+      (int 0))))
 
 (impl
   (path Read) (for
@@ -83,6 +122,21 @@
 (use (path a) *)
 
 (use (path :: b c))
+
+(use (path deep)
+  (use (path a)
+    (use (path b))
+    (use (path c)))
+  (use (path d)))
+
+(use (path tail)
+  (use (path e)))
+
+(typedef Pair2
+  (gparam T)
+  (ttuple
+    (path T)
+    (path T)))
 
 (const C
   (path i32)

@@ -125,5 +125,47 @@
         (bin <
           (path c)
           (path d))))
+    (let
+      (ppath (path u))
+      (call
+        (path
+          (seg mirror
+            (un ^^
+              (path u32))))
+        (path v)))
+    (let
+      (ppath (path meta))
+      (ttype)
+      (un ^^
+        (path u32)))
+    (let
+      (ppath (path z))
+      (rangeidx
+        (path arr) _
+        (int 2)))
+    (let
+      (ppath (path tc))
+      (call
+        (path f)
+        (path a)
+        (path b)))
+    (assign +=
+      (path a)
+      (int 1))
+    (assign -=
+      (path a)
+      (int 2))
+    (assign *=
+      (path a)
+      (int 3))
+    (assign /=
+      (path a)
+      (int 4))
+    (assign <<=
+      (path a)
+      (int 1))
+    (assign >>=
+      (path a)
+      (int 1))
     (int 0)))
 )

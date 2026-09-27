@@ -72,6 +72,34 @@
         (arm
           (wild)
           (int 0))))
+    (expr
+      (match
+        (path opt)
+        (arm
+          (ppath (path Some)
+            (ppath (path v)))
+          (block
+            (let
+              (ppath (path x))
+              (path v))
+            (path x)))
+        (arm
+          (ppath (path None))
+          (block
+            (int 0)))))
+    (const FACTOR
+      (path i32)
+      (int 4))
+    (assign =
+      (path sum)
+      (bin +
+        (path sum)
+        (path FACTOR)))
+    (expr
+      (if
+        (path done)
+        (block
+          (return))))
     (for
       (bin <
         (path a)

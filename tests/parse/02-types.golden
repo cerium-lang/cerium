@@ -66,6 +66,30 @@
         (seg Vec
           (path u32))))))
 
+(typedef GenTC
+  (path
+    (seg Pair
+      (path u32)
+      (path i32))))
+
 (typedef T2
   (ttype))
+
+(typedef Fn0
+  (tfn ()))
+
+(typedef Fn2
+  (tfn
+    (path i32)
+    (path u32)
+    (path u32)))
+
+(typedef FnTC
+  (tfn
+    (path i32)))
+
+(typedef TupTC
+  (ttuple
+    (path i32)
+    (path u32)))
 )

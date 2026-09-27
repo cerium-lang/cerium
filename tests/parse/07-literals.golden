@@ -95,5 +95,53 @@
         (int 2)))
     (let
       (ppath (path s))
-      (unit))))
+      (unit))
+    (let
+      (ppath (path t))
+      (tuple
+        (int 1)))
+    (let
+      (ppath (path a2))
+      (str 0 ""))
+    (let
+      (ppath (path b2))
+      (flt 1500))
+    (let
+      (ppath (path b3))
+      (flt 0.02))
+    (let
+      (ppath (path a3))
+      (int 255))
+    (let
+      (ppath (path a4))
+      (int 63))
+    (let
+      (ppath (path a5))
+      (int 10))
+    (let
+      (ppath (path c2))
+      (str 6 "raw\\0\0" c r))
+    (let
+      (ppath (path d2))
+      (str 4 "a\nbA"))
+    (let
+      (ppath (path s2))
+      (arraylit _
+        (path u32)
+        (int 4)
+        (int 5)))
+    (let
+      (ppath (path t2))
+      (arraylit
+        (int 0)
+        (path u32)))
+    (let
+      (ppath (path u2))
+      (structlit
+        (path Point)
+        (init x
+          (flt 1))))
+    (let
+      (ppath (path v2))
+      (str 5 "byte\0" c ml))))
 )

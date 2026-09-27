@@ -19,13 +19,46 @@
 
 /* -- building --------------------------------------------------------- */
 
-Node *
+/* the arena: nodes and strings are never freed, the process is, so
+ * mk/mkstr bump a pointer through big chunks instead of paying a
+ * calloc each. 64 KiB a chunk; the last one's slack is lost, which
+ * the arena bargain already allows. */
+struct chunk
+{
+  struct chunk *next;
+  usize used; /* bytes handed out of mem */
+  char mem[64 * 1024];
+};
+static struct chunk *chunks;
+
+static void *
+bump(usize n)
+{
+  struct chunk *c = chunks;
+  char *p;
+
+  n = (n + 7u) & ~(usize) 7u; /* 8-byte alignment: nodes carry
+                               * pointers and doubles */
+  if (!c || c->used + n > sizeof c->mem) {
+    c = malloc(sizeof *c);
+    if (!c)
+      die("out of memory");
+    c->used = 0;
+    c->next = chunks;
+    chunks = c;
+  }
+  p = c->mem + c->used;
+  c->used += n;
+  return p;
+}
+
+Ast *
 mk(Nk k)
 {
-  Node *n = calloc(1, sizeof *n);
+  Ast *n = bump(sizeof *n);
 
-  if (!n)
-    die("out of memory");
+  memset(n, 0, sizeof *n); /* the calloc semantics callers rely on:
+                            * unset slots read as NULL/0 */
   n->k = k;
   n->line = lexcur()->line;
   n->col = lexcur()->col;
@@ -36,10 +69,8 @@ char *
 mkstr(void)
 {
   Token *t = lexcur();
-  char *s = malloc(t->v.str.len + 1);
+  char *s = bump(t->v.str.len + 1);
 
-  if (!s)
-    die("out of memory");
   memcpy(s, t->v.str.s, t->v.str.len);
   s[t->v.str.len] = 0;
   return s;
@@ -172,7 +203,7 @@ dumpstr(const char *s, usize n)
   }
 }
 
-static void dumpnode(Node *n, int ind);
+static void dumpnode(Ast *n, int ind);
 
 static void
 ind(int n)
@@ -206,7 +237,7 @@ dumpu64sp(u64 v) /* with the leading space */
 /* a child on its own line; NULL prints nothing -- optional slots
  * (an else, a tail expression, a type annotation) vanish silently */
 static void
-child(Node *n, int i)
+child(Ast *n, int i)
 {
   if (!n)
     return;
@@ -216,7 +247,7 @@ child(Node *n, int i)
 
 /* a placeholder slot: NULL prints "_", a missing range end */
 static void
-opt(Node *n, int i)
+opt(Ast *n, int i)
 {
   if (!n) {
     printf(" _");
@@ -241,16 +272,16 @@ dumpflags(unsigned f)
 /* a path: bare segments inline, [::] first when rooted; a segment
  * with generic args is (seg name args...) */
 static void
-dumppath(Node *n, int i)
+dumppath(Ast *n, int i)
 {
-  Node **s;
+  Ast **s;
   usize j;
 
   printf("(path");
   if (n->v.path.root)
     printf(" ::");
   for (s = n->v.path.segs, j = 0; s && j < vlen(s); j++) {
-    Node *seg = s[j];
+    Ast *seg = s[j];
 
     if (seg->v.seg.args) {
       child(seg, i);
@@ -264,14 +295,14 @@ dumppath(Node *n, int i)
 /* attrs inline, each (attr name args...) -- literal arguments stay
  * on the line; called at the head of every arm that carries them */
 static void
-putattrs(Node *n)
+putattrs(Ast *n)
 {
-  Node **a;
+  Ast **a;
   usize i;
 
   for (a = n->attrs, i = 0; a && i < vlen(a); i++) {
-    Node *at = a[i];
-    Node **args;
+    Ast *at = a[i];
+    Ast **args;
     usize j;
 
     printf(" (attr %s", at->v.seg.name);
@@ -284,9 +315,9 @@ putattrs(Node *n)
 }
 
 static void
-dumpnode(Node *n, int i)
+dumpnode(Ast *n, int i)
 {
-  Node **v;
+  Ast **v;
   usize j;
 
   if (!n) {
@@ -624,7 +655,7 @@ dumpnode(Node *n, int i)
 }
 
 void
-dumpast(Node *n)
+dumpast(Ast *n)
 {
   dumpnode(n, 0);
   putchar('\n');

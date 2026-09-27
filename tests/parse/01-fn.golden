@@ -50,6 +50,33 @@
     (path i64))
   (block))
 
+(fn (attr a) (attr b) multiattr ()
+  (block))
+
+(fn (attr packed) (attr align (int 4)) commaform ()
+  (block))
+
+(fn (attr doc (str 1 "d") (int 16) (flt 1.5) (path name)) attrargs ()
+  (block))
+
+(fn trail
+  (param a
+    (path i32))
+  (param b
+    (path i32))
+  (path i32)
+  (block
+    (int 0)))
+
+(fn gtrail
+  (gparam T
+    (path Add))
+  (param v
+    (path T))
+  (path T)
+  (block
+    (path v)))
+
 (fn main ()
   (path i32)
   (block

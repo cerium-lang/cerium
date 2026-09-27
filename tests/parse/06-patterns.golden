@@ -7,13 +7,29 @@
         (ppath (path b)))
       (path t))
     (let
+      (ptuple
+        (ppath (path a))
+        (ppath (path b)))
+      (path t))
+    (let
       (pstruct
         (pfield w)
         (pfield h))
       (path r))
     (let
+      (pstruct
+        (pfield w) ..)
+      (path r))
+    (let
       (ppath (path Rect)
         (pfield w) ..)
+      (path s))
+    (let
+      (ppath (path Rect)
+        (pfield w
+          (ppath (path Some)
+            (ppath (path w))))
+        (pfield h))
       (path s))
     (let
       (por
@@ -34,6 +50,25 @@
     (let
       (ppath (path Unit))
       (path unit))
+    (let
+      (ptuple)
+      (path unit))
+    (let
+      (ppath (path :: a B)
+        (ppath (path c)))
+      (path x))
+    (let
+      (ppath (path Some)
+        (por
+          (ppath (path a))
+          (ppath (path b))))
+      (path x))
+    (let
+      (ppath (path
+        (seg Some
+          (path i32)))
+        (ppath (path v)))
+      (path x))
     (for in
       (ptuple
         (ppath (path i))

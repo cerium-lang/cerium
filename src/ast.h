@@ -1,6 +1,6 @@
 /* ast.h -- the tree, tagged-union style.
  *
- * One Node struct, one kind enum, a union branch per kind. The
+ * One Ast struct, one kind enum, a union branch per kind. The
  * shape is chosen for the self-hosting port: a match over Nk maps
  * onto xyz's own E?T one arm per kind, so what is exhaustive here
  * stays exhaustive there.
@@ -10,7 +10,7 @@
  * buffer at build time (mkstr) -- nothing in the tree points into
  * token scratch space.
  *
- * Node vectors are vec.h vectors (vlen/vappend); NULL is the empty
+ * Ast vectors are vec.h vectors (vlen/vappend); NULL is the empty
  * vector everywhere vlen tolerates it.
  *
  * The dump (ast.c) is S-expressions and a golden-test contract:
@@ -70,13 +70,13 @@ typedef enum
 /* the dump names, one per kind -- "let", "if", "const-if", ... */
 const char *nkname(Nk k);
 
-typedef struct Node Node;
-struct Node
+typedef struct Ast Ast;
+struct Ast
 {
   Nk k;
   unsigned line, col;
-  Node **attrs; /* items, variants, fields, parameters -- the four
-                 * slots the grammar gives attributes to; else NULL */
+  Ast **attrs; /* items, variants, fields, parameters -- the four
+                * slots the grammar gives attributes to; else NULL */
   union
   {
     struct
@@ -85,7 +85,7 @@ struct Node
     } i;
     struct
     {
-      Node *e; /* the tuple */
+      Ast *e;  /* the tuple */
       u64 idx; /* the index */
     } tup;     /* Ntupidx -- a pointer and a u64, so it cannot borrow
                 * n1/i: the union would overlap them */
@@ -105,80 +105,80 @@ struct Node
     } nm;
     struct
     {
-      Node **segs; /* Npath: Nseg vector */
-      int root;    /* leading "::" */
+      Ast **segs; /* Npath: Nseg vector */
+      int root;   /* leading "::" */
     } path;
     struct
     {
       char *name;
-      Node **args; /* generic args: types, or $$/^^ expressions */
-    } seg;         /* Nseg, Nattr */
+      Ast **args; /* generic args: types, or $$/^^ expressions */
+    } seg;        /* Nseg, Nattr */
     struct
     {
-      Node *l, *r;
+      Ast *l, *r;
       Tok op; /* Nbin, Nassign; unused for Nrange */
     } bin;
     struct
     {
-      Node *e;
+      Ast *e;
       Tok op;  /* Nun: the operator token */
       int mut; /* Nun: &mut; Ntptr: *mut */
     } un;
     struct
     {
-      Node *f;     /* Ncall, Nbuiltin: the callee */
-      Node **args; /* Ncall, Nbuiltin, Nmatch: args or arms */
+      Ast *f;     /* Ncall, Nbuiltin: the callee */
+      Ast **args; /* Ncall, Nbuiltin, Nmatch: args or arms */
     } call;
     struct
     {
-      Node *a, *b; /* Nindex: e, i; Ntresult: E, T; Narm: pat, body;
+      Ast *a, *b; /* Nindex: e, i; Ntresult: E, T; Narm: pat, body;
                       Ntuple pairs never land here */
     } n2;
     struct
     {
-      Node *e; /* Ntry, Nreturn, Nexprstmt, Ntopt, Ninit's value,
+      Ast *e; /* Ntry, Nreturn, Nexprstmt, Ntopt, Ninit's value,
                   Npfield's sub-pattern */
     } n1;
     struct
     {
-      Node *e;       /* the indexed/ranged/... base */
-      Node *lo, *hi; /* either may be NULL */
+      Ast *e;       /* the indexed/ranged/... base */
+      Ast *lo, *hi; /* either may be NULL */
     } ridx;
     struct
     {
-      Node *e;
+      Ast *e;
       char *name;
     } fld; /* Nfield */
     struct
     {
       int cnst; /* const if/match/for */
-      Node *cond;
-      Node *then; /* Nblock */
-      Node *els;  /* Nif or Nblock, or NULL */
+      Ast *cond;
+      Ast *then; /* Nblock */
+      Ast *els;  /* Nif or Nblock, or NULL */
     } ifx;
     struct
     {
-      Node **stmts;
-      Node *tail; /* the block's value, or NULL */
+      Ast **stmts;
+      Ast *tail; /* the block's value, or NULL */
     } blk;
     struct
     {
-      Node *len; /* Nint, or NULL for [] */
+      Ast *len; /* Nint, or NULL for [] */
       int mut;
-      Node *t;
-      Node **es;
+      Ast *t;
+      Ast **es;
     } arrlit;
     struct
     {
-      Node *path;   /* Npath */
-      Node **inits; /* Ninit vector */
+      Ast *path;   /* Npath */
+      Ast **inits; /* Ninit vector */
     } slit;
     struct
     {
-      Node **caps;   /* Ncap vector */
-      Node **params; /* Nparam vector */
-      Node *ret;     /* or NULL */
-      Node *body;    /* Nblock */
+      Ast **caps;   /* Ncap vector */
+      Ast **params; /* Nparam vector */
+      Ast *ret;     /* or NULL */
+      Ast *body;    /* Nblock */
     } clos;
     struct
     {
@@ -188,124 +188,124 @@ struct Node
     } cap;
     struct
     {
-      char *name;     /* Nfn, Nstruct, ...: the declared name */
-      Node **gparams; /* Ngparam vector, or NULL */
-      Node **params;  /* Nparam vector, or NULL */
-      Node *ret;      /* or NULL */
-      Node *body;     /* Nblock, or NULL for the ";" form */
+      char *name;    /* Nfn, Nstruct, ...: the declared name */
+      Ast **gparams; /* Ngparam vector, or NULL */
+      Ast **params;  /* Nparam vector, or NULL */
+      Ast *ret;      /* or NULL */
+      Ast *body;     /* Nblock, or NULL for the ";" form */
     } fn;
     struct
     {
       char *name;
-      Node **gparams;
-      Node **fields;  /* Nfield vector */
-      Node **members; /* Ntrait/Nimpl: fn, const, typedef items */
-    } ty;             /* Nstruct, Nunion, Ntrait */
+      Ast **gparams;
+      Ast **fields;  /* Nfield vector */
+      Ast **members; /* Ntrait/Nimpl: fn, const, typedef items */
+    } ty;            /* Nstruct, Nunion, Ntrait */
     struct
     {
       char *name;
-      Node **gparams;
-      Node **variants;
+      Ast **gparams;
+      Ast **variants;
     } en;
     struct
     {
-      Node **attrs;
+      Ast **attrs;
       char *name; /* Nvariant, Nfield */
       u64 disc;   /* Nvariant: "= integer", when hasdisc */
       int hasdisc;
-      Node **payload; /* Nvariant: types or Nfield list, or NULL */
-      int named;      /* payload braces rather than parens */
-      int mut;        /* Nfield */
-      Node *t;        /* Nfield's type */
-    } variant;        /* Nvariant, Nfield */
+      Ast **payload; /* Nvariant: types or Nfield list, or NULL */
+      int named;     /* payload braces rather than parens */
+      int mut;       /* Nfield */
+      Ast *t;        /* Nfield's type */
+    } variant;       /* Nvariant, Nfield */
     struct
     {
-      Node **gparams; /* impl's own */
-      Node *path;     /* the trait or the type */
-      Node *fort;     /* impl ... for T, or NULL (inherent) */
-      Node **members;
+      Ast **gparams; /* impl's own */
+      Ast *path;     /* the trait or the type */
+      Ast *fort;     /* impl ... for T, or NULL (inherent) */
+      Ast **members;
     } impl;
     struct
     {
       char *name;
-      Node **gparams;
-      Node *t; /* the aliased type */
+      Ast **gparams;
+      Ast *t; /* the aliased type */
     } td;
     struct
     {
-      Node *path;  /* Npath; a nested Nuse hangs off subs */
-      Node **subs; /* nested use trees */
-      int star;    /* ::* */
+      Ast *path;  /* Npath; a nested Nuse hangs off subs */
+      Ast **subs; /* nested use trees */
+      int star;   /* ::* */
     } use;
     struct
     {
-      Node **attrs;
+      Ast **attrs;
       int mut;    /* static mut, let mut */
       char *name; /* const/static: the name */
-      Node *t;
-      Node *e;
+      Ast *t;
+      Ast *e;
     } cst; /* Nconst, Nstatic */
     struct
     {
       int mut;
       int cnst; /* parameter: the argument is compile-time known */
       char *name;
-      Node *t;
+      Ast *t;
     } param; /* Nparam, and let's shape below is close enough */
     struct
     {
-      char *name;    /* the generic parameter, or the pack's */
-      Node **bounds; /* Npath vector */
-      Node *dflt;    /* = T, or NULL */
-      int pack;      /* ...name */
+      char *name;   /* the generic parameter, or the pack's */
+      Ast **bounds; /* Npath vector */
+      Ast *dflt;    /* = T, or NULL */
+      int pack;     /* ...name */
     } gp;
     struct
     {
       int mut;
-      Node *pat;
-      Node *t; /* : T, or NULL */
-      Node *e; /* = e */
+      Ast *pat;
+      Ast *t; /* : T, or NULL */
+      Ast *e; /* = e */
     } let;
     struct
     {
       int cnst;
-      int shape;   /* FCOND, FLET, FIN (below) */
-      Node *a, *b; /* per shape: the condition; the pattern and the
+      int shape;  /* FCOND, FLET, FIN (below) */
+      Ast *a, *b; /* per shape: the condition; the pattern and the
                       source; the pattern and the iterable */
-      Node *body;
+      Ast *body;
     } forx;
     struct
     {
-      Node *path;     /* Npath */
-      Node **payload; /* patterns or Npfield list, or NULL */
-      int named;      /* braces */
-      int rest;       /* ".." */
+      Ast *path;     /* Npath */
+      Ast **payload; /* patterns or Npfield list, or NULL */
+      int named;     /* braces */
+      int rest;      /* ".." */
     } ppath;
     struct
     {
-      Node **fields; /* Npfield vector */
-      int rest;      /* ".." */
+      Ast **fields; /* Npfield vector */
+      int rest;     /* ".." */
     } pstruct;
     struct
     {
       char *name;
-      Node *e; /* Ninit: the value; Npfield: the sub-pattern, or NULL */
-    } init;    /* Ninit, Npfield -- name and child must coexist */
+      Ast *e; /* Ninit: the value; Npfield: the sub-pattern, or NULL */
+    } init;   /* Ninit, Npfield -- name and child must coexist */
     struct
     {
-      char *name;   /* @name */
-      Node **targs; /* generic args, or NULL */
-      Node **args;
+      char *name;  /* @name */
+      Ast **targs; /* generic args, or NULL */
+      Ast **args;
     } blt; /* Nbuiltin */
     struct
     {
-      Node **args; /* the parameter types, anonymous (01-types.md) */
-      Node *ret;
+      Ast **args; /* the parameter types, anonymous (01-types.md) */
+      Ast *ret;
     } fnty; /* Ntfn */
     struct
     {
-      Node **ts; /* Nttuple elements */
-    } list;      /* Ntuple, Npor, Nptuple, Nbarestructlit */
+      Ast **ts; /* Nttuple elements */
+    } list;     /* Ntuple, Npor, Nptuple, Nbarestructlit */
   } v;
 };
 
@@ -320,14 +320,14 @@ enum
 /* node building: mk copies nothing but the kind and the position;
  * the caller fills the union. Anything set to NULL where a vector is
  * wanted means "empty". */
-Node *mk(Nk k);
+Ast *mk(Nk k);
 
 /* copy the lexer's current string value out of its reused buffer */
 char *mkstr(void);
 u64 mknum(void);
 
 /* the S-expression dump: one node, then its children indented */
-void dumpast(Node *n);
+void dumpast(Ast *n);
 
 /* dump helpers shared with the token dump: a byte string escaped
  * with the lexer's own closed set, and a u64 in decimal (C89
