@@ -89,17 +89,24 @@ once per checkout so commits format what they stage.
 The lexer and the parser are in: `xyz -t file.xyz` dumps the token
 stream — position, kind, value — and `xyz -a file.xyz` dumps the parse
 tree as S-expressions, one node a line, children indented. The type
-checker's first two passes are in: `xyz -T file.xyz` declares every
+checker is in through the bodies: `xyz -T file.xyz` declares every
 name in the file, resolves every type a declaration carries — aliases
 expand to their targets, `?T`/`E?T` build on the prelude's
 `Option`/`Result`, `dyn A` names its trait — then resolves trait and
 impl members against their `Self`, checks a trait impl supplies
 exactly what the trait declares, and orders every pair of impls by
 shape-pattern specificity or the `Copy`/`Drop` exclusion
-(`04-generics.md`), rejecting the rest on the spot. `tests/lex`,
-`tests/parse` and `tests/check` hold the golden tests, split by pass:
-`ok/` has one `.golden` per `.xyz` that the dumps must reproduce
-exactly, `err/` has inputs that must be rejected (`tools/run-tests.sh`).
+(`04-generics.md`), rejecting the rest on the spot. It then walks
+every function body: expressions get their types — the method sugar
+adapts its receiver, `None` takes its `?T` from the other side, a
+`match` is exhaustive variant by variant — and the flow rules hold:
+a move kills its binding downstream, a borrow freezes what it
+touched, and `mut` stays two orthogonal levels, the slot and the
+field (`01-types.md`, `03-move.md`, `09-match.md`, `10-iteration.md`).
+`tests/lex`, `tests/parse` and `tests/check` hold the golden tests,
+split by pass: `ok/` has one `.golden` per `.xyz` that the dumps must
+reproduce exactly, `err/` has inputs that must be rejected
+(`tools/run-tests.sh`).
 
 ## Status
 

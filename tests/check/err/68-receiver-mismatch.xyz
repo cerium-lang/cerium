@@ -1,0 +1,10 @@
+struct Point { x: f64, mut y: f64 }
+impl Point {
+  fn bump(self: *mut Self, d: f64) -> () {
+    self.y = self.y + d;
+  }
+}
+fn main() -> () {
+  let p = Point { x: 1.0 };
+  p.bump(1.0);
+}

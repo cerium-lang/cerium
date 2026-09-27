@@ -1,0 +1,176 @@
+// bodies: pass 4's ground -- locals, moves, borrows, and flow
+
+struct Point {
+  x: f64,
+  mut y: f64,
+}
+
+struct Keep {
+  mut f: fn(i32) -> i32,
+}
+
+enum Shape {
+  Circle { r: f64 },
+  Rect(f64, f64),
+  Unit,
+}
+
+impl Point {
+  fn new(x: f64) -> Point {
+    Point { x: x, y: 0.0 }
+  }
+  fn get(self: *Self) -> f64 {
+    return self.x;
+  }
+  fn bump(self: *mut Self, d: f64) -> () {
+    self.y = self.y + d;
+  }
+  fn rect(a: f64, b: f64) -> Shape {
+    Shape::Rect(a, b)
+  }
+}
+
+fn id(n: i32) -> i32 {
+  n
+}
+
+fn area(s: *Shape) -> f64 {
+  match *s {
+    Shape::Circle { r } => 3.14 * r * r,
+    Shape::Rect(w, h) => w * h,
+    Shape::Unit => 0.0,
+  }
+}
+
+fn narrowed(p: ?i32, d: i32) -> i32 {
+  if p != None {
+    return p;
+  };
+  return d;
+}
+
+fn getor(p: ?i32, d: i32) -> i32 {
+  match p {
+    Some(v) => v,
+    None => d,
+  }
+}
+
+fn sum(a: []i32) -> i32 {
+  let mut s = 0;
+
+  for v in a {
+    s = s + v;
+  }
+  return s;
+}
+
+fn upto(n: i32) -> i32 {
+  let mut s = 0;
+  let mut i = 0;
+
+  for i < n {
+    s = s + i;
+    i = i + 1;
+  }
+  return s;
+}
+
+fn spin(ready: fn() -> bool) -> i32 {
+  for ready() {
+    break;
+  }
+  for let Some(v) = nextish() {
+    return v;
+  }
+  return 0;
+}
+
+fn nextish() -> ?i32 {
+  None
+}
+
+fn find(arr: []i32) -> ?i32 {
+  for v in arr {
+    if v > 3 {
+      return Some(v);
+    };
+  }
+  return None;
+}
+
+fn borrow(p: *mut Point) -> f64 {
+  let r = &(*p).x;
+
+  (*p).y = 2.0;
+  *r
+}
+
+fn takeout() -> i32 {
+  let mut k = Keep { f: id };
+  let g = @take(&mut k.f);
+
+  g(3)
+}
+
+fn sizes() -> usize {
+  @sizeof<i32>() + @alignof<f64>()
+}
+
+fn early(p: *mut Point) -> () {
+  if (*p).x > 1.0 {
+    (*p).y = 1.0;
+    return;
+  };
+  (*p).y = 0.0;
+}
+
+fn usekeep(k: Keep) -> i32 {
+  1
+}
+
+fn earlytake(k: Keep, flag: bool) -> i32 {
+  if flag {
+    usekeep(k);
+    return 1;
+  };
+  usekeep(k)
+}
+
+fn slices(a: [4]i32) -> i32 {
+  let whole = a[..];
+
+  a[0] + whole[1]
+}
+
+fn tuples(t: (i32, f64)) -> i32 {
+  t.0
+}
+
+fn castit(n: i32) -> u32 {
+  @cast<u32>(n)
+}
+
+fn ortho(q: Point) -> f64 {
+  q.y = 9.0; // the binding is not mut; the field is its own slot
+  q.y
+}
+
+fn main() -> i32 {
+  let mut p = Point { x: 1.5 };
+
+  p.y = 2.5;
+  let q = Point::new(3.0);
+  let three = id(3);
+
+  p.bump(0.5);
+  let g = p.get();
+  let r = Point::rect(1.0, 2.0);
+  let a = area(&r);
+  let n = narrowed(Some(4), 0) + getor(None, 5);
+  let s = sum([]i32{1, 2, 3});
+  let f = find([]i32{1, 5});
+
+  return three + @cast<i32>(g + a) + n + s + tuples((1, 2.0)) + @cast<i32>(ortho(q))
+    + @cast<i32>(sizes()) + @cast<i32>(slices([4]i32{1, 2, 3, 4}));
+}
