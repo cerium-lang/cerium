@@ -1,0 +1,53 @@
+2:1 Tident a
+2:2 Tdotdot
+2:4 Tident b
+3:1 Tident x
+3:2 Tshr
+3:4 Tident y
+4:1 Tident p
+4:2 Tcoloncolon
+4:4 Tident q
+5:1 Thashlbracket
+5:3 Tident attr
+5:7 Trbracket
+5:9 Tint 3
+5:10 Tdotdotdot
+5:13 Tint 4
+6:1 Tident i
+6:2 Tshleq
+6:5 Tint 2
+7:1 Tident j
+7:2 Tshreq
+7:5 Tint 3
+8:1 Tident is_same
+8:8 Tlt
+8:9 Tident i32
+8:12 Tcomma
+8:14 Tident i32
+8:17 Tshr
+9:1 Tident k
+9:3 Tlt
+9:5 Tident l
+10:1 Tident m
+10:3 Tgt
+10:5 Tident n
+11:1 Tident o
+11:3 Tle
+11:6 Tident p
+12:1 Tident q
+12:3 Tge
+12:6 Tident r
+13:1 Tident s
+13:3 Teqeq
+13:6 Tident t
+14:1 Tident u
+14:3 Tne
+14:6 Tident v
+15:1 Tint 1
+15:2 Tdotdot
+15:4 Tint 3
+16:1 Tflt 4.5
+17:1 Tident cr
+18:1 Tident c
+19:1 Tident r
+20:1 Teof

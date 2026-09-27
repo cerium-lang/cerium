@@ -1,0 +1,24 @@
+2:1 Tint 42
+2:4 Tint 0
+2:6 Tint 7
+3:1 Tint 0
+3:5 Tint 255
+3:10 Tint 3735928559
+3:22 Tint 255
+4:1 Tint 0
+4:5 Tint 7
+4:9 Tint 122
+4:16 Tint 511
+5:1 Tint 0
+5:5 Tint 1
+5:9 Tint 9
+5:17 Tint 15
+6:1 Tint 1000
+6:7 Tint 18446744073709551615
+7:1 Tflt 1
+7:5 Tflt 0.5
+7:9 Tflt 1.0005
+7:20 Tflt 1e+09
+7:24 Tflt 100
+7:29 Tflt 3.14
+8:1 Teof

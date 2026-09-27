@@ -1,0 +1,16 @@
+2:1 Tlet
+2:5 Tident a
+2:7 Teq
+2:9 Tint 1
+2:10 Tsemi
+5:1 Tlet
+5:5 Tident b
+5:7 Teq
+5:24 Tint 2
+5:25 Tsemi
+7:1 Tlet
+7:5 Tident c
+7:7 Teq
+7:9 Tint 3
+7:10 Tsemi
+8:1 Teof

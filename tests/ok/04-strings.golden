@@ -1,0 +1,59 @@
+3:1 Tlet
+3:5 Tident s
+3:7 Teq
+3:9 Tstr 6 "hi\n\tA\0"
+3:23 Tsemi
+4:1 Tlet
+4:5 Tident w
+4:7 Teq
+4:9 Tstr 2 "x\0" c
+4:13 Tsemi
+5:1 Tlet
+5:5 Tident r
+5:7 Teq
+5:9 Tstr 3 "a\\b" r
+5:15 Tsemi
+6:1 Tlet
+6:5 Tident cr
+6:8 Teq
+6:10 Tstr 2 "c\0" c r
+6:15 Tsemi
+7:1 Tlet
+7:5 Tident e
+7:7 Teq
+7:9 Tstr 0 ""
+7:11 Tsemi
+8:1 Tlet
+8:5 Tident ce
+8:8 Teq
+8:10 Tstr 1 "\0" c
+8:13 Tsemi
+9:1 Tlet
+9:5 Tident by
+9:8 Teq
+9:10 Tbyte 'A'
+9:13 Tsemi
+10:1 Tlet
+10:5 Tident nl
+10:8 Teq
+10:10 Tbyte '\n'
+10:14 Tsemi
+11:1 Tlet
+11:5 Tident hi
+11:8 Teq
+11:10 Tbyte '\xff'
+11:16 Tsemi
+12:1 Tlet
+12:5 Tident _1000
+12:11 Teq
+12:13 Tint 1
+12:14 Tsemi
+13:1 Tident c
+13:3 Tstr 1 "x"
+13:7 Tident r
+13:9 Tstr 1 "y"
+13:13 Tident cr
+13:16 Tstr 1 "z"
+14:1 Tminus
+14:2 Tint 1
+15:1 Teof

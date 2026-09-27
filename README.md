@@ -74,6 +74,23 @@ pinned by commit, moved by `tools/sync-qbe.sh`. The goal is self-hosting:
 the compiler rewritten in xyz itself, with LLVM held as a v1+ release
 backend rather than a v0 dependency.
 
+A fresh clone builds with:
+
+```
+git clone --recurse-submodules <url>
+cd xyz && make          # gcc; make CC=clang works too
+make test               # the lexer's golden tests (no qbe needed yet)
+```
+
+The `qbe/` submodule only matters once codegen lands —
+`git submodule update --init -- qbe` pulls it on demand. Run `make hooks`
+once per checkout so commits format what they stage.
+
+The lexer is in: `xyz -t file.xyz` dumps the token stream — position,
+kind, value — and `tests/ok` holds one `.golden` per `.xyz` that the dump
+must reproduce exactly (`tools/run_tests.sh`). `tests/err` holds inputs
+that must be rejected.
+
 ## Status
 
 A design in progress. The specification is internally consistent at the moment;

@@ -28,8 +28,8 @@ $(QBE_BIN):
 	    echo "qbe/ is empty -- run: git submodule update --init"; exit 1; }
 	$(MAKE) -C qbe
 
-test: $(BIN) $(QBE_BIN)
-	@echo "test: golden tests land with the lexer"
+test: $(BIN)
+	sh tools/run_tests.sh
 
 fmt:
 	clang-format -i src/*.c src/*.h

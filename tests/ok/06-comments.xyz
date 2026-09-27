@@ -1,0 +1,7 @@
+// line comment
+let a = 1; // trailing
+/* block */
+/* nested /* deeper */ still */
+let b = /* mid-line */ 2;
+/**/
+let c = 3; ///
