@@ -2117,6 +2117,41 @@ rclosure(Ast *c, Fenv *fe)
 /* is a place writable? The slot rules of 01-types.md: a mut binding,
  * a mut field under any binding, or a mut slot (a *mut, []mut, [N]mut,
  * or a mut tuple element) on the way down */
+/* the mut of every pointer on the way: only a *mut lends
+ * writability, so the chain must be *mut at each hop (README: "no
+ * write through a shared pointer"). */
+static int
+ptrwritable(Type *t)
+{
+  while (t && (t->k == Typtr || t->k == Tymut)) {
+    if (t->k == Typtr && (!t->t || t->t->k != Tymut))
+      return 0;
+    t = t->t;
+  }
+  return 1;
+}
+
+/* a place's base -- the chain of explicit derefs down to the name --
+ * must be *mut all the way: an interior write rides on the pointer's
+ * writability, which a plain *T does not lend. The types come from
+ * rplace: writability is a fact about a place, and deriving it must
+ * not move anything. */
+static int
+derefswritable(Ast *x, Fenv *fe)
+{
+  Type *t;
+
+  if (!x)
+    return 1;
+  if (x->k == Nun && x->v.un.op == Tstar) { /* (*p).f, (*p)[i] */
+    t = rplace(x->v.un.e, fe);              /* the pointer, as a place */
+    if (!t || !ptrwritable(t))
+      return 0;
+    return derefswritable(x->v.un.e, fe);
+  }
+  return ptrwritable(rplace(x, fe));
+}
+
 static int
 placewritable(Ast *p, Fenv *fe)
 {
@@ -2128,10 +2163,17 @@ placewritable(Ast *p, Fenv *fe)
   }
   case Naccess: { /* the two mut levels are orthogonal (01-types.md):
                    * a.b is writable by b's own mut, never by the
-                   * binding's */
-    Type *bt = derefthrough(rexpr(p->v.fld.e, fe, 0));
+                   * binding's -- and a pointer base must be *mut all
+                   * the way, for it lends what it lends (README) */
+    Type *bt;
     usize i;
 
+    if (!derefswritable(p->v.fld.e, fe))
+      return 0; /* a *T lends nothing writable */
+    bt = rplace(p->v.fld.e, fe);
+    if (!bt)
+      bt = rexpr(p->v.fld.e, fe, 0); /* a global or computed base */
+    bt = derefthrough(bt);
     if (!bt || (bt->k != Tystruct && bt->k != Tyunion))
       return 0;
     for (i = 0; i < bt->sym->nfields; i++)
@@ -2140,8 +2182,13 @@ placewritable(Ast *p, Fenv *fe)
     return 0;
   }
   case Nindex: {
-    Type *bt = derefthrough(rexpr(p->v.n2.a, fe, 0));
+    Type *bt;
 
+    if (!derefswritable(p->v.n2.a, fe))
+      return 0;
+    bt = rplace(p->v.n2.a, fe);
+    if (!bt)
+      bt = rexpr(p->v.n2.a, fe, 0);
     if (!bt)
       return 0;
     if (bt->k == Tyslice || bt->k == Tyarray)
@@ -2149,8 +2196,13 @@ placewritable(Ast *p, Fenv *fe)
     return 0;
   }
   case Nrangeindex: {
-    Type *bt = derefthrough(rexpr(p->v.ridx.e, fe, 0));
+    Type *bt;
 
+    if (!derefswritable(p->v.ridx.e, fe))
+      return 0;
+    bt = rplace(p->v.ridx.e, fe);
+    if (!bt)
+      bt = rexpr(p->v.ridx.e, fe, 0);
     return bt && bt->k == Tyarray && bt->t->k == Tymut;
   }
   case Nun:
@@ -2193,6 +2245,8 @@ rstmt(Ast *st, Fenv *fe)
       berr(st->v.bin.l, "assignment needs a place on the left");
     if (!placewritable(st->v.bin.l, fe))
       berr(st->v.bin.l, "this place is not a mut slot (01-types.md)");
+    if (touchconflict(st->v.bin.l, fe, 1))
+      berr(st->v.bin.l, "this place is borrowed (01-types.md)");
     if (op == Teq) {
       rt = rexpr(st->v.bin.r, fe, lt);
       if (rt && lt && !tysame(rt, lt)) {

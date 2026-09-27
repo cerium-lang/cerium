@@ -1,0 +1,4 @@
+struct Point { x: f64, mut y: f64 }
+fn w(p: *Point) -> () {
+  (*p).y = 1.0;
+}
