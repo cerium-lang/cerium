@@ -62,7 +62,7 @@ typedef enum
   XYZ_TOKS(X)
 #undef X
       TOKKIND_N
-} TokKind;
+} Tok;
 
 /* string literal form flags -- a prefix is part of the literal only
  * when it touches it: an identifier c, r, or cr immediately followed
@@ -74,10 +74,10 @@ enum
   STRF_ML = 4   /* """ multiline: the closing indentation is stripped */
 };
 
-typedef struct Tok Tok;
-struct Tok
+typedef struct Token Token;
+struct Token
 {
-  TokKind t;
+  Tok t;
   unsigned line, col; /* 1-based; a literal reports where it opens */
   union
   {
@@ -96,9 +96,9 @@ struct Tok
 void lexinit(const char *path); /* NULL reads stdin */
 const char *lexpath(void);
 
-TokKind peek(void); /* look at the next token without consuming */
-TokKind next(void); /* consume it; the token lands in lexcur() */
-Tok *lexcur(void);  /* the token peek/next last produced */
+Tok peek(void);      /* look at the next token without consuming */
+Tok next(void);      /* consume it; the token lands in lexcur() */
+Token *lexcur(void); /* the token peek/next last produced */
 
 /* v.str.s lives in a buffer reused across tokens: its content is valid
  * until the next peek/next. Copy it out if it must outlive that. */
@@ -107,6 +107,6 @@ Tok *lexcur(void);  /* the token peek/next last produced */
 void lexerr(const char *fmt, ...);
 
 /* the enum name for a kind, for the token dump ("Tcomma" etc.) */
-const char *tokname(TokKind t);
+const char *tokname(Tok t);
 
 #endif

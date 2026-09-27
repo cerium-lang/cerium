@@ -84,7 +84,7 @@ dumpflags(unsigned f)
 }
 
 static void
-dumptok(Tok *t)
+dumptok(Token *t)
 {
   printf("%u:%u %s", t->line, t->col, tokname(t->t));
   switch (t->t) {

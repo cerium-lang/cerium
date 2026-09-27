@@ -16,9 +16,9 @@ static FILE *inf;
 static const char *inpath = "<stdin>";
 static unsigned line = 1, col = 1; /* position of the NEXT character */
 
-static Tok cur;   /* the token peek/next last produced */
-static Tok thead; /* peeked token; t == Txxx means empty */
-static char *buf; /* reused value buffer, NUL-terminated */
+static Token cur;   /* the token peek/next last produced */
+static Token thead; /* peeked token; t == Txxx means empty */
+static char *buf;   /* reused value buffer, NUL-terminated */
 
 /* -- character layer ------------------------------------------------
  *
@@ -254,7 +254,7 @@ parseu64(const char *s, int base, int *ovf)
 static struct
 {
   const char *name;
-  TokKind t;
+  Tok t;
 } kwtab[] = {
     {"fn", Tfn},       {"struct", Tstruct},     {"enum", Tenum},     {"union", Tunion},
     {"trait", Ttrait}, {"impl", Timpl},         {"type", Ttype},     {"use", Tuse},
@@ -265,7 +265,7 @@ static struct
     {"defer", Tdefer}, /* reserved, unused */
 };
 
-static TokKind
+static Tok
 kwlook(const char *s)
 {
   size_t i;
@@ -358,7 +358,7 @@ static void lexmultiline(int flags);
 static void
 lexident(int c0)
 {
-  TokKind k;
+  Tok k;
   int c = c0;
 
   bufclear();
@@ -720,7 +720,7 @@ lexmultiline(int flags)
 
 /* -- the main dispatch ------------------------------------------------- */
 
-static Tok
+static Token
 lex(void)
 {
   int c, c2, c3;
@@ -925,7 +925,7 @@ lex(void)
 
 /* -- the qbe peek/next pair --------------------------------------------- */
 
-TokKind
+Tok
 peek(void)
 {
   if (thead.t == Txxx)
@@ -934,17 +934,17 @@ peek(void)
   return thead.t;
 }
 
-TokKind
+Tok
 next(void)
 {
-  TokKind t;
+  Tok t;
 
   t = peek();
   thead.t = Txxx;
   return t;
 }
 
-Tok *
+Token *
 lexcur(void)
 {
   return &cur;
@@ -978,7 +978,7 @@ lexpath(void)
 /* -- names ----------------------------------------------------------- */
 
 const char *
-tokname(TokKind t)
+tokname(Tok t)
 {
   static const char *names[] = {
 #define X(name) #name,
