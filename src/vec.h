@@ -57,7 +57,8 @@
 typedef size_t usize;
 
 typedef struct Vh Vh;
-struct Vh {
+struct Vh
+{
   usize len;
   usize cap;
   usize esiz; /* 元素大小，grow 靠它跟类型解耦 */

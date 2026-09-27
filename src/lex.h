@@ -20,6 +20,9 @@
 #ifndef LEX_H
 #define LEX_H
 
+/* util.h: die() -- one way out for the whole compiler */
+#include "util.h"
+
 #include "vec.h"
 
 /* C89 has no long long; every compiler we build with (gcc, clang)
@@ -53,7 +56,8 @@ __extension__ typedef unsigned long long u64;
   X(Tpluseq) X(Tminuseq) X(Tstareq) X(Tslasheq) X(Tshleq) X(Tshreq)
 /* clang-format on */
 
-typedef enum {
+typedef enum
+{
 #define X(name) name,
   XYZ_TOKS(X)
 #undef X
@@ -63,20 +67,24 @@ typedef enum {
 /* string literal form flags -- a prefix is part of the literal only
  * when it touches it: an identifier c, r, or cr immediately followed
  * by '"' is the prefixed literal, and that is the whole rule. */
-enum {
+enum
+{
   STRF_C = 1,   /* c: the value ends with a '\0' */
   STRF_RAW = 2, /* r: every '\' is a plain byte, no escapes */
   STRF_ML = 4   /* """ multiline: the closing indentation is stripped */
 };
 
-typedef struct Token Token;
-struct Token {
+typedef struct Tok Tok;
+struct Tok
+{
   TokKind t;
   unsigned line, col; /* 1-based; a literal reports where it opens */
-  union {
+  union
+  {
     u64 num;    /* Tint */
     double flt; /* Tflt */
-    struct {
+    struct
+    {
       char *s;        /* in the lexer's reused buffer, NUL-terminated */
       usize len;      /* value bytes; STRF_C's terminator is counted */
       unsigned flags; /* STRF_* */
@@ -88,9 +96,9 @@ struct Token {
 void lexinit(const char *path); /* NULL reads stdin */
 const char *lexpath(void);
 
-TokKind peek(void);  /* look at the next token without consuming */
-TokKind next(void);  /* consume it; the token lands in lexcur() */
-Token *lexcur(void); /* the token peek/next last produced */
+TokKind peek(void); /* look at the next token without consuming */
+TokKind next(void); /* consume it; the token lands in lexcur() */
+Tok *lexcur(void);  /* the token peek/next last produced */
 
 /* v.str.s lives in a buffer reused across tokens: its content is valid
  * until the next peek/next. Copy it out if it must outlive that. */

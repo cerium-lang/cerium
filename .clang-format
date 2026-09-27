@@ -1,8 +1,7 @@
 # xyz style: qbe-lineage C89.
-#   return type on its own line, function brace on its own line,
-#   struct/enum brace attached, 2-space indent, pointers bind right,
-#   macro bodies aligned. The ground truth is src/vec.h — formatting
-#   it with this file must produce zero diff.
+#   return type on its own line, every definition's brace on its own
+#   line — functions, structs, enums, unions alike, 2-space indent,
+#   pointers bind right, macro bodies aligned.
 Language: Cpp
 BasedOnStyle: LLVM
 ColumnLimit: 100
@@ -15,9 +14,9 @@ BreakBeforeBraces: Custom
 BraceWrapping:
   AfterFunction: true
   AfterControlStatement: Never
-  AfterStruct: false
-  AfterEnum: false
-  AfterUnion: false
+  AfterStruct: true
+  AfterEnum: true
+  AfterUnion: true
   AfterExternBlock: false
   IndentBraces: false
   SplitEmptyFunction: false

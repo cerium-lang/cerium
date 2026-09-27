@@ -16,9 +16,9 @@ static FILE *inf;
 static const char *inpath = "<stdin>";
 static unsigned line = 1, col = 1; /* position of the NEXT character */
 
-static Token cur;   /* the token peek/next last produced */
-static Token thead; /* peeked token; t == Txxx means empty */
-static char *buf;   /* reused value buffer, NUL-terminated */
+static Tok cur;   /* the token peek/next last produced */
+static Tok thead; /* peeked token; t == Txxx means empty */
+static char *buf; /* reused value buffer, NUL-terminated */
 
 /* -- character layer ------------------------------------------------
  *
@@ -33,7 +33,8 @@ static char *buf;   /* reused value buffer, NUL-terminated */
  * column and stays a plain byte.
  */
 
-static struct {
+static struct
+{
   int c;
   unsigned line, col; /* the seat this character sits at */
 } clog[64];
@@ -131,10 +132,8 @@ gc(void)
 static void
 ungc(void)
 {
-  if (npos == 0) {
-    fprintf(stderr, "xyz: internal: ungc underflow\n");
-    abort();
-  }
+  if (npos == 0)
+    dieinternal("ungc underflow");
   npos--;
   line = clog[npos].line;
   col = clog[npos].col;
@@ -252,7 +251,8 @@ parseu64(const char *s, int base, int *ovf)
 
 /* -- keywords -------------------------------------------------------- */
 
-static struct {
+static struct
+{
   const char *name;
   TokKind t;
 } kwtab[] = {
@@ -720,7 +720,7 @@ lexmultiline(int flags)
 
 /* -- the main dispatch ------------------------------------------------- */
 
-static Token
+static Tok
 lex(void)
 {
   int c, c2, c3;
@@ -944,7 +944,7 @@ next(void)
   return t;
 }
 
-Token *
+Tok *
 lexcur(void)
 {
   return &cur;
@@ -957,10 +957,8 @@ lexinit(const char *path)
 {
   inpath = path ? path : "<stdin>";
   inf = path ? fopen(path, "r") : stdin;
-  if (!inf) {
-    fprintf(stderr, "xyz: cannot open %s\n", inpath);
-    exit(1);
-  }
+  if (!inf)
+    die("cannot open %s", inpath);
   /* a byte order mark at the very start is skipped; the three bytes
    * are logged first so a short file is left exactly as it was */
   fill();
