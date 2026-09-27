@@ -92,4 +92,16 @@
   (ttuple
     (path i32)
     (path u32)))
+
+(typedef NestedRes
+  (tresult
+    (path Str)
+    (topt
+      (path u32))))
+
+(typedef DynGen
+  (tdyn
+    (path
+      (seg Read
+        (path Item)))))
 )

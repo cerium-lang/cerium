@@ -149,6 +149,81 @@
         (path f)
         (path a)
         (path b)))
+    (let
+      (ppath (path rng))
+      (range
+        (int 0)
+        (int 10)))
+    (let
+      (ppath (path iv))
+      (if
+        (bin <
+          (path a)
+          (path b))
+        (block
+          (int 1))
+        (block
+          (int 2))))
+    (let
+      (ppath (path mv))
+      (match
+        (path opt)
+        (arm
+          (ppath (path Some)
+            (ppath (path v)))
+          (path v))
+        (arm
+          (ppath (path None))
+          (int 0))))
+    (let
+      (ppath (path neg))
+      (un -
+        (un -
+          (path a))))
+    (let
+      (ppath (path notnot))
+      (un !
+        (un !
+          (path done))))
+    (let
+      (ppath (path addr))
+      (un &mut
+        (un *
+          (path p))))
+    (let
+      (ppath (path deref))
+      (un *
+        (path p)))
+    (let
+      (ppath (path spl))
+      (ttype)
+      (un $$
+        (path t)))
+    (assign =
+      (index
+        (path arr)
+        (bin +
+          (path i)
+          (int 1)))
+      (path a))
+    (assign =
+      (access
+        (path obj) field)
+      (path b))
+    (assign =
+      (un *
+        (path p))
+      (int 0))
+    (let
+      (ppath (path sz))
+      (builtin @sizeof <(path
+  (seg is_same
+    (path i32)
+    (path i32)))>))
+    (let
+      (ppath (path ti))
+      (builtin @typeinfo <(un $$
+  (path t))>))
     (assign +=
       (path a)
       (int 1))

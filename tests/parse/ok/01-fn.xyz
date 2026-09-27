@@ -9,6 +9,8 @@ fn attributed(x: f32) -> f32 { x }
 
 fn generics<T: Add + Clone = u32, ...Ts>(v: T, const N: u32, mut r: i32) -> T { v }
 
+fn packmid<T, ...Ts, U>(v: T, w: U) -> T { v }
+
 fn withparamattr(#[a] x: i32, #[b] c: i8, y: i64) {}
 
 #[a] #[b]

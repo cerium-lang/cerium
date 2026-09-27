@@ -12,6 +12,14 @@
         (ppath (path b)))
       (path t))
     (let
+      (ptuple
+        (ppath (path a))
+        (ppath (path b)))
+      (ttuple
+        (path i32)
+        (path i32))
+      (path t))
+    (let
       (pstruct
         (pfield w)
         (pfield h))

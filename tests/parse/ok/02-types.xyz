@@ -19,3 +19,5 @@ type Fn0 = fn();
 type Fn2 = fn(i32, u32) -> u32;
 type FnTC = fn(i32,);
 type TupTC = (i32, u32,);
+type NestedRes = Str??u32;
+type DynGen = dyn Read<Item>;

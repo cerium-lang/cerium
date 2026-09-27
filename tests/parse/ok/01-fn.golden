@@ -41,6 +41,18 @@
   (block
     (path v)))
 
+(fn packmid
+  (gparam T)
+  (gparam ... Ts)
+  (gparam U)
+  (param v
+    (path T))
+  (param w
+    (path U))
+  (path T)
+  (block
+    (path v)))
+
 (fn withparamattr
   (param (attr a) x
     (path i32))

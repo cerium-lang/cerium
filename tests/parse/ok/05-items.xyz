@@ -15,6 +15,7 @@ enum Shape {
   Rect { w: f32, h: f32 },
   #[doc("named")]
   Tagged = 3,
+  Pair(i32, u32,),
 }
 
 enum Void {}
@@ -49,6 +50,7 @@ use a::*;
 use ::b::c;
 use deep::{a::{b, c}, d};
 use tail::{e,};
+use single;
 
 type Pair2<T> = (T, T);
 

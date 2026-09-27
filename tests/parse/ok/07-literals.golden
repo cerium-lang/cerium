@@ -5,6 +5,9 @@
       (ppath (path a))
       (int 42))
     (let
+      (ppath (path big))
+      (int 1000000))
+    (let
       (ppath (path b))
       (flt 3.14))
     (let
@@ -80,6 +83,13 @@
         (block
           (int 0))))
     (let
+      (ppath (path n2))
+      (closure
+        (cap x)
+        (cap y) ()
+        (block
+          (int 0))))
+    (let
       (ppath (path o))
       (builtin @size_of <(path i32)>))
     (let
@@ -135,6 +145,26 @@
       (arraylit
         (int 0)
         (path u32)))
+    (let
+      (ppath (path e2))
+      (arraylit
+        (int 3)
+        (path u32)
+        (bin +
+          (int 1)
+          (int 2))
+        (call
+          (path g)
+          (path x))))
+    (let
+      (ppath (path n3))
+      (structlit
+        (path Point)
+        (init x
+          (structlit
+            (path Inner)
+            (init y
+              (int 1))))))
     (let
       (ppath (path u2))
       (structlit

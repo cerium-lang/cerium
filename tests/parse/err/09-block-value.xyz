@@ -1,0 +1,1 @@
+fn main() { let x = { let a = 1; a }; }
