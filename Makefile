@@ -21,7 +21,7 @@ $(BIN): $(OBJ)
 .c.o:
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(OBJ): src/vec.h
+$(OBJ): src/vec.h src/lex.h src/ast.h src/die.h src/parse.h
 
 $(QBE_BIN):
 	@cd qbe >/dev/null 2>&1 || { \

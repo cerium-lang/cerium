@@ -1,0 +1,246 @@
+(file
+(fn main ()
+  (path i32)
+  (block
+    (let
+      (ppath (path a))
+      (bin -
+        (bin +
+          (int 1)
+          (bin *
+            (int 2)
+            (int 3)))
+        (bin %
+          (bin /
+            (int 4)
+            (int 5))
+          (int 6))))
+    (let
+      (ppath (path b))
+      (bin |
+        (bin ^
+          (bin &
+            (bin >>
+              (bin <<
+                (int 1)
+                (int 2))
+              (int 3))
+            (int 4))
+          (int 5))
+        (int 6)))
+    (let
+      (ppath (path c))
+      (bin <
+        (path a)
+        (path b)))
+    (let
+      (ppath (path d))
+      (bin ||
+        (bin &&
+          (bin ==
+            (path a)
+            (path b))
+          (path c))
+        (un !
+          (path c))))
+    (let
+      (ppath (path e))
+      (un -
+        (path a)))
+    (let
+      (ppath (path f))
+      (un ~
+        (path a)))
+    (let
+      (ppath (path p))
+      (un &mut
+        (path a)))
+    (let
+      (ppath (path q))
+      (un *
+        (path p)))
+    (let
+      (ppath (path r))
+      (try
+        (access
+          (call
+            (access
+              (access
+                (path obj) field) method)
+            (int 1)
+            (int 2)) chain)))
+    (let
+      (ppath (path t))
+      (tupidx
+        (path tup) 0))
+    (let
+      (ppath (path i))
+      (index
+        (path arr)
+        (bin +
+          (path a)
+          (int 1))))
+    (let
+      (ppath (path s))
+      (rangeidx
+        (path arr)
+        (int 1)
+        (int 2)))
+    (let
+      (ppath (path o))
+      (rangeidx
+        (path arr) _ _))
+    (let
+      (ppath (path w))
+      (rangeidx
+        (path arr)
+        (int 1) _))
+    (let
+      (ppath (path g))
+      (call
+        (path :: root mod
+          (seg item
+            (path i32)))
+        (path x)))
+    (let
+      (ppath (path h))
+      (call
+        (path f)
+        (path a)
+        (spread
+          (path ts))))
+    (let
+      (ppath (path k))
+      (path
+        (seg is_same
+          (un $$
+            (path t))
+          (path u32)) value))
+    (let
+      (ppath (path m))
+      (bin ==
+        (bin <
+          (path a)
+          (path b))
+        (bin <
+          (path c)
+          (path d))))
+    (let
+      (ppath (path u))
+      (call
+        (path
+          (seg mirror
+            (un ^^
+              (path u32))))
+        (path v)))
+    (let
+      (ppath (path meta))
+      (ttype)
+      (un ^^
+        (path u32)))
+    (let
+      (ppath (path z))
+      (rangeidx
+        (path arr) _
+        (int 2)))
+    (let
+      (ppath (path tc))
+      (call
+        (path f)
+        (path a)
+        (path b)))
+    (let
+      (ppath (path rng))
+      (range
+        (int 0)
+        (int 10)))
+    (let
+      (ppath (path iv))
+      (if
+        (bin <
+          (path a)
+          (path b))
+        (block
+          (int 1))
+        (block
+          (int 2))))
+    (let
+      (ppath (path mv))
+      (match
+        (path opt)
+        (arm
+          (ppath (path Some)
+            (ppath (path v)))
+          (path v))
+        (arm
+          (ppath (path None))
+          (int 0))))
+    (let
+      (ppath (path neg))
+      (un -
+        (un -
+          (path a))))
+    (let
+      (ppath (path notnot))
+      (un !
+        (un !
+          (path done))))
+    (let
+      (ppath (path addr))
+      (un &mut
+        (un *
+          (path p))))
+    (let
+      (ppath (path deref))
+      (un *
+        (path p)))
+    (let
+      (ppath (path spl))
+      (ttype)
+      (un $$
+        (path t)))
+    (assign =
+      (index
+        (path arr)
+        (bin +
+          (path i)
+          (int 1)))
+      (path a))
+    (assign =
+      (access
+        (path obj) field)
+      (path b))
+    (assign =
+      (un *
+        (path p))
+      (int 0))
+    (let
+      (ppath (path sz))
+      (builtin @sizeof <(path
+  (seg is_same
+    (path i32)
+    (path i32)))>))
+    (let
+      (ppath (path ti))
+      (builtin @typeinfo <(un $$
+  (path t))>))
+    (assign +=
+      (path a)
+      (int 1))
+    (assign -=
+      (path a)
+      (int 2))
+    (assign *=
+      (path a)
+      (int 3))
+    (assign /=
+      (path a)
+      (int 4))
+    (assign <<=
+      (path a)
+      (int 1))
+    (assign >>=
+      (path a)
+      (int 1))
+    (int 0)))
+)

@@ -1,0 +1,86 @@
+(file
+(fn main ()
+  (block
+    (let
+      (ptuple
+        (ppath (path a))
+        (ppath (path b)))
+      (path t))
+    (let
+      (ptuple
+        (ppath (path a))
+        (ppath (path b)))
+      (path t))
+    (let
+      (ptuple
+        (ppath (path a))
+        (ppath (path b)))
+      (ttuple
+        (path i32)
+        (path i32))
+      (path t))
+    (let
+      (pstruct
+        (pfield w)
+        (pfield h))
+      (path r))
+    (let
+      (pstruct
+        (pfield w) ..)
+      (path r))
+    (let
+      (ppath (path Rect)
+        (pfield w) ..)
+      (path s))
+    (let
+      (ppath (path Rect)
+        (pfield w
+          (ppath (path Some)
+            (ppath (path w))))
+        (pfield h))
+      (path s))
+    (let
+      (por
+        (ppath (path Some)
+          (ppath (path v)))
+        (ppath (path None)))
+      (path x))
+    (let
+      (wild)
+      (int 1))
+    (let
+      (ptuple
+        (ppath (path p))
+        (ptuple
+          (ppath (path q))
+          (ppath (path r))))
+      (path nested))
+    (let
+      (ppath (path Unit))
+      (path unit))
+    (let
+      (ptuple)
+      (path unit))
+    (let
+      (ppath (path :: a B)
+        (ppath (path c)))
+      (path x))
+    (let
+      (ppath (path Some)
+        (por
+          (ppath (path a))
+          (ppath (path b))))
+      (path x))
+    (let
+      (ppath (path
+        (seg Some
+          (path i32)))
+        (ppath (path v)))
+      (path x))
+    (for in
+      (ptuple
+        (ppath (path i))
+        (ppath (path j)))
+      (path pairs)
+      (block))))
+)

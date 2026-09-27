@@ -1,0 +1,157 @@
+(file
+(struct Point
+  (field x
+    (path f32))
+  (field y
+    (path f32)))
+
+(struct Mut
+  (field mut a
+    (path i32)))
+
+(struct G
+  (gparam T)
+  (field v
+    (path T)))
+
+(struct (attr repr (path C)) Repr
+  (field a
+    (path u8)))
+
+(struct Empty)
+
+(struct Trail
+  (field a
+    (path i32))
+  (field b
+    (path i32)))
+
+(struct FieldAttr
+  (field (attr a) x
+    (path i32))
+  (field (attr b) (attr c) y
+    (path i32)))
+
+(union U
+  (field a
+    (path i32))
+  (field b
+    (path f32)))
+
+(enum Shape
+  (variant Unit)
+  (variant Circle
+    (path f32))
+  (variant Rect
+    (field w
+      (path f32))
+    (field h
+      (path f32)))
+  (variant (attr doc (str 5 "named")) Tagged 3)
+  (variant Pair
+    (path i32)
+    (path u32)))
+
+(enum Void)
+
+(enum Opt
+  (gparam T)
+  (variant Some
+    (path T))
+  (variant None))
+
+(trait Read
+  (typedef Item)
+  (const BUF
+    (path usize))
+  (fn read
+    (param self
+      (tptr mut
+        (path Self)))
+    (topt
+      (path Item))))
+
+(trait Eq
+  (gparam T)
+  (fn eq
+    (param self
+      (tptr
+        (path Self)))
+    (param o
+      (tptr
+        (path T)))
+    (path bool)))
+
+(trait Default
+  (fn d ()
+    (path i32)
+    (block
+      (int 0))))
+
+(impl
+  (path Read) (for
+    (path File))
+  (typedef Item
+    (path u8))
+  (const BUF
+    (path usize)
+    (int 4))
+  (fn read
+    (param self
+      (tptr mut
+        (path Self)))
+    (topt
+      (path Item))
+    (block
+      (path None))))
+
+(impl
+  (gparam T)
+  (path
+    (seg Vec
+      (path T)))
+  (fn len
+    (param self
+      (tptr
+        (path Self)))
+    (path usize)
+    (block
+      (int 0))))
+
+(use (path a b)
+  (use (path c))
+  (use (path d)))
+
+(use (path a) *)
+
+(use (path :: b c))
+
+(use (path deep)
+  (use (path a)
+    (use (path b))
+    (use (path c)))
+  (use (path d)))
+
+(use (path tail)
+  (use (path e)))
+
+(use (path single))
+
+(typedef Pair2
+  (gparam T)
+  (ttuple
+    (path T)
+    (path T)))
+
+(const C
+  (path i32)
+  (int 4))
+
+(static S
+  (path i32)
+  (int 5))
+
+(static mut M
+  (path i32)
+  (int 6))
+)

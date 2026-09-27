@@ -1,0 +1,1 @@
+fn main() { if Point{x: 1} == q { } }

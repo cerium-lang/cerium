@@ -1,0 +1,18 @@
+fn main() {
+  let (a, b) = t;
+  let (a, b,) = t;
+  let (a, b): (i32, i32) = t;
+  let { w, h } = r;
+  let { w, .. } = r;
+  let Rect { w, .. } = s;
+  let Rect { w: Some(w), h } = s;
+  let Some(v) | None = x;
+  let _ = 1;
+  let (p, (q, r)) = nested;
+  let Unit = unit;
+  let () = unit;
+  let ::a::B(c) = x;
+  let Some(a | b) = x;
+  let Some<i32>(v) = x;
+  for (i, j) in pairs { }
+}

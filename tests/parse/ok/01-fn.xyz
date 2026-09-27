@@ -1,0 +1,33 @@
+fn add(a: i32, b: i32) -> i32 { a + b }
+
+fn empty() {}
+
+fn decl(a: u32) -> u32;
+
+#[inline(always)]
+fn attributed(x: f32) -> f32 { x }
+
+fn generics<T: Add + Clone = u32, ...Ts>(v: T, const N: u32, mut r: i32) -> T { v }
+
+fn packmid<T, ...Ts, U>(v: T, w: U) -> T { v }
+
+fn withparamattr(#[a] x: i32, #[b] c: i8, y: i64) {}
+
+#[a] #[b]
+fn multiattr() {}
+
+#[packed, align(4)]
+fn commaform() {}
+
+#[doc("d", 16, 1.5, name)]
+fn attrargs() {}
+
+fn trail(a: i32, b: i32,) -> i32 { 0 }
+
+fn gtrail<T: Add,>(v: T) -> T { v }
+
+fn main() -> i32 {
+  let mut a: i32 = 42;
+  a = a + 1;
+  a
+}

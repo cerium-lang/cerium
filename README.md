@@ -79,17 +79,19 @@ A fresh clone builds with:
 ```
 git clone --recurse-submodules <url>
 cd xyz && make          # gcc; make CC=clang works too
-make test               # the lexer's golden tests (no qbe needed yet)
+make test               # the golden tests: lexer, parser, rejections
 ```
 
 The `qbe/` submodule only matters once codegen lands —
 `git submodule update --init -- qbe` pulls it on demand. Run `make hooks`
 once per checkout so commits format what they stage.
 
-The lexer is in: `xyz -t file.xyz` dumps the token stream — position,
-kind, value — and `tests/ok` holds one `.golden` per `.xyz` that the dump
-must reproduce exactly (`tools/run_tests.sh`). `tests/err` holds inputs
-that must be rejected.
+The lexer and the parser are in: `xyz -t file.xyz` dumps the token
+stream — position, kind, value — and `xyz -a file.xyz` dumps the parse
+tree as S-expressions, one node a line, children indented. `tests/lex`
+and `tests/parse` hold the golden tests, split by pass: `ok/` has one
+`.golden` per `.xyz` that the dumps must reproduce exactly, `err/` has
+inputs that must be rejected (`tools/run_tests.sh`).
 
 ## Status
 

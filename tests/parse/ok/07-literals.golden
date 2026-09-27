@@ -1,0 +1,177 @@
+(file
+(fn main ()
+  (block
+    (let
+      (ppath (path a))
+      (int 42))
+    (let
+      (ppath (path big))
+      (int 1000000))
+    (let
+      (ppath (path b))
+      (flt 3.14))
+    (let
+      (ppath (path c))
+      (byte 'x'))
+    (let
+      (ppath (path d))
+      (str 5 "hello"))
+    (let
+      (ppath (path e))
+      (str 4 "raw\0" c))
+    (let
+      (ppath (path f))
+      (str 7 "reg.*ex" r))
+    (let
+      (ppath (path g))
+      (str 10 "multi\nline" ml))
+    (let
+      (ppath (path h))
+      (arraylit
+        (int 3)
+        (path u32)
+        (int 1)
+        (int 2)
+        (int 3)))
+    (let
+      (ppath (path i))
+      (arraylit
+        (int 3) mut
+        (path u32)
+        (int 1)
+        (int 2)
+        (int 3)))
+    (let
+      (ppath (path j))
+      (structlit
+        (path Point)
+        (init x
+          (flt 1))
+        (init y
+          (flt 2))))
+    (let
+      (ppath (path k))
+      (barestructlit
+        (init x
+          (flt 1))
+        (init y
+          (flt 2))))
+    (let
+      (ppath (path l))
+      (closure
+        (cap mut n)
+        (param x
+          (path i32))
+        (path i32)
+        (block
+          (bin +
+            (path x)
+            (path n)))))
+    (let
+      (ppath (path m))
+      (closure ()
+        (param y
+          (path i32))
+        (block
+          (path y))))
+    (let
+      (ppath (path n))
+      (closure
+        (cap x)
+        (cap &y)
+        (cap &mut z) ()
+        (block
+          (int 0))))
+    (let
+      (ppath (path n2))
+      (closure
+        (cap x)
+        (cap y) ()
+        (block
+          (int 0))))
+    (let
+      (ppath (path o))
+      (builtin @size_of <(path i32)>))
+    (let
+      (ppath (path p))
+      (builtin @cast <(path u32) (path a)>))
+    (let
+      (ppath (path q))
+      (builtin @noparens))
+    (let
+      (ppath (path r))
+      (tuple
+        (int 1)
+        (int 2)))
+    (let
+      (ppath (path s))
+      (unit))
+    (let
+      (ppath (path t))
+      (tuple
+        (int 1)))
+    (let
+      (ppath (path a2))
+      (str 0 ""))
+    (let
+      (ppath (path b2))
+      (flt 1500))
+    (let
+      (ppath (path b3))
+      (flt 0.02))
+    (let
+      (ppath (path a3))
+      (int 255))
+    (let
+      (ppath (path a4))
+      (int 63))
+    (let
+      (ppath (path a5))
+      (int 10))
+    (let
+      (ppath (path c2))
+      (str 6 "raw\\0\0" c r))
+    (let
+      (ppath (path d2))
+      (str 4 "a\nbA"))
+    (let
+      (ppath (path s2))
+      (arraylit _
+        (path u32)
+        (int 4)
+        (int 5)))
+    (let
+      (ppath (path t2))
+      (arraylit
+        (int 0)
+        (path u32)))
+    (let
+      (ppath (path e2))
+      (arraylit
+        (int 3)
+        (path u32)
+        (bin +
+          (int 1)
+          (int 2))
+        (call
+          (path g)
+          (path x))))
+    (let
+      (ppath (path n3))
+      (structlit
+        (path Point)
+        (init x
+          (structlit
+            (path Inner)
+            (init y
+              (int 1))))))
+    (let
+      (ppath (path u2))
+      (structlit
+        (path Point)
+        (init x
+          (flt 1))))
+    (let
+      (ppath (path v2))
+      (str 5 "byte\0" c ml))))
+)

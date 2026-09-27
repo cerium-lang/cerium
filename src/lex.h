@@ -41,15 +41,17 @@ __extension__ typedef unsigned long long u64;
   X(Tbyte) /* v.str; one byte, '\xNN' takes any value through 0xff */        \
   X(Tstr) /* v.str; v.str.flags carry the c/r/multiline forms */             \
   X(Tident) /* v.str; c, r, cr followed by '"' are prefixes, not idents */   \
-  /* keywords: 22 + 2 reserved (specs/15-grammar.md) */                      \
+  /* keywords: 22 + 2 reserved (specs/15-grammar.md). The table there\n   * omits else, but the if production needs it as a keyword -- a spec\n   * gap, noted in the PR. */                      \
   X(Tfn) X(Tstruct) X(Tenum) X(Tunion) X(Ttrait) X(Timpl) X(Ttype) X(Tuse)   \
   X(Tpub) X(Tlet) X(Tconst) X(Tstatic) X(Tmut) X(Tdyn) X(Ttrue) X(Tfalse)    \
-  X(Tif) X(Tmatch) X(Tfor) X(Tin) X(Tbreak) X(Tcontinue) X(Treturn)          \
+  X(Tif) X(Telse) X(Tmatch) X(Tfor) X(Tin) X(Tbreak) X(Tcontinue)              \
+  X(Treturn)                                                                  \
   X(Tmacro) X(Tdefer) /* reserved, unused */                                 \
   /* punctuation */                                                          \
   X(Tlparen) X(Trparen) X(Tlbracket) X(Trbracket) X(Tlbrace) X(Trbrace)      \
   X(Tcomma) X(Tsemi) X(Tcolon) X(Tcoloncolon) X(Tdot) X(Tdotdot)             \
-  X(Tdotdotdot) X(Tarrow) X(Tquestion) X(Tat) X(Tdollar2) X(Tcaret2)         \
+  X(Tdotdotdot) X(Tarrow) X(Tfatarrow) X(Tquestion) X(Tat) X(Tdollar2)       \
+  X(Tcaret2)                                                                   \
   X(Thashlbracket) X(Tplus) X(Tminus) X(Tstar) X(Tslash) X(Tpercent)         \
   X(Ttilde) X(Tcaret) X(Tamp) X(Tbar) X(Tbang) X(Tshl) X(Tshr) X(Tlt)        \
   X(Tgt) X(Tle) X(Tge) X(Teqeq) X(Tne) X(Tampamp) X(Tbarbar) X(Teq)          \
@@ -99,6 +101,24 @@ const char *lexpath(void);
 Tok peek(void);      /* look at the next token without consuming */
 Tok next(void);      /* consume it; the token lands in lexcur() */
 Token *lexcur(void); /* the token peek/next last produced */
+
+/* the generic-arguments closing: reads one token, but a ">>" reads as
+ * its left half -- a ">" -- and leaves the right half peeked. That is
+ * the whole ">>" split (the header contract above): it happens here,
+ * only where a ">" is wanted. */
+Tok nextgt(void);
+
+/* parser backtracking: a snapshot of everything that reads forward.
+ * lexsnap() saves, lexunsnap() rewinds and frees, and lexdrop()
+ * abandons the rewind right (a trial that committed). Snapshots
+ * nest -- a stack, released innermost first either way. The
+ * character log itself never rewinds: it is the record of what the
+ * FILE has already given, so the file never moves either; only the
+ * cursor does. */
+typedef struct LexSnap LexSnap;
+LexSnap *lexsnap(void);
+void lexunsnap(LexSnap *s);
+void lexdrop(LexSnap *s);
 
 /* v.str.s lives in a buffer reused across tokens: its content is valid
  * until the next peek/next. Copy it out if it must outlive that. */

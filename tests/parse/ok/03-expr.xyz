@@ -1,0 +1,44 @@
+fn main() -> i32 {
+  let a = 1 + 2 * 3 - 4 / 5 % 6;
+  let b = 1 << 2 >> 3 & 4 ^ 5 | 6;
+  let c = a < b;
+  let d = a == b && c || !c;
+  let e = -a;
+  let f = ~a;
+  let p = &mut a;
+  let q = *p;
+  let r = obj.field.method(1, 2).chain?;
+  let t = tup.0;
+  let i = arr[a + 1];
+  let s = arr[1..2];
+  let o = arr[..];
+  let w = arr[1..];
+  let g = ::root::mod::item<i32>(x);
+  let h = f(a, ...ts);
+  let k = is_same<$$t, u32>::value;
+  let m = (a < b) == (c < d);
+  let u = mirror<^^u32>(v);
+  let meta: type = ^^u32;
+  let z = arr[..2];
+  let tc = f(a, b,);
+  let rng = 0..10;
+  let iv = if a < b { 1 } else { 2 };
+  let mv = match opt { Some(v) => v, None => 0, };
+  let neg = --a;
+  let notnot = !!done;
+  let addr = &mut *p;
+  let deref = *p;
+  let spl: type = $$t;
+  arr[i + 1] = a;
+  obj.field = b;
+  *p = 0;
+  let sz = @sizeof<is_same<i32, i32>>();
+  let ti = @typeinfo<$$t>();
+  a += 1;
+  a -= 2;
+  a *= 3;
+  a /= 4;
+  a <<= 1;
+  a >>= 1;
+  0
+}

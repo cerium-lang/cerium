@@ -62,7 +62,7 @@ The keywords are:
 
 | declarations | values | control flow |
 | --- | --- | --- |
-| `fn` `struct` `enum` `union` `trait` `impl` `type` `use` `pub` | `let` `const` `static` `mut` `dyn` `true` `false` | `if` `match` `for` `in` `break` `continue` `return` |
+| `fn` `struct` `enum` `union` `trait` `impl` `type` `use` `pub` | `let` `const` `static` `mut` `dyn` `true` `false` | `if` `else` `match` `for` `in` `break` `continue` `return` |
 
 Two more are reserved, unused: `macro` and `defer`. Each names a feature the
 design has considered and not carried — a user-defined macro system
@@ -207,7 +207,7 @@ token = identifier | keyword | integer | float
       | byte_literal | string_literal
       | "(" | ")" | "[" | "]" | "{" | "}"
       | "," | ";" | ":" | "::" | "." | ".." | "..."
-      | "->" | "?" | "@" | "$$" | "^^" | "#["
+      | "->" | "=>" | "?" | "@" | "$$" | "^^" | "#["
       | "+" | "-" | "*" | "/" | "%" | "~"
       | "^" | "&" | "|" | "!" | "<<" | ">>"
       | "<" | ">" | "<=" | ">=" | "==" | "!=" | "&&" | "||"
@@ -376,7 +376,7 @@ prefix_type   = "?" prefix_type
 primary_type  = path
               | "(" ")"
               | "(" type { "," type } [ "," ] ")"
-              | "fn" "(" [ parameters ] ")" [ "->" type ]
+              | "fn" "(" [ type { "," type } [ "," ] ] ")" [ "->" type ]
               | "dyn" path
               | "type" ;
 ```
@@ -390,7 +390,9 @@ that is itself optional parses, whether or not it makes sense.
 `*T`, `*mut T`, `[N]T`, `[N]mut T`, `[]T`, `[]mut T` are all prefixes of the
 type they wrap. Generic arguments are a suffix of a path — `Vec<u32>` — and
 close with `>` tokens, one at a time, which is where the missing `>>` token
-earns its keep.
+earns its keep. A function type names no parameters — `fn(u32) -> u32`
+(`01-types.md`) — unlike the `fn` declaration, whose `parameters` production
+below requires them.
 
 ### The `?` three ways
 

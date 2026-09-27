@@ -1,0 +1,105 @@
+(file
+(fn add
+  (param a
+    (path i32))
+  (param b
+    (path i32))
+  (path i32)
+  (block
+    (bin +
+      (path a)
+      (path b))))
+
+(fn empty ()
+  (block))
+
+(fn decl
+  (param a
+    (path u32))
+  (path u32))
+
+(fn (attr inline (path always)) attributed
+  (param x
+    (path f32))
+  (path f32)
+  (block
+    (path x)))
+
+(fn generics
+  (gparam T
+    (path Add)
+    (path Clone) =
+    (path u32))
+  (gparam ... Ts)
+  (param v
+    (path T))
+  (param const N
+    (path u32))
+  (param mut r
+    (path i32))
+  (path T)
+  (block
+    (path v)))
+
+(fn packmid
+  (gparam T)
+  (gparam ... Ts)
+  (gparam U)
+  (param v
+    (path T))
+  (param w
+    (path U))
+  (path T)
+  (block
+    (path v)))
+
+(fn withparamattr
+  (param (attr a) x
+    (path i32))
+  (param (attr b) c
+    (path i8))
+  (param y
+    (path i64))
+  (block))
+
+(fn (attr a) (attr b) multiattr ()
+  (block))
+
+(fn (attr packed) (attr align (int 4)) commaform ()
+  (block))
+
+(fn (attr doc (str 1 "d") (int 16) (flt 1.5) (path name)) attrargs ()
+  (block))
+
+(fn trail
+  (param a
+    (path i32))
+  (param b
+    (path i32))
+  (path i32)
+  (block
+    (int 0)))
+
+(fn gtrail
+  (gparam T
+    (path Add))
+  (param v
+    (path T))
+  (path T)
+  (block
+    (path v)))
+
+(fn main ()
+  (path i32)
+  (block
+    (let mut
+      (ppath (path a))
+      (path i32)
+      (int 42))
+    (assign =
+      (path a)
+      (bin +
+        (path a)
+        (int 1)))
+    (path a)))
+)

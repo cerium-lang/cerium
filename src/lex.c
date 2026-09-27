@@ -42,6 +42,11 @@ static int nread; /* characters pulled from the file */
 static int npos;  /* the cursor; clog[npos] is the next character */
 static int eofseen;
 
+/* the backtracking stack (defined far below) keeps rewind points in
+ * the log's coordinates; a compaction shifts them along */
+static void snapshiftdown(int off);
+static int snapshotkeep(int floor);
+
 static void
 clogput(int c)
 {
@@ -101,14 +106,18 @@ gc(void)
 
   if (npos == nread) {
     /* the log is exhausted: all logged characters are consumed. When
-     * it is also near full, keep the tail -- an ungc chain reaches
-     * back through it, and clogput chains seats off it -- and refill.
-     * Lookahead never opens more than a few gc()s before closing, so
-     * a small tail is more margin than any chain needs. */
+     * it is also near full, compact: keep the tail -- an ungc chain
+     * reaches back through it, clogput chains seats off it, and every
+     * live backtracking snapshot rewinds into it -- and refill. The
+     * keep covers the deepest rewind point, so a snapshot never ages
+     * out of the log. */
     if (nread >= (int) (sizeof clog / sizeof clog[0]) - 2) {
-      int keep = nread > 8 ? 8 : nread;
+      int keep = snapshotkeep(nread > 8 ? 8 : nread);
 
+      if (keep > nread)
+        keep = nread; /* defensive */
       memmove(clog, clog + nread - keep, (size_t) keep * sizeof clog[0]);
+      snapshiftdown(nread - keep);
       nread = keep;
       npos = keep;
     }
@@ -256,13 +265,13 @@ static struct
   const char *name;
   Tok t;
 } kwtab[] = {
-    {"fn", Tfn},       {"struct", Tstruct},     {"enum", Tenum},     {"union", Tunion},
-    {"trait", Ttrait}, {"impl", Timpl},         {"type", Ttype},     {"use", Tuse},
-    {"pub", Tpub},     {"let", Tlet},           {"const", Tconst},   {"static", Tstatic},
-    {"mut", Tmut},     {"dyn", Tdyn},           {"true", Ttrue},     {"false", Tfalse},
-    {"if", Tif},       {"match", Tmatch},       {"for", Tfor},       {"in", Tin},
-    {"break", Tbreak}, {"continue", Tcontinue}, {"return", Treturn}, {"macro", Tmacro},
-    {"defer", Tdefer}, /* reserved, unused */
+    {"fn", Tfn},       {"struct", Tstruct}, {"enum", Tenum},         {"union", Tunion},
+    {"trait", Ttrait}, {"impl", Timpl},     {"type", Ttype},         {"use", Tuse},
+    {"pub", Tpub},     {"let", Tlet},       {"const", Tconst},       {"static", Tstatic},
+    {"mut", Tmut},     {"dyn", Tdyn},       {"true", Ttrue},         {"false", Tfalse},
+    {"if", Tif},       {"else", Telse},     {"match", Tmatch},       {"for", Tfor},
+    {"in", Tin},       {"break", Tbreak},   {"continue", Tcontinue}, {"return", Treturn},
+    {"macro", Tmacro}, {"defer", Tdefer}, /* reserved, unused */
 };
 
 static Tok
@@ -869,7 +878,15 @@ lex(void)
     cur.t = (c2 = gc()) == '=' ? Tne : (ungc(), Tbang);
     return cur;
   case '=':
-    cur.t = (c2 = gc()) == '=' ? Teqeq : (ungc(), Teq);
+    c2 = gc();
+    if (c2 == '=')
+      cur.t = Teqeq;
+    else if (c2 == '>') /* the match arm's fat arrow */
+      cur.t = Tfatarrow;
+    else {
+      ungc();
+      cur.t = Teq;
+    }
     return cur;
   case '<':
     if ((c2 = gc()) == '<') {
@@ -948,6 +965,123 @@ Token *
 lexcur(void)
 {
   return &cur;
+}
+
+/* -- the ">>" split ------------------------------------------------------
+ * Only where a ">" is wanted (the generic-arguments closings). A Tshr
+ * stands for two closers touching; this hands out the left one and
+ * leaves the right one peeked. The two halves share the seat. */
+
+Tok
+nextgt(void)
+{
+  if (peek() == Tshr) {
+    thead = cur;   /* cur is the Tshr peek just produced */
+    thead.t = Tgt; /* the right half stays peeked */
+    cur.t = Tgt;   /* and the left half is what was consumed */
+    return Tgt;
+  }
+  return next();
+}
+
+/* -- backtracking --------------------------------------------------------
+ * The parser's generic-arguments trial reads forward, then either
+ * commits or rewinds. The character log is never rewound: it is the
+ * record of everything the FILE has already given, and the cursor
+ * (npos) alone moves back -- rewinding nread would strand characters
+ * the FILE has passed but the log no longer claims. A snapshot is the
+ * cursor, the position, the lookahead, the current token, and the
+ * value buffer's contents.
+ *
+ * Snapshots nest (a for-head snapshot survives an inner trial), so
+ * they form a stack. A log compaction keeps every live snapshot's
+ * point by shifting the stack's saved cursors along with the log. */
+
+struct LexSnap
+{
+  LexSnap *prev; /* the stack, innermost first */
+  int npos;      /* the cursor, in the log's current coordinates */
+  unsigned line, col;
+  Token thead, cur;
+  usize blen;
+  char bcont[1]; /* [vlen(buf)] follows */
+};
+
+static LexSnap *live;
+
+static void
+snapshiftdown(int off) /* a compaction moved the log's seats */
+{
+  LexSnap *p;
+
+  for (p = live; p; p = p->prev)
+    p->npos -= off;
+}
+
+static int
+snapshotkeep(int floor) /* the compaction must keep at least this much */
+{
+  LexSnap *p;
+
+  for (p = live; p; p = p->prev)
+    if (p->npos > floor)
+      floor = p->npos; /* no snapshot may age out of the log */
+  return floor;
+}
+
+LexSnap *
+lexsnap(void)
+{
+  LexSnap *s;
+  usize n = vlen(buf);
+
+  s = malloc(sizeof *s + n);
+  if (!s)
+    die("out of memory");
+  s->prev = live;
+  s->npos = npos;
+  s->line = line;
+  s->col = col;
+  s->thead = thead;
+  s->cur = cur;
+  s->blen = n;
+  memcpy(s->bcont, buf, n);
+  live = s;
+  return s;
+}
+
+void
+lexunsnap(LexSnap *s)
+{
+  usize i;
+
+  npos = s->npos;
+  line = s->line;
+  col = s->col;
+  thead = s->thead;
+  cur = s->cur;
+  vclear(buf);
+  for (i = 0; i < s->blen; i++) {
+    char c = s->bcont[i];
+
+    vappend(&buf, &c);
+  }
+  live = s->prev;
+  free(s);
+}
+
+void
+lexdrop(LexSnap *s) /* the trial stands: give up the rewind right */
+{
+  LexSnap **pp;
+
+  for (pp = &live; *pp; pp = &(*pp)->prev)
+    if (*pp == s) {
+      *pp = s->prev;
+      free(s);
+      return;
+    }
+  die("internal: lexdrop: not a live snapshot");
 }
 
 /* -- setup -------------------------------------------------------------- */
