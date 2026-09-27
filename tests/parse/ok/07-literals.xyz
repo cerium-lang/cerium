@@ -18,7 +18,7 @@ line
   let m = fn[](y: i32) { y };
   let n = fn[x, &y, &mut z]() { 0 };
   let n2 = fn[x, y,]() { 0 };
-  let o = @size_of<i32>();
+  let o = @sizeof<i32>();
   let p = @cast<u32>(a);
   let q = @noparens();
   let r = (1, 2);

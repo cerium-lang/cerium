@@ -29,7 +29,7 @@ $(QBE_BIN):
 	$(MAKE) -C qbe
 
 test: $(BIN)
-	sh tools/run_tests.sh
+	sh tools/run-tests.sh
 
 fmt:
 	clang-format -i src/*.c src/*.h

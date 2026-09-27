@@ -96,7 +96,7 @@ expand to their targets, `?T`/`E?T` build on the prelude's
 result per item (`src/resolve.c`). `tests/lex`, `tests/parse` and
 `tests/check` hold the golden tests, split by pass: `ok/` has one
 `.golden` per `.xyz` that the dumps must reproduce exactly, `err/`
-has inputs that must be rejected (`tools/run_tests.sh`).
+has inputs that must be rejected (`tools/run-tests.sh`).
 
 ## Status
 

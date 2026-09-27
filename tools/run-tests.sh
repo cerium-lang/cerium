@@ -1,5 +1,5 @@
 #!/bin/sh
-# run_tests.sh -- the golden tests.
+# run-tests.sh -- the golden tests.
 #
 # tests/lex, tests/parse and tests/check split by pass: every lex/ok
 #/*.xyz must dump exactly its .golden as a token stream (regenerate

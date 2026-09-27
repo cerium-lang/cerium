@@ -313,8 +313,8 @@ fn is_pointer(t: type) -> bool {         // inspects the type itself
 }
 ```
 
-The two overlap where a function reports a property of a type — `size_of` can
-be written either way. Prefer a type parameter there: it needs no `^^` or `$$`.
+The two overlap where a function reports a property of a type — `@sizeof`
+comes in both forms. Prefer a type parameter there: it needs no `^^` or `$$`.
 A `type` value earns its keep where a type parameter cannot follow — being
 stored, passed along, and returned, since a generic function cannot return a
 type:
