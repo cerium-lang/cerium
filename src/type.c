@@ -358,7 +358,7 @@ tysame(Type *a, Type *b)
 typedef struct SBuf SBuf; /* the buffer tysprint writes into, below */
 struct SBuf
 {
-  char *p;
+  char *p;   /* the write cursor */
   char *end; /* one byte short of the buffer's end, for the NUL */
 };
 

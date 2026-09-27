@@ -45,18 +45,18 @@ enum
 /* a field of a struct or union, or of a named enum payload */
 struct Field
 {
-  char *name;
-  Type *ty;
-  int mut; /* struct fields; a union rejects it (01-types.md) */
+  char *name; /* as written in the declaration */
+  Type *ty;   /* its resolved type */
+  int mut;    /* struct fields; a union rejects it (01-types.md) */
 };
 
-/* an enum variant: disc is the assigned value, whether written or
- * filled in by the ordering rule (01-types.md) */
+/* an enum variant */
 struct Variant
 {
-  char *name;
-  u64 disc;
-  int hasdisc;
+  char *name;     /* as written */
+  u64 disc;       /* the assigned value, written or filled in by the
+                   * ordering rule (01-types.md) */
+  int hasdisc;    /* "= integer" was written */
   int named;      /* named payload rather than positional */
   Field *fields;  /* named payload, or NULL */
   usize nfields;  /* the named payload's count */
@@ -77,45 +77,41 @@ enum
 
 struct Member
 {
-  char *name;
-  int kind;
-  Ast *decl; /* the declaring item, or NULL for the prelude */
-  Type *ty;  /* Mfn: the fn type; Mconst: the type; Mtype: unused */
-  Type *val; /* Mtype in an impl: the supplied type */
+  char *name; /* the member's own name */
+  int kind;   /* Mfn, Mtype, or Mconst */
+  Ast *decl;  /* the declaring item, or NULL for the prelude */
+  Type *ty;   /* Mfn: the fn type; Mconst: the type; Mtype: unused */
+  Type *val;  /* Mtype in an impl: the supplied type */
 };
 
+/* the shape follows kind: Stype carries the fields, variants, tag, or
+ * alias target below; Sfn the fn type; Strait and Simpl the members
+ * -- a trait's carry the declared signatures, an impl's the resolved
+ * ones -- and an impl its resolved head too, per the last fields. */
 struct Sym
 {
   char *name;
-  int kind;
-  int pub;        /* unused until namespaces land */
-  Ast *decl;      /* the declaring item, or NULL for the prelude */
-  Ast **gparams;  /* the Ngparam nodes */
-  usize ngparams; /* their count */
-  Sym *next;      /* same-name overloads, fn only (04-generics.md) */
-
-  /* Stype */
-  int tykind;
-  Field *fields;
-  usize nfields;
-  Variant *variants;
-  usize nvariants;
-  Type *tagty;   /* the enum tag type, or NULL when compiler-picked */
-  Type *aliasty; /* an alias: the resolved target */
-  int resolving; /* alias cycle detection, during pass 2 */
-
-  /* Sfn */
-  Type *fnty;
-  /* Sconst, Sstatic */
-  Type *cty;
-  /* Strait, Simpl: the members, in declaration order. A trait's
-   * carry the declared signatures; an impl's the resolved ones. */
-  Member *members;
-  usize nmembers;
-  /* Simpl: the resolved head. ipath is the trait (a trait impl) or
-   * the type itself (an inherent one); ifort is what a trait impl
-   * is for. Shape-pattern meaning waits for pass 3. */
-  Type *ipath, *ifort;
+  int kind;            /* one of Snone..Simpl above */
+  int pub;             /* unused until namespaces land */
+  Ast *decl;           /* the declaring item, or NULL for the prelude */
+  Ast **gparams;       /* the Ngparam nodes */
+  usize ngparams;      /* their count */
+  Sym *next;           /* same-name overloads, fn only (04-generics.md) */
+  int tykind;          /* Stype: one of TYstruct..TYalias above */
+  Field *fields;       /* Stype: a struct or union's, or NULL */
+  usize nfields;       /* their count */
+  Variant *variants;   /* Stype: an enum's, or NULL */
+  usize nvariants;     /* their count */
+  Type *tagty;         /* Stype: the enum tag, or NULL when compiler-picked */
+  Type *aliasty;       /* Stype: an alias's resolved target */
+  int resolving;       /* Stype: alias cycle detection, during pass 2 */
+  Type *fnty;          /* Sfn: the resolved fn type */
+  Type *cty;           /* Sconst, Sstatic: the resolved type */
+  Member *members;     /* Strait, Simpl: in declaration order */
+  usize nmembers;      /* their count */
+  Type *ipath, *ifort; /* Simpl: the head. ipath is the trait (a trait
+                          impl) or the type itself (an inherent one);
+                          ifort, what a trait impl is for */
 };
 
 void syminit(void);

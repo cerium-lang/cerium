@@ -61,14 +61,14 @@ cerrat(Ast *a, const char *fmt, ...)
  * bound to its type, or Self bound to what implements it */
 struct Bind
 {
-  char *name;
-  Type *t;
+  char *name; /* the bound name */
+  Type *t;    /* what it is bound to */
 };
 
 struct Env
 {
-  Bind *b;
-  usize n;
+  Bind *b;     /* the bindings, innermost last */
+  usize n;     /* their count */
   Sym *strait; /* resolving a trait's members: Self::X projects */
   Sym *impl;   /* resolving an impl's: Self::X is the supplied type */
 };
@@ -793,11 +793,11 @@ resolveimplmembers(Sym *s)
  * and each projection the type the impl supplied */
 struct TSub
 {
-  Ast **gp;  /* the trait's parameters */
-  Type **ty; /* the head's arguments, parallel */
-  usize n;
-  Type *selfty;
-  Sym *is; /* the impl: Typroj name -> the supplied type */
+  Ast **gp;     /* the trait's parameters */
+  Type **ty;    /* the head's arguments, parallel */
+  usize n;      /* their count */
+  Type *selfty; /* the impl's type, what Self becomes */
+  Sym *is;      /* the impl: Typroj name -> the supplied type */
 };
 
 static Type *
@@ -915,9 +915,9 @@ checkimplcomplete(Sym *s)
  * way the spec's table lists (mutable matches the subset). */
 struct SpecSub
 {
-  Ast *gp[16];
-  Type *ty[16];
-  usize n;
+  Ast *gp[16];  /* the variables b has bound, so far */
+  Type *ty[16]; /* what each one landed on, parallel */
+  usize n;      /* their count */
 };
 
 static int spec1(Type *a, Type *b, SpecSub *s);

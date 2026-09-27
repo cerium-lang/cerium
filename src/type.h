@@ -77,11 +77,11 @@ enum
 
 struct Type
 {
-  u8 k;
-  u8 num; /* Tyint: IN_* */
-  u8 mut; /* Tydyn: dyn mut A */
-  u64 n;  /* Tyarray: the length, when it is a number */
-  usize nargs;
+  u8 k;        /* one of Ty* above */
+  u8 num;      /* Tyint: IN_* */
+  u8 mut;      /* Tydyn: dyn mut A */
+  u64 n;       /* Tyarray: the length, when it is a number */
+  usize nargs; /* the args count below */
   Sym *sym;    /* Tystruct/Tyunion/Tyenum/Tytrait/Tydyn/Typroj: the declaration */
   Ast *gp;     /* Typaram: the Ngparam; Tyarray: the length, when it is a
                 * const-parameter reference */

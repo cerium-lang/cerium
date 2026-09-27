@@ -79,7 +79,7 @@ enum
 typedef struct Token Token;
 struct Token
 {
-  Tok t;
+  Tok t;              /* Txxx until peek/next fills it */
   unsigned line, col; /* 1-based; a literal reports where it opens */
   union
   {

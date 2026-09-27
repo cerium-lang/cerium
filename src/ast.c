@@ -23,19 +23,19 @@
  * mk/mkstr bump a pointer through big chunks instead of paying a
  * calloc each. 64 KiB a chunk; the last one's slack is lost, which
  * the arena bargain already allows. */
-typedef struct chunk chunk; /* the arena's link, for the bump below */
-struct chunk
+typedef struct Chunk Chunk; /* the arena's link, for the bump below */
+struct Chunk
 {
-  chunk *next;
-  usize used; /* bytes handed out of mem */
-  char mem[64 * 1024];
+  Chunk *next;         /* the chunk list, newest first */
+  usize used;          /* bytes handed out of mem */
+  char mem[64 * 1024]; /* the storage, one malloc */
 };
-static chunk *chunks;
+static Chunk *chunks;
 
 static void *
 bump(usize n)
 {
-  chunk *c = chunks;
+  Chunk *c = chunks;
   char *p;
 
   n = (n + 7u) & ~(usize) 7u; /* 8-byte alignment: nodes carry

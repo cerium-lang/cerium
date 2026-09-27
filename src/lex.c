@@ -999,12 +999,12 @@ nextgt(void)
 
 struct LexSnap
 {
-  LexSnap *prev; /* the stack, innermost first */
-  int npos;      /* the cursor, in the log's current coordinates */
-  unsigned line, col;
-  Token thead, cur;
-  usize blen;
-  char bcont[1]; /* [vlen(buf)] follows */
+  LexSnap *prev;      /* the stack, innermost first */
+  int npos;           /* the cursor, in the log's current coordinates */
+  unsigned line, col; /* where the snapshot was taken */
+  Token thead, cur;   /* the saved slots */
+  usize blen;         /* vlen(buf) at the snapshot point */
+  char bcont[1];      /* [vlen(buf)] follows */
 };
 
 static LexSnap *live;
