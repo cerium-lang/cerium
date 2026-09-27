@@ -91,13 +91,15 @@
           (int 0))))
     (let
       (ppath (path o))
-      (builtin @size_of <(path i32)>))
+      (builtin @sizeof <(path i32)>))
     (let
       (ppath (path p))
-      (builtin @cast <(path u32) (path a)>))
+      (builtin @cast <(path u32)>
+        (path a)))
     (let
       (ppath (path q))
-      (builtin @noparens))
+      (builtin @typeof
+        (path a)))
     (let
       (ppath (path r))
       (tuple

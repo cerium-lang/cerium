@@ -1,0 +1,3 @@
+trait S { fn a(self: *Self) -> i32; }
+struct P {}
+impl S for P { fn a(self: *Self) -> u32; }

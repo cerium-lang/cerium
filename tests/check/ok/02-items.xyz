@@ -1,0 +1,47 @@
+struct Point {
+  x: f64,
+  mut y: f64,
+}
+
+struct Empty {}
+
+union Value {
+  i: i32,
+  f: f32,
+}
+
+enum Color(u8) {
+  Red = 1,
+  Green,
+  Blue(u32),
+}
+
+enum Shape {
+  Circle { r: f64 },
+  Rect(f64, f64),
+  Unit,
+}
+
+enum Plain {}
+
+trait Read {
+  fn read(self: *mut Self) -> usize;
+}
+
+impl Read for Point {
+  fn read(self: *mut Self) -> usize;
+}
+
+impl<T> Point {
+  fn origin() -> Point;
+}
+
+const MAX: usize = 100;
+static mut COUNT: i64 = 0;
+
+fn add(a: i32, b: i32) -> i32;
+fn id<T>(t: T) -> T;
+fn noret() -> ();
+fn noret2();
+
+use std::io;

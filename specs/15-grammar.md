@@ -370,14 +370,14 @@ type          = result_type ;
 result_type   = prefix_type [ "?" prefix_type ] ;
 prefix_type   = "?" prefix_type
               | "*" [ "mut" ] prefix_type
-              | "[" [ integer ] "]" [ "mut" ] prefix_type
+              | "[" [ integer | identifier ] "]" [ "mut" ] prefix_type
               | primary_type ;
 
 primary_type  = path
               | "(" ")"
               | "(" type { "," type } [ "," ] ")"
               | "fn" "(" [ type { "," type } [ "," ] ] ")" [ "->" type ]
-              | "dyn" path
+              | "dyn" [ "mut" ] path
               | "type" ;
 ```
 
@@ -385,10 +385,14 @@ primary_type  = path
 the error side is empty and an infix when it is named (`05-traits.md`). The
 grammar reads it in one step: a type is `E ? T` where `E` may be omitted,
 and both sides nest — `E??T` is `Result<Option<T>, E>`, and an error type
-that is itself optional parses, whether or not it makes sense.
+that is itself optional parses, whether or not it makes sense. `dyn mut A`
+is the writable handle; the `mut` sits on what the handle points at, the
+way it does on a slice (`06-dispatch.md`).
 
 `*T`, `*mut T`, `[N]T`, `[N]mut T`, `[]T`, `[]mut T` are all prefixes of the
-type they wrap. Generic arguments are a suffix of a path — `Vec<u32>` — and
+type they wrap. The length in brackets is an integer or a name — a `const`
+value parameter, which is what an array length is (`08-reflection.md`).
+Generic arguments are a suffix of a path — `Vec<u32>` — and
 close with `>` tokens, one at a time, which is where the missing `>>` token
 earns its keep. A function type names no parameters — `fn(u32) -> u32`
 (`01-types.md`) — unlike the `fn` declaration, whose `parameters` production
@@ -421,7 +425,7 @@ the declaration forms:
 ```ebnf
 file  = { item } ;
 
-item = attributes
+item = attributes [ "pub" ]
       ( fn_item | struct_item | union_item | enum_item | trait_item
       | impl_item | type_item | use_item | const_item | static_item ) ;
 
@@ -436,7 +440,8 @@ fn_item = "fn" identifier [ generic_params ]
 
 generic_params = "<" generic_param { "," generic_param } [ "," ] ">" ;
 generic_param  = identifier [ ":" bound ] [ "=" type ]
-              | "..." identifier ;
+              | "..." identifier
+              | "const" identifier ":" type ;
 bound = path { "+" path } ;
 
 parameters = parameter { "," parameter } [ "," ] ;
@@ -449,7 +454,7 @@ field = attributes [ "mut" ] identifier ":" type ;
 union_item = "union" identifier [ generic_params ]
              "{" [ field { "," field } [ "," ] ] "}" ;
 
-enum_item = "enum" identifier [ generic_params ]
+enum_item = "enum" identifier [ generic_params ] [ "(" type ")" ]
             "{" [ variant { "," variant } [ "," ] ] "}" ;
 variant = attributes identifier
           [ "=" integer | payload ] ;
@@ -482,13 +487,17 @@ the four `attributes` slots above — and never a statement or an expression.
 
 A function takes a body or a semicolon: the semicolon form is a declaration
 without a definition — a trait member, or an `#[extern(C)]` import
-(`01-types.md`). `generic_param` carries a bound, a default, or the `...`
-of a pack (`04-generics.md`); `bound` is a `+`-list of paths. The `mut` of a
+(`01-types.md`). `generic_param` carries a bound, a default, the `...`
+of a pack (`04-generics.md`), or the `const` of a value parameter — an
+array length (`08-reflection.md`); `bound` is a `+`-list of paths. The
+`mut` of a
 parameter marks the slot the way a field's does (`01-types.md`), and `const`
 states that the argument must be compile-time known (`08-reflection.md`).
 A positional payload lists bare types — `Circle(f32)` — and a named payload
 lists fields the way a struct does — `Rect { w: f32, h: f32 }`
-(`01-types.md`). An `impl` names a path, then the type it is for when the
+(`01-types.md`). The parenthesized type after an enum's own name is its
+tag type — `enum X(u32)` — and is left out when the compiler is to pick
+the smallest one that holds every variant (`01-types.md`). An `impl` names a path, then the type it is for when the
 impl is for a trait — inherent impls omit the `for` (`05-traits.md`).
 
 ## Statements

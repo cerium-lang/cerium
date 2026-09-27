@@ -106,7 +106,7 @@ struct Vh
 #define vpop(p)   ((p)[--vhdr(p)->len])
 #define vclear(p) ((void) (vhdr(p)->len = 0))
 
-void voom(const char *msg);
+void  voom(const char *msg);
 void *valloc_(usize esiz, usize alig, usize n);
 void *vfree_(void *p);
 void *vreserve_(void *p, usize n);
@@ -114,8 +114,8 @@ void *vfit_(void *p);
 void *vappend_(void *p, const void *e);
 void *vresize_(void *p, usize n);
 void *vinsert_(void *p, usize i, const void *e);
-void vremove_(void *p, usize i);
-void vswap_remove_(void *p, usize i);
+void  vremove_(void *p, usize i);
+void  vswap_remove_(void *p, usize i);
 void *vclone_(const void *p);
 void *vfree_each_(void *p, void (*fn)(void *));
 
@@ -135,7 +135,7 @@ valloc_(usize esiz, usize alig, usize n)
 {
   char *base;
   char *data;
-  Vh *h;
+  Vh   *h;
   usize pad;
 
   if (esiz == 0 || alig == 0)
@@ -181,7 +181,7 @@ vfree_(void *p)
 void *
 vreserve_(void *p, usize n)
 {
-  Vh *h;
+  Vh   *h;
   char *base;
   char *nb;
   char *data;
@@ -242,7 +242,7 @@ vreserve_(void *p, usize n)
 void *
 vfit_(void *p)
 {
-  Vh *h;
+  Vh   *h;
   char *base;
   char *nb;
   char *data;
@@ -291,10 +291,10 @@ vfit_(void *p)
 void *
 vappend_(void *p, const void *e)
 {
-  Vh *h;
+  Vh         *h;
   const char *src = (const char *) e;
-  usize off;
-  usize d;
+  usize       off;
+  usize       d;
 
   if (!p || !e)
     voom("null pointer");
@@ -324,7 +324,7 @@ vappend_(void *p, const void *e)
 void *
 vresize_(void *p, usize n)
 {
-  Vh *h;
+  Vh   *h;
   usize old;
 
   if (!p)
@@ -346,10 +346,10 @@ vresize_(void *p, usize n)
 void *
 vinsert_(void *p, usize i, const void *e)
 {
-  Vh *h;
+  Vh         *h;
   const char *src = (const char *) e;
-  usize d;
-  usize j;
+  usize       d;
+  usize       j;
 
   if (!p || !e)
     voom("null pointer");
@@ -427,8 +427,8 @@ vswap_remove_(void *p, usize i)
 void *
 vclone_(const void *p)
 {
-  Vh *h;
-  Vh *nh;
+  Vh   *h;
+  Vh   *nh;
   char *nd;
   usize esiz, alig, len, cap;
 
@@ -457,7 +457,7 @@ vclone_(const void *p)
 void *
 vfree_each_(void *p, void (*fn)(void *))
 {
-  Vh *h;
+  Vh   *h;
   usize i;
 
   if (!p)

@@ -21,7 +21,7 @@ $(BIN): $(OBJ)
 .c.o:
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(OBJ): src/vec.h src/lex.h src/ast.h src/die.h src/parse.h
+$(OBJ): src/vec.h src/lex.h src/ast.h src/die.h src/parse.h src/check.h src/sym.h src/type.h
 
 $(QBE_BIN):
 	@cd qbe >/dev/null 2>&1 || { \
@@ -29,7 +29,7 @@ $(QBE_BIN):
 	$(MAKE) -C qbe
 
 test: $(BIN)
-	sh tools/run_tests.sh
+	sh tools/run-tests.sh
 
 fmt:
 	clang-format -i src/*.c src/*.h

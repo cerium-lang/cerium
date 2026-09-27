@@ -537,7 +537,7 @@ It is available only where the function's result is an `E?T` with the same `E`:
 ```rust
 fn read(path: []u8) -> Error?Data {
   let f = open(path)?;     // on Err, that Err is returned
-  let n = size_of(f)?;
+  let n = len(f)?;
   ...
 }
 ```

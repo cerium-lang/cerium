@@ -23,19 +23,20 @@
  * mk/mkstr bump a pointer through big chunks instead of paying a
  * calloc each. 64 KiB a chunk; the last one's slack is lost, which
  * the arena bargain already allows. */
-struct chunk
+typedef struct Chunk Chunk; /* the arena's link, for the bump below */
+struct Chunk
 {
-  struct chunk *next;
-  usize used; /* bytes handed out of mem */
-  char mem[64 * 1024];
+  Chunk *next;           /* the chunk list, newest first */
+  usize  used;           /* bytes handed out of mem */
+  char   mem[64 * 1024]; /* the storage, one malloc */
 };
-static struct chunk *chunks;
+static Chunk *chunks;
 
 static void *
 bump(usize n)
 {
-  struct chunk *c = chunks;
-  char *p;
+  Chunk *c = chunks;
+  char  *p;
 
   n = (n + 7u) & ~(usize) 7u; /* 8-byte alignment: nodes carry
                                * pointers and doubles */
@@ -50,6 +51,14 @@ bump(usize n)
   p = c->mem + c->used;
   c->used += n;
   return p;
+}
+
+/* raw arena bytes for the other passes -- types and symbols are as
+ * permanent as the tree is, and none of them is ever freed either */
+void *
+arenaalloc(usize n)
+{
+  return bump(n);
 }
 
 Ast *
@@ -69,7 +78,7 @@ char *
 mkstr(void)
 {
   Token *t = lexcur();
-  char *s = bump(t->v.str.len + 1);
+  char  *s = bump(t->v.str.len + 1);
 
   memcpy(s, t->v.str.s, t->v.str.len);
   s[t->v.str.len] = 0;
@@ -217,7 +226,7 @@ void
 dumpu64(u64 v)
 {
   char d[20]; /* 2^64-1 is 20 digits */
-  int n = 0;
+  int  n = 0;
 
   do {
     d[n++] = (char) ('0' + (int) (v % 10));
@@ -269,6 +278,14 @@ dumpflags(unsigned f)
     printf(" ml");
 }
 
+/* the pub flag of an item, as " pub" before the name */
+static void
+putpub(Ast *n)
+{
+  if (n->pub)
+    printf(" pub");
+}
+
 /* a path: bare segments inline, [::] first when rooted; a segment
  * with generic args is (seg name args...) */
 static void
@@ -301,7 +318,7 @@ putattrs(Ast *n)
   usize i;
 
   for (a = n->attrs, i = 0; a && i < vlen(a); i++) {
-    Ast *at = a[i];
+    Ast  *at = a[i];
     Ast **args;
     usize j;
 
@@ -509,10 +526,13 @@ dumpnode(Ast *n, int i)
     child(n->v.fnty.ret, i);
     break;
   case Ntdyn:
-    child(n->v.n1.e, i);
+    if (n->v.un.mut)
+      printf(" mut");
+    child(n->v.un.e, i);
     break;
   case Nfn:
     putattrs(n);
+    putpub(n);
     printf(" %s", n->v.fn.name);
     for (v = n->v.fn.gparams, j = 0; v && j < vlen(v); j++)
       child(v[j], i);
@@ -527,6 +547,7 @@ dumpnode(Ast *n, int i)
   case Nunion:
   case Ntrait:
     putattrs(n);
+    putpub(n);
     printf(" %s", n->v.ty.name);
     for (v = n->v.ty.gparams, j = 0; v && j < vlen(v); j++)
       child(v[j], i);
@@ -535,9 +556,11 @@ dumpnode(Ast *n, int i)
     break;
   case Nenum:
     putattrs(n);
+    putpub(n);
     printf(" %s", n->v.en.name);
     for (v = n->v.en.gparams, j = 0; v && j < vlen(v); j++)
       child(v[j], i);
+    child(n->v.en.tag, i);
     for (v = n->v.en.variants, j = 0; v && j < vlen(v); j++)
       child(v[j], i);
     break;
@@ -558,6 +581,7 @@ dumpnode(Ast *n, int i)
     break;
   case Nimpl:
     putattrs(n);
+    putpub(n);
     for (v = n->v.impl.gparams, j = 0; v && j < vlen(v); j++)
       child(v[j], i);
     child(n->v.impl.path, i);
@@ -571,6 +595,7 @@ dumpnode(Ast *n, int i)
     break;
   case Ntypedef:
     putattrs(n);
+    putpub(n);
     printf(" %s", n->v.td.name);
     for (v = n->v.td.gparams, j = 0; v && j < vlen(v); j++)
       child(v[j], i);
@@ -587,6 +612,7 @@ dumpnode(Ast *n, int i)
   case Nconst:
   case Nstatic:
     putattrs(n);
+    putpub(n);
     if (n->k == Nstatic && n->v.cst.mut)
       printf(" mut");
     printf(" %s", n->v.cst.name);
@@ -610,12 +636,15 @@ dumpnode(Ast *n, int i)
   case Ngparam:
     if (n->v.gp.pack)
       printf(" ...");
+    if (n->v.gp.cnst)
+      printf(" const");
     printf(" %s", n->v.gp.name);
     for (v = n->v.gp.bounds, j = 0; v && j < vlen(v); j++)
       child(v[j], i);
     if (n->v.gp.dflt)
       printf(" =");
     child(n->v.gp.dflt, i);
+    child(n->v.gp.t, i);
     break;
   case Nlet:
     if (n->v.let.mut)

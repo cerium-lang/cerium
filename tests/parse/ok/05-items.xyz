@@ -57,3 +57,11 @@ type Pair2<T> = (T, T);
 const C: i32 = 4;
 static S: i32 = 5;
 static mut M: i32 = 6;
+pub fn pubfn(x: i32) -> i32 { x }
+pub struct PubS { a: u32 }
+pub union PubU { a: u16, b: u32 }
+pub enum PubE { A, B }
+pub trait PubT { fn m(self: *Self) -> (); }
+pub type PubA = i32;
+pub const PUBC: usize = 4;
+pub static PUBS: u32 = 1;

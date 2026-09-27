@@ -1,0 +1,1 @@
+trait S { fn a(self: *Self) -> Self::Nope; }

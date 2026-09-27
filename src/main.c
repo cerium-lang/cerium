@@ -1,21 +1,27 @@
 /* main.c -- xyz, stage 0: the driver.
  *
- * Two modes:
+ * Three modes:
  *   xyz -t file -- the token stream, one token a line (the lexer's
  *                  golden tests, tests/lex/ok, diff against this)
  *   xyz -a file -- the AST as S-expressions (the parser's golden
  *                  tests, tests/parse/ok, diff against this)
+ *   xyz -T file -- what checking made of each item: resolved types,
+ *                  fields, variants, impl heads (the checker's golden
+ *                  tests, tests/check/ok, diff against this)
  *
- * Both formats are contracts -- changing either rewrites goldens.
- * The escapes in both are the lexer's own closed set (\n \t \r \0 \'
+ * All three formats are contracts -- changing one rewrites goldens.
+ * The escapes in all are the lexer's own closed set (\n \t \r \0 \'
  * \" \\ \xNN), so what a literal spelled and what it holds read the
- * same in either dump.
+ * same in any dump.
  */
 
+#define _POSIX_C_SOURCE 2 /* getopt, the POSIX.2 one; c89 hides it */
+
 #include <stdio.h>
-#include <string.h>
+#include <unistd.h>
 
 #include "ast.h"
+#include "check.h"
 #include "lex.h"
 #include "parse.h"
 #include "vec.h"
@@ -97,13 +103,59 @@ dumpast_file(const char *path)
   return 0;
 }
 
+static int
+dumpcheck_file(const char *path)
+{
+  Ast **items = vnew(Ast *, 16);
+
+  lexinit(path);
+  while (peek() != Teof) {
+    Ast *it = parseitem();
+
+    vappend(&items, &it);
+  }
+  checkinit();
+  checkfile(items); /* a rejection dies before any output, like -a */
+  checkdump(items);
+  return 0;
+}
+
+static int
+usage(void)
+{
+  fprintf(stderr, "usage: xyz -t file | xyz -a file | xyz -T file\n");
+  return 1;
+}
+
 int
 main(int argc, char **argv)
 {
-  if (argc == 3 && strcmp(argv[1], "-t") == 0)
-    return dumptoks(argv[2]);
-  if (argc == 3 && strcmp(argv[1], "-a") == 0)
-    return dumpast_file(argv[2]);
-  fprintf(stderr, "usage: xyz -t file | xyz -a file\n");
-  return 1;
+  const char *file = 0;
+  int         mode = 0;
+  int         c;
+
+  while ((c = getopt(argc, argv, "a:t:T:")) != -1) {
+    switch (c) {
+    case 'a':
+    case 't':
+    case 'T':
+      if (mode) /* one mode, one file */
+        return usage();
+      mode = c;
+      file = optarg;
+      break;
+    default: /* '?': getopt already said why */
+      return usage();
+    }
+  }
+  if (!mode || optind != argc) /* a file and nothing after it */
+    return usage();
+  switch (mode) {
+  case 't':
+    return dumptoks(file);
+  case 'a':
+    return dumpast_file(file);
+  default:
+    return dumpcheck_file(file);
+  }
 }

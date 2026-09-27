@@ -79,27 +79,27 @@ enum
 typedef struct Token Token;
 struct Token
 {
-  Tok t;
+  Tok      t;         /* Txxx until peek/next fills it */
   unsigned line, col; /* 1-based; a literal reports where it opens */
   union
   {
-    u64 num;    /* Tint */
+    u64    num; /* Tint */
     double flt; /* Tflt */
     struct
     {
-      char *s;        /* in the lexer's reused buffer, NUL-terminated */
-      usize len;      /* value bytes; STRF_C's terminator is counted */
+      char    *s;     /* in the lexer's reused buffer, NUL-terminated */
+      usize    len;   /* value bytes; STRF_C's terminator is counted */
       unsigned flags; /* STRF_* */
     } str;            /* Tstr, Tbyte, Tident */
   } v;
 };
 
 /* one lexer per process, like qbe: the state is static in lex.c */
-void lexinit(const char *path); /* NULL reads stdin */
+void        lexinit(const char *path); /* NULL reads stdin */
 const char *lexpath(void);
 
-Tok peek(void);      /* look at the next token without consuming */
-Tok next(void);      /* consume it; the token lands in lexcur() */
+Tok    peek(void);   /* look at the next token without consuming */
+Tok    next(void);   /* consume it; the token lands in lexcur() */
 Token *lexcur(void); /* the token peek/next last produced */
 
 /* the generic-arguments closing: reads one token, but a ">>" reads as
@@ -116,9 +116,9 @@ Tok nextgt(void);
  * FILE has already given, so the file never moves either; only the
  * cursor does. */
 typedef struct LexSnap LexSnap;
-LexSnap *lexsnap(void);
-void lexunsnap(LexSnap *s);
-void lexdrop(LexSnap *s);
+LexSnap               *lexsnap(void);
+void                   lexunsnap(LexSnap *s);
+void                   lexdrop(LexSnap *s);
 
 /* v.str.s lives in a buffer reused across tokens: its content is valid
  * until the next peek/next. Copy it out if it must outlive that. */

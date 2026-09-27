@@ -1,0 +1,2 @@
+type A<T> = T;
+type B = A<i32, i32>;

@@ -1,0 +1,5 @@
+trait S { fn a(self: *Self); type T; }
+struct P {}
+impl S for P { type T = u32; fn a(self: *Self); }
+impl<T> S for (T, u32) { type T = u32; fn a(self: *Self); }
+impl<U> S for (U, u32) { type T = u32; fn a(self: *Self); }

@@ -1,0 +1,2 @@
+struct P {}
+impl<T: P> Copy for T { }

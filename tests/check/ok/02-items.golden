@@ -1,0 +1,30 @@
+(file
+  (struct Point
+    (field x f64)
+    (field mut y f64))
+  (struct Empty)
+  (union Value
+    (field i i32)
+    (field f f32))
+  (enum Color : u8
+    (variant Red = 1)
+    (variant Green = 2)
+    (variant Blue = 3 u32))
+  (enum Shape
+    (variant Circle = 0 (field r f64))
+    (variant Rect = 1 f64 f64)
+    (variant Unit = 2))
+  (enum Plain)
+  (trait Read
+    (fn read fn(*mut Self) -> usize))
+  (impl Read for Point
+    (fn read fn(*mut Point) -> usize))
+  (impl Point
+    (fn origin fn() -> Point))
+  (const MAX usize)
+  (static mut COUNT i64)
+  (fn add fn(i32, i32) -> i32)
+  (fn id fn(T) -> T)
+  (fn noret fn())
+  (fn noret2 fn())
+  (use std::io))

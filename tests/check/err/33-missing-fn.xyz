@@ -1,0 +1,3 @@
+trait It { type I; fn n(self: *mut Self); }
+struct P {}
+impl It for P { type I = i32; }

@@ -1,0 +1,62 @@
+trait Iterator {
+  type Item;
+  fn next(self: *mut Self) -> ?Self::Item;
+}
+
+trait Eq<T> {
+  fn eq(self: *Self, o: *T) -> bool;
+}
+
+trait Show {
+  fn show(self: *Self) -> ();
+}
+
+trait Marker { }
+
+struct Range {
+  mut i: i32,
+  end: i32,
+}
+
+struct File {
+  fd: i32,
+}
+
+impl Iterator for Range {
+  type Item = i32;
+  fn next(self: *mut Self) -> ?i32;
+}
+
+impl Eq<i32> for File {
+  fn eq(self: *Self, o: *i32) -> bool;
+}
+
+impl<T: Copy> Show for T {
+  fn show(self: *Self) -> ();
+}
+
+impl Show for File {
+  fn show(self: *Self) -> ();
+}
+
+impl<T: Drop> Show for T {
+  fn show(self: *Self) -> ();
+}
+
+impl Copy for Range { }
+
+impl Drop for File {
+  fn drop(mut self: Self) -> ();
+}
+
+impl Marker for File { }
+
+impl<T> Range {
+  fn new(i: i32, end: i32) -> Range;
+  fn remaining(self: *Self) -> i32;
+}
+
+trait IntoIter {
+  type It;
+  fn into_iter(self: Self) -> Self::It;
+}

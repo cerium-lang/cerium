@@ -21,3 +21,23 @@ type FnTC = fn(i32,);
 type TupTC = (i32, u32,);
 type NestedRes = Str??u32;
 type DynGen = dyn Read<Item>;
+type WithConstGp<T, const N: usize> = [N]T;
+enum Tagged(u32) {
+  A = 0,
+  B,
+  C = 10,
+  D,
+  Circle(f32),
+  Rect { w: f32, mut h: f32 },
+  Unit2,
+}
+enum Plain {
+  Less,
+  Equal,
+  Greater,
+}
+enum GenEnum<T>(u8) {
+  Nil,
+  Cons(T, u8),
+}
+type Dm = dyn mut Read;

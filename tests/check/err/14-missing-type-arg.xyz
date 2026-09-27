@@ -1,0 +1,2 @@
+struct S<T, U> { a: T, b: U }
+fn f(x: S<i32>) {}
