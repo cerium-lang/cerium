@@ -1,0 +1,7 @@
+enum Shape { Circle { r: f64 }, Rect(f64, f64), Unit }
+fn area(s: Shape) -> f64 {
+  match s {
+    Shape::Circle { r } => r,
+    Shape::Rect(w, h) => w * h,
+  }
+}

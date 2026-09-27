@@ -1,0 +1,8 @@
+enum Shape { Circle { r: f64 }, Rect(f64, f64), Unit }
+fn main() -> i32 {
+  let s = Shape::Unit;
+  match s {
+    Shape::Unit => 1,
+    _ => 1.5,
+  }
+}

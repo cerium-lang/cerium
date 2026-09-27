@@ -34,9 +34,9 @@
 #include "type.h"
 
 /* the checker's file-local types -- typedef'd in one place so use
- * sites drop the struct, the pattern ast.h and type.h set */
-typedef struct Bind    Bind;
-typedef struct Env     Env;
+ * sites drop the struct, the pattern ast.h and type.h set. Bind and
+ * Env moved to sym.h: pass 4 (body.c) builds the same environments
+ * for fn bodies. */
 typedef struct TSub    TSub;
 typedef struct SpecSub SpecSub;
 
@@ -56,24 +56,10 @@ cerrat(Ast *a, const char *fmt, ...)
 }
 
 /* -- names in scope while a type resolves ------------------------------ */
+/* The types live in sym.h now; these are their constructors, shared
+ * with pass 4. */
 
-/* a binding: a generic parameter bound to itself, an alias argument
- * bound to its type, or Self bound to what implements it */
-struct Bind
-{
-  char *name; /* the bound name */
-  Type *t;    /* what it is bound to */
-};
-
-struct Env
-{
-  Bind *b;      /* the bindings, innermost last */
-  usize n;      /* their count */
-  Sym  *strait; /* resolving a trait's members: Self::X projects */
-  Sym  *impl;   /* resolving an impl's: Self::X is the supplied type */
-};
-
-static Type *
+Type *
 envfind(Env *env, char *name)
 {
   usize i;
@@ -84,7 +70,7 @@ envfind(Env *env, char *name)
   return 0;
 }
 
-static Env
+Env
 envnone(void)
 {
   Env env;
@@ -97,7 +83,7 @@ envnone(void)
 }
 
 /* one more binding, on a fresh array -- envs are small and rare */
-static Env
+Env
 envpush(Env *e, char *name, Type *t)
 {
   Env r;
@@ -124,7 +110,7 @@ selfty(void)
 /* the outer bindings, then these parameters' own on top of them --
  * a member fn's own generics shadow the impl's. outer may be NULL:
  * a top-level declaration has nothing outside it */
-static Env
+Env
 envgparams(Env *outer, Ast **gps, usize n)
 {
   Env   o, r;
@@ -149,8 +135,8 @@ envgparams(Env *outer, Ast **gps, usize n)
 
 /* -- type resolution --------------------------------------------------- */
 
-static Type *rty(Ast *t, Env *env);
-static Type *rpath(Ast *p, Env *env);
+Type *rty(Ast *t, Env *env); /* shared with pass 4 (check.h) */
+Type *rpath(Ast *p, Env *env);
 
 /* the scalar type names are keywords in type position: they resolve
  * before the environment and the symbol table are consulted, and no
@@ -302,7 +288,7 @@ memberfind(Sym *s, const char *name)
 }
 
 /* a path in type position */
-static Type *
+Type *
 rpath(Ast *p, Env *env)
 {
   Ast  **segs = p->v.path.segs;
@@ -418,7 +404,7 @@ fits(u64 v, Type *t)
   }
 }
 
-static Type *
+Type *
 rty(Ast *t, Env *env)
 {
   switch (t->k) {
@@ -1250,11 +1236,17 @@ declare(Ast **items)
 
 /* -- the driver ---------------------------------------------------------- */
 
+/* pass 3's impl table, read by pass 4 (sym.h) */
+Sym **chk_impls;
+usize chk_nimpls;
+
 void
 checkinit(void)
 {
   syminit();
   prelude();
+  chk_impls = 0;
+  chk_nimpls = 0;
 }
 
 void
@@ -1316,6 +1308,8 @@ checkfile(Ast **items)
       vappend(&impls, &s);
     }
   }
+  chk_impls = impls; /* pass 4 reads this (body.c) */
+  chk_nimpls = vlen(impls);
   nimpls = vlen(impls);
   for (i = 0; i < nimpls; i++) {
     Sym *bs[16];
@@ -1330,6 +1324,16 @@ checkfile(Ast **items)
 
     for (j = 0; j < i; j++)
       checkoverlap(impls[i], impls[j]);
+  }
+
+  /* pass 4: fn bodies, against the impl table pass 3 just built */
+  for (i = 0; i < n; i++) {
+    if (!syms[i])
+      continue;
+    if (items[i]->k == Nfn && items[i]->v.fn.body)
+      checkbodyfn(syms[i], items[i]);
+    if (items[i]->k == Nimpl)
+      checkbodyimpl(syms[i], items[i]);
   }
 }
 

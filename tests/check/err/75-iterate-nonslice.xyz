@@ -1,0 +1,4 @@
+fn main() -> i32 {
+  for v in 3 { }
+  0
+}

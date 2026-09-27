@@ -1,0 +1,4 @@
+fn main() -> bool {
+  let p = None;
+  true
+}

@@ -118,6 +118,37 @@ void syminit(void);
 Sym *symdecl(const char *name, int kind, Ast *decl, Ast **gparams, usize ngparams);
 Sym *symfind(const char *name);
 
+/* -- names in scope while a type resolves ------------------------------
+ * Shared by resolve.c's passes and body.c's pass 4: a binding is a
+ * generic parameter bound to itself, an alias argument bound to its
+ * type, or Self bound to what implements it. */
+
+typedef struct Bind Bind;
+struct Bind
+{
+  char *name; /* the bound name */
+  Type *t;    /* what it is bound to */
+};
+
+typedef struct Env Env;
+struct Env
+{
+  Bind *b;      /* the bindings, innermost last */
+  usize n;      /* their count */
+  Sym  *strait; /* resolving a trait's members: Self::X projects */
+  Sym  *impl;   /* resolving an impl's: Self::X is the supplied type */
+};
+
+Env   envnone(void);
+Env   envpush(Env *e, char *name, Type *t);
+Env   envgparams(Env *outer, Ast **gps, usize n); /* outer may be NULL */
+Type *envfind(Env *env, char *name);
+
+/* pass 3's impl table, built by checkfile: pass 4 reads it for
+ * inherent methods and Drop checks */
+extern Sym **chk_impls;
+extern usize chk_nimpls;
+
 /* Self's one generic parameter, built by syminit (sym.c) */
 extern Ast *sym_selfgp;
 

@@ -51,6 +51,14 @@ p.a = 3;              // ❌ P::a is not mut
 p.b = 4;              // ✅ P::b is mut
 ```
 
+A pointer adds a third level, and it gates everything under it: writing
+through one — `a = v` after a deref, or `a.b` / `a[0]` over a pointer base —
+rides on the pointer's own mut. `*T` lends nothing writable, so writing past
+it is an error; `*mut T` lends exactly what its pointee's row of the table
+says. `(*p).b = 4` therefore asks twice: `p` must be `*mut`, and `b` must be
+`mut`. The same holds for a borrow taken as a base — `&a` names a `*T`, so
+writing through it is an error until the borrow ends.
+
 `mut` written inside a type is part of that type: `[3]mut u32` and `[3]u32` are
 two distinct types, and so are two structs differing only in the `mut` of a
 field. A value of a mutable type can be used where the immutable one is

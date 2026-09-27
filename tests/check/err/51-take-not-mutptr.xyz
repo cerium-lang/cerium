@@ -1,0 +1,7 @@
+struct Keep { mut f: fn(i32) -> i32 }
+fn id(n: i32) -> i32 { n }
+fn main() -> i32 {
+  let mut k = Keep { f: id };
+  let g = @take(k);
+  0
+}
