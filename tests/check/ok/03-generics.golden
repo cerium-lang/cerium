@@ -22,7 +22,8 @@
   (type Opt ?i32)
   (type Res Err?i32)
   (type Deep ??i32)
-  (trait Sized)
+  (trait Sized
+    (fn size fn(*Self) -> usize))
   (fn swap fn((T, U)) -> (U, T))
   (fn constlen fn([N]i32) -> usize)
   (fn mix fn([N]T, fn(T) -> T) -> ?T))

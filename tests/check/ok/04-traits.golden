@@ -1,0 +1,35 @@
+(file
+  (trait Iterator
+    (type Item)
+    (fn next fn(*mut Self) -> ?Self::Item))
+  (trait Eq<T>
+    (fn eq fn(*Self, *T) -> bool))
+  (trait Show
+    (fn show fn(*Self)))
+  (trait Marker)
+  (struct Range
+    (field mut i i32)
+    (field end i32))
+  (struct File
+    (field fd i32))
+  (impl Iterator for Range
+    (type Item i32)
+    (fn next fn(*mut Range) -> ?i32))
+  (impl Eq<i32> for File
+    (fn eq fn(*File, *i32) -> bool))
+  (impl Show for T
+    (fn show fn(*T)))
+  (impl Show for File
+    (fn show fn(*File)))
+  (impl Show for T
+    (fn show fn(*T)))
+  (impl Copy for Range)
+  (impl Drop for File
+    (fn drop fn(File)))
+  (impl Marker for File)
+  (impl Range
+    (fn new fn(i32, i32) -> Range)
+    (fn remaining fn(*Range) -> i32))
+  (trait IntoIter
+    (type It)
+    (fn into_iter fn(Self) -> Self::It)))

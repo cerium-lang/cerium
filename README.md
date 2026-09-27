@@ -89,14 +89,17 @@ once per checkout so commits format what they stage.
 The lexer and the parser are in: `xyz -t file.xyz` dumps the token
 stream — position, kind, value — and `xyz -a file.xyz` dumps the parse
 tree as S-expressions, one node a line, children indented. The type
-checker has started landing: `xyz -T file.xyz` declares every name in
-the file and resolves every type a declaration carries — aliases
+checker's first two passes are in: `xyz -T file.xyz` declares every
+name in the file, resolves every type a declaration carries — aliases
 expand to their targets, `?T`/`E?T` build on the prelude's
-`Option`/`Result`, and `dyn A` names its trait — then dumps the
-result per item (`src/resolve.c`). `tests/lex`, `tests/parse` and
-`tests/check` hold the golden tests, split by pass: `ok/` has one
-`.golden` per `.xyz` that the dumps must reproduce exactly, `err/`
-has inputs that must be rejected (`tools/run-tests.sh`).
+`Option`/`Result`, `dyn A` names its trait — then resolves trait and
+impl members against their `Self`, checks a trait impl supplies
+exactly what the trait declares, and orders every pair of impls by
+shape-pattern specificity or the `Copy`/`Drop` exclusion
+(`04-generics.md`), rejecting the rest on the spot. `tests/lex`,
+`tests/parse` and `tests/check` hold the golden tests, split by pass:
+`ok/` has one `.golden` per `.xyz` that the dumps must reproduce
+exactly, `err/` has inputs that must be rejected (`tools/run-tests.sh`).
 
 ## Status
 

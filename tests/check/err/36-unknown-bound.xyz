@@ -1,0 +1,3 @@
+struct P {}
+impl<T: Nope> S for P { }
+trait S { }

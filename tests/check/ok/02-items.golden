@@ -15,9 +15,12 @@
     (variant Rect = 1 f64 f64)
     (variant Unit = 2))
   (enum Plain)
-  (trait Read)
-  (impl Read for Point)
-  (impl Point)
+  (trait Read
+    (fn read fn(*mut Self) -> usize))
+  (impl Read for Point
+    (fn read fn(*mut Point) -> usize))
+  (impl Point
+    (fn origin fn() -> Point))
   (const MAX usize)
   (static mut COUNT i64)
   (fn add fn(i32, i32) -> i32)

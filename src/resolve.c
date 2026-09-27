@@ -50,8 +50,8 @@ cerrat(Ast *a, const char *fmt, ...)
 
 /* -- names in scope while a type resolves ------------------------------ */
 
-/* a binding: a generic parameter bound to itself, or an alias
- * argument bound to its type */
+/* a binding: a generic parameter bound to itself, an alias argument
+ * bound to its type, or Self bound to what implements it */
 struct Bind
 {
   char *name;
@@ -62,6 +62,8 @@ struct Env
 {
   struct Bind *b;
   usize n;
+  Sym *strait; /* resolving a trait's members: Self::X projects */
+  Sym *impl;   /* resolving an impl's: Self::X is the supplied type */
 };
 
 static Type *
@@ -75,22 +77,6 @@ envfind(struct Env *env, char *name)
   return 0;
 }
 
-/* bind a declaration's own generic parameters to themselves */
-static struct Env
-envgparams(Ast **gps, usize n)
-{
-  struct Env env;
-  usize i;
-
-  env.n = n;
-  env.b = n ? arenaalloc(n * sizeof *env.b) : 0;
-  for (i = 0; i < n; i++) {
-    env.b[i].name = gps[i]->v.gp.name;
-    env.b[i].t = typaram(gps[i]);
-  }
-  return env;
-}
-
 static struct Env
 envnone(void)
 {
@@ -98,7 +84,60 @@ envnone(void)
 
   env.b = 0;
   env.n = 0;
+  env.strait = 0;
+  env.impl = 0;
   return env;
+}
+
+/* one more binding, on a fresh array -- envs are small and rare */
+static struct Env
+envpush(struct Env *e, char *name, Type *t)
+{
+  struct Env r;
+
+  r.strait = e->strait;
+  r.impl = e->impl;
+  r.n = e->n + 1;
+  r.b = arenaalloc(r.n * sizeof *r.b);
+  if (e->n)
+    memcpy(r.b, e->b, e->n * sizeof *r.b);
+  r.b[e->n].name = name;
+  r.b[e->n].t = t;
+  return r;
+}
+
+/* Self's type: sym_selfgp is built by syminit, shared with the
+ * prelude's Drop (sym.c) */
+static Type *
+selfty(void)
+{
+  return typaram(sym_selfgp);
+}
+
+/* the outer bindings, then these parameters' own on top of them --
+ * a member fn's own generics shadow the impl's. outer may be NULL:
+ * a top-level declaration has nothing outside it */
+static struct Env
+envgparams(struct Env *outer, Ast **gps, usize n)
+{
+  struct Env o, r;
+  usize i;
+
+  if (!outer) {
+    o = envnone();
+    outer = &o;
+  }
+  r.strait = outer->strait;
+  r.impl = outer->impl;
+  r.n = outer->n + n;
+  r.b = r.n ? arenaalloc(r.n * sizeof *r.b) : 0;
+  if (outer->n)
+    memcpy(r.b, outer->b, outer->n * sizeof *r.b);
+  for (i = 0; i < n; i++) {
+    r.b[outer->n + i].name = gps[i]->v.gp.name;
+    r.b[outer->n + i].t = typaram(gps[i]);
+  }
+  return r;
 }
 
 /* -- type resolution --------------------------------------------------- */
@@ -147,7 +186,7 @@ aliastarget(Sym *s)
   if (s->resolving)
     cerrat(s->decl, "type alias '%s' resolves through itself", s->name);
   s->resolving = 1;
-  env = envgparams(s->gparams, s->ngparams);
+  env = envgparams(0, s->gparams, s->ngparams);
   s->aliasty = rty(s->decl->v.td.t, &env);
   s->resolving = 0;
   return s->aliasty;
@@ -214,6 +253,47 @@ rargs(Ast *seg, struct Env *env, usize *np)
   return ts;
 }
 
+/* a member item's name -- fn, typedef, and const are the three */
+static char *
+itemname(Ast *it)
+{
+  switch (it->k) {
+  case Nfn:
+    return it->v.fn.name;
+  case Ntypedef:
+    return it->v.td.name;
+  case Nconst:
+  case Nstatic:
+    return it->v.cst.name;
+  default:
+    die("internal: itemname: unhandled kind %s", nkname(it->k));
+  }
+  return 0; /* unreachable */
+}
+
+/* one type into a rotating static buffer, for diagnostics */
+static char *
+tysprint1(Type *t)
+{
+  static char bufs[4][256];
+  static unsigned which;
+  char *b = bufs[which++ & 3u];
+
+  return tysprint(b, sizeof bufs[0], t);
+}
+
+/* a member by name, or NULL (traits and impls) */
+static struct Member *
+memberfind(Sym *s, const char *name)
+{
+  usize i;
+
+  for (i = 0; i < s->nmembers; i++)
+    if (strcmp(s->members[i].name, name) == 0)
+      return &s->members[i];
+  return 0;
+}
+
 /* a path in type position */
 static Type *
 rpath(Ast *p, struct Env *env)
@@ -226,6 +306,22 @@ rpath(Ast *p, struct Env *env)
   Type **args;
   usize nargs;
 
+  if (nsegs == 2 && !p->v.path.root && strcmp(segs[0]->v.seg.name, "Self") == 0 &&
+      (env->strait || env->impl)) {
+    /* Self::X, the associated type (05-traits.md): a projection in
+     * a trait's own declaration, the supplied type in an impl */
+    char *nm = segs[1]->v.seg.name;
+    Sym *owner = env->strait ? env->strait : env->impl;
+    struct Member *m = memberfind(owner, nm);
+
+    if (segs[1]->v.seg.args)
+      cerrat(p, "'%s' takes no type arguments", nm);
+    if (!m || m->kind != Mtype)
+      cerrat(p, "'%s' is not an associated type of '%s'", nm, owner->name);
+    if (env->impl)
+      return m->val; /* what the impl supplied, resolved before any fn */
+    return typroj(env->strait, selfty(), nm);
+  }
   if (nsegs != 1)
     cerrat(p, "a qualified type name needs its namespace (not yet)");
   seg = segs[0];
@@ -258,7 +354,7 @@ rpath(Ast *p, struct Env *env)
   args = rargs(seg, env, &nargs);
   if (s->kind == Strait) {
     if (nargs)
-      cerrat(p, "a trait's own arguments are bound by its impls (not yet)");
+      cerrat(p, "a trait's arguments belong to its impl head (05-traits.md)");
     return tysym(s, args, nargs);
   }
   if (s->kind == Stype && s->tykind == TYalias)
@@ -403,11 +499,12 @@ rty(Ast *t, struct Env *env)
 
 /* -- pass 2, per declaration kind -------------------------------------- */
 
-static void
-resolvefn(Sym *s)
+/* a fn signature, against an env that already holds the outer
+ * bindings -- the fn's own generics shadow them (04-generics.md) */
+static Type *
+resolvefnsig(Ast *it, struct Env *env)
 {
-  Ast *it = s->decl;
-  struct Env env = envgparams(it->v.fn.gparams, vlen(it->v.fn.gparams));
+  struct Env e = envgparams(env, it->v.fn.gparams, vlen(it->v.fn.gparams));
   usize n = vlen(it->v.fn.params);
   Type **ps = n ? tyargs(n) : 0;
   usize i, j;
@@ -418,9 +515,15 @@ resolvefn(Sym *s)
     for (j = 0; j < i; j++)
       if (strcmp(p->v.param.name, it->v.fn.params[j]->v.param.name) == 0)
         cerrat(p, "duplicate parameter '%s'", p->v.param.name);
-    ps[i] = rty(p->v.param.t, &env);
+    ps[i] = rty(p->v.param.t, &e);
   }
-  s->fnty = tyfn(ps, n, it->v.fn.ret ? rty(it->v.fn.ret, &env) : tyunit());
+  return tyfn(ps, n, it->v.fn.ret ? rty(it->v.fn.ret, &e) : tyunit());
+}
+
+static void
+resolvefn(Sym *s)
+{
+  s->fnty = resolvefnsig(s->decl, 0);
 }
 
 /* the fields of a struct or union, and of a named enum payload */
@@ -450,7 +553,7 @@ static void
 resolvestruct(Sym *s)
 {
   Ast *it = s->decl;
-  struct Env env = envgparams(it->v.ty.gparams, vlen(it->v.ty.gparams));
+  struct Env env = envgparams(0, it->v.ty.gparams, vlen(it->v.ty.gparams));
 
   s->nfields = vlen(it->v.ty.fields);
   s->fields = resolvefields(it->v.ty.fields, &env, s->nfields, s->tykind == TYunion);
@@ -460,7 +563,7 @@ static void
 resolveenum(Sym *s)
 {
   Ast *it = s->decl;
-  struct Env env = envgparams(it->v.en.gparams, vlen(it->v.en.gparams));
+  struct Env env = envgparams(0, it->v.en.gparams, vlen(it->v.en.gparams));
   usize n = vlen(it->v.en.variants);
   u64 next = 0;
   usize i, j;
@@ -507,20 +610,554 @@ resolveenum(Sym *s)
   }
 }
 
+/* the trait named in an impl head -- the one place a trait carries
+ * arguments: they are its own parameters, bound by this impl
+ * (05-traits.md). Defaults fill the tail, the alias rule again. */
+static Type *
+rtraitpath(Ast *p, struct Env *env)
+{
+  Ast **segs = p->v.path.segs;
+  Ast *seg;
+  Sym *s;
+  Type **args;
+  usize nargs;
+
+  if (vlen(segs) != 1 || p->v.path.root)
+    cerrat(p, "expected a trait name after impl");
+  seg = segs[0];
+  s = symfind(seg->v.seg.name);
+  if (!s)
+    cerrat(p, "unknown trait '%s'", seg->v.seg.name);
+  if (s->kind != Strait)
+    cerrat(p, "'%s' is not a trait", seg->v.seg.name);
+  args = rargs(seg, env, &nargs);
+  if (nargs > s->ngparams)
+    cerrat(p, "'%s' takes %lu type argument%s, not %lu", s->name, (unsigned long) s->ngparams,
+           s->ngparams == 1 ? "" : "s", (unsigned long) nargs);
+  if (nargs < s->ngparams) {
+    Type **full = tyargs(s->ngparams);
+    usize i;
+
+    for (i = 0; i < nargs; i++)
+      full[i] = args[i];
+    for (i = nargs; i < s->ngparams; i++) {
+      Ast *d = s->gparams[i]->v.gp.dflt;
+
+      if (!d)
+        cerrat(p, "missing type argument '%s'", s->gparams[i]->v.gp.name);
+      full[i] = rty(d, env);
+    }
+    args = full;
+    nargs = s->ngparams;
+  }
+  return tysym(s, args, nargs);
+}
+
 static void
 resolveimpl(Sym *s)
 {
   Ast *it = s->decl;
-  struct Env env = envgparams(it->v.impl.gparams, vlen(it->v.impl.gparams));
+  struct Env env = envgparams(0, it->v.impl.gparams, vlen(it->v.impl.gparams));
 
   if (it->v.impl.fort) { /* a trait impl: the path names the trait */
-    s->ipath = rpath(it->v.impl.path, &env);
-    if (s->ipath->k != Tytrait)
-      cerrat(it->v.impl.path, "an impl names a trait before 'for'");
+    s->ipath = rtraitpath(it->v.impl.path, &env);
     s->ifort = rty(it->v.impl.fort, &env);
   } else { /* inherent: the path is the type */
     s->ipath = rty(it->v.impl.path, &env);
   }
+}
+
+/* -- pass 3: trait and impl members, coherence -------------------------- */
+
+/* a trait's members, in declaration order. Self is a parameter
+ * here -- it names whatever implements the trait, and the fn
+ * signatures carry it (and Self::Item projections) until an impl
+ * substitutes them away. */
+static void
+resolvetrait(Sym *s)
+{
+  Ast *it = s->decl;
+  struct Env env = envgparams(0, it->v.ty.gparams, vlen(it->v.ty.gparams));
+  Ast **ms = it->v.ty.members;
+  usize n = vlen(ms);
+  usize i, j;
+
+  env.strait = s;
+  env = envpush(&env, "Self", selfty());
+  s->nmembers = n;
+  s->members = n ? arenaalloc(n * sizeof *s->members) : 0;
+  memset(s->members, 0, n * sizeof *s->members);
+  for (i = 0; i < n; i++) {
+    Ast *m = ms[i];
+    struct Member *dm = &s->members[i];
+
+    for (j = 0; j < i; j++)
+      if (strcmp(itemname(m), itemname(ms[j])) == 0)
+        cerrat(m, "duplicate member '%s'", itemname(m));
+    dm->name = itemname(m);
+    dm->decl = m;
+    switch (m->k) {
+    case Nfn:
+      dm->kind = Mfn;
+      dm->ty = resolvefnsig(m, &env);
+      break;
+    case Ntypedef:
+      if (m->v.td.t)
+        cerrat(m, "a trait's associated type is declared bare (defaults are not a feature)");
+      dm->kind = Mtype;
+      break;
+    case Nconst:
+      dm->kind = Mconst;
+      dm->ty = rty(m->v.cst.t, &env);
+      break;
+    default:
+      cerrat(m, "a trait member is a fn, a type, or a const");
+    }
+  }
+}
+
+/* an impl's members. Two rounds: the type and const members first,
+ * so a fn's Self::Item reads what the impl supplied; the fns after.
+ * An inherent impl carries no associated types -- it supplies
+ * constants and methods only (05-traits.md). */
+static void
+resolveimplmembers(Sym *s)
+{
+  Ast *it = s->decl;
+  struct Env env = envgparams(0, it->v.impl.gparams, vlen(it->v.impl.gparams));
+  Ast **ms = it->v.impl.members;
+  usize n = vlen(ms);
+  int round;
+
+  env.impl = s;
+  env = envpush(&env, "Self", s->ifort ? s->ifort : s->ipath);
+  s->nmembers = n;
+  s->members = n ? arenaalloc(n * sizeof *s->members) : 0;
+  memset(s->members, 0, n * sizeof *s->members);
+  {
+    usize i;
+
+    for (i = 0; i < n; i++) {
+      s->members[i].name = itemname(ms[i]);
+      s->members[i].decl = ms[i];
+    }
+  }
+  for (round = 0; round < 2; round++) {
+    usize i, j;
+
+    for (i = 0; i < n; i++) {
+      Ast *m = ms[i];
+      struct Member *dm = &s->members[i];
+      int isfn = m->k == Nfn;
+
+      if ((round == 0) == isfn)
+        continue;
+      for (j = 0; j < i; j++)
+        if (strcmp(dm->name, s->members[j].name) == 0 && (round == 0) == (ms[j]->k != Nfn))
+          cerrat(m, "duplicate member '%s'", dm->name);
+      switch (m->k) {
+      case Nfn:
+        dm->kind = Mfn;
+        dm->ty = resolvefnsig(m, &env);
+        break;
+      case Ntypedef:
+        if (!s->ifort)
+          cerrat(m, "an inherent impl supplies no associated types (05-traits.md)");
+        if (!m->v.td.t)
+          cerrat(m, "an impl supplies the type: 'type %s = T'", dm->name);
+        dm->kind = Mtype;
+        dm->val = rty(m->v.td.t, &env);
+        break;
+      case Nconst:
+        dm->kind = Mconst;
+        dm->ty = rty(m->v.cst.t, &env);
+        break;
+      default:
+        cerrat(m, "an impl member is a fn, a type, or a const");
+      }
+    }
+  }
+}
+
+/* -- comparing a trait impl against its trait -------------------------- */
+
+/* what a trait's declaration resolves against an impl: Self becomes
+ * the impl's type, the trait's own parameters the head's arguments,
+ * and each projection the type the impl supplied */
+struct TSub
+{
+  Ast **gp;  /* the trait's parameters */
+  Type **ty; /* the head's arguments, parallel */
+  usize n;
+  Type *selfty;
+  Sym *is; /* the impl: Typroj name -> the supplied type */
+};
+
+static Type *
+tsubst(Type *t, struct TSub *sub)
+{
+  usize i;
+
+  switch (t->k) {
+  case Typaram:
+    if (t->gp == sym_selfgp)
+      return sub->selfty;
+    for (i = 0; i < sub->n; i++)
+      if (t->gp == sub->gp[i])
+        return sub->ty[i];
+    return t;
+  case Typroj: {
+    struct Member *m = memberfind(sub->is, t->name);
+
+    if (m && m->kind == Mtype && t->sym == sub->is->ipath->sym)
+      return m->val;
+    return typroj(t->sym, tsubst(t->t, sub), t->name);
+  }
+  case Typtr:
+    return typtr(tsubst(t->t, sub));
+  case Tyslice:
+    return tyslice(tsubst(t->t, sub));
+  case Tymut: /* *mut Self must reach the Self through the wrapper */
+    return tymut(tsubst(t->t, sub));
+  case Tyarray:
+    return t->gp ? t : tyarray(t->n, tsubst(t->t, sub));
+  case Tytuple: {
+    Type **ts = t->nargs ? tyargs(t->nargs) : 0;
+
+    for (i = 0; i < t->nargs; i++)
+      ts[i] = tsubst(t->args[i], sub);
+    return tytuple(ts, t->nargs);
+  }
+  case Tyfn: {
+    Type **ts = t->nargs ? tyargs(t->nargs) : 0;
+
+    for (i = 0; i < t->nargs; i++)
+      ts[i] = tsubst(t->args[i], sub);
+    return tyfn(ts, t->nargs, tsubst(t->t, sub));
+  }
+  case Tystruct:
+  case Tyunion:
+  case Tyenum:
+  case Tytrait: {
+    Type **ts = t->nargs ? tyargs(t->nargs) : 0;
+
+    for (i = 0; i < t->nargs; i++)
+      ts[i] = tsubst(t->args[i], sub);
+    return tysym(t->sym, ts, t->nargs);
+  }
+  case Tydyn: {
+    Type **ts = t->nargs ? tyargs(t->nargs) : 0;
+
+    for (i = 0; i < t->nargs; i++)
+      ts[i] = tsubst(t->args[i], sub);
+    return tydyn(t->sym, ts, t->nargs, t->mut);
+  }
+  default: /* the interned leaves carry nothing to substitute */
+    return t;
+  }
+}
+
+/* a trait impl supplies every member the trait declares, no more,
+ * and each fn with the declared signature -- Self and the
+ * projections substituted away (05-traits.md) */
+static void
+checkimplcomplete(Sym *s)
+{
+  Sym *ts = s->ipath->sym;
+  struct TSub sub;
+  usize i;
+
+  sub.gp = ts->gparams;
+  sub.ty = s->ipath->args;
+  sub.n = s->ipath->nargs;
+  sub.selfty = s->ifort;
+  sub.is = s;
+  for (i = 0; i < ts->nmembers; i++) {
+    struct Member *tm = &ts->members[i];
+    struct Member *im = memberfind(s, tm->name);
+
+    if (!im)
+      cerrat(s->decl, "'%s' is missing from the impl", tm->name);
+    if (im->kind != tm->kind)
+      cerrat(im->decl, "'%s' is %s in the trait but %s in the impl", tm->name,
+             tm->kind == Mfn     ? "a fn"
+             : tm->kind == Mtype ? "an associated type"
+                                 : "a const",
+             im->kind == Mfn     ? "a fn"
+             : im->kind == Mtype ? "an associated type"
+                                 : "a const");
+    if (tm->kind == Mtype)
+      continue; /* the supplied type is the supply */
+    {
+      Type *want = tsubst(tm->ty, &sub);
+
+      if (!tysame(want, im->ty))
+        cerrat(im->decl, "'%s' must be %s, not %s", tm->name, tysprint1(want), tysprint1(im->ty));
+    }
+  }
+  for (i = 0; i < s->nmembers; i++)
+    if (!memberfind(ts, s->members[i].name))
+      cerrat(s->members[i].decl, "the trait declares no '%s'", s->members[i].name);
+}
+
+/* -- impl overlap (04-generics.md) -------------------------------------- */
+
+/* is a a strictly more specific pattern than b -- does every type
+ * matching a also match b? A variable in b binds; a repeated one
+ * must land on the same thing twice; mut under a slot orders the
+ * way the spec's table lists (mutable matches the subset). */
+struct SpecSub
+{
+  Ast *gp[16];
+  Type *ty[16];
+  usize n;
+};
+
+static int spec1(Type *a, Type *b, struct SpecSub *s);
+
+/* the child of a slot kind, Tymut unwrapped, and whether it had one */
+static Type *
+slotchild(Type *t, int *mut)
+{
+  *mut = t && t->k == Tymut;
+  return *mut ? t->t : t;
+}
+
+static int
+spec1(Type *a, Type *b, struct SpecSub *s)
+{
+  usize i;
+
+  if (b->k == Typaram) {
+    for (i = 0; i < s->n; i++)
+      if (s->gp[i] == b->gp)
+        return tysame(s->ty[i], a); /* the second landing of a variable */
+    if (s->n >= 16)
+      return 0; /* too many variables to order here */
+    s->gp[s->n] = b->gp;
+    s->ty[s->n] = a;
+    s->n++;
+    return 1;
+  }
+  if (a->k != b->k)
+    return 0;
+  switch (b->k) {
+  case Typtr:
+  case Tyslice:
+  case Tyarray: {
+    Type *ac, *bc;
+    int am, bm;
+
+    if (b->k == Tyarray) {
+      if (a->gp || b->gp)
+        return a->gp == b->gp && spec1(a->t, b->t, s); /* the same const parameter */
+      if (a->n != b->n)
+        return 0;
+    }
+    ac = slotchild(a->t, &am);
+    bc = slotchild(b->t, &bm);
+    if (am < bm)
+      return 0; /* a's slot is immutable where b's is not */
+    return spec1(ac, bc, s);
+  }
+  case Tystruct:
+  case Tyunion:
+  case Tyenum:
+  case Tytrait:
+  case Tydyn:
+    if (a->sym != b->sym || a->nargs != b->nargs || a->mut != b->mut)
+      return 0;
+    for (i = 0; i < b->nargs; i++)
+      if (!spec1(a->args[i], b->args[i], s))
+        return 0;
+    return 1;
+  case Tytuple:
+  case Tyfn:
+    if (a->nargs != b->nargs)
+      return 0;
+    for (i = 0; i < b->nargs; i++)
+      if (!spec1(a->args[i], b->args[i], s))
+        return 0;
+    return b->k == Tyfn ? spec1(a->t, b->t, s) : 1;
+  case Tyint:
+    return a->num == b->num;
+  case Typroj:
+    return a->sym == b->sym && a->name && b->name && strcmp(a->name, b->name) == 0 &&
+           spec1(a->t, b->t, s);
+  case Tybool:
+  case Tyunit:
+  case Tyvoidptr:
+  case Tytype:
+    return 1; /* same kind, nothing left to compare */
+  default:
+    return 0;
+  }
+}
+
+static int
+specializes(Type *a, Type *b)
+{
+  struct SpecSub s;
+
+  memset(&s, 0, sizeof s);
+  return spec1(a, b, &s);
+}
+
+/* provably disjoint: no type can match both. Conservative --
+ * different kinds, different declarations, different numbers */
+static int
+disjoint(Type *a, Type *b)
+{
+  usize i;
+
+  if (a->k == Typaram || b->k == Typaram)
+    return 0; /* a variable matches anything */
+  if (a->k != b->k)
+    return 1;
+  switch (b->k) {
+  case Tyint:
+    return a->num != b->num;
+  case Typtr:
+  case Tyslice: {
+    Type *ac, *bc;
+    int am, bm;
+
+    ac = slotchild(a->t, &am);
+    bc = slotchild(b->t, &bm);
+    return disjoint(ac, bc);
+  }
+  case Tyarray: {
+    Type *ac, *bc;
+    int am, bm;
+
+    if (a->gp || b->gp)
+      return a->gp == b->gp ? disjoint(a->t, b->t) : 0; /* a variable can bind */
+    if (a->n != b->n)
+      return 1;
+    ac = slotchild(a->t, &am);
+    bc = slotchild(b->t, &bm);
+    return disjoint(ac, bc);
+  }
+  case Tystruct:
+  case Tyunion:
+  case Tyenum:
+  case Tytrait:
+  case Tydyn:
+    if (a->sym != b->sym)
+      return 1;
+    if (a->nargs != b->nargs)
+      return 0; /* resolve already shaped them; stay unproven */
+    for (i = 0; i < b->nargs; i++)
+      if (disjoint(a->args[i], b->args[i]))
+        return 1;
+    return 0;
+  case Tytuple:
+    if (a->nargs != b->nargs)
+      return 1;
+    for (i = 0; i < b->nargs; i++)
+      if (disjoint(a->args[i], b->args[i]))
+        return 1;
+    return 0;
+  default:
+    return 0;
+  }
+}
+
+/* the traits an impl's parameter bounds name, at most sixteen -- a
+ * bound is a trait's name (04-generics.md) */
+static usize
+collectbounds(Sym *s, Sym **out)
+{
+  Ast **gps = s->decl->v.impl.gparams;
+  usize n = 0, i, j;
+
+  for (i = 0; i < vlen(gps); i++) {
+    Ast **bs = gps[i]->v.gp.bounds;
+
+    for (j = 0; j < vlen(bs); j++) {
+      Ast **segs = bs[j]->v.path.segs;
+      Sym *t;
+
+      if (vlen(segs) != 1)
+        cerrat(bs[j], "a bound is a trait's name");
+      t = symfind(segs[0]->v.seg.name);
+      if (!t)
+        cerrat(bs[j], "unknown trait '%s'", segs[0]->v.seg.name);
+      if (t->kind != Strait)
+        cerrat(bs[j], "a bound names a trait, and '%s' is not one", segs[0]->v.seg.name);
+      if (n < 16)
+        out[n++] = t;
+    }
+  }
+  return n;
+}
+
+static int
+boundscontain(Sym **bs, usize n, Sym *t)
+{
+  usize i;
+
+  for (i = 0; i < n; i++)
+    if (bs[i] == t)
+      return 1;
+  return 0;
+}
+
+/* a ⊇ b: every trait b's bounds name, a's name too. No dedup -- a
+ * bound written twice counts twice, which only ever overstates. */
+static int
+boundsincl(Sym *a, Sym *b)
+{
+  Sym *aa[16], *bb[16];
+  usize na = collectbounds(a, aa), nb = collectbounds(b, bb), i;
+
+  for (i = 0; i < nb; i++)
+    if (!boundscontain(aa, na, bb[i]))
+      return 0;
+  return 1;
+}
+
+/* Copy against Drop, either way round -- the exclusion table
+ * (04-generics.md), with its two entries and the one row */
+static int
+boundsexclude(Sym *a, Sym *b)
+{
+  Sym *aa[16], *bb[16];
+  usize na = collectbounds(a, aa), nb = collectbounds(b, bb);
+
+  return (boundscontain(aa, na, sym_copy) && boundscontain(bb, nb, sym_drop)) ||
+         (boundscontain(aa, na, sym_drop) && boundscontain(bb, nb, sym_copy));
+}
+
+/* a later impl against an earlier one: provably disjoint, or
+ * strictly ordered by specificity, or rejected on the spot
+ * (04-generics.md -- overlap is checked at declaration) */
+static void
+checkoverlap(Sym *a, Sym *b)
+{
+  Type *fa = a->ifort ? a->ifort : a->ipath;
+  Type *fb = b->ifort ? b->ifort : b->ipath;
+  int ab, ba;
+
+  if (!!a->ifort != !!b->ifort)
+    return; /* a trait impl and an inherent one never share a slot */
+  if (a->ifort && a->ipath->sym != b->ipath->sym)
+    return; /* different traits never conflict */
+  ab = specializes(fa, fb);
+  ba = specializes(fb, fa);
+  if (ab != ba)
+    return; /* strictly ordered one way or the other */
+  if (boundsexclude(a, b))
+    return; /* provably disjoint through the exclusion table */
+  if (boundsincl(a, b) != boundsincl(b, a))
+    return; /* equal shape, ordered by bounds (04-generics.md) */
+  if (disjoint(fa, fb))
+    return;
+  if (a->ifort)
+    cerrat(a->decl, "conflicting implementations of '%s' for %s", a->ipath->sym->name,
+           tysprint1(fa));
+  else
+    cerrat(a->decl, "conflicting inherent impls for %s", tysprint1(fa));
 }
 
 /* -- pass 1 ------------------------------------------------------------- */
@@ -617,6 +1254,8 @@ void
 checkfile(Ast **items)
 {
   usize i, n = vlen(items);
+  Sym **impls;
+  usize nimpls;
 
   declare(items);
   for (i = 0; i < n; i++) {
@@ -649,9 +1288,41 @@ checkfile(Ast **items)
     case Nimpl:
       resolveimpl(s);
       break;
-    default: /* trait members wait for Self and the impl table */
+    default: /* use items: namespaces are their own feature */
       break;
     }
+  }
+
+  /* pass 3: traits and impls, then coherence. The bounds check runs
+   * first so a bound nobody overlaps against still gets diagnosed. */
+  impls = vnew(Sym *, 8);
+  for (i = 0; i < n; i++) {
+    Ast *it = items[i];
+    Sym *s = syms[i];
+
+    if (!s)
+      continue;
+    if (it->k == Ntrait)
+      resolvetrait(s);
+    if (it->k == Nimpl) {
+      resolveimplmembers(s);
+      vappend(&impls, &s);
+    }
+  }
+  nimpls = vlen(impls);
+  for (i = 0; i < nimpls; i++) {
+    Sym *bs[16];
+
+    collectbounds(impls[i], bs); /* the diagnostic is the point */
+  }
+  for (i = 0; i < nimpls; i++)
+    if (impls[i]->ifort)
+      checkimplcomplete(impls[i]);
+  for (i = 0; i < nimpls; i++) {
+    usize j;
+
+    for (j = 0; j < i; j++)
+      checkoverlap(impls[i], impls[j]);
   }
 }
 
@@ -665,6 +1336,40 @@ ind(int n)
 }
 
 /* one item a line, children indented two -- the -a shape */
+static void
+dumpmembers(Sym *s, int i)
+{
+  usize j;
+
+  for (j = 0; j < s->nmembers; j++) {
+    struct Member *m = &s->members[j];
+
+    printf("\n");
+    ind(i + 2);
+    switch (m->kind) {
+    case Mfn:
+      printf("(fn %s ", m->name);
+      tyfmt(m->ty);
+      printf(")");
+      break;
+    case Mtype:
+      if (m->val) { /* an impl supplies the type; a trait declares it */
+        printf("(type %s ", m->name);
+        tyfmt(m->val);
+        printf(")");
+      } else {
+        printf("(type %s)", m->name);
+      }
+      break;
+    default:
+      printf("(const %s ", m->name);
+      tyfmt(m->ty);
+      printf(")");
+      break;
+    }
+  }
+}
+
 static void
 dumpitem(Ast *it, Sym *s, int i)
 {
@@ -742,6 +1447,7 @@ dumpitem(Ast *it, Sym *s, int i)
       printf("%s%s", j ? ", " : "<", s->gparams[j]->v.gp.name);
     if (s->ngparams)
       printf(">");
+    dumpmembers(s, i);
     printf(")");
     break;
   }
@@ -759,6 +1465,7 @@ dumpitem(Ast *it, Sym *s, int i)
       printf(" for ");
       tyfmt(s->ifort);
     }
+    dumpmembers(s, i);
     printf(")");
     break;
   case Nuse: {

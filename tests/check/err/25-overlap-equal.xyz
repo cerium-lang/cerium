@@ -1,0 +1,4 @@
+trait S { fn a(self: *Self); }
+struct P {}
+impl S for P { fn a(self: *Self); }
+impl S for P { fn a(self: *Self); }

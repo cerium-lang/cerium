@@ -16,8 +16,14 @@
 #include "die.h"
 #include "sym.h"
 
+/* Self, everywhere it resolves: one parameter, so every trait's
+ * members, every impl's, and the prelude's Drop share the one
+ * identity (built by syminit, before the prelude) */
+Ast *sym_selfgp;
+
+/* djb2 */
 static usize
-shash(const char *s) /* djb2 */
+shash(const char *s)
 {
   unsigned h = 5381u;
 
@@ -66,6 +72,11 @@ syminit(void)
   tblcap = 1024;
   tbl = arenaalloc(tblcap * sizeof *tbl);
   memset(tbl, 0, tblcap * sizeof *tbl);
+
+  sym_selfgp = arenaalloc(sizeof *sym_selfgp);
+  memset(sym_selfgp, 0, sizeof *sym_selfgp);
+  sym_selfgp->k = Ngparam;
+  sym_selfgp->v.gp.name = "Self";
 }
 
 Sym *

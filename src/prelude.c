@@ -23,6 +23,7 @@
 #include "type.h"
 
 Sym *sym_option, *sym_result;
+Sym *sym_copy, *sym_drop;
 
 /* an Ngparam without a lexer behind it: the prelude's type
  * parameters carry no position, and nothing prints one */
@@ -35,6 +36,13 @@ mkgp(const char *name)
   g->k = Ngparam;
   g->v.gp.name = (char *) name; /* a literal: permanent, never freed */
   return g;
+}
+
+/* a marker trait: no members, nothing to resolve (03-move.md) */
+static Sym *
+mkmarker(const char *name)
+{
+  return symdecl(name, Strait, 0, 0, 0);
 }
 
 void
@@ -85,4 +93,22 @@ prelude(void)
   sym_result->tykind = TYenum;
   sym_result->variants = rv;
   sym_result->nvariants = 2;
+
+  /* the exclusion pair (04-generics.md): disjointness proofs and
+   * Copy field checks read these; what they mean is 03-move.md's.
+   * Copy is the empty marker; Drop declares the one fn (05) */
+  sym_copy = mkmarker("Copy");
+  sym_drop = mkmarker("Drop");
+  {
+    struct Member *dm = arenaalloc(sizeof *dm);
+    Type **ps = tyargs(1);
+
+    memset(dm, 0, sizeof *dm);
+    dm->name = "drop";
+    dm->kind = Mfn;
+    ps[0] = typaram(sym_selfgp); /* mut self: Self */
+    dm->ty = tyfn(ps, 1, tyunit());
+    sym_drop->members = dm;
+    sym_drop->nmembers = 1;
+  }
 }

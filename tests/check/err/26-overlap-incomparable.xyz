@@ -1,0 +1,3 @@
+trait S { fn a(self: *Self); }
+impl<T> S for (T, i32) { fn a(self: *Self); }
+impl<T> S for (i32, T) { fn a(self: *Self); }

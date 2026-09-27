@@ -57,6 +57,26 @@ struct Variant
   usize npayload;       /* the positional payload's count */
 };
 
+/* a member of a trait or an impl: a method, an associated type, or
+ * an associated constant (05-traits.md). In a trait, Mfn's ty is
+ * the declared signature -- Self a parameter, Self::Item a Typroj;
+ * in an impl, everything is resolved against the impl's own types. */
+enum
+{
+  Mfn,
+  Mtype,
+  Mconst
+};
+
+struct Member
+{
+  char *name;
+  int kind;
+  Ast *decl; /* the declaring item, or NULL for the prelude */
+  Type *ty;  /* Mfn: the fn type; Mconst: the type; Mtype: unused */
+  Type *val; /* Mtype in an impl: the supplied type */
+};
+
 struct Sym
 {
   char *name;
@@ -81,6 +101,10 @@ struct Sym
   Type *fnty;
   /* Sconst, Sstatic */
   Type *cty;
+  /* Strait, Simpl: the members, in declaration order. A trait's
+   * carry the declared signatures; an impl's the resolved ones. */
+  struct Member *members;
+  usize nmembers;
   /* Simpl: the resolved head. ipath is the trait (a trait impl) or
    * the type itself (an inherent one); ifort is what a trait impl
    * is for. Shape-pattern meaning waits for pass 3. */
@@ -91,11 +115,15 @@ void syminit(void);
 Sym *symdecl(const char *name, int kind, Ast *decl, Ast **gparams, usize ngparams);
 Sym *symfind(const char *name);
 
+/* Self's one generic parameter, built by syminit (sym.c) */
+extern Ast *sym_selfgp;
+
 /* the prelude's own declarations (prelude.c) */
 void prelude(void);
 
-/* the prelude enums the sugar builds on (prelude.c). Copy/Drop and
- * the operator traits join them as their passes arrive. */
-extern Sym *sym_option, *sym_result;
+/* the prelude enums the sugar builds on, and the exclusion pair
+ * (prelude.c). The operator traits (07-operators.md) join them as
+ * their passes arrive. */
+extern Sym *sym_option, *sym_result, *sym_copy, *sym_drop;
 
 #endif

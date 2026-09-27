@@ -690,7 +690,10 @@ unary(void)
 }
 
 static Ast *
-callargs(Ast *n) /* the "(" is consumed; fills n->v.call.args */
+callargs(Ast *n, Ast ***slot) /* the "(" is consumed; the args land in
+                               * *slot. Nbuiltin passes &blt.args:
+                               * call.args would alias blt.targs in
+                               * the union */
 {
   int save = headctx;
 
@@ -706,7 +709,7 @@ callargs(Ast *n) /* the "(" is consumed; fills n->v.call.args */
       } else {
         a = expr();
       }
-      npush(&n->v.call.args, a);
+      npush(slot, a);
       if (peek() == Tcomma) {
         next();
         if (peek() == Trparen)
@@ -793,7 +796,7 @@ postfix(void)
 
       next();
       n->v.call.f = e;
-      e = callargs(n);
+      e = callargs(n, &n->v.call.args);
       continue;
     }
     case Tquestion: {
@@ -851,6 +854,22 @@ closure(void) /* the "fn" is peeked */
   return n;
 }
 
+/* the ten the language provides (08-reflection.md) -- a misspelling
+ * parses silently otherwise, and a golden test froze one for a week */
+static int
+isbuiltin(const char *name)
+{
+  static const char *const names[] = {"sizeof",   "alignof",      "offset", "cast",
+                                      "typeinfo", "typeof",       "field",  "count",
+                                      "take",     "compileError", 0};
+  usize i;
+
+  for (i = 0; names[i]; i++)
+    if (strcmp(name, names[i]) == 0)
+      return 1;
+  return 0;
+}
+
 static Ast *
 builtin(void) /* the "@" is peeked */
 {
@@ -858,6 +877,8 @@ builtin(void) /* the "@" is peeked */
 
   next(); /* @ */
   n->v.blt.name = wantident("a builtin name");
+  if (!isbuiltin(n->v.blt.name))
+    perr("unknown builtin '@%s' (08-reflection.md lists the ten)", n->v.blt.name);
   if (peek() == Tlt) {
     next();
     for (;;) {
@@ -885,7 +906,8 @@ builtin(void) /* the "@" is peeked */
       perr("expected > closing generic arguments");
   }
   want(Tlparen, "(");
-  callargs(n); /* shares the argument shape with a call */
+  callargs(n, &n->v.blt.args); /* the argument shape of a call, in the
+                                * builtin's own slot */
   return n;
 }
 

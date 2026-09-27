@@ -41,6 +41,18 @@ phash(void *p)
   return (unsigned) ((unsigned long) p >> 3);
 }
 
+/* djb2, the sym table's hash again: Typroj's name is the one string
+ * a Type carries */
+static unsigned
+shashstr(const char *s)
+{
+  unsigned h = 5381u;
+
+  while (*s)
+    h = h * 33u + (unsigned char) *s++;
+  return h;
+}
+
 static unsigned
 thash(Type *t)
 {
@@ -56,6 +68,8 @@ thash(Type *t)
     h = mix(h, phash(t->sym));
   if (t->gp)
     h = mix(h, phash(t->gp));
+  if (t->name)
+    h = mix(h, shashstr(t->name));
   if (t->t)
     h = mix(h, thash(t->t));
   for (i = 0; i < t->nargs; i++)
@@ -72,6 +86,8 @@ teq(Type *a, Type *b)
     return 1;
   if (a->k != b->k || a->num != b->num || a->mut != b->mut || a->n != b->n ||
       a->nargs != b->nargs || a->sym != b->sym || a->gp != b->gp)
+    return 0;
+  if (!a->name != !b->name || (a->name && strcmp(a->name, b->name) != 0))
     return 0;
   if (!a->t != !b->t) /* one has a child, the other does not */
     return 0;
@@ -300,6 +316,19 @@ tydyn(Sym *s, Type **args, usize n, int mut)
 }
 
 Type *
+typroj(Sym *s, Type *self, char *name)
+{
+  Type x;
+
+  memset(&x, 0, sizeof x);
+  x.k = Typroj;
+  x.sym = s;
+  x.t = self;
+  x.name = name;
+  return intern(&x);
+}
+
+Type *
 tyopt(Type *t)
 {
   Type **a = tyargs(1);
@@ -488,6 +517,11 @@ sbfmt(struct SBuf *b, Type *t)
     break;
   case Tytype:
     sbputs(b, "type");
+    break;
+  case Typroj: /* Self::Item, however the Self was spelled */
+    sbfmt(b, t->t);
+    sbputs(b, "::");
+    sbputs(b, t->name ? t->name : "?");
     break;
   default:
     sbputs(b, "?");

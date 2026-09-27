@@ -49,6 +49,8 @@ enum
   Tydyn,    /* sym, args, mut -- a handle (06-dispatch.md) */
   Tyfn,     /* args: the parameters, t: the return */
   Tytype,   /* the type `type` -- of a type value ($$t, 08) */
+  Typroj,   /* Self::Item inside a trait: sym the trait, t the Self,
+             * name the associated type (05-traits.md) */
   Tymut,    /* a writable slot inside ptr/slice/array/tuple; never alone */
   TYK_N
 };
@@ -80,11 +82,13 @@ struct Type
   u8 mut; /* Tydyn: dyn mut A */
   u64 n;  /* Tyarray: the length, when it is a number */
   usize nargs;
-  Sym *sym;    /* Tystruct/Tyunion/Tyenum/Tytrait/Tydyn: the declaration */
+  Sym *sym;    /* Tystruct/Tyunion/Tyenum/Tytrait/Tydyn/Typroj: the declaration */
   Ast *gp;     /* Typaram: the Ngparam; Tyarray: the length, when it is a
                 * const-parameter reference */
   Type **args; /* nargs slots, or NULL when none */
-  Type *t;     /* Typtr/Tyslice/Tyarray/Tymut: the child; Tyfn: the return */
+  Type *t;     /* Typtr/Tyslice/Tyarray/Tymut: the child; Tyfn/Typroj: the
+                * return / the Self */
+  char *name;  /* Typroj: the associated type's name */
 };
 
 /* an args array of n slots, zeroed, on the arena */
@@ -107,6 +111,7 @@ Type *tytuple(Type **ts, usize n);
 Type *tyfn(Type **args, usize n, Type *ret);
 Type *tysym(Sym *s, Type **args, usize n); /* struct/union/enum/trait */
 Type *tydyn(Sym *s, Type **args, usize n, int mut);
+Type *typroj(Sym *s, Type *self, char *name); /* Self::Item, in a trait */
 
 /* the sugar constructors: prelude enums, spelled as themselves */
 Type *tyopt(Type *t);          /* ?T */
