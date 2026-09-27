@@ -1,0 +1,2 @@
+struct E {}
+fn main() -> usize { @sizeof<E>() }

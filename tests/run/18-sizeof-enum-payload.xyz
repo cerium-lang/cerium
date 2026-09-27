@@ -1,0 +1,2 @@
+enum Shape { Circle(f64), Rect(f64, f64), Unit }
+fn main() -> usize { @sizeof<Shape>() }

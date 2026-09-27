@@ -1,0 +1,3 @@
+#[align(16)]
+struct C { a: u8 }
+fn main() -> usize { @alignof<C>() }

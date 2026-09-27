@@ -1,0 +1,2 @@
+enum E { A, B, C }
+fn main() -> usize { @sizeof<E>() }

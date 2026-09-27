@@ -79,12 +79,13 @@ A fresh clone builds with:
 ```
 git clone --recurse-submodules <url>
 cd xyz && make          # gcc; make CC=clang works too
-make test               # the golden tests: lexer, parser, checker, rejections
+make qbe/qbe            # the backend, on demand
+make test               # golden tests + codegen's run tests
 ```
 
-The `qbe/` submodule only matters once codegen lands —
-`git submodule update --init -- qbe` pulls it on demand. Run `make hooks`
-once per checkout so commits format what they stage.
+The `qbe/` submodule is the backend: `git submodule update --init -- qbe`
+pulls it on demand, and without it `make test` skips the run section. Run
+`make hooks` once per checkout so commits format what they stage.
 
 The lexer and the parser are in: `xyz -t file.xyz` dumps the token
 stream — position, kind, value — and `xyz -a file.xyz` dumps the parse
@@ -102,7 +103,20 @@ adapts its receiver, `None` takes its `?T` from the other side, a
 `match` is exhaustive variant by variant — and the flow rules hold:
 a move kills its binding downstream, a borrow freezes what it
 touched, and `mut` stays two orthogonal levels, the slot and the
-field (`01-types.md`, `03-move.md`, `09-match.md`, `10-iteration.md`).
+field, with a pointer gating everything it lends (`01-types.md`,
+`03-move.md`, `09-match.md`, `10-iteration.md`).
+
+Codegen has begun: `xyz -s file.xyz` prints the `.ssa` text — qbe's
+input — and `xyz -c file.xyz -o out` runs the pipeline, qbe as a
+subprocess and the system `cc` linking. What it emits so far is a
+function returning a written or a folded constant, over the layout
+tables of `02-layout.md` in full: struct padding in declaration
+order, unions, enums as a tag and a payload union, the `?T` niche,
+`#[packed]` and `#[align(N)]`. `@sizeof` and `@alignof` fold right
+there, so the layout is tested by running it:
+`tests/run` holds one `.xyz` per binary with an `.expect` naming
+its exit code (`tools/run-tests.sh`); the section runs only when
+`qbe/qbe` is built.
 `tests/lex`, `tests/parse` and `tests/check` hold the golden tests,
 split by pass: `ok/` has one `.golden` per `.xyz` that the dumps must
 reproduce exactly, `err/` has inputs that must be rejected

@@ -1,0 +1,2 @@
+union X { a: u16, b: u32 }
+fn main() -> usize { @sizeof<X>() }

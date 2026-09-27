@@ -353,6 +353,55 @@ tysame(Type *a, Type *b)
   return a == b;
 }
 
+Type *
+gsubst(Type *t, Ast **gps, Type **tys, usize n)
+{
+  Type **as;
+  usize  i;
+
+  if (!t)
+    return t;
+  switch (t->k) {
+  case Typaram:
+    for (i = 0; i < n; i++)
+      if (t->gp == gps[i])
+        return tys[i];
+    return t;
+  case Typtr:
+    return typtr(gsubst(t->t, gps, tys, n));
+  case Tyslice:
+    return tyslice(gsubst(t->t, gps, tys, n));
+  case Tymut:
+    return tymut(gsubst(t->t, gps, tys, n));
+  case Tyarray:
+    return tyarray(t->n, gsubst(t->t, gps, tys, n));
+  case Tytuple:
+  case Tyfn:
+  case Tyenum:
+  case Tystruct:
+  case Tyunion:
+  case Tytrait:
+  case Tydyn: /* the composite shapes: the arguments in step */
+    as = t->nargs ? tyargs(t->nargs) : 0;
+    for (i = 0; i < t->nargs; i++)
+      as[i] = gsubst(t->args[i], gps, tys, n);
+    switch (t->k) {
+    case Tytuple:
+      return tytuple(as, t->nargs);
+    case Tyfn:
+      return tyfn(as, t->nargs, gsubst(t->t, gps, tys, n));
+    case Tydyn:
+      return tydyn(t->sym, as, t->nargs, t->mut);
+    default:
+      return tysym(t->sym, as, t->nargs); /* an enum stays itself:
+                                           * ?T is tysym(sym_option),
+                                           * not a shape of its own */
+    }
+  default:
+    return t;
+  }
+}
+
 /* -- the printable form ------------------------------------------------- */
 
 typedef struct SBuf SBuf; /* the buffer tysprint writes into, below */
