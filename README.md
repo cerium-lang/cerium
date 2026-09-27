@@ -16,22 +16,22 @@ notation and the terms every chapter uses.
 
 | file | continues | what it defines |
 | --- | --- | --- |
-| [00-preliminaries.md](./00-preliminaries.md) | — | notation; `slot`, `place`, compile-time known |
-| [01-types.md](./01-types.md) | `00` | types and `mut`, arrays, slices, structs, pointers, enums, strings, attributes, panic |
-| [02-layout.md](./02-layout.md) | `01` | size and alignment, layout attributes |
-| [03-move.md](./03-move.md) | `02` | move semantics, `Copy`, `Drop`, `@take` |
-| [04-generics.md](./04-generics.md) | `03` | generics, specialization, shape patterns, variadics |
-| [05-traits.md](./05-traits.md) | `04` | traits, associated items, inherent impls, `Option` |
-| [06-dispatch.md](./06-dispatch.md) | `05` | `dyn A`, dynamic dispatch, object safety |
-| [07-operators.md](./07-operators.md) | `05` | operators as trait methods, `Add`/`Ord`/`Eq` |
-| [08-reflection.md](./08-reflection.md) | `07` | compile-time execution, `TypeInfo`, the builtin table |
-| [09-match.md](./09-match.md) | `01` | pattern matching |
-| [10-iteration.md](./10-iteration.md) | `05`, `09` | `Iterator`, `for`, `if`, `return` |
-| [11-namespaces.md](./11-namespaces.md) | `01` | a directory is a namespace, `use`, name resolution |
-| [12-projects.md](./12-projects.md) | `11` | compilation unit, one artifact, `main` and exit codes, what v0 does not carry |
-| [13-testing.md](./13-testing.md) | `12` | `#[test]`, the test artifact and its runner |
-| [14-macros.md](./14-macros.md) | `08` | the case against a user-defined macro system (not settled) |
-| [15-grammar.md](./15-grammar.md) | — | the grammar in EBNF, closed: lexing, expressions, types, declarations, statements, patterns |
+| [00-preliminaries.md](./specs/00-preliminaries.md) | — | notation; `slot`, `place`, compile-time known |
+| [01-types.md](./specs/01-types.md) | `00` | types and `mut`, arrays, slices, structs, pointers, enums, strings, attributes, panic |
+| [02-layout.md](./specs/02-layout.md) | `01` | size and alignment, layout attributes |
+| [03-move.md](./specs/03-move.md) | `02` | move semantics, `Copy`, `Drop`, `@take` |
+| [04-generics.md](./specs/04-generics.md) | `03` | generics, specialization, shape patterns, variadics |
+| [05-traits.md](./specs/05-traits.md) | `04` | traits, associated items, inherent impls, `Option` |
+| [06-dispatch.md](./specs/06-dispatch.md) | `05` | `dyn A`, dynamic dispatch, object safety |
+| [07-operators.md](./specs/07-operators.md) | `05` | operators as trait methods, `Add`/`Ord`/`Eq` |
+| [08-reflection.md](./specs/08-reflection.md) | `07` | compile-time execution, `TypeInfo`, the builtin table |
+| [09-match.md](./specs/09-match.md) | `01` | pattern matching |
+| [10-iteration.md](./specs/10-iteration.md) | `05`, `09` | `Iterator`, `for`, `if`, `return` |
+| [11-namespaces.md](./specs/11-namespaces.md) | `01` | a directory is a namespace, `use`, name resolution |
+| [12-projects.md](./specs/12-projects.md) | `11` | compilation unit, one artifact, `main` and exit codes, what v0 does not carry |
+| [13-testing.md](./specs/13-testing.md) | `12` | `#[test]`, the test artifact and its runner |
+| [14-macros.md](./specs/14-macros.md) | `08` | the case against a user-defined macro system (not settled) |
+| [15-grammar.md](./specs/15-grammar.md) | — | the grammar in EBNF, closed: lexing, expressions, types, declarations, statements, patterns |
 
 ## What xyz guarantees
 
@@ -62,6 +62,17 @@ variadic packs, specialization ordered by shape pattern, and a type predicate
 such as `is_same` written as a struct with two impls. What none of them has is
 how the pieces are pinned down: overlap is checked where the impls are declared,
 not where they are instantiated, and `mut`, though part of the type, is not deep.
+
+## Implementation
+
+Stage 0 of the compiler is **C89** — no host framework, one bare Makefile,
+`src/vec.h` as the container layer. Codegen goes through
+[QBE](https://c9x.me/compile/): the compiler emits `.ssa` text, runs `qbe`
+as a subprocess, and the system `cc` links. The submodule at `qbe/` points
+at a [fork](https://github.com/mivinci/qbe) that tracks upstream master —
+pinned by commit, moved by `tools/sync-qbe.sh`. The goal is self-hosting:
+the compiler rewritten in xyz itself, with LLVM held as a v1+ release
+backend rather than a v0 dependency.
 
 ## Status
 
