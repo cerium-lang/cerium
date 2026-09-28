@@ -343,6 +343,57 @@ static char *tymangle(Type *t, char *buf, usize n);
 static void  ovlspell(Sym *s, char *buf, usize n);
 static int   fsymsame(Sym *p, char *buf);
 
+/* a method's symbol: the impl's type spelled, then the member's own
+ * name. Overloading is no method's trouble -- one type, one name --
+ * but two impls of one generic type at different bindings are two
+ * methods, and a spelling the folding cannot tell apart still gets
+ * its index, the same scan the fn mangler runs on its chains. */
+static char *
+memname(Sym *s)
+{
+  char  mt[256];
+  char  buf[1024];
+  char  b2[1024];
+  usize same, i, j;
+
+  tymangle(s->impl->ipath, mt, sizeof mt);
+  sprintf(buf, "xyz_%s_%s", mt, s->name);
+  same = 0;
+  for (i = 0; i < chk_nimpls; i++) { /* every inherent method, in
+                                      * declaration order */
+    Sym    *iv = chk_impls[i];
+    Member *ms;
+
+    if (iv->ifort)
+      continue; /* a trait impl's arrive with dispatch (06) */
+    ms = iv->members;
+    for (j = 0; j < iv->nmembers; j++) {
+      if (ms[j].kind != Mfn || !ms[j].sym)
+        continue;
+      tymangle(iv->ipath, mt, sizeof mt);
+      sprintf(b2, "xyz_%s_%s", mt, ms[j].name);
+      if (strcmp(b2, buf) != 0)
+        continue;
+      if (ms[j].sym == s)
+        goto found; /* this one: the count so far is its index */
+      same++;
+    }
+  }
+found:
+  if (!same) { /* stable: the arena keeps the spelling one name */
+    char *n = arenaalloc(strlen(buf) + 1);
+
+    strcpy(n, buf);
+    return n;
+  }
+  { /* a twin: spell them apart */
+    char *n = arenaalloc(strlen(buf) + 12);
+
+    sprintf(n, "%s_%lu", buf, (unsigned long) same);
+    return n;
+  }
+}
+
 static char *
 fsymname(Sym *s, Ast *it)
 {
@@ -353,6 +404,8 @@ fsymname(Sym *s, Ast *it)
 
   if (attrfind(it->attrs, "extern"))
     return s->name;
+  if (s->impl)
+    return memname(s); /* a method: its impl's type, its own name */
   if (strcmp(s->name, "main") == 0)
     return s->name;
   multi = s->next != 0 || symfind(s->name) != s; /* a name's chain
@@ -1389,6 +1442,13 @@ emaexpr(Em *em, Ast *e)
           cerrat(e, "'%s' carries a payload; construct it", vn);
         return emavariant(em, e->ty, v, 0, 0, e);
       }
+      if (e->v.path.sym) { /* Type::method, a fn as a value: its
+                            * address (05-traits.md) */
+        char *t = newtmp(em);
+
+        fprintf(em->o, "\t%s =l copy $%s\n", t, fsymname(e->v.path.sym, e->v.path.sym->decl));
+        return t;
+      }
       cerrat(e, "this name arrives with a later milestone");
     }
     if (vlen(e->v.path.segs) != 1)
@@ -1568,6 +1628,10 @@ emaexpr(Em *em, Ast *e)
     char **as = n ? arenaalloc(n * sizeof *as) : 0;
     char  *t = newtmp(em);
     Sym   *s;
+    char  *nm = 0;     /* a direct callee's symbol */
+    char  *ra = 0;     /* the sugar's receiver, walking first */
+    Type  *selfty = 0; /* the receiver's parameter type, for the call's spelling */
+    Type  *rty = 0;    /* the receiver as written */
 
     if (f->k == Npath) { /* a variant's construction reads as a
                           * call: Some(v), Enum::V(v) (01-types.md) */
@@ -1594,11 +1658,30 @@ emaexpr(Em *em, Ast *e)
         }
       }
     }
+    { /* the method calls: the sugar's receiver walks first, adapted
+       * the way the sugar defines it (05-traits.md); a Type::member
+       * call spells its arguments out in full, self among them */
+      Sym *ms = e->v.call.sym;
+
+      if (f->k == Naccess) {
+        if (!ms || ms->kind != Sfn)
+          cerrat(f, "this method call was never checked");
+        selfty = ms->fnty->nargs ? ms->fnty->args[0] : 0;
+        rty = f->v.fld.e->ty;
+        if (selfty && selfty->k == Typtr && !(rty && rty->k == Typtr && tysame(rty, selfty)))
+          ra = emaplace(em, f->v.fld.e); /* a pointer self: &place */
+        else
+          ra = emaexpr(em, f->v.fld.e); /* as written: the pointer, or the move */
+        ra = nicheout(em, selfty, ra);
+        nm = fsymname(ms, ms->decl);
+      } else if (f->k == Npath && vlen(f->v.path.segs) == 2 && ms) {
+        nm = e->v.call.tys ? instensure(ms, e->v.call.tys)->name : fsymname(ms, ms->decl);
+      }
+    }
     for (i = 0; i < n; i++)
       as[i] = nicheout(em, args[i]->ty, emaexpr(em, args[i]));
-    if (f->k == Npath && vlen(f->v.path.segs) == 1 && !locfind(em, f->v.path.segs[0]->v.seg.name)) {
-      char *nm;
-
+    if (!nm && f->k == Npath && vlen(f->v.path.segs) == 1 &&
+        !locfind(em, f->v.path.segs[0]->v.seg.name)) {
       s = symfind(f->v.path.segs[0]->v.seg.name);
       if (!s || s->kind != Sfn)
         cerrat(f, "'%s' is not a fn", f->v.path.segs[0]->v.seg.name);
@@ -1615,14 +1698,18 @@ emaexpr(Em *em, Ast *e)
           cerrat(f, "overload resolution at emit time arrives with M3d");
         nm = fsymname(s, s->decl);
       }
+    }
+    if (nm)
       fprintf(em->o, "\t%s =%s call $%s(", t, sigty(e->ty, e), nm);
-    } else { /* a fn held in a value, called through it */
+    else { /* a fn held in a value, called through it */
       char *fp = emaexpr(em, f);
 
       fprintf(em->o, "\t%s =%s call %s(", t, sigty(e->ty, e), fp);
     }
+    if (ra)
+      fprintf(em->o, "%s %s", sigty(selfty, f->v.fld.e), ra);
     for (i = 0; i < n; i++)
-      fprintf(em->o, "%s%s %s", i ? ", " : "", sigty(args[i]->ty, args[i]), as[i]);
+      fprintf(em->o, "%s%s %s", (i || ra) ? ", " : "", sigty(args[i]->ty, args[i]), as[i]);
     fputs(")\n", em->o);
     return nichein(em, e->ty, t);
   }
@@ -2205,6 +2292,32 @@ emitall(FILE *out, Ast **items)
     Ast *it = items[i];
     Sym *s;
 
+    if (it->k == Nimpl && !it->v.impl.fort) {
+      /* an inherent impl: its methods emit as the fns they are
+       * (05-traits.md). A trait impl's wait for dispatch (06). */
+      usize j;
+
+      for (j = 0; j < chk_nimpls; j++)
+        if (chk_impls[j]->decl == it)
+          break;
+      if (j == chk_nimpls)
+        continue; /* unreachable: the resolver collected it */
+      s = chk_impls[j];
+      if (s->ngparams)
+        continue; /* a generic impl's methods arrive with
+                   * specialization (04-generics.md) */
+      for (j = 0; j < s->nmembers; j++) {
+        Member *dm = &s->members[j];
+
+        if (dm->kind != Mfn || !dm->decl || dm->decl->v.fn.body == 0)
+          continue; /* a declaration: an import */
+        if (vlen(dm->decl->v.fn.gparams))
+          continue; /* a generic method arrives with
+                     * specialization (04-generics.md) */
+        emitfn(out, dm->sym, dm->decl, fsymname(dm->sym, dm->decl), 0, 0);
+      }
+      continue;
+    }
     if (it->k != Nfn || it->v.fn.body == 0)
       continue; /* a declaration: an import, or a fn type's use */
     s = symfind(it->v.fn.name);

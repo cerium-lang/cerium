@@ -83,7 +83,9 @@ int      mustexit(Ast *st);
 Variant *varfind(Sym *s, const char *name);
 int      gunify(Type *sig, Type *arg, Ast **gps, Type **tys, usize n);
 
-/* inherent impl members */
-Member *inherentfind(Sym *s, const char *name);
+/* inherent impl members: *imp receives the supplying impl, for the
+ * caller's genericity gate */
+Member *inherentfind(Sym *s, const char *name, Sym **imp);
+Member *inherentfindt(Type *t, const char *name, Sym **imp);
 
 #endif

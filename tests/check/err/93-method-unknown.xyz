@@ -1,0 +1,8 @@
+/* an unknown method: inherent impls first, trait calls with
+ * dispatch (06) -- nothing by that name anywhere (05-traits.md) */
+struct Point { x: i32 }
+impl Point { fn get(self: Point) -> i32 { return self.x; } }
+fn main() -> i32 {
+  let p = Point{ x: 1 };
+  p.nosuch()
+}

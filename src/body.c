@@ -153,6 +153,51 @@ recoerce(Ast *e, Type *t, Fenv *fe)
   return 0;
 }
 
+/* the genericity gate for a member call: an impl's own parameters,
+ * or a member's, name a family of fns -- picking one is the
+ * specialization machinery's work, the next batch (04-generics.md).
+ * These calls name one concrete fn. */
+static void
+gatemember(Ast *at, Sym *imp, Member *m, const char *name)
+{
+  if (imp && imp->ngparams)
+    berr(at, "'%s' in a generic impl arrives with specialization (04-generics.md)", name);
+  if (m->kind == Mfn && m->decl && vlen(m->decl->v.fn.gparams))
+    berr(at, "a generic '%s' arrives with specialization (04-generics.md)", name);
+}
+
+/* an argument written as a borrow: the callee's parameter holds it,
+ * so the freeze ends when the call does (01-types.md) -- the same
+ * rule the sugar's receiver follows. What it froze goes back after;
+ * escaping the pointer out of the callee is the caller's promise to
+ * keep, exactly as across any fn boundary. */
+static int
+argborrow(Ast *a, Fenv *fe, Frzsave *sv)
+{
+  char   pbuf[256];
+  Local *root;
+
+  if (a->k != Nun || a->v.un.op != Tamp)
+    return 0;
+  root = placeroot(a->v.un.e, fe, pbuf, sizeof pbuf);
+  if (!root)
+    return 0;
+  sv->root = root;
+  sv->frz = root->frz;
+  sv->frzby = root->frzby;
+  sv->frzpath = root->frzpath;
+  return 1;
+}
+
+static void
+thawargs(Frzsave *svs, usize n)
+{
+  usize i;
+
+  for (i = n; i > 0; i--) /* reverse: two borrows of one root, LIFO */
+    frzrestore(&svs[i - 1]);
+}
+
 /* a call to a named fn, overload chain and all. tys holds the
  * generic bindings while the arguments are walked. */
 static Type *
@@ -162,6 +207,15 @@ callfn(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe)
   Type      **ats;
   Ast        *seg; /* the callee's one segment, when the call
                     * spells its generic arguments out (04) */
+  Frzsave *svs = n ? arenaalloc(n * sizeof *svs) : 0;
+  usize    k;
+
+  if (svs) { /* the borrow arguments' freezes go back with the call,
+              * on every path out but the errors (01-types.md) */
+    memset(svs, 0, n * sizeof *svs);
+    for (k = 0; k < n; k++)
+      argborrow(args[k], fe, &svs[k]);
+  }
 
   ats = n ? arenaalloc(n * sizeof *ats) : 0;
   seg = 0;
@@ -176,13 +230,17 @@ callfn(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe)
     usize i;
     int   ok = n == fnty->nargs;
 
-    if (!ok)
+    if (!ok) {
+      thawargs(svs, n);
       continue;
+    }
     sigs = fnty->args;
     if (seg && seg->v.seg.args) { /* f<i32>(...): the binding is the
                                    * call's own words, not inference */
-      if (vlen(seg->v.seg.args) != s->ngparams)
+      if (vlen(seg->v.seg.args) != s->ngparams) {
+        thawargs(svs, n);
         continue; /* an overload this spelling does not fit */
+      }
       for (i = 0; i < s->ngparams; i++)
         tys[i] = rty(seg->v.seg.args[i], &fe->env);
       if (fnty->nargs) {
@@ -223,8 +281,10 @@ callfn(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe)
        * (04-generics.md) */
       a->v.call.sym = s;
       a->v.call.tys = s->ngparams ? tys : 0;
+      thawargs(svs, n); /* the call is done; its borrows ended with it */
       return gsubst(fnty->t, s->gparams, tys, s->ngparams);
     }
+    thawargs(svs, n); /* this overload did not take: its freezes unwound */
   }
   berr(a, "no '%s' takes these argument types", nm);
   return 0; /* unreachable */
@@ -658,12 +718,17 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
         return tysym(s, 0, 0);
       }
       { /* an inherent impl's member: a fn value or a const */
-        Member *m = inherentfind(s, nm1);
+        Sym    *imp;
+        Member *m = inherentfind(s, nm1, &imp);
 
         if (!m)
           berr(e, "'%s' has no '%s'; trait items arrive with dispatch (06)", s->name, nm1);
-        if (m->kind == Mfn)
+        gatemember(e, imp, m, nm1);
+        if (m->kind == Mfn) {
+          e->v.path.sym = m->sym; /* the fn it names: its address */
+          e->v.path.tys = 0;      /* a gated method is never generic */
           return m->ty;
+        }
         if (m->kind == Mconst)
           return m->ty;
         berr(e, "'%s::%s' is a type, not a value", s->name, nm1);
@@ -798,12 +863,20 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
         Sym   *s;
 
         if (l) { /* an indirect call: a fn-typed local */
-          Type *t = l->cur;
+          Type    *t = l->cur;
+          Frzsave *svs = n ? arenaalloc(n * sizeof *svs) : 0;
+          usize    k;
 
           if (!t || t->k != Tyfn)
             berr(e, "'%s' is %s, not callable", nm, btys(t));
           f->ty = t; /* the callee is a value here: the emitter loads
                       * this pointer out of its slot */
+          if (svs) { /* a borrow argument's freeze ends with the call
+                      * (01-types.md) */
+            memset(svs, 0, n * sizeof *svs);
+            for (k = 0; k < n; k++)
+              argborrow(args[k], fe, &svs[k]);
+          }
           if (n != t->nargs)
             berr(e, "'%s' takes %lu arguments, %lu given", nm, (unsigned long) t->nargs,
                  (unsigned long) n);
@@ -821,6 +894,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
               }
             }
           }
+          thawargs(svs, n); /* the call is done; its borrows ended with it */
           return t->t;
         }
         s = symfind(nm);
@@ -851,15 +925,27 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
           return mkvariant(s, v, e, args, n, fe, want);
         }
         {
-          Member *m = inherentfind(s, nm1);
+          Sym    *imp;
+          Member *m = inherentfind(s, nm1, &imp);
 
           if (!m)
             berr(e, "'%s' has no '%s'; trait items arrive with dispatch (06)", s->name, nm1);
           if (m->kind != Mfn)
             berr(e, "'%s::%s' is not callable", s->name, nm1);
+          gatemember(e, imp, m, nm1);
+          e->v.call.sym = m->sym; /* the method's own fn: the emitter's pick */
+          e->v.call.tys = 0;      /* a gated method is never generic */
           {
-            Type *t = m->ty;
+            Type    *t = m->ty;
+            Frzsave *svs = n ? arenaalloc(n * sizeof *svs) : 0;
+            usize    k;
 
+            if (svs) { /* as in callfn: a borrow argument's freeze
+                        * ends with the call (01-types.md) */
+              memset(svs, 0, n * sizeof *svs);
+              for (k = 0; k < n; k++)
+                argborrow(args[k], fe, &svs[k]);
+            }
             if (n != t->nargs)
               berr(e, "'%s::%s' takes %lu arguments, %lu given", s->name, nm1,
                    (unsigned long) t->nargs, (unsigned long) n);
@@ -878,6 +964,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                 }
               }
             }
+            thawargs(svs, n); /* the call is done; its borrows ended with it */
             return t->t;
           }
         }
@@ -887,6 +974,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
     if (f->k == Naccess) {                 /* the method sugar: x.f(...) (05-traits.md) */
       Type   *rt = rplace(f->v.fld.e, fe); /* a place: no move just to call */
       Member *m;
+      Sym    *imp;
       Type   *t, *ty;
 
       if (!rt)
@@ -897,17 +985,28 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
       if (ty->k != Tystruct && ty->k != Tyunion && ty->k != Tyenum)
         berr(f, "a method call needs a struct, union, or enum receiver; trait calls "
                 "arrive with dispatch (06)");
-      m = inherentfind(ty->sym, f->v.fld.name);
+      m = inherentfindt(ty, f->v.fld.name, &imp);
       if (!m)
         berr(f, "'%s' has no method '%s'; trait calls arrive with dispatch (06)", ty->sym->name,
              f->v.fld.name);
       if (m->kind != Mfn)
         berr(f, "'%s::%s' is not a method", ty->sym->name, f->v.fld.name);
+      gatemember(f, imp, m, f->v.fld.name);
       t = m->ty;
+      e->v.call.sym = m->sym; /* the method's own fn: the emitter's pick */
+      e->v.call.tys = 0;      /* a gated method is never generic */
       {
-        Frzsave sv;
+        Frzsave  sv;
+        Frzsave *svs = n ? arenaalloc(n * sizeof *svs) : 0;
+        usize    k;
 
         memset(&sv, 0, sizeof sv);
+        if (svs) { /* the explicit arguments' borrows end with the
+                    * call too, as any call's do (01-types.md) */
+          memset(svs, 0, n * sizeof *svs);
+          for (k = 0; k < n; k++)
+            argborrow(args[k], fe, &svs[k]);
+        }
         recvadapt(f->v.fld.e,
                   t->nargs ? gsubst(t->args[0], ty->sym->gparams, ty->args, ty->nargs) : 0, rt, ty,
                   fe, &sv);
@@ -929,15 +1028,24 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
             }
           }
         }
-        frzrestore(&sv); /* the receiver's borrow ends with the call */
+        thawargs(svs, n); /* the explicit arguments' borrows, LIFO */
+        frzrestore(&sv);  /* the receiver's borrow ends with the call */
       }
       return t->t;
     }
     { /* an arbitrary callee: a fn-typed expression */
-      Type *t = rexpr(f, fe, 0);
+      Type    *t = rexpr(f, fe, 0);
+      Frzsave *svs = n ? arenaalloc(n * sizeof *svs) : 0;
+      usize    k;
 
       if (!t || t->k != Tyfn)
         berr(f, "this is %s, not callable", btys(t));
+      if (svs) { /* a borrow argument's freeze ends with the call
+                  * (01-types.md) */
+        memset(svs, 0, n * sizeof *svs);
+        for (k = 0; k < n; k++)
+          argborrow(args[k], fe, &svs[k]);
+      }
       if (n != t->nargs)
         berr(e, "this call takes %lu arguments, %lu given", (unsigned long) t->nargs,
              (unsigned long) n);
@@ -951,6 +1059,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
             berr(args[i], "this call wants %s here, this is %s", btys(t->args[i]), btys(at));
         }
       }
+      thawargs(svs, n); /* the call is done; its borrows ended with it */
       return t->t;
     }
   }
