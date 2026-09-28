@@ -1,0 +1,19 @@
+/* tagged and niche options both through calls -- and two calls in the
+ * same expression, which is where the niched temps used to tangle */
+fn inc(o: ?i32) -> ?i32 {
+  match o { Some(v) => Some(v + 1), None => None, }
+}
+fn deref(o: ?*i32, d: i32) -> i32 {
+  match o { Some(p) => *p, None => d, }
+}
+fn main() -> i32 {
+  let n = 40;
+  let a = inc(Some(4));            /* Some(5) */
+  let b = inc(None);               /* None */
+  let c = deref(Some(&n), 7);      /* 40 */
+  let d = deref(None, 7);          /* 7 */
+  let m = deref(Some(&n), 7) * 2 + deref(None, 3);   /* 83 */
+  let e = match a { Some(v) => v, None => 0, };      /* 5 */
+  let f = match b { Some(v) => v, None => 9, };      /* 9 */
+  e * 10 + c + d + f + m    /* 50 + 40 + 7 + 9 + 83 = 189 */
+}

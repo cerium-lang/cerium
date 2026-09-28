@@ -1287,7 +1287,9 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
         berr(e->v.un.e, "cannot borrow a temporary");
       if (e->v.un.mut && !placewritable(e->v.un.e, fe))
         berr(e->v.un.e, "a &mut needs a mut slot (01-types.md)");
-      if (touchconflict(e->v.un.e, fe, 1))
+      /* a shared & may stack on a live shared borrow (01-types.md: a
+       * *T is not exclusive); only a &mut touches what it may not */
+      if (touchconflict(e->v.un.e, fe, e->v.un.mut))
         berr(e->v.un.e, "this place is already borrowed (01-types.md)");
       freeze(e->v.un.e, fe, e->v.un.mut, (int) fe->n);
       return e->v.un.mut ? typtr(tymut(t)) : typtr(t);

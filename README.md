@@ -139,9 +139,24 @@ the alternatives — the join must read what every path defined —
 and the short variant name, which the scrutinee's enum settles
 against the bare binding. Arm order decides. Compound assignment
 covers the operators' full set with their signedness, and
-assigning an aggregate blits. Aggregate returns and parameters by
-value, array literals and indexing, and tuple expressions wait for
-M3d.
+assigning an aggregate blits.
+
+Aggregates cross calls on the platform's C convention — that is
+what `01-types.md` made xyz's own convention, and qbe lowers it:
+register eightbytes, stack order, an sret, all of it. Every
+aggregate that crosses a call is named in a `:type` registry —
+structs, tuples, unions, enums as tag plus payload union, slices
+as two words, arrays — registered recursively, the declarations
+printed innermost-first ahead of the functions, the order qbe
+reads. A niche `?ptr`/`E?ptr` stays the one scalar it is at the
+boundary, loaded out and stored back on either side. A `#[packed]`
+shape, or one whose natural layout C would pad differently, rides
+an opaque `align N { size }` — memory carries it, correctness
+over speed. Parameters arrive as the copies qbe makes (C
+semantics); a shared borrow may stack on a live shared one, the
+checker now reading `01-types.md`'s "a `*T` is not exclusive"
+as written. Array literals and indexing, tuple expressions, and
+monomorphization wait for M3d.
 
 The layout and the behavior are tested by running them:
 `tests/run` holds one `.xyz` per binary with an `.expect` naming

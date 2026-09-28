@@ -19,6 +19,7 @@
 
 #include "ast.h"
 #include "check.h"
+#include "die.h"
 #include "emit.h"
 #include "sym.h"
 #include "type.h"
@@ -502,6 +503,345 @@ isagg(Type *t)
                t->k == Tytuple || t->k == Tyslice || t->k == Tydyn);
 }
 
+/* -- the aggregate calling convention (M3d) --------------------------------
+ * xyz's own convention is the platform's C convention (01-types.md):
+ * where a value crosses a call, an aggregate wears a :type, the
+ * value is the address of its storage either way, and qbe lowers
+ * the rest -- register eightbytes, memory, an sret. The registry
+ * names every aggregate that crosses a call; the declarations
+ * print ahead of the functions, the order qbe reads. */
+typedef struct
+{
+  Type *ty;   /* 0: a helper union, only its declaration matters */
+  char *name; /* ":t.N"; a niche shape shares its payload's */
+  char *decl; /* the "type :" line, 0 when riding another's */
+} TyDef;
+
+static TyDef *tydefs; /* vnew'd lazily: vappend refuses NULL */
+
+static usize dsn; /* one a data symbol: $flt.N, $str.N. File-wide,
+                   * not per fn -- the names are global, so a per-fn
+                   * counter would hand two fns the same $flt.1 */
+
+static char *typereg(Type *t);
+
+/* a niche shape is its payload's own size (01-types.md) -- and the
+ * payload is always a pointer, hasniche only seeing those, so at a
+ * call a niche ?T or E?T is the scalar 'l'. The aggregate half of
+ * the convention starts past them. */
+static int
+isabb(Type *t)
+{
+  return isagg(t) && !nicheness(t);
+}
+
+/* qbe's letter for one scalar field */
+static char
+qbefty(Type *t)
+{
+  if (t->k == Tyint) {
+    switch (t->num) {
+    case IN_I8:
+    case IN_U8:
+      return 'b';
+    case IN_I16:
+    case IN_U16:
+      return 'h';
+    case IN_I32:
+    case IN_U32:
+      return 'w';
+    case IN_F32:
+      return 's';
+    case IN_F64:
+      return 'd';
+    default:
+      return 'l';
+    }
+  }
+  return t->k == Tybool ? 'b' : 'l'; /* the pointer family */
+}
+
+/* one field of a type expression: its letter, or the nested
+ * aggregate's registered name -- typereg has already run on it. A
+ * niche field is its one pointer: 'l', never a type of its own */
+static char *
+fieldty(Type *ft)
+{
+  static char b[2][16];
+  static int  r = 0;
+
+  r = (r + 1) % 2;
+  if (!isabb(ft)) {
+    if (ft->k == Tyenum) { /* the niche shape: one pointer */
+      b[r][0] = 'l';
+      b[r][1] = 0;
+      return b[r];
+    }
+    b[r][0] = qbefty(ft);
+    b[r][1] = 0;
+    return b[r];
+  }
+  return typereg(ft);
+}
+
+/* the natural size of a field sequence -- the struct rule -- to
+ * compare against a payload's packed one (02-layout.md: the
+ * payloads are a union, each side laid end to end) */
+static usize
+naturalsize(Type **ps, usize np)
+{
+  usize off = 0, al = 1, i;
+
+  for (i = 0; i < np; i++) {
+    usize a = alignof_(ps[i]);
+
+    off = alignto(off, a);
+    off += sizeof_(ps[i]);
+    if (a > al)
+      al = a;
+  }
+  return alignto(off, al);
+}
+
+/* the registry name of an aggregate, making it -- and everything it
+ * holds -- first. Scalars never arrive: sigty keeps them out. */
+static char *
+typereg(Type *t)
+{
+  char  buf[2048];
+  char  nm[24];
+  char *cp;
+  TyDef d;
+  usize i, o, myidx;
+
+  while (t && t->k == Tymut)
+    t = t->t; /* the mut layer takes no space */
+  if (tydefs)
+    for (i = 0; i < vlen(tydefs); i++)
+      if (tydefs[i].ty == t)
+        return tydefs[i].name;
+  if (!tydefs)
+    tydefs = vnew(TyDef, 0);
+  memset(&d, 0, sizeof d);
+  d.ty = t;
+  sprintf(nm, ":t.%lu", (unsigned long) vlen(tydefs));
+  { /* take the number before anything this holds registers: a
+     * nested type would otherwise land on the same one */
+    char *name = arenaalloc(strlen(nm) + 1);
+
+    strcpy(name, nm);
+    d.name = name;
+    vappend(&tydefs, &d); /* the decl lands below, once made */
+    myidx = vlen(tydefs) - 1;
+  }
+  switch (t->k) {
+  case Tystruct: {
+    Field *fs = t->sym->fields;
+    usize  nf = t->sym->nfields;
+    int    packed;
+    usize  alignk;
+
+    layoutattrs(t->sym->decl, &packed, &alignk);
+    if (packed) { /* qbe's types lay out like C; a packed struct
+                   * does not: opaque, and memory carries it right */
+      sprintf(buf, "type %s = align 1 { %lu }", nm, (unsigned long) sizeof_(t));
+      break;
+    }
+    o = sprintf(buf, "type %s = align %lu { ", nm, (unsigned long) alignof_(t));
+    for (i = 0; i < nf; i++) {
+      Type *ft = gsubst(fs[i].ty, t->sym->gparams, t->args, t->nargs);
+
+      if (isagg(ft))
+        typereg(ft); /* the nested one names itself first */
+      o += sprintf(buf + o, "%s%s", i ? ", " : "", fieldty(ft));
+      if (o + 32 >= sizeof buf)
+        die("a struct too wide for the emitter's line");
+    }
+    sprintf(buf + o, " }");
+    break;
+  }
+  case Tytuple:
+    o = sprintf(buf, "type %s = align %lu { ", nm, (unsigned long) alignof_(t));
+    for (i = 0; i < t->nargs; i++) {
+      if (isagg(t->args[i]))
+        typereg(t->args[i]);
+      o += sprintf(buf + o, "%s%s", i ? ", " : "", fieldty(t->args[i]));
+      if (o + 32 >= sizeof buf)
+        die("a tuple too wide for the emitter's line");
+    }
+    sprintf(buf + o, " }");
+    break;
+  case Tyunion: {
+    Field *fs = t->sym->fields;
+    usize  nf = t->sym->nfields;
+    int    packed;
+    usize  alignk;
+
+    layoutattrs(t->sym->decl, &packed, &alignk);
+    if (packed) { /* ditto: opaque */
+      sprintf(buf, "type %s = align 1 { %lu }", nm, (unsigned long) sizeof_(t));
+      break;
+    }
+    o = sprintf(buf, "type %s = align %lu { ", nm, (unsigned long) alignof_(t));
+    for (i = 0; i < nf; i++) { /* every member its own group */
+      Type *ft = gsubst(fs[i].ty, t->sym->gparams, t->args, t->nargs);
+
+      if (isagg(ft))
+        typereg(ft);
+      o += sprintf(buf + o, "%s{ %s }", i ? " " : "", fieldty(ft));
+      if (o + 32 >= sizeof buf)
+        die("a union too wide for the emitter's line");
+    }
+    sprintf(buf + o, " }");
+    break;
+  }
+  case Tyslice:
+    sprintf(buf, "type %s = align %lu { l, l }", nm, (unsigned long) WORD);
+    break;
+  case Tyarray: {
+    Type *et = t->t;
+
+    if (!t->n)
+      die("an empty array crossing a call arrives with its iterators");
+    if (isagg(et))
+      typereg(et);
+    sprintf(buf, "type %s = align %lu { %s %lu }", nm, (unsigned long) alignof_(t), fieldty(et),
+            (unsigned long) t->n);
+    break;
+  }
+  case Tydyn:
+    die("dyn values arrive with dispatch (06-dispatch.md)");
+    return 0;    /* unreachable */
+  case Tyenum: { /* tagged: the tag, then the payloads as a union --
+                  * the niche shapes never arrive, isabb holding them
+                  * out as the scalars they are at a call */
+    {
+      Variant *vs = t->sym->variants;
+      usize    nv = t->sym->nvariants, k, j;
+      Type  ***inst = arenaalloc(nv * sizeof *inst); /* each side's
+                                                      * payload, instantiated */
+      usize *nps = arenaalloc(nv * sizeof *nps);
+      usize  pmax = 0, pal = 1;
+      int    natural = 1, packed;
+      usize  alignk;
+      char   un[24];
+      TyDef  du;
+
+      layoutattrs(t->sym->decl, &packed, &alignk);
+      memset(&du, 0, sizeof du);
+      for (i = 0; i < nv; i++) {
+        Variant *v = &vs[i];
+        Type   **ps;
+        usize    np, vsz = 0;
+
+        if (v->named) {
+          ps = tyargs(v->nfields);
+          for (k = 0; k < v->nfields; k++)
+            ps[k] = v->fields[k].ty;
+          np = v->nfields;
+        } else {
+          ps = v->payload;
+          np = v->npayload;
+        }
+        inst[i] = tyargs(np);
+        nps[i] = np;
+        for (j = 0; j < np; j++) {
+          inst[i][j] = gsubst(ps[j], t->sym->gparams, t->args, t->nargs);
+          vsz += sizeof_(inst[i][j]); /* end to end (02-layout.md) */
+          if (alignof_(inst[i][j]) > pal)
+            pal = alignof_(inst[i][j]);
+        }
+        if (vsz > pmax)
+          pmax = vsz;
+        if (np && naturalsize(inst[i], np) != vsz)
+          natural = 0; /* a side C would pad: the union cannot be
+                        * spelled as a type */
+      }
+      if (!pmax) { /* no payload anywhere: the tag alone (02) */
+        sprintf(buf, "type %s = align %lu { %c }", nm, (unsigned long) alignof_(t),
+                qbefty(tagtyof(t)));
+        break;
+      }
+      sprintf(un, ":t.%lu", (unsigned long) vlen(tydefs));
+      if (packed || !natural) { /* opaque: memory always carries a
+                                 * shape the types cannot spell */
+        char ub[128];
+
+        sprintf(ub, "type %s = align %lu { %lu }", un, packed ? 1ul : (unsigned long) pal,
+                (unsigned long) pmax);
+        cp = arenaalloc(strlen(ub) + 1);
+        strcpy(cp, ub);
+        du.ty = 0;
+        du.name = arenaalloc(strlen(un) + 1);
+        strcpy(du.name, un);
+        du.decl = cp;
+        vappend(&tydefs, &du);
+      } else {
+        char ub[2048];
+        int  firstgrp = 1;
+
+        o = sprintf(ub, "type %s = align %lu { ", un, (unsigned long) pal);
+        for (i = 0; i < nv; i++) {
+          if (!nps[i])
+            continue; /* a payloadless side joins nothing */
+          o += sprintf(ub + o, "%s{ ",
+                       firstgrp ? "" : " "); /* qbe
+                                              * juxtaposes union members -- no commas */
+          firstgrp = 0;
+          for (j = 0; j < nps[i]; j++) {
+            if (isagg(inst[i][j]))
+              typereg(inst[i][j]);
+            o += sprintf(ub + o, "%s%s", j ? ", " : "", fieldty(inst[i][j]));
+          }
+          o += sprintf(ub + o, " }");
+        }
+        sprintf(ub + o, " }");
+        du.ty = 0;
+        du.name = arenaalloc(strlen(un) + 1);
+        strcpy(du.name, un);
+        du.decl = arenaalloc(strlen(ub) + 1);
+        strcpy(du.decl, ub);
+        vappend(&tydefs, &du);
+      }
+      sprintf(buf, "type %s = align %lu { %c, %s }", nm, (unsigned long) alignof_(t),
+              qbefty(tagtyof(t)), un);
+      break;
+    }
+  }
+  default:
+    die("this aggregate arrives with a later milestone");
+    return 0; /* unreachable */
+  }
+  cp = arenaalloc(strlen(buf) + 1);
+  strcpy(cp, buf);
+  tydefs[myidx].decl = cp; /* the entry took its number above */
+  return d.name;
+}
+
+/* the annotation a value wears where it crosses a call: a scalar
+ * names its class, an aggregate names its type. at is the node a
+ * diagnostic would point at. */
+static char *
+sigty(Type *t, Ast *at)
+{
+  static char b[2];
+
+  while (t && t->k == Tymut)
+    t = t->t;
+  if (!isabb(t)) {
+    if (t && t->k == Tyenum) { /* the niche shape: one pointer in a
+                                * register, not a type of its own */
+      b[0] = 'l';
+      b[1] = 0;
+      return b;
+    }
+    b[0] = qbety(t, at);
+    b[1] = 0;
+    return b;
+  }
+  return typereg(t);
+}
+
 /* a load instruction for a scalar slot: the width, and the sign
  * for the narrow ones -- the sign matters, for a w-domain compare
  * reads what the load left in the upper bits. */
@@ -621,7 +961,6 @@ struct Em
 {
   FILE  *o;
   usize  tmp;   /* one a temporary: %t.N */
-  usize  strn;  /* one a string: $str.N */
   char **datas; /* the data lines, printed after the fns */
   ELoc  *locs;  /* the bindings in scope */
   usize  nlocs;
@@ -649,6 +988,34 @@ newtmp(Em *em)
 
   sprintf(s, "%%t.%lu", (unsigned long) ++em->tmp);
   return s;
+}
+
+/* a niche value sits in storage as one pointer; where it crosses a
+ * call the signature says 'l' (isabb) -- load it out to hand over */
+static char *
+nicheout(Em *em, Type *t, char *v)
+{
+  char *tv;
+
+  if (!t || !nicheness(t))
+    return v;
+  tv = newtmp(em);
+  fprintf(em->o, "\t%s =l loadl %s\n", tv, v);
+  return tv;
+}
+
+/* ...and store what came back: the value model stays an address */
+static char *
+nichein(Em *em, Type *t, char *v)
+{
+  char *slot;
+
+  if (!t || !nicheness(t))
+    return v;
+  slot = newtmp(em);
+  fprintf(em->o, "\t%s =l alloc8 8\n", slot);
+  fprintf(em->o, "\tstorel %s, %s\n", v, slot);
+  return slot;
 }
 
 /* a block label, and the jump to one: qbe's blocks end in an
@@ -1533,7 +1900,7 @@ emaexpr(Em *em, Ast *e)
     char  c = qbety(e->ty, e);
     char *d = arenaalloc(48);
 
-    sprintf(base, "$flt.%lu", (unsigned long) ++em->strn);
+    sprintf(base, "$flt.%lu", (unsigned long) ++dsn);
     fprintf(em->o, "\t%s =%c load%s %s\n", t, c, c == 's' ? "s" : "d", base);
     /* 9 and 17 significant digits: the least that round-trips */
     sprintf(d, "data %s = { %c %c_%.*g }", base, c, c, c == 's' ? 9 : 17, e->v.f.flt);
@@ -1760,23 +2127,23 @@ emaexpr(Em *em, Ast *e)
       }
     }
     for (i = 0; i < n; i++)
-      as[i] = emaexpr(em, args[i]);
+      as[i] = nicheout(em, args[i]->ty, emaexpr(em, args[i]));
     if (f->k == Npath && vlen(f->v.path.segs) == 1 && !locfind(em, f->v.path.segs[0]->v.seg.name)) {
       s = symfind(f->v.path.segs[0]->v.seg.name);
       if (!s || s->kind != Sfn)
         cerrat(f, "'%s' is not a fn", f->v.path.segs[0]->v.seg.name);
       if (s->next)
         cerrat(f, "overload resolution at emit time arrives with M3d");
-      fprintf(em->o, "\t%s =%c call $%s(", t, qbety(e->ty, e), fsymname(s, s->decl));
+      fprintf(em->o, "\t%s =%s call $%s(", t, sigty(e->ty, e), fsymname(s, s->decl));
     } else { /* a fn held in a value, called through it */
       char *fp = emaexpr(em, f);
 
-      fprintf(em->o, "\t%s =%c call %s(", t, qbety(e->ty, e), fp);
+      fprintf(em->o, "\t%s =%s call %s(", t, sigty(e->ty, e), fp);
     }
     for (i = 0; i < n; i++)
-      fprintf(em->o, "%s%c %s", i ? ", " : "", qbety(args[i]->ty, args[i]), as[i]);
+      fprintf(em->o, "%s%s %s", i ? ", " : "", sigty(args[i]->ty, args[i]), as[i]);
     fputs(")\n", em->o);
-    return t;
+    return nichein(em, e->ty, t);
   }
   case Nbuiltin: {
     char *nm = e->v.blt.name;
@@ -1869,7 +2236,7 @@ emaexpr(Em *em, Ast *e)
     char *base = arenaalloc(16), *t = newtmp(em);
     usize i;
 
-    sprintf(base, "$str.%lu", (unsigned long) ++em->strn);
+    sprintf(base, "$str.%lu", (unsigned long) ++dsn);
     fprintf(em->o, "\t%s =l alloc8 16\n", t);
     fprintf(em->o, "\tstorel %s, %s\n", base, t);
     { /* the len goes in the second word */
@@ -2035,11 +2402,11 @@ emastmt(Em *em, Ast *st)
     return;
   }
   case Nreturn: {
-    if (st->v.n1.e) {
-      char *v = emaexpr(em, st->v.n1.e);
+    if (st->v.n1.e) { /* an aggregate's value is its address, and
+                       * the :type convention carries it; a niche is
+                       * one pointer, loaded out to its 'l' (M3d) */
+      char *v = nicheout(em, st->v.n1.e->ty, emaexpr(em, st->v.n1.e));
 
-      if (isagg(st->v.n1.e->ty))
-        cerrat(st, "returning an aggregate arrives with M3c");
       fprintf(em->o, "\tret %s\n", v);
     } else
       fputs("\tret 0\n", em->o); /* (): the w carries nothing */
@@ -2112,31 +2479,55 @@ emitfn(FILE *o, Sym *s, Ast *it)
   em.datas = vnew(char *, 8);
   em.locs = vnew(ELoc, 16);
   fputs("export function", o);
-  if (qbety(ret, it))
-    fprintf(o, " %c", qbety(ret, it));
+  if (ret)
+    fprintf(o, " %s", sigty(ret, it));
   fprintf(o, " $%s(", fsymname(s, it));
   for (i = 0; i < fnty->nargs; i++) {
     if (i)
       fputs(", ", o);
-    fprintf(o, "%c %%%s", qbety(fnty->args[i], it), it->v.fn.params[i]->v.param.name);
+    fprintf(o, "%s %%%s", sigty(fnty->args[i], it), it->v.fn.params[i]->v.param.name);
   }
   fputs(") {\n@start\n", o);
   for (i = 0; i < fnty->nargs; i++) { /* every parameter a slot: one
                                        * path reads them all */
-    char *slot = newtmp(&em);
+    char *nm = it->v.fn.params[i]->v.param.name;
+    Type *pt = fnty->args[i];
 
-    fprintf(o, "\t%s =l alloc8 %lu\n", slot,
-            (unsigned long) (sizeof_(fnty->args[i]) ? sizeof_(fnty->args[i]) : 1));
-    fprintf(o, "\t%s %%%s, %s\n", stins(fnty->args[i]), it->v.fn.params[i]->v.param.name, slot);
-    locbind(&em, it->v.fn.params[i]->v.param.name, slot, fnty->args[i]);
+    while (pt && pt->k == Tymut)
+      pt = pt->t;
+    if (isabb(pt)) { /* the incoming temp is the copy's own address:
+                      * nothing to store (01-types.md: the C
+                      * convention, which qbe lowers) */
+      char *tmp = arenaalloc(strlen(nm) + 2);
+
+      sprintf(tmp, "%%%s", nm);
+      locbind(&em, nm, tmp, pt);
+      continue;
+    }
+    if (nicheness(pt)) { /* one pointer arrived in a register: the
+                          * slot the value model wants */
+      char *slot = newtmp(&em);
+
+      fprintf(o, "\t%s =l alloc8 8\n", slot);
+      fprintf(o, "\tstorel %%%s, %s\n", nm, slot);
+      locbind(&em, nm, slot, pt);
+      continue;
+    }
+    {
+      char *slot = newtmp(&em);
+
+      fprintf(o, "\t%s =l alloc8 %lu\n", slot, (unsigned long) (sizeof_(pt) ? sizeof_(pt) : 1));
+      fprintf(o, "\t%s %%%s, %s\n", stins(pt), nm, slot);
+      locbind(&em, nm, slot, pt);
+    }
   }
   {
     int   reached;
     char *v = emablockval(&em, it->v.fn.body, &reached);
 
-    if (reached) {
-      if (isagg(ret))
-        cerrat(it->v.fn.body, "returning an aggregate by value arrives with a later milestone");
+    if (reached) { /* a niche returns as its one pointer, an
+                    * aggregate as the address the :type names */
+      v = nicheout(&em, ret, v);
       fprintf(o, "\tret %s\n", v ? v : "0");
     }
   }
@@ -2145,8 +2536,8 @@ emitfn(FILE *o, Sym *s, Ast *it)
     fprintf(o, "%s\n", em.datas[i]);
 }
 
-void
-emitfile(FILE *out, Ast **items)
+static void
+emitall(FILE *out, Ast **items)
 {
   usize i;
 
@@ -2162,4 +2553,32 @@ emitfile(FILE *out, Ast **items)
                  * sites (04-generics.md) -- M3d */
     emitfn(out, s, it);
   }
+}
+
+void
+emitfile(FILE *out, Ast **items)
+{
+  FILE *scratch = tmpfile(); /* pass one names the aggregates; its
+                              * text goes nowhere (qbe wants the type
+                              * declarations before their first use) */
+  usize i;
+
+  if (!scratch) {
+    fprintf(stderr, "xyz: no scratch file for the type pass\n");
+    exit(1);
+  }
+  emitall(scratch, items);
+  fclose(scratch);
+  dsn = 0; /* the naming pass burned numbers; the real one restarts */
+  /* the declarations first, innermost first: a type's number was
+   * taken before anything it held registered, so counting down is
+   * the topological order qbe reads (a use never precedes its
+   * definition) */
+  i = vlen(tydefs);
+  while (i--)
+    if (tydefs[i].decl)
+      fprintf(out, "%s\n", tydefs[i].decl);
+  if (vlen(tydefs))
+    fputs("\n", out);
+  emitall(out, items); /* pass two: the text */
 }

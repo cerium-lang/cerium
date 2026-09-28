@@ -1,0 +1,7 @@
+/* a &mut under a live shared borrow: writing through what promises no writes */
+struct Point { x: f64, mut y: f64 }
+fn main() -> () {
+  let mut p = Point { x: 1.0 };
+  let a = &p;
+  let b = &mut p;
+}
