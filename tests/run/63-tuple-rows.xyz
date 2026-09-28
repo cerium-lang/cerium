@@ -1,0 +1,17 @@
+/* tuples: built row by row, read back with .N, nested chains with
+ * .1.0 -- and the whole aggregate crosses a call by its ABI class.
+ * Writing a row (a.1 = ...) needs (T, mut U) types; that grammar
+ * arrives with its own batch */
+fn swap(t: (i32, i64)) -> (i64, i32) {
+  (t.1, t.0)
+}
+fn main() -> i32 {
+  let t: (i32, i64) = (7, 40);
+  let u = swap(t);
+  let mut n = t.0 + @cast<i32>(t.1);        /* 47 */
+  n = n + @cast<i32>(u.0) + u.1;            /* +47 = 94 */
+  let nest = ((5, 6), 9);
+  n = n + nest.0.0 + nest.0.1 + nest.1;     /* +20 = 114 */
+  n = n + nest.0.1;                         /* +6 = 120 */
+  n
+}

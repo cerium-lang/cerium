@@ -1,0 +1,15 @@
+/* what a for-in binds: an owned array yields each element itself,
+ * a slice lends a pointer to it -- the deref is the callee's to do */
+struct P { name: []u8, n: i32 }
+fn addn(p: *P, k: i32) -> i32 {
+  p.n + k
+}
+fn main() -> i32 {
+  let mut n = 0;
+  for x in [3]i32{10, 20, 30} { n = n + x; }       /* 60: values */
+  let s = []i32{4, 5, 6};
+  for x in s { n = n + *x; }                       /* +15 = 75 */
+  let a = [2]P{P{n: 1}, P{n: 2}};
+  for x in a { n = n + addn(&x, 10); }             /* +23 = 98: rows */
+  n
+}

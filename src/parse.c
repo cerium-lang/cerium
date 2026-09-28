@@ -278,7 +278,8 @@ prefixtype(void)
       }
     }
     want(Trbracket, "]");
-    if (accept(Tmut))
+    if (accept(Tmut)) /* [N]mut T / []mut T: the elements are writable
+                       * slots (01-types.md); resolve wraps the element */
       n->v.arrlit.mut = 1;
     n->v.arrlit.t = prefixtype();
     return n;

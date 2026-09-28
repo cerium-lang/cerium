@@ -330,7 +330,7 @@ slicefield(Type *t, char *name)
 static int
 isplace(Ast *e)
 {
-  if (e->k == Npath || e->k == Naccess || e->k == Nindex || e->k == Nrangeindex)
+  if (e->k == Npath || e->k == Naccess || e->k == Nindex || e->k == Nrangeindex || e->k == Ntupidx)
     return 1;
   return e->k == Nun && e->v.un.op == Tstar;
 }
@@ -1311,13 +1311,19 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
           return t;
         break;
       case Tstar: { /* the deref, as a value: a move-out unless Copy */
+        Type *t2;
+
         if (!t)
           return 0;
         if (t->k != Typtr)
           berr(e, "cannot dereference %s", btys(t));
-        if (!iscopy(t->t))
-          berr(e, "cannot move out of a place: %s is not Copy (@take, 03)", btys(t->t));
-        return t->t;
+        t2 = t->t;
+        if (t2 && t2->k == Tymut) /* a *mut T's mut layer is the slot's
+                                   * permission, not the value's type */
+          t2 = t2->t;
+        if (!iscopy(t2))
+          berr(e, "cannot move out of a place: %s is not Copy (@take, 03)", btys(t2));
+        return t2;
       }
       default:
         break;
@@ -1547,11 +1553,19 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
     if (e->v.n2.b->k == Nint && bt->k == Tyarray && e->v.n2.b->v.i.num >= bt->n)
       berr(e->v.n2.b, "index %lu out of range for %s", (unsigned long) e->v.n2.b->v.i.num,
            btys(bt));
-    /* an element read out of a place moves it when it is not Copy
-     * (03-move.md); a computed base is a value already */
-    if (placeroot(e, fe, pbuf, sizeof pbuf) && !iscopy(bt->t))
-      berr(e, "cannot move out of a place: %s is not Copy (@take, 03)", btys(bt->t));
-    return bt->t;
+    { /* an element read yields the value; the element's mut layer is
+       * the slot's permission, not the value's own type -- one layer
+       * only: a [2]mut [2]mut i32 read yields [2]mut i32 (01) */
+      Type *t = bt->t;
+
+      if (t && t->k == Tymut)
+        t = t->t;
+      /* the read moves it when it is not Copy (03-move.md); a computed
+       * base is a value already */
+      if (placeroot(e, fe, pbuf, sizeof pbuf) && !iscopy(t))
+        berr(e, "cannot move out of a place: %s is not Copy (@take, 03)", btys(t));
+      return t;
+    }
   }
   case Nrangeindex: { /* a[..] or a[lo..hi]: the slice view (01) */
     Type *bt = rplace(e->v.ridx.e, fe);
@@ -1583,6 +1597,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
   }
   case Ntupidx: {
     Type *bt = rexpr(e->v.tup.e, fe, 0);
+    char  pbuf[256];
 
     if (!bt)
       return 0;
@@ -1590,6 +1605,13 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
       berr(e, "%s is not a tuple", btys(bt));
     if (e->v.tup.idx >= bt->nargs)
       berr(e, "tuple index %lu out of range", (unsigned long) e->v.tup.idx);
+    { /* the row read out of a place moves it when it is not Copy
+       * (03-move.md); a computed base is a value already */
+      Type *ft = bt->args[e->v.tup.idx];
+
+      if (placeroot(e, fe, pbuf, sizeof pbuf) && !iscopy(ft))
+        berr(e, "cannot move out of a place: %s is not Copy (@take, 03)", btys(ft));
+    }
     return bt->args[e->v.tup.idx];
   }
   case Ntry: {
@@ -1662,14 +1684,25 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
 
     if (!et)
       return 0;
-    for (i = 0; i < n; i++) {
-      Type *at = rexpr(es[i], fe, et);
+    if (e->v.arrlit.mut) /* [N]mut T / []mut T: the elements are
+                          * writable (01-types.md) -- the same wrap
+                          * a type-position [N]mut T takes */
+      et = tymut(et);
+    { /* the value the elements are checked against: the mut layer
+       * is the slot's permission, not the element's own type */
+      Type *vt = et;
 
-      if (at && !tysame(at, et)) {
-        Type *c = recoerce(es[i], et, fe);
+      while (vt && vt->k == Tymut)
+        vt = vt->t;
+      for (i = 0; i < n; i++) {
+        Type *at = rexpr(es[i], fe, vt);
 
-        if (!c || !tysame(c, et))
-          berr(es[i], "the elements are %s, this is %s", btys(et), btys(at));
+        if (at && !tysame(at, vt)) {
+          Type *c = recoerce(es[i], vt, fe);
+
+          if (!c || !tysame(c, vt))
+            berr(es[i], "the elements are %s, this is %s", btys(vt), btys(at));
+        }
       }
     }
     if (e->v.arrlit.len && e->v.arrlit.len->k == Nint) {
@@ -2196,6 +2229,29 @@ derefswritable(Ast *x, Fenv *fe)
   return ptrwritable(rplace(x, fe));
 }
 
+/* does this slice expression view storage the fn itself laid down?
+ * There is no borrow checker, but the two shapes a compiler can see
+ * are refused: a literal's elements, and the rows of an array that
+ * lives in this frame. A slice of a slice points somewhere else
+ * still, and rides on (01-types.md). */
+static int
+localview(Ast *e, Fenv *fe)
+{
+  Type *bt;
+
+  if (!e)
+    return 0;
+  if (e->k == Narraylit && !e->v.arrlit.len)
+    return 1; /* []T{...}: the elements are this frame's own */
+  if (e->k == Nrangeindex) {
+    bt = rplace(e->v.ridx.e, fe);
+    if (!bt)
+      bt = rexpr(e->v.ridx.e, fe, 0);
+    return bt && bt->k == Tyarray;
+  }
+  return 0;
+}
+
 static int
 placewritable(Ast *p, Fenv *fe)
 {
@@ -2340,6 +2396,12 @@ rstmt(Ast *st, Fenv *fe)
       if (!c || !tysame(c, fe->fnret))
         berr(st, "the fn returns %s, this is %s", btys(fe->fnret), btys(t));
     }
+    if (fe->fnret->k == Tyslice && localview(st->v.n1.e, fe)) /* a
+                                                               * slice the fn can see is its own
+                                                               * dies with the frame (01) */
+      berr(
+          st->v.n1.e,
+          "this slice views the fn's own storage; return the array by value instead (01-types.md)");
     return;
   }
   case Nbreak:
@@ -2375,17 +2437,24 @@ rstmt(Ast *st, Fenv *fe)
       rpat(st->v.forx.a, et, &fb, 0);
       break;
     }
-    case FIN: { /* for pat in e: what e yields, one binding a round */
-      Type *et = rexpr(st->v.forx.b, &fb, 0);
+    case FIN: {                              /* for pat in e: what e yields, one binding a round */
+      Type *et = rexpr(st->v.forx.b, fe, 0); /* the source is consumed
+                                              * once, before the first round -- an
+                                              * owned array moves in here, and is
+                                              * not re-read every round (10) */
 
       while (et && et->k == Tymut) /* ditto */
         et = et->t;
       if (!et)
         break;
-      if (et->k == Tyslice ||
-          et->k == Tyarray) /* a slice lends each
-                             * element out: the binding is a pointer, never a move (10) */
+      if (et->k == Tyslice) /* a slice lends each element out: the
+                             * binding is a pointer, never a move (10) */
         rpat(st->v.forx.a, typtr(et->t), &fb, 0);
+      else if (et->k == Tyarray) /* an owned array yields each element
+                                  * itself, and is consumed -- a place
+                                  * of non-Copy elements is the mover's
+                                  * to @take (10, 03) */
+        rpat(st->v.forx.a, et->t, &fb, 0);
       else if (et->k == Tyenum && et->sym == sym_option)
         rpat(st->v.forx.a, et->args[0], &fb, 0); /* ?T iterates T or ends */
       else
@@ -2430,6 +2499,12 @@ checkbodyfn(Sym *s, Ast *it)
   fe.fnret = ret;
   for (i = 0; i < n; i++)
     locpush(&fe, ps[i]->v.param.name, s->fnty->args[i], ps[i]->v.param.mut);
+  if (ret->k == Tyslice &&
+      localview(it->v.fn.body->v.blk.tail, &fe)) /* the
+                                                  * tail returns, and what it views
+                                                  * dies with the frame (01) */
+    berr(it->v.fn.body->v.blk.tail,
+         "this slice views the fn's own storage; return the array by value instead (01-types.md)");
   rblock(it->v.fn.body, &fe, ret);
 }
 
@@ -2457,6 +2532,9 @@ checkbodyimpl(Sym *s, Ast *it)
       fe.fnret = fnty->t;
       for (j = 0; j < np; j++)
         locpush(&fe, ps[j]->v.param.name, fnty->args[j], ps[j]->v.param.mut);
+      if (fnty->t->k == Tyslice && localview(ms[i]->v.fn.body->v.blk.tail, &fe))
+        berr(ms[i]->v.fn.body->v.blk.tail, "this slice views the fn's own storage; return the "
+                                           "array by value instead (01-types.md)");
       rblock(ms[i]->v.fn.body, &fe, fnty->t);
     }
 }

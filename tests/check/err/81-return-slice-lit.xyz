@@ -1,0 +1,6 @@
+/* a slice literal's elements live in the fn's own frame: returning
+ * the view is a dangle the compiler can see, and refuses (01-types.md) */
+fn mk() -> []i32 {
+  []i32{1, 2}
+}
+fn main() -> i32 { 0 }

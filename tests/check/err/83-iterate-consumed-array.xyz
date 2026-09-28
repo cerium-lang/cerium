@@ -1,0 +1,9 @@
+/* an owned array yields its rows to the loop and is consumed: the
+ * second for moves what is already gone (10-iteration.md, 03) */
+fn twice<T>(a: [2]T, f: fn(*T) -> i32) -> i32 {
+  let mut s = 0;
+  for x in a { s = s + f(&x); }
+  for x in a { s = s + f(&x); }
+  s
+}
+fn main() -> i32 { 0 }

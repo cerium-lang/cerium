@@ -1,0 +1,6 @@
+/* a parameter's rows are the callee's frame too: a[..] out of it
+ * dangles the same way a literal's would (01-types.md) */
+fn view(p: [2]i32) -> []i32 {
+  p[..]
+}
+fn main() -> i32 { 0 }

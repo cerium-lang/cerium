@@ -18,7 +18,11 @@ static unsigned    line = 1, col = 1; /* position of the NEXT character */
 
 static Token cur;   /* the token peek/next last produced */
 static Token thead; /* peeked token; t == Txxx means empty */
-static char *buf;   /* reused value buffer, NUL-terminated */
+
+/* the kind of the last token the parser was handed; lexnumber reads
+ * it -- a number right after a Tdot is a tuple index, not a float */
+static Tok   prevtok = Txxx;
+static char *buf; /* reused value buffer, NUL-terminated */
 
 /* -- character layer ------------------------------------------------
  *
@@ -441,8 +445,10 @@ lexnumber(int c0) /* c0 is a digit */
     c = gc();
   }
 
-  /* a dot: float if a digit follows -- "1..3" and "1.x" are not */
-  if (base == 10 && c == '.') {
+  /* a dot: float if a digit follows -- "1..3" and "1.x" are not.
+   * Not after a postfix dot either: the digits are a tuple index
+   * and this dot opens the next one ("t.1.0") */
+  if (base == 10 && c == '.' && prevtok != Tdot) {
     int c2 = gc();
     if (isdig(c2)) {
       isflt = 1;
@@ -945,8 +951,11 @@ lex(void)
 Tok
 peek(void)
 {
-  if (thead.t == Txxx)
+  if (thead.t == Txxx) {
+    prevtok = cur.t; /* cur holds the previous token until lex()
+                      * overwrites it -- read it just before */
     thead = lex();
+  }
   cur = thead;
   return thead.t;
 }
