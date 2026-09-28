@@ -25,8 +25,7 @@
 
 #include "ast.h"
 
-typedef struct Sym Sym; /* sym.h; a declaration, never dereferenced here */
-/* Type itself is typedef'd in ast.h, which every type.h reader has */
+/* Sym and Type are typedef'd in ast.h, which every type.h reader has */
 
 typedef unsigned char u8; /* the tree's u64 (lex.h) has no smaller kin */
 

@@ -788,23 +788,26 @@ static Type *
 callfn(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe)
 {
   const char *nm = s->name;
-  Type      **ats = n ? arenaalloc(n * sizeof *ats) : 0;
-  Ast        *seg = 0; /* the callee's one segment, when the call
-                        * spells its generic arguments out (04) */
+  Type      **ats;
+  Ast        *seg; /* the callee's one segment, when the call
+                    * spells its generic arguments out (04) */
 
+  ats = n ? arenaalloc(n * sizeof *ats) : 0;
+  seg = 0;
   if (a->v.call.f->k == Npath && vlen(a->v.call.f->v.path.segs) == 1)
     seg = a->v.call.f->v.path.segs[0];
   for (; s; s = s->next) {
     Type  *fnty = s->fnty;
     Type **tys = s->ngparams ? tyargs(s->ngparams) : 0;
-    Type **sigs = fnty->args; /* what the arguments are checked against:
-                               * the signature's own, or its substituted
-                               * form under a spelled-out binding */
+    Type **sigs; /* what the arguments are checked against: the
+                  * signature's own, or its substituted form under
+                  * a spelled-out binding */
     usize i;
     int   ok = n == fnty->nargs;
 
     if (!ok)
       continue;
+    sigs = fnty->args;
     if (seg && seg->v.seg.args) { /* f<i32>(...): the binding is the
                                    * call's own words, not inference */
       if (vlen(seg->v.seg.args) != s->ngparams)
@@ -2558,10 +2561,13 @@ checkbodyfn(Sym *s, Ast *it)
 void
 recheckfn(Sym *s, Ast *it, Type **tys)
 {
-  Env    env = envnone();
-  usize  ng = s->ngparams, i;
-  Type **ats = vlen(it->v.fn.params) ? tyargs(vlen(it->v.fn.params)) : 0;
+  Env    env;
+  usize  ng, i;
+  Type **ats;
 
+  ng = s->ngparams;
+  ats = vlen(it->v.fn.params) ? tyargs(vlen(it->v.fn.params)) : 0;
+  env = envnone();
   env.n = ng;
   env.b = ng ? arenaalloc(ng * sizeof *env.b) : 0;
   for (i = 0; i < ng; i++) { /* T is this binding, not a parameter */

@@ -18,7 +18,7 @@
 
 /* this header's own types, typedef'd in one place so use sites drop
  * the struct -- the pattern ast.h and type.h set. Sym's typedef
- * lives in type.h, which needs the forward reference. */
+ * lives in ast.h, which every sym.h reader has. */
 typedef struct Field   Field;
 typedef struct Variant Variant;
 typedef struct Member  Member;

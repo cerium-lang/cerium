@@ -340,15 +340,15 @@ locbind(Em *em, char *name, char *slot, Type *ty)
  * qbe's symbols are letters, digits, and underscore -- what tysprint
  * says, folded onto that alphabet, says the name. */
 static char *tymangle(Type *t, char *buf, usize n);
+static void  ovlspell(Sym *s, char *buf, usize n);
 static int   fsymsame(Sym *p, char *buf);
 
 static char *
 fsymname(Sym *s, Ast *it)
 {
   char  buf[1024];
-  usize o;
   Sym  *p;
-  usize same = 0;
+  usize same;
   int   multi;
 
   if (attrfind(it->attrs, "extern"))
@@ -358,46 +358,32 @@ fsymname(Sym *s, Ast *it)
   multi = s->next != 0 || symfind(s->name) != s; /* a name's chain
                                                   * holds more than this */
   if (!multi) {                                  /* the common case: one fn, one name */
-    char *n = arenaalloc(strlen(s->name) + 8);
+    char *n;
 
+    n = arenaalloc(strlen(s->name) + 8);
     sprintf(n, "xyz_%s", s->name);
     return n;
   }
   /* an overload: this signature, and an index among the chain's
    * same-spelled siblings -- two overloads may differ only where the
    * mangling cannot see */
-  o = sprintf(buf, "xyz_%s__", s->name);
-  {
-    usize i, na = s->fnty->nargs;
-
-    for (i = 0; i < na; i++) {
-      char tb[256];
-
-      tymangle(s->fnty->args[i], tb, sizeof tb);
-      o += sprintf(buf + o, "%s%s", i ? "_" : "", tb);
-      if (o + 256 >= sizeof buf)
-        die("an overload too wide for the emitter's line");
-    }
-    {
-      char tb[256];
-
-      tymangle(s->fnty->t, tb, sizeof tb);
-      sprintf(buf + o, "_%s", tb);
-    }
-  }
+  ovlspell(s, buf, sizeof buf);
+  same = 0;
   for (p = symfind(s->name); p && p != s; p = p->next) /* the earlier
                                                         * same-spelled ones */
     if (fsymsame(p, buf))
       same++;
   if (same) { /* a twin: spell them apart */
-    char *n = arenaalloc(strlen(buf) + 12);
+    char *n;
 
+    n = arenaalloc(strlen(buf) + 12);
     sprintf(n, "%s_%lu", buf, (unsigned long) same);
     return n;
   }
   { /* stable: the arena keeps the spelling one name */
-    char *n = arenaalloc(strlen(buf) + 1);
+    char *n;
 
+    n = arenaalloc(strlen(buf) + 1);
     strcpy(n, buf);
     return n;
   }
@@ -442,29 +428,33 @@ tymangle(Type *t, char *buf, usize n)
   return buf;
 }
 
-/* do p's signature and s's fold to the same spelling? The chain's
- * twins -- overloads a mangling cannot tell apart -- number off */
+/* an overload's spelling: the name, then the argument types, then
+ * the return, folded onto qbe's alphabet */
+static void
+ovlspell(Sym *s, char *buf, usize n)
+{
+  char  tb[256];
+  usize o, i;
+
+  o = sprintf(buf, "xyz_%s__", s->name);
+  for (i = 0; i < s->fnty->nargs; i++) {
+    tymangle(s->fnty->args[i], tb, sizeof tb);
+    o += sprintf(buf + o, "%s%s", i ? "_" : "", tb);
+    if (o + 256 >= n)
+      die("an overload too wide for the emitter's line");
+  }
+  tymangle(s->fnty->t, tb, sizeof tb);
+  sprintf(buf + o, "_%s", tb);
+}
+
+/* does p's signature fold to the same spelling? The chain's twins --
+ * overloads a mangling cannot tell apart -- number off */
 static int
 fsymsame(Sym *p, char *buf)
 {
-  char  pb[1024];
-  usize o, i;
+  char pb[1024];
 
-  o = sprintf(pb, "xyz_%s__", p->name);
-  for (i = 0; i < p->fnty->nargs; i++) {
-    char tb[256];
-
-    tymangle(p->fnty->args[i], tb, sizeof tb);
-    o += sprintf(pb + o, "%s%s", i ? "_" : "", tb);
-    if (o + 256 >= sizeof pb)
-      die("an overload too wide for the emitter's line");
-  }
-  {
-    char tb[256];
-
-    tymangle(p->fnty->t, tb, sizeof tb);
-    sprintf(pb + o, "_%s", tb);
-  }
+  ovlspell(p, pb, sizeof pb);
   return strcmp(pb, buf) == 0;
 }
 
@@ -476,29 +466,31 @@ static char *
 instname(Sym *s, Type **tys)
 {
   char  buf[1024];
-  usize o, i, same = 0;
+  char  tb[256];
+  usize o, i, same;
 
   o = sprintf(buf, "xyz_%s__g", s->name);
   for (i = 0; i < s->ngparams; i++) {
-    char tb[256];
-
     tymangle(tys[i], tb, sizeof tb);
     o += sprintf(buf + o, "_%s", tb);
     if (o + 256 >= sizeof buf)
       die("an instantiation too wide for the emitter's line");
   }
+  same = 0;
   for (i = 0; i < vlen(insts); i++)
     if (strcmp(insts[i]->name, buf) == 0)
       same++;
-  if (same) {
-    char *n = arenaalloc(strlen(buf) + 12);
+  if (same) { /* a twin: spell them apart */
+    char *n;
 
+    n = arenaalloc(strlen(buf) + 12);
     sprintf(n, "%s_%lu", buf, (unsigned long) same);
     return n;
   }
   { /* stable: the arena keeps the spelling one name */
-    char *n = arenaalloc(strlen(buf) + 1);
+    char *n;
 
+    n = arenaalloc(strlen(buf) + 1);
     strcpy(n, buf);
     return n;
   }
@@ -2146,11 +2138,15 @@ emitfn(FILE *o, Sym *s, Ast *it, char *name, Type **ats, Type *ret)
 static void
 emitinst(FILE *o, Inst *in)
 {
-  Sym   *s = in->s;
-  Ast   *it = s->decl;
-  usize  ng = s->ngparams, i;
-  Type **ats = vlen(it->v.fn.params) ? tyargs(vlen(it->v.fn.params)) : 0;
+  Sym   *s;
+  Ast   *it;
+  usize  ng, i;
+  Type **ats;
 
+  s = in->s;
+  it = s->decl;
+  ng = s->ngparams;
+  ats = vlen(it->v.fn.params) ? tyargs(vlen(it->v.fn.params)) : 0;
   for (i = 0; i < vlen(it->v.fn.params); i++)
     ats[i] = gsubst(s->fnty->args[i], s->gparams, in->tys, ng);
   recheckfn(s, it, in->tys);
@@ -2163,11 +2159,12 @@ emitinst(FILE *o, Inst *in)
 static void
 draininsts(FILE *o)
 {
-  usize i = 0;
+  usize i;
+  Inst *in;
 
+  i = 0;
   while (i < vlen(iqueue)) {
-    Inst *in = iqueue[i++];
-
+    in = iqueue[i++];
     emitinst(o, in);
   }
   iqueue = vnew(Inst *, 16);
