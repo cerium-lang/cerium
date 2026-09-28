@@ -375,7 +375,7 @@ prefix_type   = "?" prefix_type
 
 primary_type  = path
               | "(" ")"
-              | "(" type { "," type } [ "," ] ")"
+              | "(" [ "mut" ] type { "," [ "mut" ] type } [ "," ] ")"
               | "fn" "(" [ type { "," type } [ "," ] ] ")" [ "->" type ]
               | "dyn" [ "mut" ] path
               | "type" ;

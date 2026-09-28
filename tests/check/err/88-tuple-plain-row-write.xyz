@@ -1,0 +1,6 @@
+/* a plain (T, U) row is not a slot: only mut rows write (01-types.md) */
+fn main() -> i32 {
+  let t = (1, 2);
+  t.1 = 3;
+  t.1
+}

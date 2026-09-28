@@ -423,6 +423,8 @@ rty(Ast *t, Env *env)
 
     return typtr(t->v.un.mut ? tymut(c) : c);
   }
+  case Ntmut: /* a tuple row's writable slot (01-types.md) */
+    return tymut(rty(t->v.un.e, env));
   case Ntarray: {
     Type *elem = rty(t->v.arrlit.t, env);
     Ast  *len = t->v.arrlit.len;

@@ -42,7 +42,7 @@
   X(Nclosure, "closure") X(Ncap, "cap") X(Nbuiltin, "builtin")                 \
   /* types */                                                                  \
   X(Ntopt, "topt") X(Ntresult, "tresult") X(Ntptr, "tptr")                     \
-  X(Ntarray, "tarray") X(Nttuple, "ttuple") X(Ntfn, "tfn")                     \
+  X(Ntmut, "tmut") X(Ntarray, "tarray") X(Nttuple, "ttuple") X(Ntfn, "tfn")    \
   X(Ntdyn, "tdyn") X(Nttype, "ttype") /* mut: dyn mut A */                      \
   /* items */                                                                  \
   X(Nfn, "fn") X(Nstruct, "struct") X(Nunion, "union") X(Nenum, "enum")        \
@@ -130,7 +130,7 @@ struct Ast
     {
       Ast *e;
       Tok  op;  /* Nun: the operator token */
-      int  mut; /* Nun: &mut; Ntptr: *mut */
+      int  mut; /* Nun: &mut; Ntptr: *mut; Ntmut: a tuple row's slot */
     } un;
     struct
     {

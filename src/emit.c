@@ -626,6 +626,24 @@ emaplace(Em *em, Ast *e)
   }
   case Nindex:
     return idxaddr(em, e); /* the element's own slot */
+  case Ntupidx: {          /* the row's address: the offset walk emaexpr takes,
+                            * stopping before the load (01-types.md) */
+    Type *tt = e->v.tup.e->ty;
+    char *b = emaexpr(em, e->v.tup.e); /* an aggregate base is its address */
+    usize i, off = 0;
+
+    for (i = 0; i < e->v.tup.idx; i++) {
+      off = alignto(off, alignof_(tt->args[i]));
+      off += sizeof_(tt->args[i]);
+    }
+    off = alignto(off, alignof_(e->ty));
+    {
+      char *t = newtmp(em);
+
+      fprintf(em->o, "\t%s =l add %s, %lu\n", t, b, (unsigned long) off);
+      return t;
+    }
+  }
   case Nun:
     if (e->v.un.op == Tstar)
       return emaexpr(em, e->v.un.e);

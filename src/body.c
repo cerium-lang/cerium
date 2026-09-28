@@ -642,8 +642,20 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
     usize  n = vlen(es), i;
     Type **ts = n ? tyargs(n) : 0;
 
-    for (i = 0; i < n; i++)
-      ts[i] = rexpr(es[i], fe, want && want->k == Tytuple && i < want->nargs ? want->args[i] : 0);
+    for (i = 0; i < n; i++) {
+      Type *wt = want && want->k == Tytuple && i < want->nargs ? want->args[i] : 0;
+      Type *vt = wt;
+
+      while (vt && vt->k == Tymut) /* (T, mut U): the row's slot
+                                    * permission, not the value's own
+                                    * type (01-types.md) */
+        vt = vt->t;
+      ts[i] = rexpr(es[i], fe, vt);
+      if (ts[i] && wt && wt->k == Tymut) /* the value takes the row's
+                                          * writable slot with it, as
+                                          * [N]mut T literals do */
+        ts[i] = tymut(ts[i]);
+    }
     return tytuple(ts, n);
   }
   case Nbin: {
@@ -1018,7 +1030,14 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
       if (placeroot(e, fe, pbuf, sizeof pbuf) && !iscopy(ft))
         berr(e, "cannot move out of a place: %s is not Copy (@take, 03)", btys(ft));
     }
-    return bt->args[e->v.tup.idx];
+    { /* (T, mut U): the row's slot permission stays with the
+       * checker, the type goes out -- as an array read does */
+      Type *ft = bt->args[e->v.tup.idx];
+
+      while (ft && ft->k == Tymut)
+        ft = ft->t;
+      return ft;
+    }
   }
   case Ntry: {
     Type *t = rexpr(e->v.n1.e, fe, 0);
@@ -1705,6 +1724,18 @@ placewritable(Ast *p, Fenv *fe)
     if (bt->k == Tyslice || bt->k == Tyarray)
       return bt->t->k == Tymut; /* []mut T / [N]mut T */
     return 0;
+  }
+  case Ntupidx: { /* (T, mut U): the row is its own slot (01-types.md) */
+    Type *bt;
+
+    if (!derefswritable(p->v.tup.e, fe))
+      return 0;
+    bt = rplace(p->v.tup.e, fe);
+    if (!bt)
+      bt = rexpr(p->v.tup.e, fe, 0);
+    if (!bt || bt->k != Tytuple || p->v.tup.idx >= bt->nargs)
+      return 0;
+    return bt->args[p->v.tup.idx]->k == Tymut;
   }
   case Nrangeindex: {
     Type *bt;
