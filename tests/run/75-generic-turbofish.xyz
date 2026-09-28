@@ -1,0 +1,8 @@
+/* the turbofish: the binding is the call's own words, not inference
+ * -- id<i64>(7) is the i64 instance, and the literal widens to it */
+fn id<T>(x: T) -> T { x }
+fn probe(x: i64) -> i32 { 8 }
+fn probe(x: i32) -> i32 { 4 }
+fn main() -> i32 {
+  probe(id<i64>(7)) + probe(id<i32>(7))
+}

@@ -1,0 +1,14 @@
+/* recursion inside a generic: the recursive call re-binds to the
+ * same instance (one copy), and the passenger rides every round --
+ * the array iteration consumes the instance's own [3]T */
+fn down<T>(n: i32, passenger: T) -> i32 {
+  if n <= 0 { 1 } else { n * down(n - 1, passenger) }
+}
+fn count<T>(a: [3]T, k: i32) -> i32 {
+  let mut n = 0;
+  for x in a { n = n + k; }
+  n
+}
+fn main() -> i32 {
+  down(4, 9) + down(5, 0.5) + count([3]i32{1, 2, 3}, 5) + 1
+}

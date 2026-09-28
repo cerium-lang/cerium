@@ -14,8 +14,10 @@
 void checkinit(void);
 void checkfile(Ast **items);
 void checkdump(Ast **items);
-void checkbodyfn(Sym *s, Ast *it);   /* pass 4, one fn (body.c) */
-void checkbodyimpl(Sym *s, Ast *it); /* pass 4, one impl's member fns */
+void checkbodyfn(Sym *s, Ast *it);           /* pass 4, one fn (body.c) */
+void checkbodyimpl(Sym *s, Ast *it);         /* pass 4, one impl's member fns */
+void recheckfn(Sym *s, Ast *it, Type **tys); /* one instantiation, for
+                                              * the emitter (04-generics.md) */
 
 /* resolve.c's type resolver, shared by pass 4: one type node, one
  * path in type position, against the names in scope */

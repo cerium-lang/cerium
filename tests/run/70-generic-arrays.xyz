@@ -1,0 +1,15 @@
+/* the poison: an instantiation whose body holds an array of T, an
+ * index into it, and a callback over *T -- M3d's shapes under a
+ * substitution, twice, against hand-written twins */
+fn sum2<T>(a: [2]T, f: fn(*T) -> i32) -> i32 { f(&a[0]) + f(&a[1]) }
+fn sumi_twin(a: [2]i32, f: fn(*i32) -> i32) -> i32 { f(&a[0]) + f(&a[1]) }
+fn sumf_twin(a: [2]f64, f: fn(*f64) -> i32) -> i32 { f(&a[0]) + f(&a[1]) }
+fn geti(p: *i32) -> i32 { *p }
+fn getf(p: *f64) -> i32 { @cast<i32>(*p) }
+fn main() -> i32 {
+  let a = [2]i32{3, 4};
+  let fs = [2]f64{1.5, 2.5};
+  (sum2(a, geti) - sumi_twin(a, geti)) * 10
+    + sum2(fs, getf) - sumf_twin(fs, getf)
+    + 30
+}

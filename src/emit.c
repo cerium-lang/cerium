@@ -333,20 +333,211 @@ locbind(Em *em, char *name, char *slot, Type *ty)
 }
 
 /* the fn's symbol: #[extern(C)] and main keep their own name, every
- * other fn is mangled -- overloading and namespaces both force it
- * (01-types.md, External functions) */
+ * other fn is mangled -- overloading, namespaces, and generic
+ * instantiation all force it (01-types.md, External functions). A
+ * lone fn keeps the short name; an overload carries its whole
+ * signature; an instantiation carries its binding (instname, below).
+ * qbe's symbols are letters, digits, and underscore -- what tysprint
+ * says, folded onto that alphabet, says the name. */
+static char *tymangle(Type *t, char *buf, usize n);
+static int   fsymsame(Sym *p, char *buf);
+
 static char *
 fsymname(Sym *s, Ast *it)
 {
-  char *n;
+  char  buf[1024];
+  usize o;
+  Sym  *p;
+  usize same = 0;
+  int   multi;
 
   if (attrfind(it->attrs, "extern"))
     return s->name;
   if (strcmp(s->name, "main") == 0)
     return s->name;
-  n = arenaalloc(strlen(s->name) + 8);
-  sprintf(n, "xyz_%s", s->name);
-  return n;
+  multi = s->next != 0 || symfind(s->name) != s; /* a name's chain
+                                                  * holds more than this */
+  if (!multi) {                                  /* the common case: one fn, one name */
+    char *n = arenaalloc(strlen(s->name) + 8);
+
+    sprintf(n, "xyz_%s", s->name);
+    return n;
+  }
+  /* an overload: this signature, and an index among the chain's
+   * same-spelled siblings -- two overloads may differ only where the
+   * mangling cannot see */
+  o = sprintf(buf, "xyz_%s__", s->name);
+  {
+    usize i, na = s->fnty->nargs;
+
+    for (i = 0; i < na; i++) {
+      char tb[256];
+
+      tymangle(s->fnty->args[i], tb, sizeof tb);
+      o += sprintf(buf + o, "%s%s", i ? "_" : "", tb);
+      if (o + 256 >= sizeof buf)
+        die("an overload too wide for the emitter's line");
+    }
+    {
+      char tb[256];
+
+      tymangle(s->fnty->t, tb, sizeof tb);
+      sprintf(buf + o, "_%s", tb);
+    }
+  }
+  for (p = symfind(s->name); p && p != s; p = p->next) /* the earlier
+                                                        * same-spelled ones */
+    if (fsymsame(p, buf))
+      same++;
+  if (same) { /* a twin: spell them apart */
+    char *n = arenaalloc(strlen(buf) + 12);
+
+    sprintf(n, "%s_%lu", buf, (unsigned long) same);
+    return n;
+  }
+  { /* stable: the arena keeps the spelling one name */
+    char *n = arenaalloc(strlen(buf) + 1);
+
+    strcpy(n, buf);
+    return n;
+  }
+}
+
+/* -- monomorphization (04-generics.md) ---------------------------------- */
+
+/* One generic fn, one binding of its parameters. Types are interned,
+ * so the key is the Sym with the Type pointers themselves; the same
+ * instantiation is emitted once, and its name is what every call
+ * site says. */
+typedef struct Inst Inst;
+struct Inst
+{
+  Sym   *s;
+  Type **tys; /* s->ngparams of them, the call sites' binding */
+  char  *name;
+  int    mark; /* the drain this entry is queued for */
+};
+
+static Inst **insts;  /* every one made, in first-seen order */
+static Inst **iqueue; /* the current drain's worklist */
+static int    ipass;  /* scratch is 1, the text is 2 */
+
+/* qbe's alphabet only: what tysprint says, everything else folded
+ * onto '_' -- i32 stays i32, *mut i32 becomes _mut_i32 */
+static char *
+tymangle(Type *t, char *buf, usize n)
+{
+  char  tmp[256];
+  usize i;
+
+  tysprint(tmp, sizeof tmp, t);
+  if (strlen(tmp) >= n)
+    die("a type too wide for the emitter's names");
+  for (i = 0; tmp[i]; i++) {
+    char c = tmp[i];
+
+    buf[i] = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ? c : '_';
+  }
+  buf[i] = 0;
+  return buf;
+}
+
+/* do p's signature and s's fold to the same spelling? The chain's
+ * twins -- overloads a mangling cannot tell apart -- number off */
+static int
+fsymsame(Sym *p, char *buf)
+{
+  char  pb[1024];
+  usize o, i;
+
+  o = sprintf(pb, "xyz_%s__", p->name);
+  for (i = 0; i < p->fnty->nargs; i++) {
+    char tb[256];
+
+    tymangle(p->fnty->args[i], tb, sizeof tb);
+    o += sprintf(pb + o, "%s%s", i ? "_" : "", tb);
+    if (o + 256 >= sizeof pb)
+      die("an overload too wide for the emitter's line");
+  }
+  {
+    char tb[256];
+
+    tymangle(p->fnty->t, tb, sizeof tb);
+    sprintf(pb + o, "_%s", tb);
+  }
+  return strcmp(pb, buf) == 0;
+}
+
+/* the instance's name: the fn's, its binding's -- g marks it apart
+ * from an overload's arg spelling -- numbered only if an earlier
+ * entry already took the spelling (a pair of twins the key sees
+ * apart and the alphabet cannot) */
+static char *
+instname(Sym *s, Type **tys)
+{
+  char  buf[1024];
+  usize o, i, same = 0;
+
+  o = sprintf(buf, "xyz_%s__g", s->name);
+  for (i = 0; i < s->ngparams; i++) {
+    char tb[256];
+
+    tymangle(tys[i], tb, sizeof tb);
+    o += sprintf(buf + o, "_%s", tb);
+    if (o + 256 >= sizeof buf)
+      die("an instantiation too wide for the emitter's line");
+  }
+  for (i = 0; i < vlen(insts); i++)
+    if (strcmp(insts[i]->name, buf) == 0)
+      same++;
+  if (same) {
+    char *n = arenaalloc(strlen(buf) + 12);
+
+    sprintf(n, "%s_%lu", buf, (unsigned long) same);
+    return n;
+  }
+  { /* stable: the arena keeps the spelling one name */
+    char *n = arenaalloc(strlen(buf) + 1);
+
+    strcpy(n, buf);
+    return n;
+  }
+}
+
+/* the instance for this call, made if it is new. Every drain queues
+ * each entry once: the mark is the pass, so a body's nested call can
+ * re-ensure what a plain fn already found without doubling it */
+static Inst *
+instensure(Sym *s, Type **tys)
+{
+  Inst *in;
+  usize i, j;
+
+  for (i = 0; i < vlen(insts); i++) {
+    in = insts[i];
+    if (in->s != s)
+      continue;
+    for (j = 0; j < s->ngparams; j++)
+      if (in->tys[j] != tys[j])
+        break;
+    if (j == s->ngparams)
+      goto found;
+  }
+  if (!insts) {
+    insts = vnew(Inst *, 16);
+    iqueue = vnew(Inst *, 16);
+  }
+  in = arenaalloc(sizeof *in);
+  in->s = s;
+  in->tys = tys;
+  in->name = instname(s, tys);
+  vappend(&insts, &in);
+found:
+  if (in->mark != ipass) {
+    in->mark = ipass;
+    vappend(&iqueue, &in);
+  }
+  return in;
 }
 
 static char *emaexpr(Em *em, Ast *e);
@@ -1388,12 +1579,25 @@ emaexpr(Em *em, Ast *e)
     for (i = 0; i < n; i++)
       as[i] = nicheout(em, args[i]->ty, emaexpr(em, args[i]));
     if (f->k == Npath && vlen(f->v.path.segs) == 1 && !locfind(em, f->v.path.segs[0]->v.seg.name)) {
+      char *nm;
+
       s = symfind(f->v.path.segs[0]->v.seg.name);
       if (!s || s->kind != Sfn)
         cerrat(f, "'%s' is not a fn", f->v.path.segs[0]->v.seg.name);
-      if (s->next)
-        cerrat(f, "overload resolution at emit time arrives with M3d");
-      fprintf(em->o, "\t%s =%s call $%s(", t, sigty(e->ty, e), fsymname(s, s->decl));
+      if (e->v.call.sym) { /* the checker's pick: which overload, and
+                            * which instantiation -- the latter names
+                            * its own copy (04-generics.md) */
+        s = e->v.call.sym;
+        if (e->v.call.tys)
+          nm = instensure(s, e->v.call.tys)->name;
+        else
+          nm = fsymname(s, s->decl);
+      } else {
+        if (s->next)
+          cerrat(f, "overload resolution at emit time arrives with M3d");
+        nm = fsymname(s, s->decl);
+      }
+      fprintf(em->o, "\t%s =%s call $%s(", t, sigty(e->ty, e), nm);
     } else { /* a fn held in a value, called through it */
       char *fp = emaexpr(em, f);
 
@@ -1858,16 +2062,19 @@ out:
   return v;
 }
 
+/* one fn's text. name is the symbol it goes by -- an instance's own
+ * (emitinst), or the fn's (emitall); ats and ret are the signature,
+ * the fn's own when the caller passes NULL -- an instance carries
+ * its substituted one (04-generics.md). */
 static void
-emitfn(FILE *o, Sym *s, Ast *it)
+emitfn(FILE *o, Sym *s, Ast *it, char *name, Type **ats, Type *ret)
 {
   Type *fnty = s->fnty;
-  Type *ret = fnty->t;
   Em    em;
   usize i;
 
-  if (s->next)
-    cerrat(it, "an overloaded fn's own body arrives with M3d");
+  if (!ret)
+    ret = fnty->t; /* the fn's own: not an instantiation */
   memset(&em, 0, sizeof em);
   em.ormark = (usize) -1; /* no or-pattern yet: reuse is off */
   em.o = o;
@@ -1876,17 +2083,18 @@ emitfn(FILE *o, Sym *s, Ast *it)
   fputs("export function", o);
   if (ret)
     fprintf(o, " %s", sigty(ret, it));
-  fprintf(o, " $%s(", fsymname(s, it));
+  fprintf(o, " $%s(", name);
   for (i = 0; i < fnty->nargs; i++) {
     if (i)
       fputs(", ", o);
-    fprintf(o, "%s %%%s", sigty(fnty->args[i], it), it->v.fn.params[i]->v.param.name);
+    fprintf(o, "%s %%%s", sigty(ats ? ats[i] : fnty->args[i], it),
+            it->v.fn.params[i]->v.param.name);
   }
   fputs(") {\n@start\n", o);
   for (i = 0; i < fnty->nargs; i++) { /* every parameter a slot: one
                                        * path reads them all */
     char *nm = it->v.fn.params[i]->v.param.name;
-    Type *pt = fnty->args[i];
+    Type *pt = ats ? ats[i] : fnty->args[i];
 
     while (pt && pt->k == Tymut)
       pt = pt->t;
@@ -1931,6 +2139,40 @@ emitfn(FILE *o, Sym *s, Ast *it)
     fprintf(o, "%s\n", em.datas[i]);
 }
 
+/* one instantiation: re-check the shared body under this binding --
+ * the writeback the emitter reads -- then emit it under its own
+ * name. Sequential by construction: nothing else touches the body
+ * between the two (04-generics.md). */
+static void
+emitinst(FILE *o, Inst *in)
+{
+  Sym   *s = in->s;
+  Ast   *it = s->decl;
+  usize  ng = s->ngparams, i;
+  Type **ats = vlen(it->v.fn.params) ? tyargs(vlen(it->v.fn.params)) : 0;
+
+  for (i = 0; i < vlen(it->v.fn.params); i++)
+    ats[i] = gsubst(s->fnty->args[i], s->gparams, in->tys, ng);
+  recheckfn(s, it, in->tys);
+  emitfn(o, s, it, in->name, ats, gsubst(s->fnty->t, s->gparams, in->tys, ng));
+}
+
+/* the worklist until it empties: emitting a body finds more calls,
+ * and the cursor grows with them. Each pass queues every instance
+ * once; the queue itself is fresh, the table is not */
+static void
+draininsts(FILE *o)
+{
+  usize i = 0;
+
+  while (i < vlen(iqueue)) {
+    Inst *in = iqueue[i++];
+
+    emitinst(o, in);
+  }
+  iqueue = vnew(Inst *, 16);
+}
+
 static void
 emitall(FILE *out, Ast **items)
 {
@@ -1943,27 +2185,37 @@ emitall(FILE *out, Ast **items)
     if (it->k != Nfn || it->v.fn.body == 0)
       continue; /* a declaration: an import, or a fn type's use */
     s = symfind(it->v.fn.name);
+    while (s && s->decl != it) /* its own Sym: a name's chain holds
+                                * every overload of it */
+      s = s->next;
+    if (!s)
+      continue; /* unreachable: the resolver made one */
     if (s->ngparams)
       continue; /* a generic fn emits per instance, from its call
-                 * sites (04-generics.md) -- M3d */
-    emitfn(out, s, it);
+                 * sites (04-generics.md) */
+    emitfn(out, s, it, fsymname(s, it), 0, 0);
   }
 }
 
 void
 emitfile(FILE *out, Ast **items)
 {
-  FILE *scratch = tmpfile(); /* pass one names the aggregates; its
-                              * text goes nowhere (qbe wants the type
+  FILE *scratch = tmpfile(); /* pass one names the aggregates and
+                              * finds every instantiation; its text
+                              * goes nowhere (qbe wants the type
                               * declarations before their first use) */
 
   if (!scratch) {
     fprintf(stderr, "xyz: no scratch file for the type pass\n");
     exit(1);
   }
+  ipass = 1;
   emitall(scratch, items);
+  draininsts(scratch);
   fclose(scratch);
-  dsn = 0;             /* the naming pass burned numbers; the real one restarts */
-  abidecls(out);       /* the :type declarations, the order qbe reads */
+  dsn = 0;       /* the naming pass burned numbers; the real one restarts */
+  abidecls(out); /* the :type declarations, the order qbe reads */
+  ipass = 2;
   emitall(out, items); /* pass two: the text */
+  draininsts(out);
 }

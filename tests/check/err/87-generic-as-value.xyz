@@ -1,0 +1,7 @@
+/* a generic fn is a stencil, not a value: which instance would it
+ * be? (04-generics.md) */
+fn id<T>(x: T) -> T { x }
+fn main() -> i32 {
+  let g = id;
+  g(7)
+}

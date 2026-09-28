@@ -23,6 +23,9 @@
 
 #include "lex.h"
 
+struct Sym;  /* the symbol table's, for Ncall's writeback (sym.h) */
+struct Type; /* the checker's, ditto (type.h) */
+
 /* the node list, one place: the enum and the dump names share it.
  * Each entry: kind, then the dump name it prints as. */
 /* clang-format off */
@@ -133,8 +136,12 @@ struct Ast
     } un;
     struct
     {
-      Ast  *f;    /* Ncall, Nbuiltin: the callee */
-      Ast **args; /* Ncall, Nbuiltin, Nmatch: args or arms */
+      Ast        *f;     /* Ncall, Nbuiltin: the callee */
+      Ast       **args;  /* Ncall, Nbuiltin, Nmatch: args or arms */
+      struct Sym *sym;   /* Ncall: the overload the checker picked, so
+                          * the emitter need not guess by name */
+      struct Type **tys; /* Ncall: the generic bindings it picked --
+                          * NULL when the fn is not generic */
     } call;
     struct
     {

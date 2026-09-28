@@ -1,0 +1,10 @@
+/* overloaded fns with bodies: the chain's members each emit under
+ * their own signature's name, and the checker's pick at every call
+ * site is what the call says */
+fn f(x: i32) -> i32 { x * 2 }
+fn f(x: f64) -> i32 { @cast<i32>(x * 3.0) }
+fn g(x: i32) -> i32 { x + 1 }
+fn g(x: i32, y: i32) -> i32 { x + y }
+fn main() -> i32 {
+  f(21) + f(7.0) + g(5) + g(1, 2) + 5
+}

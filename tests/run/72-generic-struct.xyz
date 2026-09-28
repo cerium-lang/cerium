@@ -1,0 +1,12 @@
+/* T bound to an aggregate: the instance's signature carries the
+ * struct's ABI class, and the value moves through the instance and
+ * back by that convention */
+struct P { a: i32, b: i64 }
+fn first(p: P) -> i32 { p.a }
+fn scale(p: P, k: i32) -> P { P{a: p.a * k, b: p.b} }
+fn idp<T>(t: T) -> T { t }
+fn main() -> i32 {
+  let p = P{a: 3, b: 100};
+  let q = idp(scale(p, 5));     /* idp<P>: an aggregate instance */
+  first(q) * 10 + @cast<i32>(q.b)
+}
