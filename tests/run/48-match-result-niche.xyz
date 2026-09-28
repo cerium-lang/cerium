@@ -1,0 +1,25 @@
+fn main() -> i32 {
+  let b = 9;
+  let p = &b;
+  let r1: ()?*i32 = Ok(p);
+  let r2: *i32?() = Err(p);
+  let r3: ()?*i32 = Err(());
+  let r4: *i32?() = Ok(());
+  let a = match r1 {
+    Ok(q) => *q,
+    Err => 0,
+  };
+  let c = match r2 {
+    Ok => 0,
+    Err(q) => *q + 1,
+  };
+  let d = match r3 {
+    Ok(q) => *q,
+    Err => 1,
+  };
+  let e = match r4 {
+    Ok => 2,
+    Err(q) => *q,
+  };
+  a * 10 + c + d + e
+}

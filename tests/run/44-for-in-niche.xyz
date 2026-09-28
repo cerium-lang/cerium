@@ -1,0 +1,15 @@
+fn main() -> i32 {
+  let n = 7;
+  let o1: ?*i32 = Some(&n);
+  let o2: ?*i32 = None;
+  let mut runs = 0;
+  let mut total = 0;
+  for v in o1 {
+    runs = runs + 1;
+    total = total + *v;
+  }
+  for v in o2 {
+    runs = runs + 1;
+  }
+  runs * 100 + total
+}

@@ -123,14 +123,31 @@ symbols, and the aggregate half: a struct literal (a nested one
 its slice on the stack, `.ptr`/`.len` reads, and field/deref/slot
 places to read and write through, `mut` permitting. An overload
 chain resolves at emit time only by accident of order — the real
-resolution waits for monomorphization (M3d). Control flow — `if`,
-`match`, the short circuits, and the loops — is M3c's.
+resolution waits for monomorphization (M3d).
+
+Control flow is M3c's, and in: `if` is an expression — value form,
+else-if chains, nesting — `&&`/`||` skip the right side, and the
+three `for` shapes of `10-iteration.md` run: a condition re-checked
+every round, a `let` pattern re-fitted every round (a misfit stops
+the loop), and `in` — an Option yields its one payload, niche or
+tagged, one round at most, a `continue` ending it like a `break`
+would, and a slice lends each element out as a pointer, so the
+binding is a `*T`. `match` destructures per `09-match.md`:
+positional and named payloads, nested struct patterns with `..`,
+wildcards, or-patterns whose shared bindings are pre-bound before
+the alternatives — the join must read what every path defined —
+and the short variant name, which the scrutinee's enum settles
+against the bare binding. Arm order decides. Compound assignment
+covers the operators' full set with their signedness, and
+assigning an aggregate blits. Aggregate returns and parameters by
+value, array literals and indexing, and tuple expressions wait for
+M3d.
 
 The layout and the behavior are tested by running them:
 `tests/run` holds one `.xyz` per binary with an `.expect` naming
 its exit code, an optional `.stdout` holding the bytes it must
-print — `#[extern(C)] fn write` is how the language prints until
-M3c (`tools/run-tests.sh`); the section runs only when `qbe/qbe`
+print — `#[extern(C)] fn write` is how the language prints for now
+(`tools/run-tests.sh`); the section runs only when `qbe/qbe`
 is built.
 `tests/lex`, `tests/parse` and `tests/check` hold the golden tests,
 split by pass: `ok/` has one `.golden` per `.xyz` that the dumps must

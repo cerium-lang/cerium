@@ -1,0 +1,15 @@
+/* compound assignment: full set; signed div vs unsigned udiv; shifts */
+fn main() -> i32 {
+  let mut a = 10;
+  a += 5;    /* 15 */
+  a -= 3;    /* 12 */
+  a *= 4;    /* 48 */
+  a /= 5;    /* 9: div truncates toward zero */
+  a <<= 2;   /* 36 */
+  a >>= 1;   /* 18 */
+  let mut u: u8 = 200;
+  u /= 3;    /* 66: udiv, not div */
+  u *= 2;    /* 132 */
+  u += 1;    /* 133 */
+  a + @cast<i32>(u)    /* 151 */
+}

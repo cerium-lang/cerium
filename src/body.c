@@ -1760,9 +1760,11 @@ rpat(Ast *p, Type *t, Fenv *fe, int mut)
     Sym            *s;
     struct Variant *v;
 
-    if (vlen(segs) == 1 && !p->v.ppath.payload && !p->v.ppath.named) {
-      /* a bare name: the binding form -- the parser sends every
-       * ident-headed pattern here, variant or not */
+    if (vlen(segs) == 1 && !p->v.ppath.payload && !p->v.ppath.named &&
+        (!t || t->k != Tyenum || !varfind(t->sym, segs[0]->v.seg.name))) {
+      /* a bare name that names no variant of the scrutinee's enum:
+       * the binding form -- the parser sends every ident-headed
+       * pattern here, variant or not */
       p->ty = t;
       locpush(fe, segs[0]->v.seg.name, t, mut);
       return;
@@ -1831,7 +1833,11 @@ rpat(Ast *p, Type *t, Fenv *fe, int mut)
           pt = gsubst(pt, s->gparams, t->args, t->nargs);
         rpat(ps[i], pt, fe, mut);
       }
-    } else if (v->payload || v->named)
+    } else if (v->payload && v->npayload == 1 && t && t->nargs == (usize) s->ngparams &&
+               gsubst(v->payload[0], s->gparams, t->args, t->nargs)->k == Tyunit)
+      ; /* the one payload instantiated to (): nothing to bind --
+         * the niche side of an E?T (01-types.md, Results) */
+    else if (v->payload || v->named)
       berr(p, "'%s' carries a payload; bind it", vn);
     return;
   }
@@ -1868,7 +1874,14 @@ rpat(Ast *p, Type *t, Fenv *fe, int mut)
 
         if (t->nargs == (usize) t->sym->ngparams)
           ft = gsubst(ft, t->sym->gparams, t->args, t->nargs);
-        rpat(pf->v.init.e, ft, fe, mut || f->mut);
+        if (pf->v.init.e)
+          rpat(pf->v.init.e, ft, fe, mut || f->mut);
+        else { /* the field name is the binding name when no
+                * sub-pattern is given -- "{ x }" reads as
+                * "{ x: x }" (09-match.md) */
+          pf->ty = ft;
+          locpush(fe, pf->v.init.name, ft, mut || f->mut);
+        }
       }
     }
     return;
@@ -1901,7 +1914,8 @@ rpat(Ast *p, Type *t, Fenv *fe, int mut)
 
 /* does an arm's pattern bind anything -- the move question below */
 static int
-patbinds(Ast *p)
+patbinds(Ast *p, Sym *scr) /* scr: the enum a short name may pick
+                            * a variant out of, or NULL */
 {
   switch (p->k) {
   case Npwild:
@@ -1915,8 +1929,11 @@ patbinds(Ast *p)
   case Npath:
     return 1;
   case Nppath:
-    if (vlen(p->v.ppath.path->v.path.segs) == 1 && !p->v.ppath.payload && !p->v.ppath.named)
-      return 1;                        /* the bare-name binding */
+    if (vlen(p->v.ppath.path->v.path.segs) == 1 && !p->v.ppath.payload && !p->v.ppath.named) {
+      if (scr && varfind(scr, p->v.ppath.path->v.path.segs[0]->v.seg.name))
+        return 0; /* a short variant name binds nothing (09) */
+      return 1;   /* the bare-name binding */
+    }
     return p->v.ppath.payload ? 1 : 0; /* Enum::Variant: the payload binds, not the whole */
   case Nptuple:
   case Npor: {
@@ -1924,7 +1941,7 @@ patbinds(Ast *p)
     usize i;
 
     for (i = 0; i < vlen(ps); i++)
-      if (patbinds(ps[i]))
+      if (patbinds(ps[i], scr))
         return 1;
     return 0;
   }
@@ -1933,8 +1950,8 @@ patbinds(Ast *p)
     usize i;
 
     for (i = 0; i < vlen(fs); i++)
-      if (patbinds(fs[i]->v.init.e))
-        return 1;
+      if (!fs[i]->v.init.e || patbinds(fs[i]->v.init.e, scr))
+        return 1; /* a bare field name binds (09) */
     return 0;
   }
   default:
@@ -1960,6 +1977,11 @@ patcovers(Ast *p, Sym *scr, struct Variant **vs, usize *nv, int *whatever)
     struct Variant *v;
 
     if (vlen(segs) == 1 && !p->v.ppath.payload && !p->v.ppath.named) {
+      if (scr && (v = varfind(scr, segs[0]->v.seg.name))) {
+        if (*nv < 32) /* the short name of a payloadless variant (09) */
+          vs[(*nv)++] = v;
+        return;
+      }
       *whatever = 1; /* the bare-name binding */
       return;
     }
@@ -2014,7 +2036,7 @@ rmatch(Ast *e, Fenv *fe, Type *want)
   if (!st)
     return 0;
   for (i = 0; i < n; i++)
-    if (patbinds(arms[i]->v.n2.a))
+    if (patbinds(arms[i]->v.n2.a, st->k == Tyenum ? st->sym : 0))
       binds = 1;
   if (binds && !iscopy(st)) { /* an arm that binds takes what the
                                * scrutinee holds (09-match.md) */
@@ -2288,7 +2310,9 @@ rstmt(Ast *st, Fenv *fe)
       if (!binop(op == Tpluseq    ? Tplus
                  : op == Tminuseq ? Tminus
                  : op == Tstareq  ? Tstar
-                                  : Tslash,
+                 : op == Tslasheq ? Tslash
+                 : op == Tshleq   ? Tshl
+                                  : Tshr,
                  lt, rt, &res))
         berr(st, "this compound assignment does not fit %s and %s", btys(lt), btys(rt));
     }
@@ -2334,16 +2358,23 @@ rstmt(Ast *st, Fenv *fe)
     case FLET: { /* for let pat = e: e is matched every round (10) */
       Type *et = rexpr(st->v.forx.b, &fb, 0);
 
+      while (et && et->k == Tymut) /* a *mut read: the emitter
+                                    * strips this too (emafor) */
+        et = et->t;
       rpat(st->v.forx.a, et, &fb, 0);
       break;
     }
     case FIN: { /* for pat in e: what e yields, one binding a round */
       Type *et = rexpr(st->v.forx.b, &fb, 0);
 
+      while (et && et->k == Tymut) /* ditto */
+        et = et->t;
       if (!et)
         break;
-      if (et->k == Tyslice || et->k == Tyarray)
-        rpat(st->v.forx.a, et->t, &fb, 0);
+      if (et->k == Tyslice ||
+          et->k == Tyarray) /* a slice lends each
+                             * element out: the binding is a pointer, never a move (10) */
+        rpat(st->v.forx.a, typtr(et->t), &fb, 0);
       else if (et->k == Tyenum && et->sym == sym_option)
         rpat(st->v.forx.a, et->args[0], &fb, 0); /* ?T iterates T or ends */
       else

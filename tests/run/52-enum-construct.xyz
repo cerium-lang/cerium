@@ -1,0 +1,34 @@
+/* enum construction: named payload, positional payloads, none at all --
+ * and a u64 payload behind a u32 tag */
+enum Shape {
+  Circle { r: f64 },
+  Rect(f64, f64),
+  Unit,
+}
+enum Big(u32) { A, B(u64) }
+fn main() -> i32 {
+  let s = Shape::Rect(2.0, 3.0);
+  let c = Shape::Circle(1.5);    /* named variant, built in field order */
+  let u = Shape::Unit;
+  let g = Big::B(7);
+  let a = match s {
+    Shape::Circle { r } => @cast<i32>(r * 10.0),
+    Shape::Rect(w, h) => @cast<i32>(w * h),
+    Shape::Unit => 0,
+  };
+  let b = match c {
+    Shape::Circle { r } => @cast<i32>(r * 100.0),
+    Shape::Rect(w, h) => @cast<i32>(w + h),
+    Shape::Unit => 1,
+  };
+  let d = match u {
+    Shape::Circle { r } => 0,
+    Shape::Rect(w, h) => 0,
+    Shape::Unit => 9,
+  };
+  let e = match g {
+    Big::A => 0,
+    Big::B(n) => @cast<i32>(n),
+  };
+  a * 10 + b + d + e    /* 60 + 150 + 9 + 7 = 226 */
+}

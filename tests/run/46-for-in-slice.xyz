@@ -1,0 +1,13 @@
+fn main() -> i32 {
+  let s = "hello";
+  let mut n = 0;
+  let mut ls = 0;
+  for c in s {
+    n = n + 1;
+    if *c == 108 {
+      continue;
+    };
+    ls = ls + 1;
+  }
+  n * 10 + ls
+}

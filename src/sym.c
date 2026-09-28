@@ -130,3 +130,29 @@ symdecl(const char *name, int kind, Ast *decl, Ast **gparams, usize ngparams)
   tbln++;
   return s;
 }
+
+/* a variant by name, declaration order. Shared by the checker's
+ * patterns and the emitter's construction and matching. */
+struct Variant *
+symvarfind(Sym *s, const char *name)
+{
+  usize i;
+
+  for (i = 0; i < s->nvariants; i++)
+    if (strcmp(s->variants[i].name, name) == 0)
+      return &s->variants[i];
+  return 0;
+}
+
+/* the enum a variant's short name belongs to: the prelude's four,
+ * the ones ?T's sugar rides on, are the only variant names an
+ * expression may spell bare (01-types.md) */
+Sym *
+symvariantowner(char *name)
+{
+  if (sym_option && symvarfind(sym_option, name))
+    return sym_option;
+  if (sym_result && symvarfind(sym_result, name))
+    return sym_result;
+  return 0;
+}

@@ -1,0 +1,14 @@
+/* the ?T niche: Some and None, the first fitting arm wins (09) */
+fn main() -> i32 {
+  let o: ?i32 = Some(5);
+  let x = match o {
+    None => 0,
+    Some(v) => v,
+  };
+  let e: ?i32 = None;
+  let y = match e {
+    Some(v) => v,
+    None => 7,
+  };
+  x * 10 + y    /* 57 */
+}
