@@ -1,0 +1,15 @@
+/* []mut T rides through a call: the literal's storage is the caller's
+ * frame, the callee writes through the view, the caller reads it back */
+fn fill(p: []mut i32) -> i32 {
+  let mut i = 0;
+  for i < 3 {
+    p[i] = p[i] * 2;
+    i = i + 1;
+  }
+  p[2]
+}
+fn main() -> i32 {
+  let s = []mut i32{1, 2, 3};
+  let last = fill(s);
+  s[0] + s[1] + s[2] + last      /* 2+4+6+6 = 18 */
+}

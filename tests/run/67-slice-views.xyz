@@ -1,0 +1,17 @@
+/* slicing: an array hands out a view of its rows, a slice hands out
+ * a shorter one -- both keep pointing where the caller can still see */
+fn mid(s: []i32) -> i32 {
+  s[0] + s[1]
+}
+fn main() -> i32 {
+  let a = [4]i32{1, 2, 3, 4};
+  let v = a[1..];              /* rows 1..4 of the array */
+  let mut n = v[0] + v[1] + v[2];          /* 2+3+4 = 9 */
+  n = n + mid(a[0..]);        /* 1+2 = 3, 12 */
+  let s = []i32{10, 20, 30, 40};
+  let t = s[2..];             /* a view of a view */
+  n = n + t[0] + t[1];        /* +70 = 82 */
+  let whole = a[..];
+  n = n + whole[3];           /* +4 = 86 */
+  n
+}

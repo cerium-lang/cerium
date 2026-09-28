@@ -308,6 +308,7 @@ subval(Em *em, Type *t, char *addr, usize off, Ast *at, char **paddr, char **pva
 }
 
 /* a binding, by name; innermost last, so the search runs backwards */
+
 static ELoc *
 locfind(Em *em, char *name)
 {
@@ -368,6 +369,57 @@ emaload(Em *em, Ast *e)
   return t;
 }
 
+/* an index in the l domain, ready to scale: the narrow integers
+ * widen by their signedness, the 64-bit ones are there already */
+static char *
+idxl(Em *em, Ast *ix)
+{
+  char *v = emaexpr(em, ix);
+  char *t;
+
+  if (intwidth(ix->ty) > 4)
+    return v;
+  t = newtmp(em);
+  fprintf(em->o, "\t%s =l %s %s\n", t, isuintty(ix->ty) ? "extuw" : "extsw", v);
+  return t;
+}
+
+/* the address of one element. The base's value is its storage -- a
+ * slice's first word is the data pointer -- and the index scales by
+ * the element's size, qbe having no scaled addressing. A constant
+ * index folds; the checker range-checked it (01-types.md). */
+static char *
+idxaddr(Em *em, Ast *e)
+{
+  Type *bt = e->v.n2.a->ty;
+  Type *et = bt->t;
+  usize sz;
+  char *b = emaexpr(em, e->v.n2.a);
+
+  while (et && et->k == Tymut) /* []mut T: the element's own type */
+    et = et->t;
+  sz = sizeof_(et);
+  if (bt->k == Tyslice) {
+    char *p = newtmp(em);
+
+    fprintf(em->o, "\t%s =l loadl %s\n", p, b);
+    b = p;
+  }
+  if (!sz)
+    return b; /* a ZST element: every index is the array itself */
+  if (e->v.n2.b->k == Nint)
+    return addrplus(em, b, (usize) e->v.n2.b->v.i.num * sz);
+  {
+    char *ix = idxl(em, e->v.n2.b);
+    char *sc = newtmp(em);
+    char *a = newtmp(em);
+
+    fprintf(em->o, "\t%s =l mul %s, %lu\n", sc, ix, (unsigned long) sz);
+    fprintf(em->o, "\t%s =l add %s, %s\n", a, b, sc);
+    return a;
+  }
+}
+
 /* the address a place names. A local's slot is an address by
  * construction; a field rides its base's; a deref is the pointer. */
 static char *
@@ -389,6 +441,8 @@ emaplace(Em *em, Ast *e)
     fprintf(em->o, "\t%s =l add %s, %lu\n", t, b, (unsigned long) off);
     return t;
   }
+  case Nindex:
+    return idxaddr(em, e); /* the element's own slot */
   case Nun:
     if (e->v.un.op == Tstar)
       return emaexpr(em, e->v.un.e);
@@ -1044,14 +1098,21 @@ emafor(Em *em, Ast *st)
       fprintf(em->o, "\tjnz %s, %s, %s\n", c, lb, lx);
       fprintf(em->o, "%s\n", lb);
       nbase = em->nlocs;
-      { /* the element's address, ptr + i*size: the binding is a
-         * pointer to what the slice lends out (10-iteration.md) */
+      { /* the element's address, ptr + i*size: a slice lends it out
+         * as a pointer (10-iteration.md), an owned array yields the
+         * element itself -- the loop consumed it (10) */
         char *m = newtmp(em);
         char *ea = newtmp(em);
 
         fprintf(em->o, "\t%s =l mul %s, %lu\n", m, i, (unsigned long) sz);
         fprintf(em->o, "\t%s =l add %s, %s\n", ea, ptr, m);
-        emapat(em, st->v.forx.a, typtr(it), 0, ea, lx);
+        if (et->k == Tyarray) {
+          char *sa, *svv;
+
+          subval(em, it, ea, 0, st->v.forx.a, &sa, &svv);
+          emapat(em, st->v.forx.a, it, sa, svv, lx);
+        } else
+          emapat(em, st->v.forx.a, typtr(it), 0, ea, lx);
       }
       emablockval(em, body, &reached);
       em->nlocs = nbase;
@@ -1493,6 +1554,142 @@ emaexpr(Em *em, Ast *e)
         fprintf(em->o, "\t%s %s, %s\n", stins(ft), v, t);
     }
     return t;
+  }
+  case Ntuple: { /* storage first, then a row at a time -- the
+                  * struct rule, rows in order (02-layout.md) */
+    Type *tt = e->ty;
+    Ast **es = e->v.list.ts;
+    usize n = vlen(es), i, off = 0;
+    char *t = mkslot(em, tt);
+
+    for (i = 0; i < n; i++) {
+      Type *rt = es[i]->ty;
+      char *v = emaexpr(em, es[i]);
+      char *p;
+
+      off = alignto(off, alignof_(rt));
+      p = addrplus(em, t, off);
+      if (isagg(rt))
+        fprintf(em->o, "\tblit %s, %s, %lu\n", v, p, (unsigned long) sizeof_(rt));
+      else
+        fprintf(em->o, "\t%s %s, %s\n", stins(rt), v, p);
+      off += sizeof_(rt);
+    }
+    return t;
+  }
+  case Ntupidx: { /* the row's offset, then the row */
+    Type *tt = e->v.tup.e->ty;
+    char *b = emaexpr(em, e->v.tup.e);
+    usize i, off = 0;
+
+    for (i = 0; i < e->v.tup.idx; i++) {
+      off = alignto(off, alignof_(tt->args[i]));
+      off += sizeof_(tt->args[i]);
+    }
+    off = alignto(off, alignof_(e->ty));
+    { /* the row itself: an aggregate is the address, a scalar loads */
+      char *p = addrplus(em, b, off);
+
+      return slotload(em, e->ty, e, p);
+    }
+  }
+  case Nindex: { /* the element's address, then the element */
+    char *p = idxaddr(em, e);
+
+    return slotload(em, e->ty, e, p);
+  }
+  case Nrangeindex: { /* a view: the data plus lo, the length hi-lo */
+    Type *bt = e->v.ridx.e->ty;
+    Type *et = bt->t;
+    usize sz;
+    char *b = emaexpr(em, e->v.ridx.e);
+    char *data = b, *len = 0, *t = mkslot(em, e->ty);
+    char *lo = 0, *hi = 0;
+
+    while (et && et->k == Tymut) /* []mut T: the element's own type */
+      et = et->t;
+    sz = sizeof_(et);
+    if (bt->k == Tyslice) { /* both words of the borrowed view */
+      char *p = newtmp(em);
+
+      data = newtmp(em);
+      len = newtmp(em);
+      fprintf(em->o, "\t%s =l loadl %s\n", data, b);
+      p = addrplus(em, b, WORD);
+      fprintf(em->o, "\t%s =l loadl %s\n", len, p);
+    }
+    if (e->v.ridx.lo)
+      lo = idxl(em, e->v.ridx.lo);
+    if (e->v.ridx.hi)
+      hi = idxl(em, e->v.ridx.hi);
+    else if (bt->k == Tyarray) { /* a[..]: the whole length, a constant */
+      hi = newtmp(em);
+      fprintf(em->o, "\t%s =l copy %lu\n", hi, (unsigned long) bt->n);
+    } /* else a slice: hi is the len that was loaded */
+    if (lo && sz) { /* the data pointer moves; the length counts */
+      char *sc = newtmp(em);
+      char *nd = newtmp(em);
+
+      fprintf(em->o, "\t%s =l mul %s, %lu\n", sc, lo, (unsigned long) sz);
+      fprintf(em->o, "\t%s =l add %s, %s\n", nd, data, sc);
+      data = nd;
+    }
+    if (!hi)
+      hi = len;
+    if (lo) {
+      char *nl = newtmp(em);
+
+      fprintf(em->o, "\t%s =l sub %s, %s\n", nl, hi, lo);
+      hi = nl;
+    }
+    fprintf(em->o, "\tstorel %s, %s\n", data, t);
+    { /* the length rides in the second word */
+      char *p = addrplus(em, t, WORD);
+
+      fprintf(em->o, "\tstorel %s, %s\n", hi, p);
+    }
+    return t;
+  }
+  case Narraylit: {   /* the elements in a row; a slice literal then
+                       * names them with a view of its own */
+    Type *at = e->ty; /* [N]T or []T (01-types.md) */
+    Type *et = at->t;
+    Ast **es = e->v.arrlit.es;
+    usize n = vlen(es), i, sz;
+    char *t;
+
+    while (et && et->k == Tymut) /* []mut T: the element's own type */
+      et = et->t;
+    sz = sizeof_(et);
+    t = newtmp(em);
+    fprintf(em->o, "\t%s =l alloc8 %lu\n", t, (unsigned long) (n && sz ? n * sz : 1));
+    for (i = 0; i < n; i++) { /* element i sits at i * size: no
+                               * padding between, the elements one
+                               * type (02-layout.md) */
+      Type *rt = es[i]->ty;
+      char *v = emaexpr(em, es[i]);
+      char *p = addrplus(em, t, i * sz);
+
+      if (isagg(rt))
+        fprintf(em->o, "\tblit %s, %s, %lu\n", v, p, (unsigned long) sz);
+      else
+        fprintf(em->o, "\t%s %s, %s\n", stins(rt), v, p);
+    }
+    if (at->k != Tyslice)
+      return t; /* the array is its own storage */
+    {           /* the slice: a fresh view, the elements borrowed (01) */
+      char *v = mkslot(em, at);
+
+      fprintf(em->o, "\tstorel %s, %s\n", t, v);
+      { /* the length rides in the second word */
+        char *p = addrplus(em, v, WORD);
+        char *l = newtmp(em);
+
+        fprintf(em->o, "\t%s =l copy %lu\n", l, (unsigned long) n);
+        fprintf(em->o, "\tstorel %s, %s\n", l, p);
+      }
+      return v;
+    }
   }
   case Nif: {
     int reached;

@@ -1,0 +1,12 @@
+/* array literals land in one alloc, every element at i*size; indexing
+ * reads and writes through the same address math, nested arrays keep
+ * their own rows straight */
+fn main() -> i32 {
+  let a = [3]i32{10, 20, 30};
+  let mut n = a[0] + a[1] + a[2];
+  let m = [2][2]i32{[2]i32{1, 2}, [2]i32{3, 4}};
+  n = n + m[0][0] + m[0][1] + m[1][0] + m[1][1];  /* +10 */
+  let i = 1;
+  n = n + a[i];                                   /* +20, a runtime index */
+  n
+}

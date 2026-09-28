@@ -1,0 +1,19 @@
+/* arrays and tuples ride the same ABI classes as the structs did:
+ * small in registers, wide by memory, mixed shapes through calls in
+ * both directions */
+fn first3(a: [3]i32) -> i32 { a[0] + a[1] + a[2] }
+fn mid(t: (i32, i64, i32)) -> i64 { t.1 }
+fn pack() -> (i32, i32) { (41, 1) }
+fn wide() -> [4]i64 { [4]i64{1, 2, 3, 4} }
+fn sum4(a: [4]i64) -> i64 { a[0] + a[1] + a[2] + a[3] }
+fn mix(a: [2]i32, t: (i64, i64)) -> i64 {
+  @cast<i64>(a[0] + a[1]) + t.0 + t.1
+}
+fn main() -> i32 {
+  let n = first3([3]i32{5, 6, 7});        /* 18 */
+  let t = mid((9, 77, 11));               /* 77 */
+  let p = pack();
+  let w = sum4(wide());                   /* 10 */
+  let m = mix([2]i32{10, 20}, (1, 2));    /* 33 */
+  n + @cast<i32>(t) + p.0 + p.1 + @cast<i32>(w) + @cast<i32>(m)  /* 18+77+42+10+33 = 180 */
+}
