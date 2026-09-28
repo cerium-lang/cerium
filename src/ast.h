@@ -113,8 +113,10 @@ struct Ast
     } nm;
     struct
     {
-      Ast **segs; /* Npath: Nseg vector */
-      int   root; /* leading "::" */
+      Ast  **segs; /* Npath: Nseg vector */
+      int    root; /* leading "::" */
+      Sym   *sym;  /* Npath: the fn it names as a value, when it does */
+      Type **tys;  /* Npath: the instantiation the want picked (04) */
     } path;
     struct
     {

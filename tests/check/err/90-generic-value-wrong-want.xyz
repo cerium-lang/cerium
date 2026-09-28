@@ -1,0 +1,7 @@
+/* the want must bind every parameter: T cannot be i32 and i64 at
+ * once (04-generics.md) */
+fn id<T>(x: T) -> T { x }
+fn main() -> i32 {
+  let f: fn(i32) -> i64 = id;
+  f(7)
+}

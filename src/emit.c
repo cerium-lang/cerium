@@ -1406,12 +1406,20 @@ emaexpr(Em *em, Ast *e)
       }
       cerrat(e, "unknown name '%s'", nm);
     }
-    if (s->kind == Sfn) { /* a fn as a value: its address */
+    if (s->kind == Sfn) { /* a fn as a value: its address -- an
+                           * instantiation's own, when the want made
+                           * one, and the chain member the want
+                           * picked (04-generics.md) */
       char *t = newtmp(em);
+      char *nm;
 
-      if (s->next)
-        cerrat(e, "overloads as values arrive with monomorphization (M3d)");
-      fprintf(em->o, "\t%s =l copy $%s\n", t, fsymname(s, s->decl));
+      if (e->v.path.tys)
+        nm = instensure(e->v.path.sym, e->v.path.tys)->name;
+      else if (e->v.path.sym)
+        nm = fsymname(e->v.path.sym, e->v.path.sym->decl);
+      else
+        nm = fsymname(s, s->decl);
+      fprintf(em->o, "\t%s =l copy $%s\n", t, nm);
       return t;
     }
     cerrat(e, "a value of this kind arrives with a later milestone");

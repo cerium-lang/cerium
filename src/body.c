@@ -532,6 +532,41 @@ rexprpath1(Ast *e, Fenv *fe, char *name, Type *want)
   case Sstatic:
     return s->cty;
   case Sfn:
+    if (s->ngparams || s->next) { /* a stencil as a value: the expected
+                                   * type is the whole binding -- id
+                                   * against fn(i32) -> i32 is
+                                   * id<i32> (04-generics.md). A chain
+                                   * picks the member the want fits. */
+      Sym *c;
+
+      if (!want || want->k != Tyfn)
+        berr(e, "'%s' needs an expected fn type here", name);
+      for (c = s; c; c = c->next) {
+        Type **tys = c->ngparams ? tyargs(c->ngparams) : 0;
+        usize  i;
+
+        if (!tys) { /* an ungeneric member: it fits or it does not */
+          if (c->fnty->nargs == want->nargs && tysame(c->fnty, want)) {
+            e->v.path.sym = c;
+            return c->fnty;
+          }
+          continue;
+        }
+        if (c->fnty->nargs != want->nargs)
+          continue;
+        if (!gunify(c->fnty, want, c->gparams, tys, c->ngparams))
+          continue;
+        for (i = 0; i < c->ngparams; i++)
+          if (!tys[i])
+            berr(e, "cannot infer '%s' for '%s' from the expected type", c->gparams[i]->v.gp.name,
+                 c->name);
+        /* the emitter's pick, as a call's writeback (04) */
+        e->v.path.sym = c;
+        e->v.path.tys = tys;
+        return gsubst(c->fnty, c->gparams, tys, c->ngparams);
+      }
+      berr(e, "no '%s' fits %s", name, btys(want));
+    }
     return s->fnty;
   case Stype:
     if (s->tykind == TYenum) {
