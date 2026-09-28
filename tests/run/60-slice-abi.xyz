@@ -2,7 +2,7 @@
  * the ?u8 first() returns is tagged -- two bytes riding one register.
  * hi() and main each grow their own $str pool: both must name home */
 fn first(s: []u8) -> ?u8 {
-  for c in s {               /* c: *u8 -- a slice lends (10) */
+  for c in s {
     return Some(*c);
   }
   return None;
