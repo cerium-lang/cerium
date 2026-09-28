@@ -60,7 +60,7 @@ fn sum(a: []i32) -> i32 {
   let mut s = 0;
 
   for v in a {
-    s = s + v;
+    s = s + *v;                   /* v: *i32 -- a slice lends (10) */
   }
   return s;
 }
@@ -92,8 +92,8 @@ fn nextish() -> ?i32 {
 
 fn find(arr: []i32) -> ?i32 {
   for v in arr {
-    if v > 3 {
-      return Some(v);
+    if *v > 3 {                /* v: *i32 -- a slice lends (10) */
+      return Some(*v);
     };
   }
   return None;

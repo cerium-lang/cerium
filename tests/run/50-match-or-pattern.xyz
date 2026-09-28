@@ -1,0 +1,19 @@
+enum Sign { Neg(i32), Pos(i32), Zero }
+fn main() -> i32 {
+  let a = Sign::Neg(5);
+  let b = Sign::Pos(3);
+  let z = Sign::Zero;
+  let x = match a {
+    Sign::Neg(n) | Sign::Pos(n) => n,
+    Sign::Zero => 0,
+  };
+  let y = match b {
+    Sign::Neg(n) | Sign::Pos(n) => n * 10,
+    Sign::Zero => 1,
+  };
+  let w = match z {
+    Sign::Neg(n) | Sign::Pos(n) => n,
+    Sign::Zero => 7,
+  };
+  x * 10 + y + w
+}

@@ -1,0 +1,25 @@
+/* struct patterns mirror the declaration; .. ignores the rest (09) --
+ * nested, they are the bare form: { x, .. } */
+struct Point { x: i32, y: i32 }
+enum Shape { Rect(Point, Point), Dot(Point), Nil }
+fn main() -> i32 {
+  let s = Shape::Rect(Point { x: 1, y: 2 }, Point { x: 10, y: 20 });
+  let a = match s {
+    Shape::Rect({ x, .. }, { y, .. }) => x + y,
+    Shape::Dot(p) => p.x,
+    Shape::Nil => 0,
+  };
+  let d = Shape::Dot(Point { x: 4, y: 5 });
+  let b = match d {
+    Shape::Rect(_, _) => 0,
+    Shape::Dot({ x, y }) => x * 10 + y,
+    Shape::Nil => 1,
+  };
+  let n = Shape::Nil;
+  let c = match n {
+    Shape::Rect({ x: l, .. }, { x: r, .. }) => l + r,
+    Shape::Dot({ .. }) => 2,
+    Shape::Nil => 3,
+  };
+  a + b + c    /* 21 + 45 + 3 = 69 */
+}

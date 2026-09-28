@@ -1,0 +1,14 @@
+fn main() -> i32 {
+  let o: ?i32 = Some(41);
+  let mut got = 0;
+  let mut runs = 0;
+  for v in o {
+    runs = runs + 1;
+    got = v;
+  }
+  let e: ?i32 = None;
+  for v in e {
+    runs = runs + 5;
+  }
+  runs * 100 + got
+}

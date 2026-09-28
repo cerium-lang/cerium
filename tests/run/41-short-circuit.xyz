@@ -1,0 +1,26 @@
+fn bump(p: *mut i32) -> i32 {
+  *p += 1;
+  *p
+}
+fn main() -> i32 {
+  let mut n1 = 0;
+  let mut n2 = 0;
+  let mut n3 = 0;
+  let mut n4 = 0;
+  let p1 = &mut n1;
+  let p2 = &mut n2;
+  let p3 = &mut n3;
+  let p4 = &mut n4;
+  let a = false && (bump(p1) > 0);
+  let b = true || (bump(p2) > 0);
+  let c = true && (bump(p3) > 0);
+  let d = false || (bump(p4) > 0);
+  let t = if a { 0 } else if b { 2 } else { 1 };
+  let u = if c { 3 } else { 30 };
+  let v = if d { 4 } else { 40 };
+  let s1 = *p1;
+  let s2 = *p2;
+  let s3 = *p3;
+  let s4 = *p4;
+  (s1 + s2 + s3 + s4) * 100 + t + u + v
+}

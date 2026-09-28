@@ -1,0 +1,18 @@
+/* FLET: refits the pattern each round; a misfit stops the loop.
+ * The cell behind the pointer is the producer -- each round re-reads */
+fn main() -> i32 {
+  let mut cell: ?i32 = Some(0);
+  let cp = &mut cell;
+  let mut runs = 0;
+  let mut sum = 0;
+  for let Some(v) = *cp {
+    runs = runs + 1;
+    sum = sum + v;
+    if runs < 3 {
+      *cp = Some(runs);   /* the next round's payload */
+    } else {
+      *cp = None;         /* the misfit stops the loop */
+    };
+  }
+  sum * 10 + runs    /* (0+1+2)*10 + 3 = 33 */
+}

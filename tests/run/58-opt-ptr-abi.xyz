@@ -1,0 +1,16 @@
+/* issue #18: a niche ?*mut i32 returned from a call -- the option is one
+ * pointer in a register on the way out, a stored slot again on arrival */
+fn find(p: *mut i32) -> ?*mut i32 {
+  let v = *p;
+  if v > 0 { return Some(p); };
+  return None;
+}
+fn main() -> i32 {
+  let mut n = 9;
+  let q = &mut n;
+  let o = find(q);
+  match o {
+    Some(p) => { let v = *p; v },
+    None => 0,
+  }
+}

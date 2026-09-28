@@ -1,0 +1,16 @@
+/* arm order decides: the first fitting arm wins (09) */
+fn main() -> i32 {
+  let b = 5;
+  let p = &b;
+  let r: *i32?() = Err(p);
+  let x = match r {
+    Ok => 1,
+    Err(q) => 2,
+  };
+  let s: *i32?() = Err(p);
+  let y = match s {
+    Err(q) => 2,
+    Ok => 1,
+  };
+  x * 10 + y    /* 22 */
+}

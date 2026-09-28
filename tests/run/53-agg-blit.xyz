@@ -1,0 +1,9 @@
+/* assigning an aggregate blits the memory: the old fields are gone */
+struct Inner { v: i32 }
+struct Outer { head: Inner, tail: i32 }
+fn main() -> i32 {
+  let mut a = Outer { head: Inner { v: 1 }, tail: 2 };
+  let b = Outer { head: Inner { v: 70 }, tail: 80 };
+  a = b;
+  a.head.v + a.tail    /* 150 */
+}

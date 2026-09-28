@@ -19,6 +19,7 @@
 
 #include "ast.h"
 #include "check.h"
+#include "die.h"
 #include "emit.h"
 #include "sym.h"
 #include "type.h"
@@ -136,6 +137,34 @@ picktag(Sym *s)
 }
 
 static usize sizeof_(Type *t);
+
+/* an enum's niche encoding, if it has one: the null of a pointer
+ * payload stands for the payloadless variant. Option<T> and
+ * Result<T, E> are the two shapes (01-types.md, 02-layout.md); any
+ * other enum, or a payload no pointer family lives in, tags. */
+enum
+{
+  NICHE_NONE,   /* a tag: the ordinary enum */
+  NICHE_OPT,    /* ?T, T a pointer family: Some is the value, None the null */
+  NICHE_OKUNIT, /* E?T, T=(): Ok is the null, Err the value */
+  NICHE_ERRUNIT /* E?T, E=(): Err is the null, Ok the value */
+};
+
+static int
+nicheness(Type *t)
+{
+  if (!t || t->k != Tyenum || t->nargs != (usize) t->sym->ngparams)
+    return NICHE_NONE;
+  if (t->sym == sym_option && t->nargs == 1 && hasniche(t->args[0]))
+    return NICHE_OPT;
+  if (t->sym == sym_result && t->nargs == 2) {
+    if (t->args[0]->k == Tyunit && hasniche(t->args[1]))
+      return NICHE_OKUNIT;
+    if (t->args[1]->k == Tyunit && hasniche(t->args[0]))
+      return NICHE_ERRUNIT;
+  }
+  return NICHE_NONE;
+}
 
 static usize
 alignof_(Type *t)
@@ -382,6 +411,55 @@ sizeof_(Type *t)
   }
 }
 
+/* where a variant's payloads begin inside a tagged enum: right
+ * after the tag, aligned to the payloads. The payload fields
+ * themselves are packed (02-layout.md: the payloads are a union,
+ * each side laid end to end). */
+static usize
+payloadoff(Type *t)
+{
+  int   packed;
+  usize alignk, tag, pal = 1, pmax = 0, i, j;
+
+  layoutattrs(t->sym->decl, &packed, &alignk);
+  tag = sizeof_(t->sym->tagty ? t->sym->tagty : picktag(t->sym));
+  for (i = 0; i < t->sym->nvariants; i++) {
+    Variant *v = &t->sym->variants[i];
+    Type   **ps;
+    usize    np, k, vsz = 0;
+
+    if (v->named) {
+      ps = tyargs(v->nfields);
+      for (k = 0; k < v->nfields; k++)
+        ps[k] = v->fields[k].ty;
+      np = v->nfields;
+    } else {
+      ps = v->payload;
+      np = v->npayload;
+    }
+    for (j = 0; j < np; j++) {
+      Type *pt = gsubst(ps[j], t->sym->gparams, t->args, t->nargs);
+      usize pa = alignof_(pt);
+
+      vsz += sizeof_(pt);
+      if (pa > pal)
+        pal = pa;
+    }
+    if (vsz > pmax)
+      pmax = vsz;
+  }
+  if (packed || !pmax)
+    return tag;
+  return alignto(tag, pal);
+}
+
+/* a variant's tag width, as a type: stins/ldins take it */
+static Type *
+tagtyof(Type *t)
+{
+  return t->sym->tagty ? t->sym->tagty : picktag(t->sym);
+}
+
 /* -- the .ssa text (M3b: expressions, calls, aggregates, data) ------------- */
 
 /* qbe's letter for a scalar. () returns a w anyway: cc's crt reads
@@ -423,6 +501,345 @@ isagg(Type *t)
 {
   return t && (t->k == Tystruct || t->k == Tyunion || t->k == Tyenum || t->k == Tyarray ||
                t->k == Tytuple || t->k == Tyslice || t->k == Tydyn);
+}
+
+/* -- the aggregate calling convention (M3d) --------------------------------
+ * xyz's own convention is the platform's C convention (01-types.md):
+ * where a value crosses a call, an aggregate wears a :type, the
+ * value is the address of its storage either way, and qbe lowers
+ * the rest -- register eightbytes, memory, an sret. The registry
+ * names every aggregate that crosses a call; the declarations
+ * print ahead of the functions, the order qbe reads. */
+typedef struct
+{
+  Type *ty;   /* 0: a helper union, only its declaration matters */
+  char *name; /* ":t.N"; a niche shape shares its payload's */
+  char *decl; /* the "type :" line, 0 when riding another's */
+} TyDef;
+
+static TyDef *tydefs; /* vnew'd lazily: vappend refuses NULL */
+
+static usize dsn; /* one a data symbol: $flt.N, $str.N. File-wide,
+                   * not per fn -- the names are global, so a per-fn
+                   * counter would hand two fns the same $flt.1 */
+
+static char *typereg(Type *t);
+
+/* a niche shape is its payload's own size (01-types.md) -- and the
+ * payload is always a pointer, hasniche only seeing those, so at a
+ * call a niche ?T or E?T is the scalar 'l'. The aggregate half of
+ * the convention starts past them. */
+static int
+isabb(Type *t)
+{
+  return isagg(t) && !nicheness(t);
+}
+
+/* qbe's letter for one scalar field */
+static char
+qbefty(Type *t)
+{
+  if (t->k == Tyint) {
+    switch (t->num) {
+    case IN_I8:
+    case IN_U8:
+      return 'b';
+    case IN_I16:
+    case IN_U16:
+      return 'h';
+    case IN_I32:
+    case IN_U32:
+      return 'w';
+    case IN_F32:
+      return 's';
+    case IN_F64:
+      return 'd';
+    default:
+      return 'l';
+    }
+  }
+  return t->k == Tybool ? 'b' : 'l'; /* the pointer family */
+}
+
+/* one field of a type expression: its letter, or the nested
+ * aggregate's registered name -- typereg has already run on it. A
+ * niche field is its one pointer: 'l', never a type of its own */
+static char *
+fieldty(Type *ft)
+{
+  static char b[2][16];
+  static int  r = 0;
+
+  r = (r + 1) % 2;
+  if (!isabb(ft)) {
+    if (ft->k == Tyenum) { /* the niche shape: one pointer */
+      b[r][0] = 'l';
+      b[r][1] = 0;
+      return b[r];
+    }
+    b[r][0] = qbefty(ft);
+    b[r][1] = 0;
+    return b[r];
+  }
+  return typereg(ft);
+}
+
+/* the natural size of a field sequence -- the struct rule -- to
+ * compare against a payload's packed one (02-layout.md: the
+ * payloads are a union, each side laid end to end) */
+static usize
+naturalsize(Type **ps, usize np)
+{
+  usize off = 0, al = 1, i;
+
+  for (i = 0; i < np; i++) {
+    usize a = alignof_(ps[i]);
+
+    off = alignto(off, a);
+    off += sizeof_(ps[i]);
+    if (a > al)
+      al = a;
+  }
+  return alignto(off, al);
+}
+
+/* the registry name of an aggregate, making it -- and everything it
+ * holds -- first. Scalars never arrive: sigty keeps them out. */
+static char *
+typereg(Type *t)
+{
+  char  buf[2048];
+  char  nm[24];
+  char *cp;
+  TyDef d;
+  usize i, o, myidx;
+
+  while (t && t->k == Tymut)
+    t = t->t; /* the mut layer takes no space */
+  if (tydefs)
+    for (i = 0; i < vlen(tydefs); i++)
+      if (tydefs[i].ty == t)
+        return tydefs[i].name;
+  if (!tydefs)
+    tydefs = vnew(TyDef, 0);
+  memset(&d, 0, sizeof d);
+  d.ty = t;
+  sprintf(nm, ":t.%lu", (unsigned long) vlen(tydefs));
+  { /* take the number before anything this holds registers: a
+     * nested type would otherwise land on the same one */
+    char *name = arenaalloc(strlen(nm) + 1);
+
+    strcpy(name, nm);
+    d.name = name;
+    vappend(&tydefs, &d); /* the decl lands below, once made */
+    myidx = vlen(tydefs) - 1;
+  }
+  switch (t->k) {
+  case Tystruct: {
+    Field *fs = t->sym->fields;
+    usize  nf = t->sym->nfields;
+    int    packed;
+    usize  alignk;
+
+    layoutattrs(t->sym->decl, &packed, &alignk);
+    if (packed) { /* qbe's types lay out like C; a packed struct
+                   * does not: opaque, and memory carries it right */
+      sprintf(buf, "type %s = align 1 { %lu }", nm, (unsigned long) sizeof_(t));
+      break;
+    }
+    o = sprintf(buf, "type %s = align %lu { ", nm, (unsigned long) alignof_(t));
+    for (i = 0; i < nf; i++) {
+      Type *ft = gsubst(fs[i].ty, t->sym->gparams, t->args, t->nargs);
+
+      if (isagg(ft))
+        typereg(ft); /* the nested one names itself first */
+      o += sprintf(buf + o, "%s%s", i ? ", " : "", fieldty(ft));
+      if (o + 32 >= sizeof buf)
+        die("a struct too wide for the emitter's line");
+    }
+    sprintf(buf + o, " }");
+    break;
+  }
+  case Tytuple:
+    o = sprintf(buf, "type %s = align %lu { ", nm, (unsigned long) alignof_(t));
+    for (i = 0; i < t->nargs; i++) {
+      if (isagg(t->args[i]))
+        typereg(t->args[i]);
+      o += sprintf(buf + o, "%s%s", i ? ", " : "", fieldty(t->args[i]));
+      if (o + 32 >= sizeof buf)
+        die("a tuple too wide for the emitter's line");
+    }
+    sprintf(buf + o, " }");
+    break;
+  case Tyunion: {
+    Field *fs = t->sym->fields;
+    usize  nf = t->sym->nfields;
+    int    packed;
+    usize  alignk;
+
+    layoutattrs(t->sym->decl, &packed, &alignk);
+    if (packed) { /* ditto: opaque */
+      sprintf(buf, "type %s = align 1 { %lu }", nm, (unsigned long) sizeof_(t));
+      break;
+    }
+    o = sprintf(buf, "type %s = align %lu { ", nm, (unsigned long) alignof_(t));
+    for (i = 0; i < nf; i++) { /* every member its own group */
+      Type *ft = gsubst(fs[i].ty, t->sym->gparams, t->args, t->nargs);
+
+      if (isagg(ft))
+        typereg(ft);
+      o += sprintf(buf + o, "%s{ %s }", i ? " " : "", fieldty(ft));
+      if (o + 32 >= sizeof buf)
+        die("a union too wide for the emitter's line");
+    }
+    sprintf(buf + o, " }");
+    break;
+  }
+  case Tyslice:
+    sprintf(buf, "type %s = align %lu { l, l }", nm, (unsigned long) WORD);
+    break;
+  case Tyarray: {
+    Type *et = t->t;
+
+    if (!t->n)
+      die("an empty array crossing a call arrives with its iterators");
+    if (isagg(et))
+      typereg(et);
+    sprintf(buf, "type %s = align %lu { %s %lu }", nm, (unsigned long) alignof_(t), fieldty(et),
+            (unsigned long) t->n);
+    break;
+  }
+  case Tydyn:
+    die("dyn values arrive with dispatch (06-dispatch.md)");
+    return 0;    /* unreachable */
+  case Tyenum: { /* tagged: the tag, then the payloads as a union --
+                  * the niche shapes never arrive, isabb holding them
+                  * out as the scalars they are at a call */
+    {
+      Variant *vs = t->sym->variants;
+      usize    nv = t->sym->nvariants, k, j;
+      Type  ***inst = arenaalloc(nv * sizeof *inst); /* each side's
+                                                      * payload, instantiated */
+      usize *nps = arenaalloc(nv * sizeof *nps);
+      usize  pmax = 0, pal = 1;
+      int    natural = 1, packed;
+      usize  alignk;
+      char   un[24];
+      TyDef  du;
+
+      layoutattrs(t->sym->decl, &packed, &alignk);
+      memset(&du, 0, sizeof du);
+      for (i = 0; i < nv; i++) {
+        Variant *v = &vs[i];
+        Type   **ps;
+        usize    np, vsz = 0;
+
+        if (v->named) {
+          ps = tyargs(v->nfields);
+          for (k = 0; k < v->nfields; k++)
+            ps[k] = v->fields[k].ty;
+          np = v->nfields;
+        } else {
+          ps = v->payload;
+          np = v->npayload;
+        }
+        inst[i] = tyargs(np);
+        nps[i] = np;
+        for (j = 0; j < np; j++) {
+          inst[i][j] = gsubst(ps[j], t->sym->gparams, t->args, t->nargs);
+          vsz += sizeof_(inst[i][j]); /* end to end (02-layout.md) */
+          if (alignof_(inst[i][j]) > pal)
+            pal = alignof_(inst[i][j]);
+        }
+        if (vsz > pmax)
+          pmax = vsz;
+        if (np && naturalsize(inst[i], np) != vsz)
+          natural = 0; /* a side C would pad: the union cannot be
+                        * spelled as a type */
+      }
+      if (!pmax) { /* no payload anywhere: the tag alone (02) */
+        sprintf(buf, "type %s = align %lu { %c }", nm, (unsigned long) alignof_(t),
+                qbefty(tagtyof(t)));
+        break;
+      }
+      sprintf(un, ":t.%lu", (unsigned long) vlen(tydefs));
+      if (packed || !natural) { /* opaque: memory always carries a
+                                 * shape the types cannot spell */
+        char ub[128];
+
+        sprintf(ub, "type %s = align %lu { %lu }", un, packed ? 1ul : (unsigned long) pal,
+                (unsigned long) pmax);
+        cp = arenaalloc(strlen(ub) + 1);
+        strcpy(cp, ub);
+        du.ty = 0;
+        du.name = arenaalloc(strlen(un) + 1);
+        strcpy(du.name, un);
+        du.decl = cp;
+        vappend(&tydefs, &du);
+      } else {
+        char ub[2048];
+        int  firstgrp = 1;
+
+        o = sprintf(ub, "type %s = align %lu { ", un, (unsigned long) pal);
+        for (i = 0; i < nv; i++) {
+          if (!nps[i])
+            continue; /* a payloadless side joins nothing */
+          o += sprintf(ub + o, "%s{ ",
+                       firstgrp ? "" : " "); /* qbe
+                                              * juxtaposes union members -- no commas */
+          firstgrp = 0;
+          for (j = 0; j < nps[i]; j++) {
+            if (isagg(inst[i][j]))
+              typereg(inst[i][j]);
+            o += sprintf(ub + o, "%s%s", j ? ", " : "", fieldty(inst[i][j]));
+          }
+          o += sprintf(ub + o, " }");
+        }
+        sprintf(ub + o, " }");
+        du.ty = 0;
+        du.name = arenaalloc(strlen(un) + 1);
+        strcpy(du.name, un);
+        du.decl = arenaalloc(strlen(ub) + 1);
+        strcpy(du.decl, ub);
+        vappend(&tydefs, &du);
+      }
+      sprintf(buf, "type %s = align %lu { %c, %s }", nm, (unsigned long) alignof_(t),
+              qbefty(tagtyof(t)), un);
+      break;
+    }
+  }
+  default:
+    die("this aggregate arrives with a later milestone");
+    return 0; /* unreachable */
+  }
+  cp = arenaalloc(strlen(buf) + 1);
+  strcpy(cp, buf);
+  tydefs[myidx].decl = cp; /* the entry took its number above */
+  return d.name;
+}
+
+/* the annotation a value wears where it crosses a call: a scalar
+ * names its class, an aggregate names its type. at is the node a
+ * diagnostic would point at. */
+static char *
+sigty(Type *t, Ast *at)
+{
+  static char b[2];
+
+  while (t && t->k == Tymut)
+    t = t->t;
+  if (!isabb(t)) {
+    if (t && t->k == Tyenum) { /* the niche shape: one pointer in a
+                                * register, not a type of its own */
+      b[0] = 'l';
+      b[1] = 0;
+      return b;
+    }
+    b[0] = qbety(t, at);
+    b[1] = 0;
+    return b;
+  }
+  return typereg(t);
 }
 
 /* a load instruction for a scalar slot: the width, and the sign
@@ -544,10 +961,24 @@ struct Em
 {
   FILE  *o;
   usize  tmp;   /* one a temporary: %t.N */
-  usize  strn;  /* one a string: $str.N */
   char **datas; /* the data lines, printed after the fns */
   ELoc  *locs;  /* the bindings in scope */
   usize  nlocs;
+  usize  ormark; /* (usize)-1 when no or-pattern is being emitted:
+                  * the reuse scan is off then -- a same-named slot
+                  * an earlier pattern made is a different binding,
+                  * not a shared one. Under an or-pattern it is the
+                  * first pre-bound slot: the alternatives bind the
+                  * same names, and a later one reuses the slot the
+                  * pre-binding made (09-match.md) -- else the join
+                  * would read a slot only one path defined */
+  usize lbl;     /* one a block label: @L.N */
+  struct
+  {
+    char *brk;  /* where break lands */
+    char *cont; /* where continue lands */
+  } loops[32];  /* the fors in effect, innermost last */
+  int nloops;
 };
 
 static char *
@@ -557,6 +988,125 @@ newtmp(Em *em)
 
   sprintf(s, "%%t.%lu", (unsigned long) ++em->tmp);
   return s;
+}
+
+/* a niche value sits in storage as one pointer; where it crosses a
+ * call the signature says 'l' (isabb) -- load it out to hand over */
+static char *
+nicheout(Em *em, Type *t, char *v)
+{
+  char *tv;
+
+  if (!t || !nicheness(t))
+    return v;
+  tv = newtmp(em);
+  fprintf(em->o, "\t%s =l loadl %s\n", tv, v);
+  return tv;
+}
+
+/* ...and store what came back: the value model stays an address */
+static char *
+nichein(Em *em, Type *t, char *v)
+{
+  char *slot;
+
+  if (!t || !nicheness(t))
+    return v;
+  slot = newtmp(em);
+  fprintf(em->o, "\t%s =l alloc8 8\n", slot);
+  fprintf(em->o, "\tstorel %s, %s\n", v, slot);
+  return slot;
+}
+
+/* a block label, and the jump to one: qbe's blocks end in an
+ * explicit jump, so control flow reads as written */
+static char *
+newlbl(Em *em)
+{
+  char *s = arenaalloc(16);
+
+  sprintf(s, "@L.%lu", (unsigned long) ++em->lbl);
+  return s;
+}
+
+static void
+jump(Em *em, char *lbl)
+{
+  fprintf(em->o, "\tjmp %s\n", lbl);
+}
+
+/* a store/load pair by type, the value-merge primitives: a branch
+ * leaves its value in a slot, the join reads it back. qbe's memory
+ * promotion turns the pair back into a phi, so this costs nothing */
+static char *
+mkslot(Em *em, Type *t)
+{
+  char *s = newtmp(em);
+  usize sz = sizeof_(t) ? sizeof_(t) : 1;
+
+  fprintf(em->o, "\t%s =l alloc8 %lu\n", s, (unsigned long) sz);
+  return s;
+}
+
+static void
+slotstore(Em *em, Type *t, char *v, char *slot)
+{
+  fprintf(em->o, "\t%s %s, %s\n", stins(t), v, slot);
+}
+
+static char *
+slotload(Em *em, Type *t, Ast *at, char *slot)
+{
+  char *v = newtmp(em);
+
+  if (isagg(t))
+    return slot; /* an aggregate's value is the address it sits at */
+  fprintf(em->o, "\t%s =%c %s %s\n", v, qbety(t, at), ldins(t), slot);
+  return v;
+}
+
+/* a value into a slot, by type: the store/load pair a scalar takes,
+ * the blit an aggregate takes */
+static void
+slotput(Em *em, Type *t, char *v, char *slot)
+{
+  if (isagg(t))
+    fprintf(em->o, "\tblit %s, %s, %lu\n", v, slot, (unsigned long) sizeof_(t));
+  else
+    fprintf(em->o, "\t%s %s, %s\n", stins(t), v, slot);
+}
+
+/* a base plus a constant offset: the address a field or a payload
+ * lives at. Offset zero is the base unchanged -- the add buys nothing */
+static char *
+addrplus(Em *em, char *b, usize off)
+{
+  char *t;
+
+  if (!off)
+    return b;
+  t = newtmp(em);
+  fprintf(em->o, "\t%s =l add %s, %lu\n", t, b, (unsigned long) off);
+  return t;
+}
+
+/* the value at an offset inside storage: the address itself when
+ * the type is an aggregate, the word loaded from it when not */
+static void
+subval(Em *em, Type *t, char *addr, usize off, Ast *at, char **paddr, char **pval)
+{
+  char *ap = addrplus(em, addr, off);
+
+  if (isagg(t)) {
+    *paddr = ap;
+    *pval = 0;
+  } else {
+    char *v = newtmp(em);
+
+    fprintf(em->o, "\t%s =%c %s %s\n", v, qbety(t, at), ldins(t), ap);
+    *paddr = 0;
+    *pval = v;
+  }
 }
 
 /* a binding, by name; innermost last, so the search runs backwards */
@@ -601,7 +1151,12 @@ fsymname(Sym *s, Ast *it)
 }
 
 static char *emaexpr(Em *em, Ast *e);
+static char *emablockval(Em *em, Ast *body, int *reached);
 static char *emaplace(Em *em, Ast *e);
+static void  emafor(Em *em, Ast *st);
+static void  emapat(Em *em, Ast *p, Type *t, char *addr, char *val, char *fail);
+static char *emamatch(Em *em, Ast *e, int *reached);
+static char *emavariant(Em *em, Type *t, Variant *v, Ast **args, usize n, Ast *at);
 
 /* a scalar's storage touched by its load or store: the address is
  * emaplace's, the temporary qbety names the domain */
@@ -647,6 +1202,679 @@ emaplace(Em *em, Ast *e)
   return 0; /* unreachable */
 }
 
+/* an if: the branches each leave their value in a slot, the join
+ * reads it back -- qbe's memory promotion turns the pair into a
+ * phi, so nothing is lost. Reached says whether control comes out
+ * the end at all; a branch that returns or breaks takes its own
+ * way out, and the join only owes the paths that arrive. */
+static char *
+emaif(Em *em, Ast *e, int *reached)
+{
+  Type *t = e->ty;
+  char *c = emaexpr(em, e->v.ifx.cond);
+  char *lt = newlbl(em);
+  char *lf = e->v.ifx.els ? newlbl(em) : 0;
+  char *lend = newlbl(em);
+  char *slot = 0;
+  int   rt, re = 1;
+  char *vt = 0;
+
+  *reached = 1;
+  if (lf && t && t->k != Tyunit)
+    slot = mkslot(em, t);
+  fprintf(em->o, "\tjnz %s, %s, %s\n", c, lt, lf ? lf : lend);
+  fprintf(em->o, "%s\n", lt);
+  vt = emablockval(em, e->v.ifx.then, &rt);
+  if (slot && rt)
+    slotput(em, t, vt, slot);
+  if (rt)
+    jump(em, lend);
+  if (lf) {
+    fprintf(em->o, "%s\n", lf);
+    if (e->v.ifx.els->k == Nif) { /* else if: the chain folds in */
+      int r2;
+
+      vt = emaif(em, e->v.ifx.els, &r2);
+      if (slot && r2)
+        slotput(em, t, vt, slot);
+      if (r2)
+        jump(em, lend);
+      re = r2;
+    } else {
+      vt = emablockval(em, e->v.ifx.els, &re);
+      if (slot && re)
+        slotput(em, t, vt, slot);
+      if (re)
+        jump(em, lend);
+    }
+    *reached = rt || re;
+  }
+  if (!*reached)
+    return 0;  /* every way out left already: no join to read */
+  if (!slot) { /* the statement form, or an implicit unit */
+    fprintf(em->o, "%s\n", lend);
+    return 0;
+  }
+  fprintf(em->o, "%s\n", lend);
+  return slotload(em, t, e, slot);
+}
+
+/* an arm's body: a block carries statements, anything else is the
+ * value itself. Reached says whether control comes out the end. */
+static char *
+armbody(Em *em, Ast *b, int *reached)
+{
+  if (b->k == Nblock)
+    return emablockval(em, b, reached);
+  *reached = 1;
+  return emaexpr(em, b);
+}
+
+/* construct a variant: the value of e->ty, the enum the checker
+ * wrote back. A niche enum is one pointer -- the payloadless side
+ * is its null; a tagged enum is the discriminant, then the payloads
+ * packed after it (02-layout.md). */
+static char *
+emavariant(Em *em, Type *t, Variant *v, Ast **args, usize n, Ast *at)
+{
+  Sym  *es = t->sym;
+  int   nc = nicheness(t);
+  char *s = newtmp(em);
+  usize sz = sizeof_(t) ? sizeof_(t) : 1;
+
+  fprintf(em->o, "\t%s =l alloc8 %lu\n", s, (unsigned long) sz);
+  if (nc != NICHE_NONE) {
+    char *nulln = nc == NICHE_OPT ? "None" : nc == NICHE_OKUNIT ? "Ok" : "Err";
+
+    if (symvarfind(es, nulln) == v)
+      fprintf(em->o, "\tstorel 0, %s\n", s); /* the payloadless side */
+    else {                                   /* the value side: one pointer payload */
+      Type *pt = gsubst(v->payload[0], es->gparams, t->args, t->nargs);
+      char *av = emaexpr(em, args[0]);
+
+      fprintf(em->o, "\t%s %s, %s\n", stins(pt), av, s);
+    }
+    return s;
+  }
+  { /* the discriminant, then the payloads packed after it */
+    Type  *tt = tagtyof(t);
+    Type **ps;
+    usize  np, i, off = payloadoff(t);
+
+    fprintf(em->o, "\t%s %lu, %s\n", stins(tt), (unsigned long) v->disc, s);
+    if (v->named) {
+      ps = tyargs(v->nfields);
+      for (i = 0; i < v->nfields; i++)
+        ps[i] = gsubst(v->fields[i].ty, es->gparams, t->args, t->nargs);
+      np = v->nfields;
+    } else {
+      ps = v->payload && v->npayload ? tyargs(v->npayload) : 0;
+      if (ps)
+        for (i = 0; i < v->npayload; i++)
+          ps[i] = gsubst(v->payload[i], es->gparams, t->args, t->nargs);
+      np = ps ? v->npayload : 0;
+    }
+    if (n != np) /* the checker saw this: not reachable, only honest */
+      cerrat(at, "'%s' carries %lu payloads, %lu given", v->name, (unsigned long) np,
+             (unsigned long) n);
+    for (i = 0; i < np; i++) {
+      char *av = emaexpr(em, args[i]);
+      char *p = addrplus(em, s, off);
+
+      if (isagg(ps[i]))
+        fprintf(em->o, "\tblit %s, %s, %lu\n", av, p, (unsigned long) sizeof_(ps[i]));
+      else
+        fprintf(em->o, "\t%s %s, %s\n", stins(ps[i]), av, p);
+      off += sizeof_(ps[i]);
+    }
+  }
+  return s;
+}
+
+/* bind a name to a value: an aggregate binds the storage address it
+ * already has, a scalar gets a slot of its own -- the shape a let
+ * gives it. Val may be absent (a unit): nothing to store then. */
+static void
+patbindv(Em *em, char *name, Type *t, char *addr, char *val)
+{
+  char *slot;
+  usize i;
+
+  if (addr) { /* an aggregate binds the storage it sits at */
+    locbind(em, name, addr, t);
+    return;
+  }
+  if (em->ormark != (usize) -1) /* an or-pattern is being emitted:
+                                 * a sibling alternative already bound this name -- the paths
+                                 * join, so the value waits in the pre-bound slot */
+    for (i = em->ormark; i < em->nlocs; i++)
+      if (strcmp(em->locs[i].name, name) == 0) {
+        if (val && sizeof_(t))
+          fprintf(em->o, "\t%s %s, %s\n", stins(t), val, em->locs[i].slot);
+        return;
+      }
+  slot = newtmp(em);
+  fprintf(em->o, "\t%s =l alloc8 %lu\n", slot, (unsigned long) (sizeof_(t) ? sizeof_(t) : 1));
+  if (val && sizeof_(t))
+    fprintf(em->o, "\t%s %s, %s\n", stins(t), val, slot);
+  locbind(em, name, slot, t);
+}
+
+/* every name a pattern binds, with the type the checker wrote back
+ * on the node: an or-pattern pre-binds them once, before its first
+ * test, so every alternative stores into the same slot -- a slot an
+ * alternative made itself would be undefined on its sibling's path */
+typedef struct
+{
+  char *name;
+  Type *ty;
+} PBind;
+
+static void
+patboundnames(Ast *p, PBind **out)
+{
+  switch (p->k) {
+  case Npath:
+    if (vlen(p->v.path.segs) == 1) {
+      PBind b;
+
+      b.name = p->v.path.segs[0]->v.seg.name;
+      b.ty = p->ty;
+      vappend(out, &b);
+    }
+    return;
+  case Nppath: {
+    Ast **segs = p->v.ppath.path->v.path.segs;
+
+    if (vlen(segs) == 1 && !p->v.ppath.payload && !p->v.ppath.named) {
+      PBind b;
+
+      /* a short variant name binds nothing, but telling it from a
+       * binding wants the type this walk does not carry; the slot
+       * it still gets is never stored to nor read */
+      b.name = segs[0]->v.seg.name;
+      b.ty = p->ty;
+      vappend(out, &b);
+      return;
+    }
+    if (p->v.ppath.payload) { /* the sub-patterns, in order */
+      Ast **ps = p->v.ppath.payload;
+      usize n = vlen(ps), i;
+
+      for (i = 0; i < n; i++)
+        if (p->v.ppath.named && !ps[i]->v.init.e) {
+          PBind b;
+
+          b.name = ps[i]->v.init.name;
+          b.ty = ps[i]->ty;
+          vappend(out, &b);
+        } else
+          patboundnames(p->v.ppath.named ? ps[i]->v.init.e : ps[i], out);
+    }
+    return;
+  }
+  case Nptuple: {
+    Ast **ps = p->v.list.ts;
+    usize n = vlen(ps), i;
+
+    for (i = 0; i < n; i++)
+      patboundnames(ps[i], out);
+    return;
+  }
+  case Npstruct: {
+    Ast **fs = p->v.pstruct.fields;
+    usize n = vlen(fs), i;
+
+    for (i = 0; i < n; i++)
+      if (!fs[i]->v.init.e) {
+        PBind b;
+
+        b.name = fs[i]->v.init.name;
+        b.ty = fs[i]->ty;
+        vappend(out, &b);
+      } else
+        patboundnames(fs[i]->v.init.e, out);
+    return;
+  }
+  case Npor: /* the alternatives bind the same names; the first says */
+    patboundnames(p->v.list.ts[0], out);
+    return;
+  default: /* wild, unit, literals: nothing to bind */
+    return;
+  }
+}
+
+/* match a pattern: on success the bindings are in scope and control
+ * falls through, on failure it leaves for fail. The value is the
+ * storage address when the type is an aggregate, the loaded
+ * temporary otherwise -- exactly one of the two. A NULL fail is
+ * let's irrefutable context: a variant pattern there is a compile
+ * error, not a runtime one (09-match.md). */
+static void
+emapat(Em *em, Ast *p, Type *t, char *addr, char *val, char *fail)
+{
+  while (t && t->k == Tymut) /* the permission layer stays behind */
+    t = t->t;
+  switch (p->k) {
+  case Npwild:
+  case Nunit: /* () fits (): the checker saw to it */
+    return;
+  case Npath:
+    patbindv(em, p->v.path.segs[0]->v.seg.name, t, addr, val);
+    return;
+  case Nppath: {
+    Ast    **segs = p->v.ppath.path->v.path.segs;
+    Sym     *es;
+    Variant *v;
+
+    if (vlen(segs) == 1 && !p->v.ppath.payload && !p->v.ppath.named &&
+        (!t || t->k != Tyenum || !symvarfind(t->sym, segs[0]->v.seg.name))) {
+      patbindv(em, segs[0]->v.seg.name, t, addr, val); /* the bare binding */
+      return;
+    }
+    if (vlen(segs) == 2) { /* Enum::Variant */
+      es = symfind(segs[0]->v.seg.name);
+      if (!es || es->kind != Stype || es->tykind != TYenum)
+        cerrat(p, "'%s' is not an enum", segs[0]->v.seg.name);
+    } else { /* the short name: the matched type picks it out */
+      if (!t || t->k != Tyenum)
+        cerrat(p, "this pattern needs an enum's value");
+      es = t->sym;
+    }
+    v = symvarfind(es, segs[vlen(segs) - 1]->v.seg.name);
+    if (!v)
+      cerrat(p, "'%s' has no variant '%s'", es->name, segs[vlen(segs) - 1]->v.seg.name);
+    if (!fail)
+      cerrat(p, "a let pattern is irrefutable; use match or for let (09-match.md)");
+    {
+      int nc = nicheness(t);
+
+      if (nc != NICHE_NONE) { /* one pointer: the payloadless side
+                               * rides the null */
+        char *nulln = nc == NICHE_OPT ? "None" : nc == NICHE_OKUNIT ? "Ok" : "Err";
+        int   isnull = symvarfind(es, nulln) == v;
+        char *pv = newtmp(em);
+        char *c = newtmp(em);
+        char *ok = newlbl(em);
+
+        fprintf(em->o, "\t%s =l loadl %s\n", pv, addr);
+        if (isnull)
+          fprintf(em->o, "\t%s =w ceql %s, 0\n", c, pv);
+        else
+          fprintf(em->o, "\t%s =w cnel %s, 0\n", c, pv);
+        fprintf(em->o, "\tjnz %s, %s, %s\n", c, ok, fail);
+        fprintf(em->o, "%s\n", ok);
+        if (p->v.ppath.payload) { /* the payload, against its pattern */
+          if (isnull)             /* the unit side: the sub-pattern fits a () */
+            emapat(em, p->v.ppath.payload[0], tyunit(), 0, 0, fail);
+          else {
+            Type *pt = gsubst(v->payload[0], es->gparams, t->args, t->nargs);
+
+            emapat(em, p->v.ppath.payload[0], pt, 0, pv, fail);
+          }
+        }
+        return;
+      }
+      { /* the tag, then the payloads packed after it */
+        Type *tt = tagtyof(t);
+        char *tv = newtmp(em);
+        char *c = newtmp(em);
+        char *ok = newlbl(em);
+        int   dom = intwidth(tt) > 4 ? 'l' : 'w';
+
+        fprintf(em->o, "\t%s =%c %s %s\n", tv, dom, ldins(tt), addr);
+        fprintf(em->o, "\t%s =w ceq%c %s, %lu\n", c, dom, tv, (unsigned long) v->disc);
+        fprintf(em->o, "\tjnz %s, %s, %s\n", c, ok, fail);
+        fprintf(em->o, "%s\n", ok);
+        if (p->v.ppath.named) { /* by field name, mirroring the decl */
+          Ast **pfs = p->v.ppath.payload;
+          usize nf = vlen(pfs), k;
+
+          for (k = 0; k < nf; k++) {
+            Ast  *pf = pfs[k];
+            Type *pt = 0;
+            usize fo = payloadoff(t), m;
+
+            for (m = 0; m < v->nfields; m++) {
+              if (m)
+                fo += sizeof_(gsubst(v->fields[m - 1].ty, es->gparams, t->args, t->nargs));
+              if (strcmp(v->fields[m].name, pf->v.init.name) == 0) {
+                pt = gsubst(v->fields[m].ty, es->gparams, t->args, t->nargs);
+                break;
+              }
+            }
+            if (!pt)
+              cerrat(pf, "'%s' has no field '%s'", v->name, pf->v.init.name);
+            { /* the field name binds, or its sub-pattern matches */
+              char *sa, *sv;
+
+              subval(em, pt, addr, fo, pf, &sa, &sv);
+              if (pf->v.init.e)
+                emapat(em, pf->v.init.e, pt, sa, sv, fail);
+              else
+                patbindv(em, pf->v.init.name, pt, sa, sv);
+            }
+          }
+          return;
+        }
+        { /* positional payloads, in declaration order */
+          usize np = v->payload ? v->npayload : 0;
+          usize off = payloadoff(t), i;
+
+          if (vlen(p->v.ppath.payload) != np)
+            cerrat(p, "'%s' carries %lu payloads, %lu given", v->name, (unsigned long) np,
+                   (unsigned long) vlen(p->v.ppath.payload));
+          for (i = 0; i < np; i++) {
+            Type *pt = gsubst(v->payload[i], es->gparams, t->args, t->nargs);
+            Ast  *sp = p->v.ppath.payload[i];
+            char *sa, *sv;
+
+            subval(em, pt, addr, off, sp, &sa, &sv);
+            emapat(em, sp, pt, sa, sv, fail);
+            off += sizeof_(pt);
+          }
+        }
+        return;
+      }
+    }
+  }
+  case Nptuple: { /* the tuple rows, in order */
+    Ast **ps = p->v.list.ts;
+    usize n = vlen(ps), i, off = 0;
+
+    for (i = 0; i < n; i++) {
+      Type *et = t->args[i];
+      char *sa, *sv;
+
+      off = alignto(off, alignof_(et));
+      subval(em, et, addr, off, ps[i], &sa, &sv);
+      emapat(em, ps[i], et, sa, sv, fail);
+      off += sizeof_(et);
+    }
+    return;
+  }
+  case Npstruct: { /* the fields it names; ".." ignores the rest */
+    Ast **fs = p->v.pstruct.fields;
+    usize n = vlen(fs), i;
+
+    for (i = 0; i < n; i++) {
+      Ast  *pf = fs[i];
+      Type *ft = 0;
+      usize k;
+
+      for (k = 0; k < t->sym->nfields; k++)
+        if (strcmp(t->sym->fields[k].name, pf->v.init.name) == 0)
+          break;
+      if (k == t->sym->nfields)
+        cerrat(pf, "'%s' has no field '%s'", t->sym->name, pf->v.init.name);
+      ft = gsubst(t->sym->fields[k].ty, t->sym->gparams, t->args, t->nargs);
+      { /* the field name binds, or its sub-pattern matches */
+        char *sa, *sv;
+        Ast  *sp = pf->v.init.e ? pf->v.init.e : pf;
+
+        subval(em, ft, addr, foffset(t, pf->v.init.name, pf), sp, &sa, &sv);
+        if (pf->v.init.e)
+          emapat(em, pf->v.init.e, ft, sa, sv, fail);
+        else
+          patbindv(em, pf->v.init.name, ft, sa, sv);
+      }
+    }
+    return;
+  }
+  case Npor: { /* whichever alternative fits: each tests, binds, and
+                * joins; the last failure leaves for the outer fail */
+    Ast  **ps = p->v.list.ts;
+    usize  n = vlen(ps), i;
+    char **ls = arenaalloc(n * sizeof *ls);
+    char  *join = newlbl(em);
+    usize  save = em->ormark;
+    PBind *bs = vnew(PBind, 4);
+
+    em->ormark = em->nlocs; /* what the alternatives share */
+    patboundnames(ps[0], &bs);
+    for (i = 0; i < vlen(bs); i++) { /* one slot per name, made where
+                                      * every alternative and the join can see it */
+      char *slot = newtmp(em);
+
+      fprintf(em->o, "\t%s =l alloc8 %lu\n", slot,
+              (unsigned long) (sizeof_(bs[i].ty) ? sizeof_(bs[i].ty) : 1));
+      locbind(em, bs[i].name, slot, bs[i].ty);
+    }
+    for (i = 1; i < n; i++)
+      ls[i] = newlbl(em);
+    for (i = 0; i < n; i++) {
+      if (i)
+        fprintf(em->o, "%s\n", ls[i]);
+      emapat(em, ps[i], t, addr, val, i + 1 < n ? ls[i + 1] : fail);
+      jump(em, join);
+    }
+    em->ormark = save;
+    fprintf(em->o, "%s\n", join);
+    return;
+  }
+  default:
+    cerrat(p, "this pattern arrives with a later milestone");
+  }
+}
+
+/* a match: the scrutinee once, then an arm at a time -- the
+ * pattern's failure goes to the next arm, the body's value waits in
+ * a slot like an if's. Exhaustiveness was checked (09-match.md), so
+ * the last failure is statically unreachable; abort is the net. */
+static char *
+emamatch(Em *em, Ast *e, int *reached)
+{
+  Ast **arms = e->v.call.args;
+  usize n = vlen(arms), i;
+  Type *st = e->v.call.f->ty;
+  Type *t = e->ty;
+  int   agg;
+  char *sv, *slot = 0, *lend = newlbl(em);
+  int   any = 0;
+
+  while (st && st->k == Tymut)
+    st = st->t;
+  agg = isagg(st);
+  sv = emaexpr(em, e->v.call.f);
+  if (t && t->k != Tyunit)
+    slot = mkslot(em, t);
+  for (i = 0; i < n; i++) {
+    Ast  *arm = arms[i];
+    char *next = newlbl(em);
+    int   rt;
+    usize nbase = em->nlocs;
+    char *v;
+
+    emapat(em, arm->v.n2.a, st, agg ? sv : 0, agg ? 0 : sv, next);
+    v = armbody(em, arm->v.n2.b, &rt);
+    if (slot && v)
+      slotput(em, t, v, slot);
+    if (rt) {
+      jump(em, lend);
+      any = 1;
+    }
+    em->nlocs = nbase;
+    fprintf(em->o, "%s\n", next);
+  }
+  fprintf(em->o, "\tcall $abort()\n"); /* the net: not reachable */
+  fprintf(em->o, "\tret 0\n");
+  fprintf(em->o, "%s\n", lend);
+  *reached = any;
+  if (!slot)
+    return 0;
+  return slotload(em, t, e, slot);
+}
+
+/* the one loop, in its three shapes (10-iteration.md): a condition
+ * re-read every round, a pattern re-matched against a re-read
+ * value, an iteration. Break and continue land on the shape's own
+ * labels -- a continue skips the body's rest, never the step. */
+static void
+emafor(Em *em, Ast *st)
+{
+  Ast *body = st->v.forx.body;
+
+  if (em->nloops >= (int) (sizeof em->loops / sizeof em->loops[0]))
+    cerrat(st, "loops nest deeper than the emitter carries");
+  switch (st->v.forx.shape) {
+  case FCOND: { /* while the condition holds */
+    char *lc = newlbl(em), *lb = newlbl(em), *lx = newlbl(em);
+    char *c;
+    int   reached;
+
+    em->loops[em->nloops].brk = lx;
+    em->loops[em->nloops].cont = lc;
+    em->nloops++;
+    fprintf(em->o, "%s\n", lc);
+    c = emaexpr(em, st->v.forx.a);
+    fprintf(em->o, "\tjnz %s, %s, %s\n", c, lb, lx);
+    fprintf(em->o, "%s\n", lb);
+    emablockval(em, body, &reached);
+    if (reached)
+      jump(em, lc);
+    em->nloops--;
+    fprintf(em->o, "%s\n", lx);
+    return;
+  }
+  case FLET: { /* while the pattern fits the re-read value */
+    Type *et = st->v.forx.b->ty;
+    char *lc = newlbl(em), *lx = newlbl(em);
+    int   agg, reached;
+    char *v;
+    usize nbase;
+
+    while (et && et->k == Tymut)
+      et = et->t;
+    agg = isagg(et);
+    em->loops[em->nloops].brk = lx;
+    em->loops[em->nloops].cont = lc;
+    em->nloops++;
+    fprintf(em->o, "%s\n", lc);
+    v = emaexpr(em, st->v.forx.b);
+    nbase = em->nlocs;
+    emapat(em, st->v.forx.a, et, agg ? v : 0, agg ? 0 : v, lx);
+    emablockval(em, body, &reached);
+    em->nlocs = nbase;
+    if (reached)
+      jump(em, lc);
+    em->nloops--;
+    fprintf(em->o, "%s\n", lx);
+    return;
+  }
+  case FIN: {
+    Type *et = st->v.forx.b->ty;
+
+    while (et && et->k == Tymut)
+      et = et->t;
+    if (et->k == Tyenum && et->sym == sym_option) {
+      /* ?T yields its one payload, or nothing: one round at most,
+       * so the loop is an if -- a continue ends it like a break
+       * would (10-iteration.md) */
+      Type *pt = et->args[0];
+      int   nc = nicheness(et);
+      char *sv = emaexpr(em, st->v.forx.b);
+      char *lsome = newlbl(em), *lx = newlbl(em);
+      char *c, *pv = 0;
+      int   reached;
+      usize nbase;
+
+      em->loops[em->nloops].brk = lx;
+      em->loops[em->nloops].cont = lx;
+      em->nloops++;
+      if (nc != NICHE_NONE) { /* the null is the None */
+        pv = newtmp(em);
+        c = newtmp(em);
+        fprintf(em->o, "\t%s =l loadl %s\n", pv, sv);
+        fprintf(em->o, "\t%s =w cnel %s, 0\n", c, pv);
+      } else {
+        Type    *tt = tagtyof(et);
+        Variant *some = symvarfind(et->sym, "Some");
+        char    *tv = newtmp(em);
+        int      dom = intwidth(tt) > 4 ? 'l' : 'w';
+
+        fprintf(em->o, "\t%s =%c %s %s\n", tv, dom, ldins(tt), sv);
+        c = newtmp(em);
+        fprintf(em->o, "\t%s =w ceq%c %s, %lu\n", c, dom, tv, (unsigned long) some->disc);
+      }
+      fprintf(em->o, "\tjnz %s, %s, %s\n", c, lsome, lx);
+      fprintf(em->o, "%s\n", lsome);
+      nbase = em->nlocs;
+      if (nc != NICHE_NONE) /* the payload is the pointer itself */
+        emapat(em, st->v.forx.a, pt, 0, pv, lx);
+      else {
+        char *sa, *svv;
+
+        subval(em, pt, sv, payloadoff(et), st->v.forx.a, &sa, &svv);
+        emapat(em, st->v.forx.a, pt, sa, svv, lx);
+      }
+      emablockval(em, body, &reached);
+      em->nlocs = nbase;
+      em->nloops--;
+      fprintf(em->o, "%s\n", lx);
+      return;
+    }
+    { /* a slice or an array: ptr/len stepped by the element size */
+      Type *it = et->t;
+      usize sz = sizeof_(it);
+      char *sv = emaexpr(em, st->v.forx.b); /* the storage it sits at */
+      char *ptr, *len, *islot, *i, *c;
+      char *lc = newlbl(em), *lb = newlbl(em), *lcont = newlbl(em), *lx = newlbl(em);
+      int   reached;
+      usize nbase;
+
+      if (et->k == Tyslice) { /* its two named slots (01-types.md) */
+        ptr = newtmp(em);
+        len = newtmp(em);
+        fprintf(em->o, "\t%s =l loadl %s\n", ptr, sv);
+        fprintf(em->o, "\t%s =l loadl %s\n", len, addrplus(em, sv, WORD));
+      } else { /* the length comes from the type */
+        ptr = sv;
+        len = newtmp(em);
+        fprintf(em->o, "\t%s =l copy %lu\n", len, (unsigned long) et->n);
+      }
+      islot = newtmp(em);
+      fprintf(em->o, "\t%s =l alloc8 8\n", islot);
+      fprintf(em->o, "\tstorel 0, %s\n", islot);
+      em->loops[em->nloops].brk = lx;
+      em->loops[em->nloops].cont = lcont;
+      em->nloops++;
+      fprintf(em->o, "%s\n", lc);
+      i = newtmp(em);
+      fprintf(em->o, "\t%s =l loadl %s\n", i, islot);
+      c = newtmp(em);
+      fprintf(em->o, "\t%s =w cultl %s, %s\n", c, i, len);
+      fprintf(em->o, "\tjnz %s, %s, %s\n", c, lb, lx);
+      fprintf(em->o, "%s\n", lb);
+      nbase = em->nlocs;
+      { /* the element's address, ptr + i*size: the binding is a
+         * pointer to what the slice lends out (10-iteration.md) */
+        char *m = newtmp(em);
+        char *ea = newtmp(em);
+
+        fprintf(em->o, "\t%s =l mul %s, %lu\n", m, i, (unsigned long) sz);
+        fprintf(em->o, "\t%s =l add %s, %s\n", ea, ptr, m);
+        emapat(em, st->v.forx.a, typtr(it), 0, ea, lx);
+      }
+      emablockval(em, body, &reached);
+      em->nlocs = nbase;
+      fprintf(em->o, "%s\n", lcont); /* the step: continue lands here */
+      {
+        char *ni = newtmp(em);
+
+        fprintf(em->o, "\t%s =l add %s, 1\n", ni, i);
+        fprintf(em->o, "\tstorel %s, %s\n", ni, islot);
+      }
+      jump(em, lc);
+      em->nloops--;
+      fprintf(em->o, "%s\n", lx);
+      return;
+    }
+  }
+  default:
+    cerrat(st, "this for shape is not one of the three");
+  }
+}
+
 /* an expression's value: a qbe temporary, or -- for an aggregate --
  * the address it lives at */
 static char *
@@ -659,6 +1887,12 @@ emaexpr(Em *em, Ast *e)
     fprintf(em->o, "\t%s =%c copy %lu\n", t, qbety(e->ty, e), (unsigned long) e->v.i.num);
     return t;
   }
+  case Nbool: { /* a w: 0 or 1, as a comparison would leave */
+    char *t = newtmp(em);
+
+    fprintf(em->o, "\t%s =w copy %d\n", t, e->v.i.num ? 1 : 0);
+    return t;
+  }
   case Nflt: { /* qbe takes float immediates only in call and phi
                 * arguments, so the bits go to the data segment and
                 * come back with a load */
@@ -666,13 +1900,15 @@ emaexpr(Em *em, Ast *e)
     char  c = qbety(e->ty, e);
     char *d = arenaalloc(48);
 
-    sprintf(base, "$flt.%lu", (unsigned long) ++em->strn);
+    sprintf(base, "$flt.%lu", (unsigned long) ++dsn);
     fprintf(em->o, "\t%s =%c load%s %s\n", t, c, c == 's' ? "s" : "d", base);
     /* 9 and 17 significant digits: the least that round-trips */
     sprintf(d, "data %s = { %c %c_%.*g }", base, c, c, c == 's' ? 9 : 17, e->v.f.flt);
     vappend(&em->datas, &d);
     return t;
   }
+  case Nunit:
+    return 0; /* (): no value, no code */
   case Npath: {
     char *nm = e->v.path.segs[0]->v.seg.name;
     ELoc *l = locfind(em, nm);
@@ -680,11 +1916,36 @@ emaexpr(Em *em, Ast *e)
 
     if (l)
       return isagg(l->ty) ? l->slot : emaload(em, e);
+    if (vlen(e->v.path.segs) == 2) { /* Enum::Variant, the
+                                      * payloadless read (01-types.md) */
+      char *tn = e->v.path.segs[0]->v.seg.name;
+      char *vn = e->v.path.segs[1]->v.seg.name;
+      Sym  *s0 = symfind(tn);
+
+      if (s0 && s0->kind == Stype && s0->tykind == TYenum) {
+        Variant *v = symvarfind(s0, vn);
+
+        if (!v || v->named || v->payload)
+          cerrat(e, "'%s' carries a payload; construct it", vn);
+        return emavariant(em, e->ty, v, 0, 0, e);
+      }
+      cerrat(e, "this name arrives with a later milestone");
+    }
     if (vlen(e->v.path.segs) != 1)
       cerrat(e, "this name arrives with a later milestone");
     s = symfind(nm);
-    if (!s)
+    if (!s) { /* None, Ok, Err: bare, the payloadless side */
+      Sym *owner = symvariantowner(nm);
+
+      if (owner && e->ty && e->ty->k == Tyenum && e->ty->sym == owner) {
+        Variant *v = symvarfind(owner, nm);
+
+        if (v->named || v->payload)
+          cerrat(e, "'%s' carries a payload; construct it", nm);
+        return emavariant(em, e->ty, v, 0, 0, e);
+      }
       cerrat(e, "unknown name '%s'", nm);
+    }
     if (s->kind == Sfn) { /* a fn as a value: its address */
       char *t = newtmp(em);
 
@@ -740,14 +2001,28 @@ emaexpr(Em *em, Ast *e)
         {Tshl, "shl", 0},          {Tshr, "sar", "shr"},
     };
     Tok   op = e->v.bin.op;
-    char *a = emaexpr(em, e->v.bin.l);
-    char *b = emaexpr(em, e->v.bin.r);
-    char *t = newtmp(em);
+    char *a, *b, *t = newtmp(em);
     Type *lt = e->v.bin.l->ty;
     usize i;
 
-    if (op == Tampamp || op == Tbarbar)
-      cerrat(e, "the short circuits arrive with control flow (M3c)");
+    if (op == Tampamp || op == Tbarbar) { /* the value rides a slot
+                                           * like an if's does */
+      char *lv = newlbl(em), *lend = newlbl(em);
+      char *slot = mkslot(em, e->ty);
+      char *vw;
+
+      a = emaexpr(em, e->v.bin.l);
+      slotstore(em, e->ty, a, slot); /* the left alone decides:
+                                      * false for &&, true for || */
+      fprintf(em->o, "\tjnz %s, %s, %s\n", a, op == Tampamp ? lv : lend, op == Tampamp ? lend : lv);
+      fprintf(em->o, "%s\n", lv);
+      vw = emaexpr(em, e->v.bin.r);
+      slotstore(em, e->ty, vw, slot);
+      fprintf(em->o, "%s\n", lend);
+      return slotload(em, e->ty, e, slot);
+    }
+    a = emaexpr(em, e->v.bin.l);
+    b = emaexpr(em, e->v.bin.r);
     for (i = 0; i < sizeof ops / sizeof ops[0]; i++)
       if (ops[i].t == op) {
         char *ins = ops[i].i;
@@ -826,24 +2101,49 @@ emaexpr(Em *em, Ast *e)
     char  *t = newtmp(em);
     Sym   *s;
 
+    if (f->k == Npath) { /* a variant's construction reads as a
+                          * call: Some(v), Enum::V(v) (01-types.md) */
+      Ast **segs = f->v.path.segs;
+
+      if (vlen(segs) == 1) {
+        char *nm = segs[0]->v.seg.name;
+
+        if (!locfind(em, nm) && !symfind(nm)) {
+          Sym *owner = symvariantowner(nm);
+
+          if (!owner || !e->ty || e->ty->k != Tyenum || e->ty->sym != owner)
+            cerrat(f, "unknown name '%s'", nm);
+          return emavariant(em, e->ty, symvarfind(owner, nm), args, n, e);
+        }
+      } else if (vlen(segs) == 2) {
+        s = symfind(segs[0]->v.seg.name);
+        if (s && s->kind == Stype && s->tykind == TYenum) {
+          Variant *v = symvarfind(s, segs[1]->v.seg.name);
+
+          if (!v)
+            cerrat(f, "'%s' has no variant '%s'", s->name, segs[1]->v.seg.name);
+          return emavariant(em, e->ty, v, args, n, e);
+        }
+      }
+    }
     for (i = 0; i < n; i++)
-      as[i] = emaexpr(em, args[i]);
+      as[i] = nicheout(em, args[i]->ty, emaexpr(em, args[i]));
     if (f->k == Npath && vlen(f->v.path.segs) == 1 && !locfind(em, f->v.path.segs[0]->v.seg.name)) {
       s = symfind(f->v.path.segs[0]->v.seg.name);
       if (!s || s->kind != Sfn)
         cerrat(f, "'%s' is not a fn", f->v.path.segs[0]->v.seg.name);
       if (s->next)
         cerrat(f, "overload resolution at emit time arrives with M3d");
-      fprintf(em->o, "\t%s =%c call $%s(", t, qbety(e->ty, e), fsymname(s, s->decl));
+      fprintf(em->o, "\t%s =%s call $%s(", t, sigty(e->ty, e), fsymname(s, s->decl));
     } else { /* a fn held in a value, called through it */
       char *fp = emaexpr(em, f);
 
-      fprintf(em->o, "\t%s =%c call %s(", t, qbety(e->ty, e), fp);
+      fprintf(em->o, "\t%s =%s call %s(", t, sigty(e->ty, e), fp);
     }
     for (i = 0; i < n; i++)
-      fprintf(em->o, "%s%c %s", i ? ", " : "", qbety(args[i]->ty, args[i]), as[i]);
+      fprintf(em->o, "%s%s %s", i ? ", " : "", sigty(args[i]->ty, args[i]), as[i]);
     fputs(")\n", em->o);
-    return t;
+    return nichein(em, e->ty, t);
   }
   case Nbuiltin: {
     char *nm = e->v.blt.name;
@@ -936,7 +2236,7 @@ emaexpr(Em *em, Ast *e)
     char *base = arenaalloc(16), *t = newtmp(em);
     usize i;
 
-    sprintf(base, "$str.%lu", (unsigned long) ++em->strn);
+    sprintf(base, "$str.%lu", (unsigned long) ++dsn);
     fprintf(em->o, "\t%s =l alloc8 16\n", t);
     fprintf(em->o, "\tstorel %s, %s\n", base, t);
     { /* the len goes in the second word */
@@ -996,6 +2296,22 @@ emaexpr(Em *em, Ast *e)
     }
     return t;
   }
+  case Nif: {
+    int reached;
+
+    return emaif(em, e, &reached);
+  }
+  case Nmatch: {
+    int reached;
+
+    return emamatch(em, e, &reached);
+  }
+  case Nblock: { /* a block in expression position: its bindings end
+                  * with it, its tail is its value */
+    int reached;
+
+    return emablockval(em, e, &reached);
+  }
   default:
     cerrat(e, "this expression arrives with a later milestone");
     return 0; /* unreachable */
@@ -1009,55 +2325,88 @@ emastmt(Em *em, Ast *st)
   switch (st->k) {
   case Nlet: {
     Ast  *pat = st->v.let.pat;
-    char *nm;
-    char *v;
     Type *t = st->ty;
+    char *nm = 0;
+    char *v;
 
     if (pat->k == Npath)
       nm = pat->v.path.segs[0]->v.seg.name;
     else if (pat->k == Nppath && vlen(pat->v.ppath.path->v.path.segs) == 1 &&
              !pat->v.ppath.payload && !pat->v.ppath.named)
       nm = pat->v.ppath.path->v.path.segs[0]->v.seg.name;
-    else
-      cerrat(pat, "destructuring lets arrive with M3c");
-    v = st->v.let.e ? emaexpr(em, st->v.let.e) : 0;
-    if (isagg(t)) /* the initializer's storage is the binding's: a
-                   * move, not a copy (03-move.md) */
-      locbind(em, nm, v, t);
-    else {
-      char *slot = newtmp(em);
+    if (nm) { /* the one-name form: the binding is the value's */
+      v = st->v.let.e ? emaexpr(em, st->v.let.e) : 0;
+      if (isagg(t)) /* the initializer's storage is the binding's: a
+                     * move, not a copy (03-move.md) */
+        locbind(em, nm, v, t);
+      else {
+        char *slot = newtmp(em);
 
-      fprintf(em->o, "\t%s =l alloc8 %lu\n", slot, (unsigned long) (sizeof_(t) ? sizeof_(t) : 1));
-      if (v)
-        fprintf(em->o, "\t%s %s, %s\n", stins(t), v, slot);
-      locbind(em, nm, slot, t);
+        fprintf(em->o, "\t%s =l alloc8 %lu\n", slot, (unsigned long) (sizeof_(t) ? sizeof_(t) : 1));
+        if (v && sizeof_(t))
+          fprintf(em->o, "\t%s %s, %s\n", stins(t), v, slot);
+        locbind(em, nm, slot, t);
+      }
+      return;
     }
+    /* a destructuring pattern: the value once, the bindings in it */
+    v = st->v.let.e ? emaexpr(em, st->v.let.e) : 0;
+    emapat(em, pat, t, isagg(t) ? v : 0, isagg(t) ? 0 : v, 0);
     return;
   }
   case Nassign: {
     Ast  *lhs = st->v.bin.l;
-    char *p, *v;
+    Tok   op = st->v.bin.op;
+    char *p;
 
-    if (lhs->k == Naccess && isagg(lhs->ty)) /* the field itself is
-                                              * an aggregate: its
-                                              * copy is M3c's blit */
-      cerrat(st, "assigning an aggregate field arrives with M3c");
-    if (lhs->k == Npath && locfind(em, lhs->v.path.segs[0]->v.seg.name) &&
-        isagg(locfind(em, lhs->v.path.segs[0]->v.seg.name)->ty))
-      cerrat(st, "assigning an aggregate arrives with M3c");
-    p = emaplace(em, lhs);
-    v = emaexpr(em, st->v.bin.r);
     if (!lhs->ty)
       cerrat(lhs, "this place was never checked");
-    fprintf(em->o, "\t%s %s, %s\n", stins(lhs->ty), v, p);
+    p = emaplace(em, lhs);
+    if (op != Teq) { /* the compound forms: read, apply, write back */
+      static struct
+      {
+        Tok   t;
+        char *i; /* signed */
+        char *u; /* unsigned, when it differs */
+      } ops[] = {
+          {Tpluseq, "add", 0},       {Tminuseq, "sub", 0}, {Tstareq, "mul", 0},
+          {Tslasheq, "div", "udiv"}, {Tshleq, "shl", 0},   {Tshreq, "sar", "shr"},
+      };
+      char *old = newtmp(em), *nv = newtmp(em), *v;
+      usize i;
+
+      v = emaexpr(em, st->v.bin.r);
+      fprintf(em->o, "\t%s =%c %s %s\n", old, qbety(lhs->ty, lhs), ldins(lhs->ty), p);
+      for (i = 0; i < sizeof ops / sizeof ops[0]; i++)
+        if (ops[i].t == op) {
+          fprintf(em->o, "\t%s =%c %s %s, %s\n", nv, qbety(lhs->ty, lhs),
+                  ops[i].u && isuintty(lhs->ty) ? ops[i].u : ops[i].i, old, v);
+          break;
+        }
+      if (i == sizeof ops / sizeof ops[0])
+        cerrat(st, "this compound assignment arrives with a later milestone");
+      fprintf(em->o, "\t%s %s, %s\n", stins(lhs->ty), nv, p);
+      return;
+    }
+    if (isagg(lhs->ty)) { /* an aggregate's copy is a blit */
+      char *v = emaexpr(em, st->v.bin.r);
+
+      fprintf(em->o, "\tblit %s, %s, %lu\n", v, p, (unsigned long) sizeof_(lhs->ty));
+      return;
+    }
+    {
+      char *v = emaexpr(em, st->v.bin.r);
+
+      fprintf(em->o, "\t%s %s, %s\n", stins(lhs->ty), v, p);
+    }
     return;
   }
   case Nreturn: {
-    if (st->v.n1.e) {
-      char *v = emaexpr(em, st->v.n1.e);
+    if (st->v.n1.e) { /* an aggregate's value is its address, and
+                       * the :type convention carries it; a niche is
+                       * one pointer, loaded out to its 'l' (M3d) */
+      char *v = nicheout(em, st->v.n1.e->ty, emaexpr(em, st->v.n1.e));
 
-      if (isagg(st->v.n1.e->ty))
-        cerrat(st, "returning an aggregate arrives with M3c");
       fprintf(em->o, "\tret %s\n", v);
     } else
       fputs("\tret 0\n", em->o); /* (): the w carries nothing */
@@ -1066,34 +2415,52 @@ emastmt(Em *em, Ast *st)
   case Nexprstmt:
     emaexpr(em, st->v.n1.e);
     return;
-  default:
-    cerrat(st, "this statement arrives with M3c");
+  case Nbreak: {
+    if (em->nloops <= 0)
+      cerrat(st, "this break is not in a for");
+    jump(em, em->loops[em->nloops - 1].brk);
+    return;
+  }
+  case Ncontinue: {
+    if (em->nloops <= 0)
+      cerrat(st, "this continue is not in a for");
+    jump(em, em->loops[em->nloops - 1].cont);
+    return;
+  }
+  case Nfor:
+    emafor(em, st);
+    return;
+  default: /* if, match, blocks: expressions in statement position */
+    emaexpr(em, st);
   }
 }
 
-/* a block: its statements, then its tail as the fn's value. A
- * return ends it -- what follows is dead. */
-static void
-emablock(Em *em, Ast *body)
+/* a block as a value: its statements, then its tail as its value.
+ * A return mid-way ends the walk -- what follows is dead -- and
+ * says so by not reaching. The bindings a block makes end with it,
+ * so the location count goes back to where it was. */
+static char *
+emablockval(Em *em, Ast *body, int *reached)
 {
   Ast **stmts = body->v.blk.stmts;
   usize i, nbase = em->nlocs;
+  char *v = 0;
 
+  *reached = 1;
   for (i = 0; i < vlen(stmts); i++) {
     emastmt(em, stmts[i]);
-    if (stmts[i]->k == Nreturn)
-      return; /* the rest is dead */
+    if (stmts[i]->k == Nreturn || stmts[i]->k == Nbreak || stmts[i]->k == Ncontinue) {
+      *reached = 0; /* the rest is dead */
+      goto out;
+    }
   }
-  if (body->v.blk.tail) {
-    char *v = emaexpr(em, body->v.blk.tail);
-
-    if (isagg(body->v.blk.tail->ty))
-      cerrat(body->v.blk.tail, "returning an aggregate arrives with M3c");
-    fprintf(em->o, "\tret %s\n", v);
-    return;
-  }
-  fputs("\tret 0\n", em->o); /* "{}": the unit */
+  if (body->v.blk.tail)
+    v = emaexpr(em, body->v.blk.tail);
+  else
+    v = 0; /* "{}": the unit */
+out:
   em->nlocs = nbase;
+  return v;
 }
 
 static void
@@ -1107,36 +2474,70 @@ emitfn(FILE *o, Sym *s, Ast *it)
   if (s->next)
     cerrat(it, "an overloaded fn's own body arrives with M3d");
   memset(&em, 0, sizeof em);
+  em.ormark = (usize) -1; /* no or-pattern yet: reuse is off */
   em.o = o;
   em.datas = vnew(char *, 8);
   em.locs = vnew(ELoc, 16);
   fputs("export function", o);
-  if (qbety(ret, it))
-    fprintf(o, " %c", qbety(ret, it));
+  if (ret)
+    fprintf(o, " %s", sigty(ret, it));
   fprintf(o, " $%s(", fsymname(s, it));
   for (i = 0; i < fnty->nargs; i++) {
     if (i)
       fputs(", ", o);
-    fprintf(o, "%c %%%s", qbety(fnty->args[i], it), it->v.fn.params[i]->v.param.name);
+    fprintf(o, "%s %%%s", sigty(fnty->args[i], it), it->v.fn.params[i]->v.param.name);
   }
   fputs(") {\n@start\n", o);
   for (i = 0; i < fnty->nargs; i++) { /* every parameter a slot: one
                                        * path reads them all */
-    char *slot = newtmp(&em);
+    char *nm = it->v.fn.params[i]->v.param.name;
+    Type *pt = fnty->args[i];
 
-    fprintf(o, "\t%s =l alloc8 %lu\n", slot,
-            (unsigned long) (sizeof_(fnty->args[i]) ? sizeof_(fnty->args[i]) : 1));
-    fprintf(o, "\t%s %%%s, %s\n", stins(fnty->args[i]), it->v.fn.params[i]->v.param.name, slot);
-    locbind(&em, it->v.fn.params[i]->v.param.name, slot, fnty->args[i]);
+    while (pt && pt->k == Tymut)
+      pt = pt->t;
+    if (isabb(pt)) { /* the incoming temp is the copy's own address:
+                      * nothing to store (01-types.md: the C
+                      * convention, which qbe lowers) */
+      char *tmp = arenaalloc(strlen(nm) + 2);
+
+      sprintf(tmp, "%%%s", nm);
+      locbind(&em, nm, tmp, pt);
+      continue;
+    }
+    if (nicheness(pt)) { /* one pointer arrived in a register: the
+                          * slot the value model wants */
+      char *slot = newtmp(&em);
+
+      fprintf(o, "\t%s =l alloc8 8\n", slot);
+      fprintf(o, "\tstorel %%%s, %s\n", nm, slot);
+      locbind(&em, nm, slot, pt);
+      continue;
+    }
+    {
+      char *slot = newtmp(&em);
+
+      fprintf(o, "\t%s =l alloc8 %lu\n", slot, (unsigned long) (sizeof_(pt) ? sizeof_(pt) : 1));
+      fprintf(o, "\t%s %%%s, %s\n", stins(pt), nm, slot);
+      locbind(&em, nm, slot, pt);
+    }
   }
-  emablock(&em, it->v.fn.body);
+  {
+    int   reached;
+    char *v = emablockval(&em, it->v.fn.body, &reached);
+
+    if (reached) { /* a niche returns as its one pointer, an
+                    * aggregate as the address the :type names */
+      v = nicheout(&em, ret, v);
+      fprintf(o, "\tret %s\n", v ? v : "0");
+    }
+  }
   fputs("}\n\n", o);
   for (i = 0; i < vlen(em.datas); i++) /* the strings this fn grew */
     fprintf(o, "%s\n", em.datas[i]);
 }
 
-void
-emitfile(FILE *out, Ast **items)
+static void
+emitall(FILE *out, Ast **items)
 {
   usize i;
 
@@ -1152,4 +2553,32 @@ emitfile(FILE *out, Ast **items)
                  * sites (04-generics.md) -- M3d */
     emitfn(out, s, it);
   }
+}
+
+void
+emitfile(FILE *out, Ast **items)
+{
+  FILE *scratch = tmpfile(); /* pass one names the aggregates; its
+                              * text goes nowhere (qbe wants the type
+                              * declarations before their first use) */
+  usize i;
+
+  if (!scratch) {
+    fprintf(stderr, "xyz: no scratch file for the type pass\n");
+    exit(1);
+  }
+  emitall(scratch, items);
+  fclose(scratch);
+  dsn = 0; /* the naming pass burned numbers; the real one restarts */
+  /* the declarations first, innermost first: a type's number was
+   * taken before anything it held registered, so counting down is
+   * the topological order qbe reads (a use never precedes its
+   * definition) */
+  i = vlen(tydefs);
+  while (i--)
+    if (tydefs[i].decl)
+      fprintf(out, "%s\n", tydefs[i].decl);
+  if (vlen(tydefs))
+    fputs("\n", out);
+  emitall(out, items); /* pass two: the text */
 }

@@ -1,0 +1,20 @@
+/* a slice travels by value (two words) and comes back the same way;
+ * the ?u8 first() returns is tagged -- two bytes riding one register.
+ * hi() and main each grow their own $str pool: both must name home */
+fn first(s: []u8) -> ?u8 {
+  for c in s {
+    return Some(*c);
+  }
+  return None;
+}
+fn id(s: []u8) -> []u8 { s }
+fn hi() -> []u8 { "hi" }
+fn main() -> i32 {
+  let a = first("hi");                       /* Some('h') */
+  let b = first("");                         /* None */
+  let e = match a { Some(v) => @cast<i32>(v), None => 0, };   /* 104 */
+  let f = match b { Some(v) => @cast<i32>(v), None => 3, };   /* 3 */
+  let n = @cast<i32>(id("hi").len);          /* 2 */
+  let m = @cast<i32>(id(hi()).len);          /* 2: built in the callee */
+  e + f + n + m                              /* 104 + 3 + 2 + 2 = 111 */
+}

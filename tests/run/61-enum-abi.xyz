@@ -1,0 +1,29 @@
+/* a user enum rides the C convention too: tag and payload as one
+ * aggregate, built in one function, scaled in another, matched at home */
+enum Shape { Circle { r: f64 }, Rect(f64, f64), Unit, }
+fn mk(w: f64, h: f64) -> Shape { Shape::Rect(w, h) }
+fn scale(s: Shape, k: f64) -> Shape {
+  match s {
+    Shape::Circle { r } => Shape::Circle(r * k),
+    Shape::Rect(w, h) => Shape::Rect(w * k, h * k),
+    Shape::Unit => Shape::Unit,
+  }
+}
+fn area(s: Shape) -> f64 {
+  match s {
+    Shape::Circle { r } => r * r * 3.0,
+    Shape::Rect(w, h) => w * h,
+    Shape::Unit => 0.0,
+  }
+}
+fn main() -> i32 {
+  let s = scale(mk(2.0, 3.0), 2.0);    /* Rect(4, 6) */
+  let u = scale(Shape::Unit, 5.0);     /* Unit */
+  let a = @cast<i32>(area(s) * 10.0);  /* 240 */
+  let b = match u {
+    Shape::Circle { r } => 0,
+    Shape::Rect(w, h) => 0,
+    Shape::Unit => 9,
+  };
+  a + b    /* 249 */
+}

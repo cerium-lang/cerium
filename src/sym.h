@@ -160,4 +160,9 @@ void prelude(void);
  * their passes arrive. */
 extern Sym *sym_option, *sym_result, *sym_copy, *sym_drop;
 
+/* a variant by name; the enum a bare variant name belongs to --
+ * the checker's patterns and the emitter's construction share them */
+Variant *symvarfind(Sym *s, const char *name);
+Sym     *symvariantowner(char *name);
+
 #endif
