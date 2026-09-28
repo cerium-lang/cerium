@@ -83,6 +83,33 @@ win over `T` (`04-generics.md`).
 Because a slice only borrows, `T` needs no `Copy`: nothing is moved or copied,
 only pointed at.
 
+An option is an iterator over its one payload — the protocol's smallest
+instance: `next` returns `?Item`, and a `?T` already is one. Taking it
+empties it, and the empty one ends the loop:
+
+```rust
+impl<T> Iterator for ?T {
+  type Item = T;
+  fn next(self: *mut Self) -> ?T {
+    @take(self)   // Some(x) yields x; the None left behind ends the loop
+  }
+}
+```
+
+`@take` (`03-move.md`) writes the zero back, and a zero `?T` is `None` —
+so the loop runs one round at most, and none at all when the option was
+already empty:
+
+```rust
+for v in o {          // o: ?Config
+  use(v);             // v: Config — the option is spent
+}
+```
+
+What comes out is the payload itself, not a pointer: an option owns its
+payload, so iteration moves it — the owned side of the split the table
+below shows, slices on the borrowed one.
+
 ## IntoIterator
 
 A container is not itself an iterator: it may be iterated several ways, and
@@ -292,10 +319,12 @@ Whether the container is used up depends on what is iterated:
 | `for x in &mut arr` | `*mut [N]mut T` | `*mut T` | ❌ |
 | `for x in s`, `s: []T` | `[]T` | `*T` | ❌ |
 | `for x in s`, `s: []mut T` | `[]mut T` | `*mut T` | ❌ |
+| `for x in o`, `o: ?T` | `?T` | `T` | ❌ one round at most |
 
 Iterating a borrow yields a pointer, so a read takes `*x` and a field takes
 `x.f`. Iterating an owned array yields the value itself and consumes the array
-— the move semantics of `03-move.md`, applied to iteration:
+— an option does the same to its one payload — the move semantics of
+`03-move.md`, applied to iteration:
 
 ```rust
 let arr = [3]u32{1, 2, 3};
