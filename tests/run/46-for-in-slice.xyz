@@ -4,7 +4,7 @@ fn main() -> i32 {
   let mut ls = 0;
   for c in s {
     n = n + 1;
-    if *c == 108 {
+    if *c == 108 {          /* c: *u8 -- a slice lends (10) */
       continue;
     };
     ls = ls + 1;
