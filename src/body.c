@@ -788,37 +788,70 @@ static Type *
 callfn(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe)
 {
   const char *nm = s->name;
-  Type      **ats = n ? arenaalloc(n * sizeof *ats) : 0;
+  Type      **ats;
+  Ast        *seg; /* the callee's one segment, when the call
+                    * spells its generic arguments out (04) */
 
+  ats = n ? arenaalloc(n * sizeof *ats) : 0;
+  seg = 0;
+  if (a->v.call.f->k == Npath && vlen(a->v.call.f->v.path.segs) == 1)
+    seg = a->v.call.f->v.path.segs[0];
   for (; s; s = s->next) {
     Type  *fnty = s->fnty;
     Type **tys = s->ngparams ? tyargs(s->ngparams) : 0;
-    usize  i;
-    int    ok = n == fnty->nargs;
+    Type **sigs; /* what the arguments are checked against: the
+                  * signature's own, or its substituted form under
+                  * a spelled-out binding */
+    usize i;
+    int   ok = n == fnty->nargs;
 
     if (!ok)
       continue;
+    sigs = fnty->args;
+    if (seg && seg->v.seg.args) { /* f<i32>(...): the binding is the
+                                   * call's own words, not inference */
+      if (vlen(seg->v.seg.args) != s->ngparams)
+        continue; /* an overload this spelling does not fit */
+      for (i = 0; i < s->ngparams; i++)
+        tys[i] = rty(seg->v.seg.args[i], &fe->env);
+      if (fnty->nargs) {
+        sigs = tyargs(fnty->nargs);
+        for (i = 0; i < fnty->nargs; i++)
+          sigs[i] = gsubst(fnty->args[i], s->gparams, tys, s->ngparams);
+      }
+    }
     for (i = 0; ok && i < n; i++) {
-      ats[i] = rexpr(args[i], fe, fnty->args[i]);
-      if (!ats[i] || !fnty->args[i])
+      ats[i] = rexpr(args[i], fe, sigs[i]);
+      if (!ats[i] || !sigs[i])
         continue;
-      if (tysame(ats[i], fnty->args[i]))
+      if (tysame(ats[i], sigs[i])) {
+        /* a parameter passed through: T stands for itself here,
+         * and an instantiation's re-check binds it for real (a
+         * recursive call inside a generic body) */
+        if (tys)
+          gunify(sigs[i], ats[i], s->gparams, tys, s->ngparams);
         continue;
+      }
       {
-        Type *c = recoerce(args[i], fnty->args[i], fe);
+        Type *c = recoerce(args[i], sigs[i], fe);
 
         if (c) {
           ats[i] = c;
           continue;
         }
       }
-      if (!gunify(fnty->args[i], ats[i], s->gparams, tys, s->ngparams))
+      if (!gunify(sigs[i], ats[i], s->gparams, tys, s->ngparams))
         ok = 0;
     }
     if (ok) {
       for (i = 0; i < s->ngparams; i++)
         if (!tys[i])
           berr(a, "cannot infer '%s' for '%s' from the call", s->gparams[i]->v.gp.name, s->name);
+      /* the emitter's pick: which overload, which instantiation. The
+       * tys live in the arena, so the writeback outlives the walk
+       * (04-generics.md) */
+      a->v.call.sym = s;
+      a->v.call.tys = s->ngparams ? tys : 0;
       return gsubst(fnty->t, s->gparams, tys, s->ngparams);
     }
   }
@@ -1351,6 +1384,8 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
 
           if (!t || t->k != Tyfn)
             berr(e, "'%s' is %s, not callable", nm, btys(t));
+          f->ty = t; /* the callee is a value here: the emitter loads
+                      * this pointer out of its slot */
           if (n != t->nargs)
             berr(e, "'%s' takes %lu arguments, %lu given", nm, (unsigned long) t->nargs,
                  (unsigned long) n);
@@ -2483,22 +2518,24 @@ rstmt(Ast *st, Fenv *fe)
 
 /* -- the driver ------------------------------------------------------------ */
 
-/* one fn's body: the parameters bind, the return is the want, and
- * the walk is statement-first (the last expression is the value) */
-void
-checkbodyfn(Sym *s, Ast *it)
+/* one fn's body against one binding of its world: the environment,
+ * the parameter types, the return. The declaration check calls it
+ * with T as a black-box Typaram; an instantiation calls it with T
+ * bound (below), and the walk overwrites the body's writeback in
+ * place -- the emitter reads it right after, before any other
+ * instantiation re-checks the same shared tree. */
+static void
+runbody(Ast *it, Env env, Type **argtys, Type *ret)
 {
   Fenv  fe;
-  Env   env = envgparams(0, it->v.fn.gparams, vlen(it->v.fn.gparams));
   Ast **ps = it->v.fn.params;
   usize n = vlen(ps), i;
-  Type *ret = s->fnty->t;
 
   memset(&fe, 0, sizeof fe);
   fe.env = env;
   fe.fnret = ret;
   for (i = 0; i < n; i++)
-    locpush(&fe, ps[i]->v.param.name, s->fnty->args[i], ps[i]->v.param.mut);
+    locpush(&fe, ps[i]->v.param.name, argtys[i], ps[i]->v.param.mut);
   if (ret->k == Tyslice &&
       localview(it->v.fn.body->v.blk.tail, &fe)) /* the
                                                   * tail returns, and what it views
@@ -2506,6 +2543,40 @@ checkbodyfn(Sym *s, Ast *it)
     berr(it->v.fn.body->v.blk.tail,
          "this slice views the fn's own storage; return the array by value instead (01-types.md)");
   rblock(it->v.fn.body, &fe, ret);
+}
+
+/* one fn's body: the parameters bind, the return is the want, and
+ * the walk is statement-first (the last expression is the value) */
+void
+checkbodyfn(Sym *s, Ast *it)
+{
+  runbody(it, envgparams(0, it->v.fn.gparams, vlen(it->v.fn.gparams)), s->fnty->args, s->fnty->t);
+}
+
+/* one generic fn, one concrete binding: the parameters carry the
+ * substituted types and the walk re-runs. What the declaration check
+ * proved under a black-box T holds under any concrete one -- the
+ * black box is the stricter world -- so the re-check's only failures
+ * are the compiler's own bugs (04-generics.md) */
+void
+recheckfn(Sym *s, Ast *it, Type **tys)
+{
+  Env    env;
+  usize  ng, i;
+  Type **ats;
+
+  ng = s->ngparams;
+  ats = vlen(it->v.fn.params) ? tyargs(vlen(it->v.fn.params)) : 0;
+  env = envnone();
+  env.n = ng;
+  env.b = ng ? arenaalloc(ng * sizeof *env.b) : 0;
+  for (i = 0; i < ng; i++) { /* T is this binding, not a parameter */
+    env.b[i].name = s->gparams[i]->v.gp.name;
+    env.b[i].t = tys[i];
+  }
+  for (i = 0; i < vlen(it->v.fn.params); i++)
+    ats[i] = gsubst(s->fnty->args[i], s->gparams, tys, ng);
+  runbody(it, env, ats, gsubst(s->fnty->t, s->gparams, tys, ng));
 }
 
 /* one impl's member fns: the same env resolveimplmembers built --

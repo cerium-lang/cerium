@@ -71,6 +71,7 @@ typedef enum
 const char *nkname(Nk k);
 
 typedef struct Ast  Ast;
+typedef struct Sym  Sym;  /* sym.h, one step later in the includes */
 typedef struct Type Type; /* type.h, one step later in the includes */
 
 struct Ast
@@ -135,6 +136,10 @@ struct Ast
     {
       Ast  *f;    /* Ncall, Nbuiltin: the callee */
       Ast **args; /* Ncall, Nbuiltin, Nmatch: args or arms */
+      Sym  *sym;  /* Ncall: the overload the checker picked, so the
+                   * emitter need not guess by name */
+      Type **tys; /* Ncall: the generic bindings it picked -- NULL
+                   * when the fn is not generic */
     } call;
     struct
     {

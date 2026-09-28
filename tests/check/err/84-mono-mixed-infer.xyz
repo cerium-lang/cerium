@@ -1,0 +1,5 @@
+/* T is one type: two arguments that disagree leave it unbound */
+fn pick<T>(a: T, b: T) -> T { a }
+fn main() -> i32 {
+  pick(1, 2.5)
+}

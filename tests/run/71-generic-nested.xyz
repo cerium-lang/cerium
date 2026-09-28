@@ -1,0 +1,13 @@
+/* a chain: outer's instances instantiate inner's, inner's
+ * instantiate kick's -- the worklist grows while it drains, and each
+ * binding lands exactly once */
+fn outer<T>(x: T, y: T, k: i32) -> i32 {
+  inner(x, k) + inner(y, k + 1)
+}
+fn inner<T>(x: T, k: i32) -> i32 { kick<T>(x, k) * 2 }
+fn kick<T>(x: T, k: i32) -> i32 { k }
+fn main() -> i32 {
+  let a = outer(5, 6, 10);       /* inner<i32> twice inside: one copy */
+  let b = outer(1.5, 2.5, 2);    /* the same chain at f32 */
+  a - (10 * 2 + 11 * 2) + 40
+}

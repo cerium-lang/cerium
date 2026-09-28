@@ -1,0 +1,13 @@
+/* a generic fn is a stencil: every distinct binding of its
+ * parameters becomes its own fn, named for the binding, and the same
+ * binding twice is one copy. The twin spells the i32 case out by
+ * hand -- the two roads must agree (04-generics.md) */
+fn id<T>(x: T) -> T { x }
+fn id_twin(x: i32) -> i32 { x }
+fn main() -> i32 {
+  let a = id(7);
+  let b = id(100);              /* the same id<i32> again */
+  let c = id_twin(7);
+  let d = id_twin(100);
+  a + b - c - d + 42
+}
