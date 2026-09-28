@@ -531,14 +531,16 @@ foffset(Type *t, char *name, Ast *at)
 
 /* the emitter's per-fn state: temporaries, the locals a block
  * binds, and the data segments grown along the way */
-typedef struct
+typedef struct ELoc ELoc;
+struct ELoc
 {
   char *name; /* the binding's own name */
   char *slot; /* its storage: the alloc temporary's name */
   Type *ty;   /* what it holds */
-} ELoc;
+};
 
-typedef struct
+typedef struct Em Em;
+struct Em
 {
   FILE  *o;
   usize  tmp;   /* one a temporary: %t.N */
@@ -546,7 +548,7 @@ typedef struct
   char **datas; /* the data lines, printed after the fns */
   ELoc  *locs;  /* the bindings in scope */
   usize  nlocs;
-} Em;
+};
 
 static char *
 newtmp(Em *em)
