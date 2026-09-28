@@ -122,8 +122,10 @@ symbols, and the aggregate half: a struct literal (a nested one
 `blit`s into its field), a string landing in the data segment with
 its slice on the stack, `.ptr`/`.len` reads, and field/deref/slot
 places to read and write through, `mut` permitting. An overload
-chain resolves at emit time only by accident of order — the real
-resolution waits for monomorphization (M3d).
+chain resolves at the checker — the call site writes its pick back,
+and one instantiation is re-checked per binding (M3e); a fn value
+carries the same resolution, a generic one instantiated from the
+type expected of it.
 
 Control flow is M3c's, and in: `if` is an expression — value form,
 else-if chains, nesting — `&&`/`||` skip the right side, and the
@@ -155,8 +157,10 @@ an opaque `align N { size }` — memory carries it, correctness
 over speed. Parameters arrive as the copies qbe makes (C
 semantics); a shared borrow may stack on a live shared one, the
 checker now reading `01-types.md`'s "a `*T` is not exclusive"
-as written. Array literals and indexing, tuple expressions, and
-monomorphization wait for M3d.
+as written. Array literals and indexing, tuple expressions and
+row writes — `(T, mut U)`, one row its own slot — and
+monomorphization are in (M3d–M3f): one copy per binding, the
+same instance emitted once, all of it static.
 
 The layout and the behavior are tested by running them:
 `tests/run` holds one `.xyz` per binary with an `.expect` naming
