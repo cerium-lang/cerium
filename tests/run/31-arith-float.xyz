@@ -1,0 +1,8 @@
+fn main() -> i32 {
+  let a: f64 = 1.25;
+  let b = a * 4.0;
+  let c: f32 = 0.5;
+  let d = @cast<f32>(b) + c;
+  let e = @cast<i32>(d);
+  e - 5
+}

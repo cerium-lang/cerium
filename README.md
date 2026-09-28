@@ -108,15 +108,30 @@ field, with a pointer gating everything it lends (`01-types.md`,
 
 Codegen has begun: `xyz -s file.xyz` prints the `.ssa` text — qbe's
 input — and `xyz -c file.xyz -o out` runs the pipeline, qbe as a
-subprocess and the system `cc` linking. What it emits so far is a
-function returning a written or a folded constant, over the layout
-tables of `02-layout.md` in full: struct padding in declaration
-order, unions, enums as a tag and a payload union, the `?T` niche,
-`#[packed]` and `#[align(N)]`. `@sizeof` and `@alignof` fold right
-there, so the layout is tested by running it:
+subprocess and the system `cc` linking. Checking writes each node's
+type back into the tree, so the emitter never re-derives one. What
+it emits covers the expression language: arithmetic and comparisons
+with the signedness picked from the operands, `@cast` across the
+int/float/bool matrix (`u16`→`i64` widens by the source, a float
+narrows by the target), `@sizeof`/`@alignof` folding over the
+layout tables of `02-layout.md` in full — struct padding in
+declaration order, unions, enums as a tag and a payload union, the
+`?T` niche, `#[packed]` and `#[align(N)]` — calls through a name or
+a fn value, `#[extern(C)]` imports and exports keeping their
+symbols, and the aggregate half: a struct literal (a nested one
+`blit`s into its field), a string landing in the data segment with
+its slice on the stack, `.ptr`/`.len` reads, and field/deref/slot
+places to read and write through, `mut` permitting. An overload
+chain resolves at emit time only by accident of order — the real
+resolution waits for monomorphization (M3d). Control flow — `if`,
+`match`, the short circuits, and the loops — is M3c's.
+
+The layout and the behavior are tested by running them:
 `tests/run` holds one `.xyz` per binary with an `.expect` naming
-its exit code (`tools/run-tests.sh`); the section runs only when
-`qbe/qbe` is built.
+its exit code, an optional `.stdout` holding the bytes it must
+print — `#[extern(C)] fn write` is how the language prints until
+M3c (`tools/run-tests.sh`); the section runs only when `qbe/qbe`
+is built.
 `tests/lex`, `tests/parse` and `tests/check` hold the golden tests,
 split by pass: `ok/` has one `.golden` per `.xyz` that the dumps must
 reproduce exactly, `err/` has inputs that must be rejected

@@ -70,7 +70,9 @@ typedef enum
 /* the dump names, one per kind -- "let", "if", "const-if", ... */
 const char *nkname(Nk k);
 
-typedef struct Ast Ast;
+typedef struct Ast  Ast;
+typedef struct Type Type; /* type.h, one step later in the includes */
+
 struct Ast
 {
   Nk       k;
@@ -79,6 +81,9 @@ struct Ast
                  * (11-namespaces.md) */
   Ast **attrs;  /* items, variants, fields, parameters -- the four
                  * slots the grammar gives attributes to; else NULL */
+  Type *ty;     /* what checking made of this node, written back for
+                 * the passes that follow (the emitter); NULL until
+                 * then -- the -a dump prints before it exists */
   union
   {
     struct

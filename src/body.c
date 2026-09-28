@@ -304,16 +304,26 @@ fitsv(u64 v, Type *t)
 /* -- places and borrows (01-types.md, 03-move.md) ------------------------ */
 
 static Type *rexpr(Ast *e, Fenv *fe, Type *want);
+static Type *rexpr1(Ast *e, Fenv *fe, Type *want);
 
 /* a pointer is dereferenced as far as it needs to be to reach a
  * member: sp.b is (*sp).b, chain and all. A *mut T's pointee is the
- * mut slot mut T, so that layer comes off too (01-types.md) */
+ * mut slot mut T, so that layer comes off too (01-types.md). Lives
+ * in type.c now -- the emitter's field walks need it too. */
+
+/* a slice's two named slots (01-types.md): s.ptr is *T -- *mut T
+ * for a []mut T, which is the Tymut child -- and s.len a usize.
+ * Both behave like mut struct fields. */
 static Type *
-derefthrough(Type *t)
+slicefield(Type *t, char *name)
 {
-  while (t && (t->k == Typtr || t->k == Tymut))
-    t = t->t;
-  return t;
+  if (!t || t->k != Tyslice)
+    return 0;
+  if (strcmp(name, "ptr") == 0)
+    return typtr(t->t);
+  if (strcmp(name, "len") == 0)
+    return tyint(IN_USIZE);
+  return 0;
 }
 
 /* a place expression: something & can point at and = can write to */
@@ -430,11 +440,28 @@ touchconflict(Ast *place, Fenv *fe, int writing)
          strncmp(buf, root->frzpath, strlen(root->frzpath)) == 0;
 }
 
+static Type *rplace(Ast *e, Fenv *fe);
+static Type *rplace1(Ast *e, Fenv *fe);
+
 /* a place, read: the base chain is checked, nothing moves -- reads
  * of fields and elements do not take what they read (03-move.md).
  * NULL when e is not a place at all. */
 static Type *
 rplace(Ast *e, Fenv *fe)
+{
+  Type *t = rplace1(e, fe);
+  Type *s = t;
+
+  while (s && s->k == Tymut) /* as in rexpr: the permission stays
+                              * with the checker, the type goes out */
+    s = s->t;
+  if (t)
+    e->ty = s;
+  return t;
+}
+
+static Type *
+rplace1(Ast *e, Fenv *fe)
 {
   switch (e->k) {
   case Npath: {
@@ -461,6 +488,12 @@ rplace(Ast *e, Fenv *fe)
     bt = derefthrough(bt);
     if (bt->k == Typaram || bt->k == Typroj)
       berr(e, "a field of %s arrives with dispatch (06)", btys(bt));
+    {
+      Type *sf = slicefield(bt, e->v.fld.name);
+
+      if (sf)
+        return sf; /* the slice's own two (01-types.md) */
+    }
     if (bt->k != Tystruct && bt->k != Tyunion)
       berr(e, "%s has no fields", btys(bt));
     for (i = 0; i < bt->sym->nfields; i++)
@@ -890,7 +923,7 @@ rbuiltin(Ast *e, Fenv *fe)
   if (strcmp(nm, "sizeof") == 0 || strcmp(nm, "alignof") == 0) {
     if (nt != 1 || na != 0)
       berr(e, "@%s takes one type argument and no value", nm);
-    rty(targs[0], &fe->env);
+    targs[0]->ty = rty(targs[0], &fe->env);
     return tyint(IN_USIZE);
   }
   if (strcmp(nm, "cast") == 0) {
@@ -899,6 +932,7 @@ rbuiltin(Ast *e, Fenv *fe)
     if (nt != 1 || na != 1)
       berr(e, "@cast takes one type argument and one value");
     to = rty(targs[0], &fe->env);
+    targs[0]->ty = to;
     rexpr(args[0], fe, 0);
     return to;
   }
@@ -1119,8 +1153,26 @@ rexprpath1(Ast *e, Fenv *fe, char *name, Type *want)
   return 0; /* unreachable */
 }
 
+/* the wrappers that write the type back: every expression the
+ * checker walks leaves its verdict on the node, so the emitter
+ * reads instead of deriving. rplace's chain writes too -- a field
+ * access knows its base's type only there. */
 static Type *
 rexpr(Ast *e, Fenv *fe, Type *want)
+{
+  Type *t = rexpr1(e, fe, want);
+  Type *s = t;
+
+  while (s && s->k == Tymut) /* the mut layer is the permission a
+                              * place lends, not its storage type:
+                              * the emitter wants the latter */
+    s = s->t;
+  e->ty = s;
+  return t;
+}
+
+static Type *
+rexpr1(Ast *e, Fenv *fe, Type *want)
 {
   switch (e->k) {
   case Nint:
@@ -1453,6 +1505,12 @@ rexpr(Ast *e, Fenv *fe, Type *want)
     bt = derefthrough(bt);
     if (bt->k == Typaram || bt->k == Typroj)
       berr(e, "a field of %s arrives with dispatch (06)", btys(bt));
+    {
+      Type *sf = slicefield(bt, e->v.fld.name);
+
+      if (sf)
+        return sf; /* ptr and len: scalars both, Copy */
+    }
     if (bt->k != Tystruct && bt->k != Tyunion)
       berr(e, "%s has no fields", btys(bt));
     for (i = 0; i < bt->sym->nfields; i++)
@@ -1692,6 +1750,7 @@ rpat(Ast *p, Type *t, Fenv *fe, int mut)
 
     if (vlen(p->v.path.segs) != 1)
       berr(p, "a binding is one name; the variant form is below");
+    p->ty = t;
     locpush(fe, nm, t, mut);
     return;
   }
@@ -1704,6 +1763,7 @@ rpat(Ast *p, Type *t, Fenv *fe, int mut)
     if (vlen(segs) == 1 && !p->v.ppath.payload && !p->v.ppath.named) {
       /* a bare name: the binding form -- the parser sends every
        * ident-headed pattern here, variant or not */
+      p->ty = t;
       locpush(fe, segs[0]->v.seg.name, t, mut);
       return;
     }
@@ -1751,8 +1811,10 @@ rpat(Ast *p, Type *t, Fenv *fe, int mut)
               ft = gsubst(ft, s->gparams, t->args, t->nargs);
             if (pf->v.init.e)
               rpat(pf->v.init.e, ft, fe, mut || f->mut);
-            else /* the field name is the binding name (09-match.md) */
+            else { /* the field name is the binding name (09-match.md) */
+              pf->ty = ft;
               locpush(fe, pf->v.init.name, ft, mut || f->mut);
+            }
           }
         }
         return;
@@ -2123,7 +2185,12 @@ placewritable(Ast *p, Fenv *fe)
     if (!bt)
       bt = rexpr(p->v.fld.e, fe, 0); /* a global or computed base */
     bt = derefthrough(bt);
-    if (!bt || (bt->k != Tystruct && bt->k != Tyunion))
+    if (!bt)
+      return 0;
+    if (bt->k == Tyslice)
+      return slicefield(bt, p->v.fld.name) != 0; /* the two are mut
+                                                  * fields (01-types.md) */
+    if (bt->k != Tystruct && bt->k != Tyunion)
       return 0;
     for (i = 0; i < bt->sym->nfields; i++)
       if (strcmp(bt->sym->fields[i].name, p->v.fld.name) == 0)
@@ -2176,12 +2243,16 @@ rstmt(Ast *st, Fenv *fe)
 
     if (!t && !et)
       berr(st, "a let binds something: a type, a value, or both");
+    while (et && et->k == Tymut) /* a place's mut layer is the
+                                  * permission, not the type */
+      et = et->t;
     if (t && et && !tysame(t, et)) {
       Type *c = st->v.let.e ? recoerce(st->v.let.e, t, fe) : 0;
 
       if (!c || !tysame(c, t))
         berr(st->v.let.e, "the binding is %s, the value is %s", btys(t), btys(et));
     }
+    st->ty = t ? t : et; /* what the pattern binds, for the emitter */
     rpat(st->v.let.pat, t ? t : et, fe, st->v.let.mut);
     return;
   }
@@ -2196,6 +2267,9 @@ rstmt(Ast *st, Fenv *fe)
       berr(st->v.bin.l, "this place is not a mut slot (01-types.md)");
     if (touchconflict(st->v.bin.l, fe, 1))
       berr(st->v.bin.l, "this place is borrowed (01-types.md)");
+    while (lt && lt->k == Tymut) /* the place's mut layer is the
+                                  * permission, not the type */
+      lt = lt->t;
     if (op == Teq) {
       rt = rexpr(st->v.bin.r, fe, lt);
       if (rt && lt && !tysame(rt, lt)) {

@@ -25,8 +25,8 @@
 
 #include "ast.h"
 
-typedef struct Sym  Sym; /* sym.h; a declaration, never dereferenced here */
-typedef struct Type Type;
+typedef struct Sym Sym; /* sym.h; a declaration, never dereferenced here */
+/* Type itself is typedef'd in ast.h, which every type.h reader has */
 
 typedef unsigned char u8; /* the tree's u64 (lex.h) has no smaller kin */
 
@@ -125,6 +125,10 @@ int tysame(Type *a, Type *b);
  * bound them to: every Typaram that names one of gps reads as the
  * tys slot in step with it */
 Type *gsubst(Type *t, Ast **gps, Type **tys, usize n);
+
+/* a pointer dereferenced as far as it needs to reach a member:
+ * sp.b is (*sp).b, and a *mut T's pointee is the mut slot mut T */
+Type *derefthrough(Type *t);
 
 /* the printable form, expanded: aliases are already gone, and the
  * sugar is spelled back -- ?T, E?T, [3]mut u8. tysprint writes a

@@ -1,0 +1,8 @@
+fn main() -> u8 {
+  let a: u8 = 200;
+  let b: u8 = 100;
+  let c = a + b;
+  let d: u16 = 0xffff;
+  let e = d >> 4;
+  @cast<u8>(c + @cast<u8>(e))
+}
