@@ -1,0 +1,16 @@
+/* if and match as aggregate producers: the value form over ?T,
+ * niche or tagged, arms and branches included (01-types.md) */
+fn main() -> i32 {
+  let c = true;
+  let o: ?i32 = if c { Some(1) } else { None };     /* tagged */
+  let n = 7;
+  let p: ?*i32 = if c { Some(&n) } else { None };   /* niche */
+  let y = match o {                                 /* an arm yields it */
+    Some(v) => Some(v + 1),
+    None => None,
+  };
+  let a = match o { Some(v) => v, None => 0, };
+  let b = match p { Some(q) => *q, None => 0, };
+  let d = match y { Some(v) => v, None => 0, };
+  a * 100 + b * 10 + d    /* 100 + 70 + 2 = 172 */
+}

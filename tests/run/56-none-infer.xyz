@@ -1,0 +1,17 @@
+/* None takes its ?T from the other side: a sibling branch or arm
+ * that spelled it out (01-types.md) -- no annotation needed */
+fn pick(c: bool, n: i32) -> i32 {
+  let o = if c { Some(n) } else { None };
+  match o { Some(v) => v, None => 0, }
+}
+fn main() -> i32 {
+  let c = true;
+  let o = if c { Some(1) } else { None };   /* no annotation anywhere */
+  let m = match o {
+    Some(v) => Some(v + 1),
+    None => None,
+  };
+  let a = match o { Some(v) => v, None => 0, };
+  let b = match m { Some(v) => v, None => 0, };
+  pick(false, 9) * 100 + a * 10 + b    /* 0 + 10 + 2 = 12 */
+}

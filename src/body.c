@@ -1631,7 +1631,10 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
       ff = fefork(fe);
       if (side == -1) /* == narrows the else */
         locnarrow(&ff, nm, child);
-      tf = rexpr(e->v.ifx.els, &ff, want);
+      tf = rexpr(e->v.ifx.els, &ff,
+                 want ? want
+                      : tt); /* None takes its
+                              * ?T from the other side: the then spelled it out (01-types.md) */
       if (mustexit(e->v.ifx.els))
         unreach(&ff);
       if (!tysame(tt, tf))
@@ -2079,7 +2082,13 @@ rmatch(Ast *e, Fenv *fe, Type *want)
     Type *at;
 
     rpat(arm->v.n2.a, st, &fa, 0);
-    at = arm->v.n2.b->k == Nblock ? rblock(arm->v.n2.b, &fa, want) : rexpr(arm->v.n2.b, &fa, want);
+    at = arm->v.n2.b->k == Nblock
+             ? rblock(arm->v.n2.b, &fa, want ? want : rt)
+             : rexpr(
+                   arm->v.n2.b, &fa,
+                   want ? want
+                        : rt); /* None
+                                * takes its ?T from the other side: an earlier arm spelled it out */
     if (!rt)
       rt = at;
     else if (at && !tysame(rt, at))
