@@ -19,10 +19,12 @@
  * What this pass deliberately leaves alone: trait method calls and
  * operators on user types (dispatch, the next milestone -- the
  * scalar and pointer built-ins are checked here), const evaluation
- * (the one after), pack spreads, ranges, and type values ($$t,
- * reflection). Option and Result are checked as what they are --
- * prelude enums -- with their variants as constructors and their
- * narrowing spelled by the == None / != Err forms (01-types.md).
+ * beyond the leaf layer -- a literal length is the evaluator's own
+ * here (08-reflection.md), an fn call in it waits -- pack spreads,
+ * ranges, and type values ($$t, reflection). Option and Result are
+ * checked as what they are -- prelude enums -- with their variants as
+ * constructors and their narrowing spelled by the == None / != Err
+ * forms (01-types.md).
  *
  * The environment and the helpers it walks with -- bindings,
  * borrows, joins, the diagnostics -- live in flow.c; body.h is the
@@ -38,6 +40,7 @@
 #include "body.h"
 #include "check.h"
 #include "die.h"
+#include "eval.h"
 #include "lex.h"
 #include "sym.h"
 #include "type.h"
@@ -1191,6 +1194,45 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
       freeze(e->v.un.e, fe, e->v.un.mut, (int) fe->n);
       return e->v.un.mut ? typtr(tymut(t)) : typtr(t);
     }
+    if (op == Tminus && want && want->k == Tyint &&
+        (e->v.un.e->k == Nint || e->v.un.e->k == Nflt)) {
+      /* the sign rides the literal (01-types.md): a signed type's
+       * least -- i8's -128, i32's -2147483648 -- spells with it,
+       * and no other way is. The domain check reads the signed
+       * whole, so the least passes and one past it does not */
+      if (e->v.un.e->k == Nflt) { /* a float's negative: it rounds,
+                                   * it does not overflow */
+        if (want->num != IN_F32 && want->num != IN_F64)
+          berr(e, "-%g does not fit %s", e->v.un.e->v.f.flt, btys(want));
+      } else {
+        u64 m = e->v.un.e->v.i.num;
+        int ok;
+
+        switch (want->num) {
+        case IN_I8:
+          ok = m <= 0x80;
+          break;
+        case IN_I16:
+          ok = m <= 0x8000;
+          break;
+        case IN_I32:
+          ok = m <= 0x80000000u;
+          break;
+        case IN_I64:
+        case IN_ISIZE: /* the sizes are the machine's: 64 (layout.c) */
+          ok = m <= ((u64) 1 << 63);
+          break;
+        default: /* an unsigned want: a negative never fits one */
+          ok = 0;
+          break;
+        }
+        if (!ok)
+          berr(e, "-%lu does not fit %s", (unsigned long) m, btys(want));
+      }
+      e->v.un.e->ty = want; /* the operand carries the type the fold
+                             * landed in; the emitter negates it */
+      return want;
+    }
     {
       Type *t = rexpr(e->v.un.e, fe, 0);
 
@@ -1953,14 +1995,17 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
         }
       }
     }
-    if (e->v.arrlit.len && e->v.arrlit.len->k == Nint) {
-      if (e->v.arrlit.len->v.i.num < n) /* more initializers than the
-                                         * length is the error; fewer
-                                         * is the zero fill
-                                         * (01-types.md) */
-        berr(e, "[%lu] holds %lu elements, %lu given", (unsigned long) e->v.arrlit.len->v.i.num,
-             (unsigned long) e->v.arrlit.len->v.i.num, (unsigned long) n);
-      return tyarray(e->v.arrlit.len->v.i.num, et);
+    if (e->v.arrlit.len) { /* the length is a const expression,
+                            * evaluated here as a type's own is
+                            * (08-reflection.md); more initializers
+                            * than the length is the error; fewer is
+                            * the zero fill (01-types.md) */
+      u64 ln = cevallong(e->v.arrlit.len, fe->env, tyint(IN_USIZE));
+
+      if (ln < n)
+        berr(e, "[%lu] holds %lu elements, %lu given", (unsigned long) ln, (unsigned long) ln,
+             (unsigned long) n);
+      return tyarray(ln, et);
     }
     return tyslice(et); /* []T: the unsized literal */
   }

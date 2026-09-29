@@ -577,8 +577,9 @@ dumpnode(Ast *n, int i)
   case Nvariant:
     putattrs(n);
     printf(" %s", n->v.variant.name);
-    if (n->v.variant.hasdisc)
-      dumpu64sp(n->v.variant.disc);
+    if (n->v.variant.hasdisc) /* "= const expr", an expression of its
+                               * own in the tree (08) */
+      child(n->v.variant.discexpr, i);
     for (v = n->v.variant.payload, j = 0; v && j < vlen(v); j++)
       child(v[j], i);
     break;

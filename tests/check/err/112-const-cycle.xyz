@@ -1,0 +1,5 @@
+/* a const that depends on itself is an error, not a hang -- the
+ * in-flight stack is the cycle check (08-reflection.md) */
+const X: i32 = Y + 1;
+const Y: i32 = X + 1;
+fn main() -> i32 { return X; }

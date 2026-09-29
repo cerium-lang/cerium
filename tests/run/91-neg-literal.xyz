@@ -1,0 +1,22 @@
+/* the sign rides a literal, the let's side too (01-types.md): a
+ * signed type's least -- i8's -128, i32's -2147483648 -- spells
+ * with it, at every place a want arrives: a binding, a call's
+ * argument, a field, an element, a float's */
+fn eighth(x: i8) -> i32 { @cast<i32>(x) }
+struct P { v: i8 }
+fn main() -> i32 {
+  let a: i8 = -128;
+  let b: i32 = -2147483648;
+  let c: i64 = -9223372036854775808;
+  let d: f64 = -1.5;
+  let p = P{ v: -128 };
+  let e = [2]i8{-128, 127};
+  let mut n = eighth(-128);                    /* -128 */
+  n = n + @cast<i32>(a);                       /* -256 */
+  n = n + b / 1073741824;                      /* -2: -258 */
+  if c < 0 { n = n + 1; };                     /* -257: the least is negative */
+  n = n + @cast<i32>(d);                       /* -1: -258, truncated */
+  n = n + @cast<i32>(p.v);                     /* -386 */
+  n = n + @cast<i32>(e[0]) + @cast<i32>(e[1]); /* -128+127: -387 */
+  n + 487                                      /* 100 */
+}

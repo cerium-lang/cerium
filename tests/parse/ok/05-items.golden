@@ -47,7 +47,8 @@
       (path f32))
     (field h
       (path f32)))
-  (variant (attr doc (str 5 "named")) Tagged 3)
+  (variant (attr doc (str 5 "named")) Tagged
+    (int 3))
   (variant Pair
     (path i32)
     (path u32)))

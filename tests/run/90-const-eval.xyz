@@ -1,0 +1,35 @@
+/* const evaluation, the leaf layer: literals, arithmetic, the
+ * operators over them, the layout queries, @cast, and the const
+ * references that chain them. An array's length and a variant's
+ * discriminant are const expressions now; the four promises hold
+ * along the way (08-reflection.md) */
+const A: i32 = 1;
+const B: i32 = A + 1;
+const C: i32 = B * 2 + A;                       /* the chain: 5 */
+const N: usize = 3;
+const M: usize = N * 2 + 1;                     /* a length: 7 */
+const D: u8 = 5;
+enum E(u8) { X = D, Y, Z = 2 }                  /* a discriminant: X=5, Y counts 6 */
+const W: usize = @sizeof<u32>();                /* a layout query: 4 */
+const G: f64 = 1.5;
+const H: i32 = @cast<i32>(G);                   /* truncated: 1 (01-types.md) */
+const LO: i8 = -128;                            /* the sign rides the literal */
+const Q: bool = 1 == 2 && true || true;         /* the short circuit: true */
+fn main() -> i32 {
+  let a = [M]i32{1, 2, 3, 4, 5, 6, 7};
+  let z = [M]i32{1, 2, 3};                      /* fewer: the zero fill */
+  let mut n = C;                                /* 5 */
+  for x in a { n = n + x; }                     /* +28 = 33 */
+  for x in z { n = n + x; }                     /* +6 = 39 */
+  let e = E::Y;
+  let r = match e {                             /* Y is the discriminant D + 1 */
+    E::X => 0,
+    E::Y => 10,
+    E::Z => 1,
+  };
+  n = n + r;                                    /* +10 = 49 */
+  n = n + @cast<i32>(W) + H;                    /* +4 +1 = 54 */
+  n = n + @cast<i32>(LO);                       /* -128: -74 */
+  if Q { n = n + 100; };                       /* 26 */
+  n + 74                                        /* 100 */
+}

@@ -115,9 +115,11 @@
 
 (enum Tagged
   (path u32)
-  (variant A 0)
+  (variant A
+    (int 0))
   (variant B)
-  (variant C 10)
+  (variant C
+    (int 10))
   (variant D)
   (variant Circle
     (path f32))
