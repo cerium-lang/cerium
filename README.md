@@ -98,13 +98,19 @@ associated types — `dyn Iterator<Item = u32>`, the slots aligned to
 the trait's declaration order — then resolves trait and
 impl members against their `Self`, checks a trait impl supplies
 exactly what the trait declares, and orders every pair of impls by
-shape-pattern specificity or the `Copy`/`Drop` exclusion
-(`04-generics.md`), rejecting the rest on the spot. It then walks
+shape-pattern specificity, bounds inclusion, or the `Copy`/`Drop`
+exclusion (`04-generics.md`), rejecting the rest on the spot. It then walks
 every function body: expressions get their types — the method sugar
-adapts its receiver, a trait method found by matching impl patterns
-against the receiver's type (`Trait::member(&p)` picks its impl the
-same way), a generic fn's bounds checked where the call binds its
-parameters, an associated type read outside an impl —
+adapts its receiver and names any receiver an impl's pattern can
+match, scalars included, a trait method found by matching impl
+patterns against the receiver's type with every bound answered
+there — a bound the receiver cannot answer keeps its impl out —
+and the most specific match winning, an exact target above
+patterns and bounds ordering equal shapes (`Trait::member(&p)` and
+a handle's vtable pick the same one), a generic fn's bounds
+checked where the call binds its parameters — `Copy` read
+structurally, a `Drop` impl anywhere in the type excluding it
+(`03-move.md`) — an associated type read outside an impl —
 `Counter::Item` — taking what the impl supplies, and every borrow a
 call writes — an argument's
 as much as the receiver's — ends with that call, `None` takes its
@@ -132,7 +138,8 @@ receiver adapted at the call, a `Type::member` call, a
 `Trait::member(&p)` one resolving its impl by the receiver, and a
 method held as a value included), `dyn A` handles — `&dyn b` builds
 the fat where the impl is known, one vtable per trait and concrete
-type in the data segment, the call reading its slot through the
+type in the data segment — the most specific impl's, as every
+call-site pick — the call reading its slot through the
 table (`dyn mut A` writing too), and a handle's spelling giving the
 associated types — a projected `?Self::Item` return takes its type
 from the spelling, not from the impl the vtable erased — `#[extern(C)]` imports and

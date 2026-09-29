@@ -1090,7 +1090,7 @@ spec1(Type *a, Type *b, SpecSub *s)
   }
 }
 
-static int
+int
 specializes(Type *a, Type *b)
 {
   SpecSub s;
@@ -1201,7 +1201,7 @@ boundscontain(Sym **bs, usize n, Sym *t)
 
 /* a ⊇ b: every trait b's bounds name, a's name too. No dedup -- a
  * bound written twice counts twice, which only ever overstates. */
-static int
+int
 boundsincl(Sym *a, Sym *b)
 {
   Sym  *aa[16], *bb[16];
