@@ -1,0 +1,13 @@
+/* a method neither an impl nor a bound supplies: the sugar walks
+ * both tables before giving up (05-traits.md) */
+trait Show {
+  fn show(self: *Self) -> u32;
+}
+struct Point { x: u32 }
+impl Show for Point {
+  fn show(self: *Self) -> u32 { self.x }
+}
+fn go(p: Point) -> u32 {
+  p.hide()
+}
+fn main() -> u32 { 0 }

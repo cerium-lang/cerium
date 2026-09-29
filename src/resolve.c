@@ -755,8 +755,12 @@ resolveimplmembers(Sym *s)
         dm->kind = Mfn;
         dm->ty = resolvefnsig(m, &env);
         { /* the method's own fn Sym: outside the namespace -- the
-           * call sites write it back, the emitter names by it */
-          Sym *fs = arenaalloc(sizeof *fs);
+           * call sites write it back, the emitter names by it. The
+           * impl's parameters ride along as the Sym's own, so an
+           * instantiation of a generic impl's method is keyed and
+           * named exactly a generic fn's is (04-generics.md) */
+          Sym  *fs = arenaalloc(sizeof *fs);
+          usize ng = vlen(it->v.impl.gparams);
 
           memset(fs, 0, sizeof *fs);
           fs->name = dm->name;
@@ -764,6 +768,8 @@ resolveimplmembers(Sym *s)
           fs->decl = m;
           fs->fnty = dm->ty;
           fs->impl = s;
+          fs->ngparams = ng;
+          fs->gparams = ng ? it->v.impl.gparams : 0;
           dm->sym = fs;
         }
         break;

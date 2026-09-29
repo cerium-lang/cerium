@@ -1,0 +1,35 @@
+/* the static trait dispatch: the sugar, the explicit form, a
+ * pattern impl bound by the receiver, and a bound checked at the
+ * call (05-traits.md, 06-dispatch.md) */
+trait Show {
+  fn show(self: *Self) -> u32;
+}
+struct Point { x: u32, y: u32 }
+impl Show for Point {
+  fn show(self: *Self) -> u32 { self.x + self.y }
+}
+struct Wrap<T> { mut v: T }
+impl<T> Show for Wrap<T> {
+  fn show(self: *Self) -> u32 { 40 }
+}
+struct Box<T> { mut v: T }
+impl<T: Copy> Box<T> {
+  fn set(self: *mut Self, n: T) -> () { self.v = n; }
+}
+fn announce<T: Show>(a: *T) -> u32 {
+  Show::show(a)
+}
+fn main() -> u32 {
+  let p = Point{ x: 3, y: 4 };
+  let w: Wrap<u32> = Wrap{ v: 1 };
+  let mut b: Box<u32> = Box{ v: 30 };
+  b.set(10);                 /* a generic inherent impl: the receiver binds T */
+  let r = p.show()           /* the sugar, an exact impl */
+    + Show::show(&p)         /* the explicit form: the receiver picks */
+    + w.show()               /* a pattern impl: Wrap<u32>, T bound by the receiver */
+    + Show::show(&w)         /* the same, spelled out */
+    + announce(&p)           /* a bound: Point answers for T */
+    + announce(&w)           /* and Wrap<u32> does too */
+    + b.v;                   /* the pattern impl wrote through its mut self */
+  return r;
+}

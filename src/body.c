@@ -161,15 +161,107 @@ recoerce(Ast *e, Type *t, Fenv *fe)
   return 0;
 }
 
-/* the genericity gate for a member call: an impl's own parameters,
- * or a member's, name a family of fns -- picking one is the
- * specialization machinery's work, the next batch (04-generics.md).
- * These calls name one concrete fn. */
+/* peel Self out of a receiver's type: a trait's declared self is a
+ * shape over Self (*Self, []mut Self, (Self, u32), ...), the
+ * argument is that shape over a concrete type. The walk hands back
+ * the concrete type Self must be, or 0 when the shapes do not line
+ * up -- Self hides under a shape, never inside a named one. */
+static Type *
+selfpeel(Type *sig, Type *arg)
+{
+  usize i;
+
+  if (!sig || !arg)
+    return 0;
+  if (sig->k == Typaram && sig->gp == sym_selfgp)
+    return arg;
+  if (sig->k != arg->k)
+    return 0;
+  switch (sig->k) {
+  case Typtr:
+  case Tyslice:
+  case Tymut:
+    return selfpeel(sig->t, arg->t);
+  case Tyarray:
+    if (sig->n != arg->n)
+      return 0;
+    return selfpeel(sig->t, arg->t);
+  case Tytuple: {
+    Type *r;
+
+    if (sig->nargs != arg->nargs)
+      return 0;
+    for (i = 0; i < sig->nargs; i++) {
+      r = selfpeel(sig->args[i], arg->args[i]);
+      if (r)
+        return r; /* Self appears once in a receiver's shape */
+    }
+    return 0;
+  }
+  default:
+    return 0;
+  }
+}
+
+/* a trait's declared signature under a Self that is itself a
+ * parameter: the walk inside a generic fn needs the shape, not the
+ * impl -- the instantiation picks that (04-generics.md), and the
+ * bound there already promised one exists. The same shapes
+ * tsubst walks, keyed on the one Self parameter. */
+static Type *
+selfsubst(Type *t, Type *self)
+{
+  Type **as;
+  usize  i;
+
+  if (!t)
+    return t;
+  switch (t->k) {
+  case Typaram:
+    return t->gp == sym_selfgp ? self : t;
+  case Typtr:
+    return typtr(selfsubst(t->t, self));
+  case Tyslice:
+    return tyslice(selfsubst(t->t, self));
+  case Tymut:
+    return tymut(selfsubst(t->t, self));
+  case Tyarray:
+    return tyarray(t->n, selfsubst(t->t, self));
+  case Tytuple:
+  case Tyfn:
+  case Tyenum:
+  case Tystruct:
+  case Tyunion:
+  case Tytrait:
+  case Tydyn:
+    as = t->nargs ? tyargs(t->nargs) : 0;
+    for (i = 0; i < t->nargs; i++)
+      as[i] = selfsubst(t->args[i], self);
+    switch (t->k) {
+    case Tytuple:
+      return tytuple(as, t->nargs);
+    case Tyfn:
+      return tyfn(as, t->nargs, selfsubst(t->t, self));
+    case Tydyn:
+      return tydyn(t->sym, as, t->nargs, t->mut);
+    default:
+      return tysym(t->sym, as, t->nargs);
+    }
+  default:
+    return t;
+  }
+}
+
+/* the genericity gate for a member call: a member fn with
+ * parameters of its own names a family -- picking one is the
+ * specialization machinery's work (04-generics.md). An impl's own
+ * parameters are no longer a gate: the call binds them from the
+ * receiver's type, exactly as a literal binds a struct's
+ * (04-generics.md). */
 static void
 gatemember(Ast *at, Sym *imp, Member *m, const char *name)
 {
-  if (imp && imp->ngparams)
-    berr(at, "'%s' in a generic impl arrives with specialization (04-generics.md)", name);
+  (void) imp;
   if (m->kind == Mfn && m->decl && vlen(m->decl->v.fn.gparams))
     berr(at, "a generic '%s' arrives with specialization (04-generics.md)", name);
 }
@@ -284,6 +376,31 @@ callfn(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe)
       for (i = 0; i < s->ngparams; i++)
         if (!tys[i])
           berr(a, "cannot infer '%s' for '%s' from the call", s->gparams[i]->v.gp.name, s->name);
+      { /* every bound, once the binding is known: does the type the
+         * call landed implement the trait (04-generics.md)? The
+         * impl table answers -- a bound nobody can satisfy was
+         * already diagnosed where the fn was declared */
+        Ast **gps = s->decl->v.fn.gparams;
+        usize gi, bi;
+
+        for (gi = 0; gi < vlen(gps); gi++) {
+          Ast **bs = gps[gi]->v.gp.bounds;
+
+          for (bi = 0; bi < vlen(bs); bi++) {
+            Ast **bsegs = bs[bi]->v.path.segs;
+            Sym  *tr;
+
+            if (vlen(bsegs) != 1)
+              continue; /* collectbounds diagnosed the shape */
+            tr = symfind(bsegs[0]->v.seg.name);
+            if (!tr || tr->kind != Strait)
+              continue; /* ditto */
+            if (!implsatisfies(tr, tys[gi]))
+              berr(a, "'%s' does not implement '%s'; '%s' cannot take it", btys(tys[gi]), tr->name,
+                   s->name);
+          }
+        }
+      }
       /* the emitter's pick: which overload, which instantiation. The
        * tys live in the arena, so the writeback outlives the walk
        * (04-generics.md) */
@@ -712,8 +829,15 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
       char *nm1 = segs[1]->v.seg.name;
       Sym  *s = symfind(nm0);
 
-      if (!s || s->kind != Stype)
+      if (!s || s->kind != Stype) {
+        if (s && s->kind == Strait) /* a trait method as a value
+                                     * names a family: one impl per
+                                     * receiver, and a value has
+                                     * none -- dyn A (06) carries
+                                     * that, when it arrives */
+          berr(e, "'%s::%s' names one impl per receiver; call it", s->name, nm1);
         berr(e, "unknown name '%s'", nm0);
+      }
       if (s->tykind == TYenum) {
         struct Variant *v = varfind(s, nm1);
 
@@ -730,7 +854,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
         Member *m = inherentfind(s, nm1, &imp);
 
         if (!m)
-          berr(e, "'%s' has no '%s'; trait items arrive with dispatch (06)", s->name, nm1);
+          berr(e, "'%s' has no '%s'", s->name, nm1);
         gatemember(e, imp, m, nm1);
         if (m->kind == Mfn) {
           e->v.path.sym = m->sym; /* the fn it names: its address */
@@ -918,11 +1042,161 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
           return callfn(s, e, args, n, fe);
         berr(e, "'%s' is not callable", nm);
       }
-      if (nsegs == 2) { /* Enum::Variant(...) or Type::member(...) */
+      if (nsegs == 2) { /* Enum::Variant(...), Type::member(...), or Trait::member(&p) */
         char *nm0 = segs[0]->v.seg.name;
         char *nm1 = segs[1]->v.seg.name;
         Sym  *s = symfind(nm0);
 
+        if (s && s->kind == Strait) { /* the explicit trait call:
+                                       * the receiver -- the first
+                                       * argument -- picks the impl
+                                       * (05-traits.md) */
+          Member *dm = 0;
+          usize   di;
+
+          for (di = 0; di < s->nmembers; di++)
+            if (strcmp(s->members[di].name, nm1) == 0) {
+              dm = &s->members[di];
+              break;
+            }
+          if (!dm)
+            berr(e, "'%s' has no '%s'", s->name, nm1);
+          if (dm->kind != Mfn)
+            berr(e, "'%s::%s' is not callable", s->name, nm1);
+          if (!n)
+            berr(e, "'%s::%s' takes the receiver as its first argument", s->name, nm1);
+          {
+            /* peel Self out of the receiver: the declared self is a
+             * pattern over Self (*Self, []mut Self, ...), the
+             * argument is that shape over a concrete type. The
+             * receiver walks once, want-less -- the impl's signature
+             * is not known until Self is */
+            Type *sig0 = dm->ty->nargs ? dm->ty->args[0] : 0;
+            Type *rt = rexpr(args[0], fe, 0);
+            Type *self;
+
+            if (!rt)
+              return 0;
+            self = selfpeel(sig0, rt);
+            if (!self)
+              berr(args[0], "'%s::%s' wants a %s receiver", s->name, nm1, btys(sig0));
+            {
+              Sym    *imp;
+              Type  **tys = 0;
+              Member *im;
+              Type   *t;
+              usize   i;
+
+              if (self->k == Typaram) {
+                /* inside a generic fn: the declaration's signature
+                 * carries the walk -- when the parameter carries
+                 * this bound -- and the instantiation's re-check
+                 * picks the impl (04-generics.md) */
+                Ast **bs = self->gp->v.gp.bounds;
+                int   bounded = 0;
+                usize bi;
+
+                for (bi = 0; bi < vlen(bs); bi++) {
+                  Ast **bsegs = bs[bi]->v.path.segs;
+                  Sym  *tr = vlen(bsegs) == 1 ? symfind(bsegs[0]->v.seg.name) : 0;
+
+                  if (tr == s) {
+                    bounded = 1;
+                    break;
+                  }
+                }
+                if (!bounded)
+                  berr(args[0], "'%s' is not a bound on '%s'", s->name, self->gp->v.gp.name);
+                t = selfsubst(dm->ty, self);
+                e->v.call.sym = 0; /* the re-check writes the impl's pick */
+                e->v.call.tys = 0;
+                {
+                  Frzsave *svs = n ? arenaalloc(n * sizeof *svs) : 0;
+                  usize    k;
+
+                  if (svs) {
+                    memset(svs, 0, n * sizeof *svs);
+                    for (k = 0; k < n; k++)
+                      argborrow(args[k], fe, &svs[k]);
+                  }
+                  if (n != t->nargs)
+                    berr(e, "'%s::%s' takes %lu arguments, %lu given", s->name, nm1,
+                         (unsigned long) t->nargs, (unsigned long) n);
+                  { /* the receiver already walked: check its type
+                     * where it stands, the rest against the shape */
+                    Type *c;
+
+                    if (tysame(rt, t->args[0]))
+                      c = rt;
+                    else
+                      c = recoerce(args[0], t->args[0], fe);
+                    if (!c || !tysame(c, t->args[0]))
+                      berr(args[0], "'%s::%s' wants %s here, this is %s", s->name, nm1,
+                           btys(t->args[0]), btys(rt));
+                  }
+                  for (i = 1; i < n; i++) {
+                    Type *at = rexpr(args[i], fe, t->args[i]);
+
+                    if (at && t->args[i] && !tysame(at, t->args[i])) {
+                      Type *c = recoerce(args[i], t->args[i], fe);
+
+                      if (!c || !tysame(c, t->args[i]))
+                        berr(args[i], "'%s::%s' wants %s here, this is %s", s->name, nm1,
+                             btys(t->args[i]), btys(at));
+                    }
+                  }
+                  thawargs(svs, n); /* the call is done; its borrows ended with it */
+                }
+                return t->t;
+              }
+              im = implfind(s, self, nm1, &imp, &tys);
+              if (!im)
+                berr(args[0], "no '%s' for %s", s->name, btys(self));
+              gatemember(e, imp, im, nm1);
+              t = tys ? gsubst(im->ty, imp->gparams, tys, imp->ngparams) : im->ty;
+              e->v.call.sym = im->sym; /* the impl's member: the body that runs */
+              e->v.call.tys = tys;
+              {
+                Frzsave *svs = n ? arenaalloc(n * sizeof *svs) : 0;
+                usize    k;
+
+                if (svs) {
+                  memset(svs, 0, n * sizeof *svs);
+                  for (k = 0; k < n; k++)
+                    argborrow(args[k], fe, &svs[k]);
+                }
+                if (n != t->nargs)
+                  berr(e, "'%s::%s' takes %lu arguments, %lu given", s->name, nm1,
+                       (unsigned long) t->nargs, (unsigned long) n);
+                { /* the receiver already walked: check its type
+                   * where it stands, the rest against the instance */
+                  Type *c;
+
+                  if (tysame(rt, t->args[0]))
+                    c = rt;
+                  else
+                    c = recoerce(args[0], t->args[0], fe);
+                  if (!c || !tysame(c, t->args[0]))
+                    berr(args[0], "'%s::%s' wants %s here, this is %s", s->name, nm1,
+                         btys(t->args[0]), btys(rt));
+                }
+                for (i = 1; i < n; i++) {
+                  Type *at = rexpr(args[i], fe, t->args[i]);
+
+                  if (at && t->args[i] && !tysame(at, t->args[i])) {
+                    Type *c = recoerce(args[i], t->args[i], fe);
+
+                    if (!c || !tysame(c, t->args[i]))
+                      berr(args[i], "'%s::%s' wants %s here, this is %s", s->name, nm1,
+                           btys(t->args[i]), btys(at));
+                  }
+                }
+                thawargs(svs, n); /* the call is done; its borrows ended with it */
+              }
+              return t->t;
+            }
+          }
+        }
         if (!s || s->kind != Stype)
           berr(e, "unknown name '%s'", nm0);
         if (s->tykind == TYenum) {
@@ -937,9 +1211,19 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
           Member *m = inherentfind(s, nm1, &imp);
 
           if (!m)
-            berr(e, "'%s' has no '%s'; trait items arrive with dispatch (06)", s->name, nm1);
+            berr(e,
+                 "'%s' has no inherent '%s'; a trait method is '%s' spelled "
+                 "with its trait (05-traits.md)",
+                 s->name, nm1, nm1);
           if (m->kind != Mfn)
             berr(e, "'%s::%s' is not callable", s->name, nm1);
+          if (imp && imp->ngparams) /* the binding comes from a
+                                     * receiver's type, and this form
+                                     * has none: call it as a method */
+            berr(e,
+                 "'%s' belongs to a generic impl; call it as a method, where the "
+                 "receiver binds the parameters",
+                 nm1);
           gatemember(e, imp, m, nm1);
           e->v.call.sym = m->sym; /* the method's own fn: the emitter's pick */
           e->v.call.tys = 0;      /* a gated method is never generic */
@@ -993,16 +1277,61 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
       if (ty->k != Tystruct && ty->k != Tyunion && ty->k != Tyenum)
         berr(f, "a method call needs a struct, union, or enum receiver; trait calls "
                 "arrive with dispatch (06)");
-      m = inherentfindt(ty, f->v.fld.name, &imp);
-      if (!m)
-        berr(f, "'%s' has no method '%s'; trait calls arrive with dispatch (06)", ty->sym->name,
-             f->v.fld.name);
-      if (m->kind != Mfn)
-        berr(f, "'%s::%s' is not a method", ty->sym->name, f->v.fld.name);
-      gatemember(f, imp, m, f->v.fld.name);
-      t = m->ty;
-      e->v.call.sym = m->sym; /* the method's own fn: the emitter's pick */
-      e->v.call.tys = 0;      /* a gated method is never generic */
+      { /* the inherent table first (05-traits.md: the namespaces are
+         * separate), then the trait one: a match binds the impl's
+         * parameters from the receiver's type, the same walk a
+         * struct literal runs (04-generics.md) */
+        Type **tys = 0;
+        int    declared = 0; /* a bound's signature, inside a generic fn */
+
+        m = inherentfindt(ty, f->v.fld.name, &imp, &tys);
+        if (!m)
+          m = traitfindt(ty, f->v.fld.name, &imp, &tys);
+        if (!m && ty->k == Typaram) {
+          /* a generic fn's parameter: no impl resolves here -- the
+           * bound names the trait, the declaration's signature
+           * carries the walk, and the instantiation's re-check
+           * picks the impl (04-generics.md) */
+          Ast **bs = ty->gp->v.gp.bounds;
+          usize bi, mi;
+
+          for (bi = 0; bi < vlen(bs); bi++) {
+            Ast **bsegs = bs[bi]->v.path.segs;
+            Sym  *tr = vlen(bsegs) == 1 ? symfind(bsegs[0]->v.seg.name) : 0;
+
+            if (!tr || tr->kind != Strait)
+              continue;
+            for (mi = 0; mi < tr->nmembers; mi++)
+              if (strcmp(tr->members[mi].name, f->v.fld.name) == 0) {
+                m = &tr->members[mi];
+                declared = 1;
+                break;
+              }
+            if (m)
+              break;
+          }
+          if (!m)
+            berr(f, "'%s' has no method '%s'; a bound on the parameter brings it", f->v.fld.name,
+                 f->v.fld.name);
+        }
+        if (!m)
+          berr(f, "'%s' has no method '%s'", ty->sym->name, f->v.fld.name);
+        if (m->kind != Mfn)
+          berr(f, "'%s::%s' is not a method", ty->sym->name, f->v.fld.name);
+        if (declared) {
+          t = selfsubst(m->ty, ty);
+          e->v.call.sym = 0; /* the re-check writes the impl's pick */
+          e->v.call.tys = 0;
+        } else {
+          gatemember(f, imp, m, f->v.fld.name);
+          t = m->ty;
+          if (tys) /* a pattern impl's method: Self and the pattern's
+                    * variables, under the receiver's binding */
+            t = gsubst(t, imp->gparams, tys, imp->ngparams);
+          e->v.call.sym = m->sym; /* the method's own fn: the emitter's pick */
+          e->v.call.tys = tys;
+        }
+      }
       {
         Frzsave  sv;
         Frzsave *svs = n ? arenaalloc(n * sizeof *svs) : 0;
@@ -1015,9 +1344,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
           for (k = 0; k < n; k++)
             argborrow(args[k], fe, &svs[k]);
         }
-        recvadapt(f->v.fld.e,
-                  t->nargs ? gsubst(t->args[0], ty->sym->gparams, ty->args, ty->nargs) : 0, rt, ty,
-                  fe, &sv);
+        recvadapt(f->v.fld.e, t->nargs ? t->args[0] : 0, rt, ty, fe, &sv);
         if (n + 1 != t->nargs)
           berr(e, "'%s' takes %lu arguments, %lu given", f->v.fld.name,
                (unsigned long) (t->nargs - 1), (unsigned long) n);
@@ -2195,6 +2522,15 @@ recheckfn(Sym *s, Ast *it, Type **tys)
   for (i = 0; i < ng; i++) { /* T is this binding, not a parameter */
     env.b[i].name = s->gparams[i]->v.gp.name;
     env.b[i].t = tys[i];
+  }
+  if (s->impl) { /* a method's re-check: Self is the impl's target
+                  * under this binding, the impl in scope for its
+                  * members -- the env checkbodyimpl built, narrowed
+                  * to one instance */
+    Type *st = s->impl->ifort ? s->impl->ifort : s->impl->ipath;
+
+    env.impl = s->impl;
+    env = envpush(&env, "Self", ng ? gsubst(st, s->gparams, tys, ng) : st);
   }
   for (i = 0; i < vlen(it->v.fn.params); i++)
     ats[i] = gsubst(s->fnty->args[i], s->gparams, tys, ng);

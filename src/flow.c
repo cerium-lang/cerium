@@ -168,7 +168,21 @@ iscopy(Type *t)
   }
   case Tyunion: /* a union forgets (03): always Copy */
     return 1;
-  default: /* Typaram, Tytrait, Typroj, Tyfn, Tytype */
+  case Typaram: { /* a parameter copies under a Copy bound -- the
+                   * bound promised it, or nobody could have written
+                   * the impl that supplies it (05-traits.md) */
+    Ast **bs = t->gp->v.gp.bounds;
+    usize i;
+
+    for (i = 0; i < vlen(bs); i++) {
+      Ast **segs = bs[i]->v.path.segs;
+
+      if (vlen(segs) == 1 && strcmp(segs[0]->v.seg.name, "Copy") == 0)
+        return 1;
+    }
+    return 0;
+  }
+  default: /* Tytrait, Typroj, Tyfn, Tytype */
     return 0;
   }
 }
@@ -629,13 +643,63 @@ inherentfind(Sym *s, const char *name, Sym **imp)
   return 0;
 }
 
+/* does an impl's target pattern fit this type, and what does it bind
+ * the pattern's variables to? The same walk gunify runs, with every
+ * variable owned by the impl: a repeated one must land the same type
+ * twice ((T, T) in 04-generics.md), an open slot stays open only
+ * until the walk ends -- the caller demands them all bound. */
+static int
+implatch(Type *pat, Type *ty, Ast **gps, Type **tys, usize n)
+{
+  usize i;
+
+  if (!pat || !ty)
+    return 0;
+  if (pat->k == Typaram) {
+    for (i = 0; i < n; i++)
+      if (pat->gp == gps[i]) {
+        if (!tys[i]) {
+          tys[i] = ty;
+          return 1;
+        }
+        return tysame(tys[i], ty);
+      }
+    return 0; /* someone else's variable: not this pattern's to bind */
+  }
+  if (pat->k != ty->k)
+    return 0;
+  switch (pat->k) {
+  case Typtr:
+  case Tyslice:
+  case Tymut:
+    return implatch(pat->t, ty->t, gps, tys, n);
+  case Tyarray:
+    if (pat->n != ty->n)
+      return 0;
+    return implatch(pat->t, ty->t, gps, tys, n);
+  case Tytuple:
+  case Tystruct:
+  case Tyenum:
+  case Tyunion:
+  case Tytrait:
+  case Tydyn:
+    if (pat->sym != ty->sym || pat->nargs != ty->nargs)
+      return 0;
+    for (i = 0; i < pat->nargs; i++)
+      if (!implatch(pat->args[i], ty->args[i], gps, tys, n))
+        return 0;
+    return 1;
+  default:
+    return tysame(pat, ty);
+  }
+}
 /* the same walk keyed by a receiver's full type: an impl written
  * for exactly that type wins over one whose pattern still has
- * variables in it -- binding them is the next batch's work
- * (04-generics.md, Specialization), so the caller gates what it
- * finds there. */
+ * variables in it -- the exact pass binds nothing, the pattern pass
+ * runs the match and hands the binding out through *tysp (the
+ * caller demands every slot bound, 04-generics.md). */
 Member *
-inherentfindt(Type *t, const char *name, Sym **imp)
+inherentfindt(Type *t, const char *name, Sym **imp, Type ***tysp)
 {
   usize i, pass;
 
@@ -643,29 +707,182 @@ inherentfindt(Type *t, const char *name, Sym **imp)
     return 0;
   if (imp)
     *imp = 0;
+  if (tysp)
+    *tysp = 0;
   for (pass = 0; pass < 2; pass++)
     for (i = 0; i < chk_nimpls; i++) {
-      Sym *im = chk_impls[i];
+      Sym    *im = chk_impls[i];
+      Type  **tys;
+      Member *m = 0;
+      usize   j, g;
 
       if (im->ifort || !im->ipath || im->ipath->sym != t->sym)
         continue;
-      if (pass == 0 ? !tysame(im->ipath, t) : !im->ngparams)
-        continue; /* the exact ones first, then the patterns */
-      {
-        Member *m = 0;
-        usize   j;
-
-        for (j = 0; j < im->nmembers; j++)
-          if (strcmp(im->members[j].name, name) == 0) {
-            m = &im->members[j];
-            break;
-          }
-        if (m) {
-          if (imp)
-            *imp = im;
-          return m;
+      if (pass == 0) {
+        if (!tysame(im->ipath, t))
+          continue;
+      } else {
+        if (!im->ngparams)
+          continue;
+        tys = tyargs(im->ngparams);
+        for (j = 0; j < im->ngparams; j++)
+          tys[j] = 0;
+        if (!implatch(im->ipath, t, im->gparams, tys, im->ngparams))
+          continue;
+        for (g = 0; g < im->ngparams; g++)
+          if (!tys[g])
+            break; /* the pattern left a slot open: not this one */
+        if (g < im->ngparams)
+          continue;
+      }
+      for (j = 0; j < im->nmembers; j++)
+        if (strcmp(im->members[j].name, name) == 0) {
+          m = &im->members[j];
+          break;
         }
+      if (m) {
+        if (imp)
+          *imp = im;
+        if (tysp && pass == 1)
+          *tysp = tys;
+        return m;
       }
     }
+  return 0;
+}
+
+/* a trait impl's member for this type, the trait named --
+ * Trait::method(&p) spells both out, so the walk narrows to that
+ * trait's impls. The binding the match made comes back through
+ * *tysp (impl->ngparams of them, in the arena); every slot must
+ * land, or the pattern does not pin the instance and the call does
+ * not resolve. Strictly ordered patterns are the specialization
+ * order's to rank (04-generics.md) -- pass 3 kept equal ones out,
+ * so the first fit here is the only fit. */
+Member *
+implfind(Sym *trait, Type *t, const char *name, Sym **imp, Type ***tysp)
+{
+  usize i, j, g;
+
+  if (imp)
+    *imp = 0;
+  if (tysp)
+    *tysp = 0;
+  if (!t)
+    return 0;
+  for (i = 0; i < chk_nimpls; i++) {
+    Sym    *im = chk_impls[i];
+    Type  **tys;
+    Member *m = 0;
+
+    if (!im->ifort || !im->ipath || im->ipath->sym != trait)
+      continue;
+    for (j = 0; j < im->nmembers; j++)
+      if (strcmp(im->members[j].name, name) == 0) {
+        m = &im->members[j];
+        break;
+      }
+    if (!m)
+      continue;
+    if (im->ngparams) {
+      tys = tyargs(im->ngparams);
+      for (j = 0; j < im->ngparams; j++)
+        tys[j] = 0;
+      if (!implatch(im->ifort, t, im->gparams, tys, im->ngparams))
+        continue;
+      for (g = 0; g < im->ngparams; g++)
+        if (!tys[g])
+          break; /* the pattern left a slot open: not this one */
+      if (g < im->ngparams)
+        continue;
+    } else if (!tysame(im->ifort, t))
+      continue;
+    if (imp)
+      *imp = im;
+    if (tysp && im->ngparams)
+      *tysp = tys;
+    return m;
+  }
+  return 0;
+}
+
+/* the same walk for the sugar: no trait named, so every impl of
+ * every trait that carries this member and fits this type is a
+ * candidate. The inherent table was already walked and came up
+ * empty, so what lands here is a trait method by elimination. */
+Member *
+traitfindt(Type *t, const char *name, Sym **imp, Type ***tysp)
+{
+  usize i, j, g;
+
+  if (imp)
+    *imp = 0;
+  if (tysp)
+    *tysp = 0;
+  if (!t || (t->k != Tystruct && t->k != Tyunion && t->k != Tyenum))
+    return 0;
+  for (i = 0; i < chk_nimpls; i++) {
+    Sym    *im = chk_impls[i];
+    Type  **tys = 0;
+    Member *m = 0;
+
+    if (!im->ifort || !im->ipath)
+      continue;
+    for (j = 0; j < im->nmembers; j++)
+      if (im->members[j].kind == Mfn && strcmp(im->members[j].name, name) == 0) {
+        m = &im->members[j];
+        break;
+      }
+    if (!m)
+      continue;
+    if (im->ngparams) {
+      tys = tyargs(im->ngparams);
+      for (j = 0; j < im->ngparams; j++)
+        tys[j] = 0;
+      if (!implatch(im->ifort, t, im->gparams, tys, im->ngparams))
+        continue;
+      for (g = 0; g < im->ngparams; g++)
+        if (!tys[g])
+          break;
+      if (g < im->ngparams)
+        continue;
+    } else if (!tysame(im->ifort, t))
+      continue;
+    if (imp)
+      *imp = im;
+    if (tysp && tys)
+      *tysp = tys;
+    return m;
+  }
+  return 0;
+}
+
+/* does this type implement this trait? A bound's question at a call
+ * site (04-generics.md): the impl table answers, and what it finds
+ * carries no binding -- the question is satisfied, not resolved. */
+int
+implsatisfies(Sym *trait, Type *t)
+{
+  usize i, j;
+
+  if (!t)
+    return 0;
+  for (i = 0; i < chk_nimpls; i++) {
+    Sym   *im = chk_impls[i];
+    Type **tys;
+
+    if (!im->ifort || !im->ipath || im->ipath->sym != trait)
+      continue;
+    if (!im->ngparams) {
+      if (tysame(im->ifort, t))
+        return 1;
+      continue; /* another impl of this trait may fit */
+    }
+    tys = tyargs(im->ngparams);
+    for (j = 0; j < im->ngparams; j++)
+      tys[j] = 0;
+    if (implatch(im->ifort, t, im->gparams, tys, im->ngparams))
+      return 1;
+  }
   return 0;
 }
