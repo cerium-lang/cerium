@@ -1,0 +1,4 @@
+/* a fn's parameters come from its arguments: it carries no default
+ * (04-generics.md) */
+fn id<T = u32>(x: T) -> T { x }
+fn main() -> i32 { return 1; }

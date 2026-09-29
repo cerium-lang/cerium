@@ -121,6 +121,14 @@ touched, and `mut` stays two orthogonal levels, the slot and the
 field, with a pointer gating everything it lends (`01-types.md`,
 `03-move.md`, `09-match.md`, `10-iteration.md`).
 
+A declaration may close its own tail: a type parameter's default
+fills the arguments left out — at a path, in a literal's inference,
+on an impl's head — naming only the parameters before it, and a
+trait's may be `Self`, so `impl Add for V3` is `Add<V3>` for `V3`
+and the member's `Rhs` is that argument (`04-generics.md`,
+`07-operators.md`). A fn's parameters come from its arguments and
+an impl's from the trait it implements: neither carries one.
+
 Codegen has begun: `xyz -s file.xyz` prints the `.ssa` text — qbe's
 input — and `xyz -c file.xyz -o out` runs the pipeline, qbe as a
 subprocess and the system `cc` linking. Checking writes each node's

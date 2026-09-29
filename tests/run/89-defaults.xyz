@@ -1,0 +1,27 @@
+/* a declaration may close its own tail: a default fills the type
+ * arguments left out -- at a path, in a literal's inference, on an
+ * impl's head. A default names the parameters before it, and a
+ * trait's may be Self: impl Add for V3 is Add<V3> for V3, and the
+ * member's Rhs is that argument (04-generics.md, 07-operators.md) */
+trait Add<Rhs = Self> {
+  fn add(self: *Self, o: *Rhs) -> i32;
+}
+struct V3 { x: i32, y: i32 }
+impl Add for V3 {                    /* Rhs defaults to Self: V3 */
+  fn add(self: *Self, o: *Rhs) -> i32 { self.x + o.x }
+}
+struct Wrap<T> { v: T }
+impl<T: Copy> Add<T> for Wrap<T> {   /* Rhs is the impl's own T */
+  fn add(self: *Self, o: *Rhs) -> i32 { 30 }
+}
+struct Pair<T, U = T> { a: T, b: U }
+fn main() -> i32 {
+  let a = V3{ x: 1, y: 2 };
+  let b = V3{ x: 10, y: 20 };
+  let mut t = a.add(&b);                 /* 11: Rhs = V3 */
+  let w = Wrap{ v: 5 };
+  let n: i32 = 7;
+  t = t + w.add(&n);                 /* 41: Rhs = T = i32, the binding not Self */
+  let p = Pair{ a: 1, b: 2 };        /* the literal's open tail: U = T = i32 */
+  return t + p.b;                    /* 41 + 2 */
+}

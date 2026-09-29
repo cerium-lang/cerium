@@ -220,6 +220,48 @@ aliasinst(Sym *s, Type **args, usize nargs, Ast *at)
   return rty(target, &env);
 }
 
+/* the missing tail of a declaration's arguments, from its own
+ * defaults. A default belongs to the declaration (04-generics.md):
+ * it names the parameters before it -- and a trait's Self, which is
+ * the impl's own type where an impl head is resolving one, the
+ * trait's parameter itself elsewhere. outer carries an impl head's
+ * own generics; a struct's defaults have nothing outside them. */
+static Type **
+dflttail(Sym *s, Type **args, usize nargs, Env *outer, Type *self, Ast *at)
+{
+  Type **full = tyargs(s->ngparams);
+  Env    env = outer ? *outer : envnone();
+  usize  base, i;
+
+  if (s->kind == Strait)
+    env = envpush(&env, "Self", self ? self : selfty());
+  base = env.n;
+  { /* the parameters' own slots, one at a time: the count reaches
+     * a slot only once its binding is in */
+    Bind *b = arenaalloc((base + s->ngparams) * sizeof *b);
+
+    if (env.n)
+      memcpy(b, env.b, base * sizeof *b);
+    env.b = b;
+    env.n = base;
+  }
+  for (i = 0; i < s->ngparams; i++) {
+    if (i < nargs) {
+      full[i] = args[i];
+    } else {
+      Ast *d = s->gparams[i]->v.gp.dflt;
+
+      if (!d)
+        cerrat(at, "missing type argument '%s'", s->gparams[i]->v.gp.name);
+      full[i] = rty(d, &env); /* sees only the parameters before it */
+    }
+    env.b[base + i].name = s->gparams[i]->v.gp.name;
+    env.b[base + i].t = full[i];
+    env.n = base + i + 1;
+  }
+  return full;
+}
+
 /* the generic arguments of a path segment, resolved; $$ and ^^ wait
  * for the compile-time evaluator */
 static Type **
@@ -393,19 +435,7 @@ rpath(Ast *p, Env *env)
            s->ngparams == 1 ? "" : "s", (unsigned long) nargs);
   /* defaults fill the missing tail, the alias rule again */
   if (nargs < s->ngparams) {
-    Type **full = tyargs(s->ngparams);
-    usize  i;
-
-    for (i = 0; i < nargs; i++)
-      full[i] = args[i];
-    for (i = nargs; i < s->ngparams; i++) {
-      Ast *d = s->gparams[i]->v.gp.dflt;
-
-      if (!d)
-        cerrat(p, "missing type argument '%s'", s->gparams[i]->v.gp.name);
-      full[i] = rty(d, env);
-    }
-    args = full;
+    args = dflttail(s, args, nargs, 0, 0, p);
     nargs = s->ngparams;
   }
   return tysym(s, args, nargs);
@@ -689,7 +719,7 @@ resolveenum(Sym *s)
  * arguments: they are its own parameters, bound by this impl
  * (05-traits.md). Defaults fill the tail, the alias rule again. */
 static Type *
-rtraitpath(Ast *p, Env *env)
+rtraitpath(Ast *p, Env *env, Type *self)
 {
   Ast  **segs = p->v.path.segs;
   Ast   *seg;
@@ -709,20 +739,9 @@ rtraitpath(Ast *p, Env *env)
   if (nargs > s->ngparams)
     cerrat(p, "'%s' takes %lu type argument%s, not %lu", s->name, (unsigned long) s->ngparams,
            s->ngparams == 1 ? "" : "s", (unsigned long) nargs);
-  if (nargs < s->ngparams) {
-    Type **full = tyargs(s->ngparams);
-    usize  i;
-
-    for (i = 0; i < nargs; i++)
-      full[i] = args[i];
-    for (i = nargs; i < s->ngparams; i++) {
-      Ast *d = s->gparams[i]->v.gp.dflt;
-
-      if (!d)
-        cerrat(p, "missing type argument '%s'", s->gparams[i]->v.gp.name);
-      full[i] = rty(d, env);
-    }
-    args = full;
+  if (nargs < s->ngparams) { /* the defaults, Self the impl's own
+                              * type (04-generics.md) */
+    args = dflttail(s, args, nargs, env, self, p);
     nargs = s->ngparams;
   }
   return tysym(s, args, nargs);
@@ -734,9 +753,9 @@ resolveimpl(Sym *s)
   Ast *it = s->decl;
   Env  env = envgparams(0, it->v.impl.gparams, vlen(it->v.impl.gparams));
 
-  if (it->v.impl.fort) { /* a trait impl: the path names the trait */
-    s->ipath = rtraitpath(it->v.impl.path, &env);
-    s->ifort = rty(it->v.impl.fort, &env);
+  if (it->v.impl.fort) {                   /* a trait impl: the path names the trait */
+    s->ifort = rty(it->v.impl.fort, &env); /* Self, for the defaults */
+    s->ipath = rtraitpath(it->v.impl.path, &env, s->ifort);
   } else { /* inherent: the path is the type */
     s->ipath = rty(it->v.impl.path, &env);
   }
@@ -798,6 +817,30 @@ resolvetrait(Sym *s)
  * so a fn's Self::Item reads what the impl supplied; the fns after.
  * An inherent impl carries no associated types -- it supplies
  * constants and methods only (05-traits.md). */
+/* one impl's member fns: the same env resolveimplmembers built --
+ * Self is the impl's type, the impl's own generics are in scope */
+
+/* a trait impl's head named the trait's own parameters: impl Add
+ * for Vec3 is Add<Vec3>, and a member's Rhs is that argument
+ * (07-operators.md). The bindings sit innermost, over the impl's own */
+Env
+envtraitargs(Env *e, Sym *s)
+{
+  Sym  *tr;
+  usize i, n;
+
+  if (!s->ifort || !s->ipath || s->ipath->k != Tytrait)
+    return *e;
+  tr = s->ipath->sym;
+  n = s->ipath->nargs < tr->ngparams ? s->ipath->nargs : tr->ngparams;
+  for (i = 0; i < n; i++) {
+    Env r = envpush(e, tr->gparams[i]->v.gp.name, s->ipath->args[i]);
+
+    *e = r;
+  }
+  return *e;
+}
+
 static void
 resolveimplmembers(Sym *s)
 {
@@ -809,6 +852,7 @@ resolveimplmembers(Sym *s)
 
   env.impl = s;
   env = envpush(&env, "Self", s->ifort ? s->ifort : s->ipath);
+  env = envtraitargs(&env, s);
   s->nmembers = n;
   s->members = n ? arenaalloc(n * sizeof *s->members) : 0;
   memset(s->members, 0, n * sizeof *s->members);
@@ -1387,6 +1431,40 @@ checkinit(void)
   chk_nimpls = 0;
 }
 
+/* a declaration's own defaults, read once where they are declared
+ * (04-generics.md): a default names the parameters before it -- and
+ * Self, in a trait. A fn's parameters come from its arguments and
+ * an impl's from the trait it implements: neither carries one. */
+static void
+checkdefaults(Sym *s)
+{
+  Ast **gps = s->gparams;
+  usize n = s->ngparams, i, j;
+
+  if (s->kind == Sfn || s->kind == Simpl) {
+    for (i = 0; i < n; i++)
+      if (gps[i]->v.gp.dflt)
+        cerrat(gps[i]->v.gp.dflt, "%s '%s' carries no default: %s",
+               s->kind == Sfn ? "a fn" : "an impl", s->name,
+               s->kind == Sfn ? "its parameters come from its arguments"
+                              : "it repeats the trait's shape");
+    return;
+  }
+  for (i = 0; i < n; i++) {
+    Ast *d = gps[i]->v.gp.dflt;
+
+    if (d) { /* the default sees only the parameters before it */
+      Env env = envnone();
+
+      for (j = 0; j < i; j++)
+        env = envpush(&env, gps[j]->v.gp.name, typaram(gps[j]));
+      if (s->kind == Strait)
+        env = envpush(&env, "Self", selfty());
+      rty(d, &env);
+    }
+  }
+}
+
 void
 checkfile(Ast **items)
 {
@@ -1401,6 +1479,7 @@ checkfile(Ast **items)
 
     if (!s)
       continue;
+    checkdefaults(s);
     switch (it->k) {
     case Nfn:
       resolvefn(s);
