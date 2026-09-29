@@ -136,7 +136,11 @@ a fn value, an impl's methods emitted as the fns they are, inherent
 or trait, exact or a pattern the receiver instantiates (the sugar's
 receiver adapted at the call, a `Type::member` call, a
 `Trait::member(&p)` one resolving its impl by the receiver, and a
-method held as a value included), `dyn A` handles — `&dyn b` builds
+method held as a value included) — and a method may take parameters
+of its own, the trait declaring the family: the impl's parameters
+and the method's bind together at the call, the arguments picking
+the member, one instance per binding, a generic caller's re-check
+carrying both (04-generics.md) — `dyn A` handles — `&dyn b` builds
 the fat where the impl is known, one vtable per trait and concrete
 type in the data segment — the most specific impl's, as every
 call-site pick — the call reading its slot through the
