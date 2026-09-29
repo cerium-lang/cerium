@@ -159,6 +159,12 @@ struct Em
 {
   FILE  *o;
   usize  tmp;    /* one a temporary: %t.N */
+  char **allocs; /* the entry's stack asks, held for the front: a
+                  * slot asked for inside a loop is bytes taken every
+                  * round, and a long loop walks the frame off the
+                  * guard page -- so every ask goes out at @start,
+                  * once, and the rounds share the slot (Clang's
+                  * alloca discipline) */
   char **datas;  /* the data lines, printed after the fns */
   usize *zerosz; /* the zero blocks already grown, by size */
   char **zeros;  /* their symbols, parallel */
@@ -191,6 +197,21 @@ newtmp(Em *em)
   return s;
 }
 
+/* a stack slot: the instruction is held for the entry block, where
+ * qbe lowers it once, and the rounds of a loop share the memory it
+ * asked for -- each ask names a fresh temporary, so no two wants
+ * collide, and @start dominates every use */
+static char *
+stackslot(Em *em, usize sz)
+{
+  char *t = newtmp(em);
+  char *l = arenaalloc(48);
+
+  sprintf(l, "\t%s =l alloc8 %lu\n", t, (unsigned long) sz);
+  vappend(&em->allocs, &l);
+  return t;
+}
+
 /* a niche value sits in storage as one pointer; where it crosses a
  * call the signature says 'l' (isabb) -- load it out to hand over */
 static char *
@@ -213,8 +234,7 @@ nichein(Em *em, Type *t, char *v)
 
   if (!t || !nicheness(t))
     return v;
-  slot = newtmp(em);
-  fprintf(em->o, "\t%s =l alloc8 8\n", slot);
+  slot = stackslot(em, 8);
   fprintf(em->o, "\tstorel %s, %s\n", v, slot);
   return slot;
 }
@@ -242,11 +262,9 @@ jump(Em *em, char *lbl)
 static char *
 mkslot(Em *em, Type *t)
 {
-  char *s = newtmp(em);
   usize sz = sizeof_(t) ? sizeof_(t) : 1;
 
-  fprintf(em->o, "\t%s =l alloc8 %lu\n", s, (unsigned long) sz);
-  return s;
+  return stackslot(em, sz);
 }
 
 static void
@@ -918,10 +936,8 @@ emavariant(Em *em, Type *t, Variant *v, Ast **args, usize n, Ast *at)
 {
   Sym  *es = t->sym;
   int   nc = nicheness(t);
-  char *s = newtmp(em);
   usize sz = sizeof_(t) ? sizeof_(t) : 1;
-
-  fprintf(em->o, "\t%s =l alloc8 %lu\n", s, (unsigned long) sz);
+  char *s = stackslot(em, sz);
   if (nc != NICHE_NONE) {
     char *nulln = nc == NICHE_OPT ? "None" : nc == NICHE_OKUNIT ? "Ok" : "Err";
 
@@ -992,8 +1008,7 @@ patbindv(Em *em, char *name, Type *t, char *addr, char *val)
           fprintf(em->o, "\t%s %s, %s\n", stins(t), val, em->locs[i].slot);
         return;
       }
-  slot = newtmp(em);
-  fprintf(em->o, "\t%s =l alloc8 %lu\n", slot, (unsigned long) (sizeof_(t) ? sizeof_(t) : 1));
+  slot = stackslot(em, sizeof_(t) ? sizeof_(t) : 1);
   if (val && sizeof_(t))
     fprintf(em->o, "\t%s %s, %s\n", stins(t), val, slot);
   locbind(em, name, slot, t);
@@ -1273,10 +1288,8 @@ emapat(Em *em, Ast *p, Type *t, char *addr, char *val, char *fail)
     patboundnames(ps[0], &bs);
     for (i = 0; i < vlen(bs); i++) { /* one slot per name, made where
                                       * every alternative and the join can see it */
-      char *slot = newtmp(em);
+      char *slot = stackslot(em, sizeof_(bs[i].ty) ? sizeof_(bs[i].ty) : 1);
 
-      fprintf(em->o, "\t%s =l alloc8 %lu\n", slot,
-              (unsigned long) (sizeof_(bs[i].ty) ? sizeof_(bs[i].ty) : 1));
       locbind(em, bs[i].name, slot, bs[i].ty);
     }
     for (i = 1; i < n; i++)
@@ -1471,8 +1484,7 @@ emafor(Em *em, Ast *st)
         len = newtmp(em);
         fprintf(em->o, "\t%s =l copy %lu\n", len, (unsigned long) et->n);
       }
-      islot = newtmp(em);
-      fprintf(em->o, "\t%s =l alloc8 8\n", islot);
+      islot = stackslot(em, 8);
       fprintf(em->o, "\tstorel 0, %s\n", islot);
       em->loops[em->nloops].brk = lx;
       em->loops[em->nloops].cont = lcont;
@@ -1636,8 +1648,7 @@ emaexpr(Em *em, Ast *e)
       char *p8 = newtmp(em);
       char *vt = vtname(e->ty->sym, e->v.un.e->ty);
 
-      t = newtmp(em);
-      fprintf(em->o, "\t%s =l alloc8 16\n", t);
+      t = stackslot(em, 16);
       fprintf(em->o, "\tstorel %s, %s\n", addr, t);
       fprintf(em->o, "\t%s =l add %s, 8\n", p8, t);
       fprintf(em->o, "\tstorel $%s, %s\n", vt, p8);
@@ -1994,11 +2005,12 @@ emaexpr(Em *em, Ast *e)
   }
   case Nstr: { /* the bytes go to the data segment; the value is the
                 * slice itself, two words of memory */
-    char *base = arenaalloc(16), *t = newtmp(em);
+    char *base = arenaalloc(16);
+    char *t;
     usize i;
 
     sprintf(base, "$str.%lu", (unsigned long) ++dsn);
-    fprintf(em->o, "\t%s =l alloc8 16\n", t);
+    t = stackslot(em, 16);
     fprintf(em->o, "\tstorel %s, %s\n", base, t);
     { /* the len goes in the second word */
       char *p = newtmp(em);
@@ -2021,11 +2033,10 @@ emaexpr(Em *em, Ast *e)
   case Nstructlit: { /* storage first, then a field at a time */
     Type *st = e->ty;
     usize sz = sizeof_(st) ? sizeof_(st) : 1;
-    char *t = newtmp(em);
+    char *t = stackslot(em, sz);
     Ast **inits = e->v.slit.inits;
     usize i;
 
-    fprintf(em->o, "\t%s =l alloc8 %lu\n", t, (unsigned long) sz);
     fprintf(em->o, "\tblit %s, %s, %lu\n", zeroblk(em, sz), t, (unsigned long) sz);
     for (i = 0; i < vlen(inits); i++) {
       Ast  *ini = inits[i];
@@ -2166,8 +2177,7 @@ emaexpr(Em *em, Ast *e)
       et = et->t;
     sz = sizeof_(et);
     whole = at->k == Tyarray ? at->n * sz : n * sz;
-    t = newtmp(em);
-    fprintf(em->o, "\t%s =l alloc8 %lu\n", t, (unsigned long) (whole ? whole : 1));
+    t = stackslot(em, whole ? whole : 1);
     if (at->k == Tyarray && n < at->n) /* the elements left out read
                                         * as zero (01-types.md) */
       fprintf(em->o, "\tblit %s, %s, %lu\n", zeroblk(em, whole), t, (unsigned long) whole);
@@ -2243,9 +2253,8 @@ emastmt(Em *em, Ast *st)
                      * move, not a copy (03-move.md) */
         locbind(em, nm, v, t);
       else {
-        char *slot = newtmp(em);
+        char *slot = stackslot(em, sizeof_(t) ? sizeof_(t) : 1);
 
-        fprintf(em->o, "\t%s =l alloc8 %lu\n", slot, (unsigned long) (sizeof_(t) ? sizeof_(t) : 1));
         if (v && sizeof_(t))
           fprintf(em->o, "\t%s %s, %s\n", stins(t), v, slot);
         locbind(em, nm, slot, t);
@@ -2375,15 +2384,21 @@ emitfn(FILE *o, Sym *s, Ast *it, char *name, Type **ats, Type *ret)
 {
   Type *fnty = s->fnty;
   Em    em;
+  FILE *body;
   usize i;
 
   if (!ret)
     ret = fnty->t; /* the fn's own: not an instantiation */
   memset(&em, 0, sizeof em);
   em.ormark = (usize) -1; /* no or-pattern yet: reuse is off */
-  em.o = o;
+  em.allocs = vnew(char *, 16);
   em.datas = vnew(char *, 8);
   em.locs = vnew(ELoc, 16);
+  body = tmpfile(); /* the fn's text, held back: the stack its body
+                     * asks for goes ahead of it, at the entry */
+  if (!body)
+    die("a fn's body could not be buffered");
+  em.o = body;
   fputs("export function", o);
   if (ret)
     fprintf(o, " %s", sigty(ret, it));
@@ -2435,9 +2450,22 @@ emitfn(FILE *o, Sym *s, Ast *it, char *name, Type **ats, Type *ret)
     if (reached) { /* a niche returns as its one pointer, an
                     * aggregate as the address the :type names */
       v = nicheout(&em, ret, v);
-      fprintf(o, "\tret %s\n", v ? v : "0");
+      fprintf(em.o, "\tret %s\n", v ? v : "0");
     }
   }
+  for (i = 0; i < vlen(em.allocs); i++) /* the entry's asks, ahead of
+                                         * the text that asked for
+                                         * them */
+    fprintf(o, "%s", em.allocs[i]);
+  {
+    char   buf[4096];
+    size_t n;
+
+    rewind(body);
+    while ((n = fread(buf, 1, sizeof buf, body)) > 0)
+      fwrite(buf, 1, n, o);
+  }
+  fclose(body);
   fputs("}\n\n", o);
   for (i = 0; i < vlen(em.datas); i++) /* the strings this fn grew */
     fprintf(o, "%s\n", em.datas[i]);
