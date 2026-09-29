@@ -1683,6 +1683,16 @@ emaexpr(Em *em, Ast *e)
     }
     if (op == Tamp)
       return emaplace(em, e->v.un.e); /* &place: the address itself */
+    if (op == Tminus && e->v.un.e->k == Nint) {
+      /* the folded least (01-types.md): a signed type's least is
+       * negated at the check, and here in one step -- a copy of the
+       * negative, not a neg of a magnitude the width cannot hold */
+      long m = (long) (0 - e->v.un.e->v.i.num);
+
+      t = newtmp(em);
+      fprintf(em->o, "\t%s =%c copy %ld\n", t, qbety(e->ty, e), m);
+      return t;
+    }
     v = emaexpr(em, e->v.un.e);
     t = newtmp(em);
     if (op == Tminus)

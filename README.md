@@ -142,8 +142,11 @@ are compile errors; the in-flight stack is the cycle check, a
 const that depends on itself an error, not a hang; a step budget
 ends what would not end; nothing is observed, so nothing varies.
 The sign rides a literal: `-2147483648` is i32's least, spelled
-the only way it can be — a `let`'s inference does not fold the
-sign yet, its `-128` still naming an i32, the one divergence.
+the only way it can be — the const's evaluator folds it, and the
+body's inference does too, at every place a want arrives: a
+binding, a call's argument, a field, an element. The domain check
+reads the signed whole, so the least passes and one past it does
+not, and a negative never fits an unsigned.
 An array's length and a variant's discriminant are const
 expressions now, not only literals — `[N * 2 + 1]u8` and
 `enum E(u8) { A = D, B }` both evaluate, `B` counting from `D` —

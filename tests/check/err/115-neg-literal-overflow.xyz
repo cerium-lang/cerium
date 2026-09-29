@@ -1,0 +1,8 @@
+/* the let's side folds the sign too (01-types.md): the least of a
+ * signed type passes, one past it does not, and a negative never
+ * fits an unsigned one */
+fn main() -> i32 {
+  let x: i32 = -2147483649;
+  let y: u8 = -1;
+  return x;
+}

@@ -1194,6 +1194,45 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
       freeze(e->v.un.e, fe, e->v.un.mut, (int) fe->n);
       return e->v.un.mut ? typtr(tymut(t)) : typtr(t);
     }
+    if (op == Tminus && want && want->k == Tyint &&
+        (e->v.un.e->k == Nint || e->v.un.e->k == Nflt)) {
+      /* the sign rides the literal (01-types.md): a signed type's
+       * least -- i8's -128, i32's -2147483648 -- spells with it,
+       * and no other way is. The domain check reads the signed
+       * whole, so the least passes and one past it does not */
+      if (e->v.un.e->k == Nflt) { /* a float's negative: it rounds,
+                                   * it does not overflow */
+        if (want->num != IN_F32 && want->num != IN_F64)
+          berr(e, "-%g does not fit %s", e->v.un.e->v.f.flt, btys(want));
+      } else {
+        u64 m = e->v.un.e->v.i.num;
+        int ok;
+
+        switch (want->num) {
+        case IN_I8:
+          ok = m <= 0x80;
+          break;
+        case IN_I16:
+          ok = m <= 0x8000;
+          break;
+        case IN_I32:
+          ok = m <= 0x80000000u;
+          break;
+        case IN_I64:
+        case IN_ISIZE: /* the sizes are the machine's: 64 (layout.c) */
+          ok = m <= ((u64) 1 << 63);
+          break;
+        default: /* an unsigned want: a negative never fits one */
+          ok = 0;
+          break;
+        }
+        if (!ok)
+          berr(e, "-%lu does not fit %s", (unsigned long) m, btys(want));
+      }
+      e->v.un.e->ty = want; /* the operand carries the type the fold
+                             * landed in; the emitter negates it */
+      return want;
+    }
     {
       Type *t = rexpr(e->v.un.e, fe, 0);
 
