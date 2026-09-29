@@ -586,14 +586,17 @@ gunify(Type *sig, Type *arg, Ast **gps, Type **tys, usize n)
 
 /* -- inherent impl members ------------------------------------------------ */
 
-/* the member of an inherent impl for the type s, or NULL: pass 3's
- * table, walked. Trait impls are not looked at here -- those calls
- * arrive with dispatch. */
+/* the member of an inherent impl for the named type, or NULL: pass
+ * 3's table, walked. *imp, when not NULL, receives the impl that
+ * supplied it -- the caller asks it about genericity. Trait impls
+ * are not looked at here -- those calls arrive with dispatch. */
 Member *
-inherentfind(Sym *s, const char *name)
+inherentfind(Sym *s, const char *name, Sym **imp)
 {
   usize i;
 
+  if (imp)
+    *imp = 0;
   for (i = 0; i < chk_nimpls; i++) {
     Sym *im = chk_impls[i];
 
@@ -608,9 +611,53 @@ inherentfind(Sym *s, const char *name)
           m = &im->members[j];
           break;
         }
-      if (m)
+      if (m) {
+        if (imp)
+          *imp = im;
         return m;
+      }
     }
   }
+  return 0;
+}
+
+/* the same walk keyed by a receiver's full type: an impl written
+ * for exactly that type wins over one whose pattern still has
+ * variables in it -- binding them is the next batch's work
+ * (04-generics.md, Specialization), so the caller gates what it
+ * finds there. */
+Member *
+inherentfindt(Type *t, const char *name, Sym **imp)
+{
+  usize i, pass;
+
+  if (!t || (t->k != Tystruct && t->k != Tyunion && t->k != Tyenum))
+    return 0;
+  if (imp)
+    *imp = 0;
+  for (pass = 0; pass < 2; pass++)
+    for (i = 0; i < chk_nimpls; i++) {
+      Sym *im = chk_impls[i];
+
+      if (im->ifort || !im->ipath || im->ipath->sym != t->sym)
+        continue;
+      if (pass == 0 ? !tysame(im->ipath, t) : !im->ngparams)
+        continue; /* the exact ones first, then the patterns */
+      {
+        Member *m = 0;
+        usize   j;
+
+        for (j = 0; j < im->nmembers; j++)
+          if (strcmp(im->members[j].name, name) == 0) {
+            m = &im->members[j];
+            break;
+          }
+        if (m) {
+          if (imp)
+            *imp = im;
+          return m;
+        }
+      }
+    }
   return 0;
 }

@@ -1,0 +1,24 @@
+/* a generic fn as a value: the expected type instantiates it
+ * (04-generics.md) -- a let's annotation, an argument slot. The
+ * twin spells the instance by hand; the difference proves the
+ * inferred one is the same fn. */
+fn id<T>(x: T) -> T { x }
+fn idi32(x: i32) -> i32 { x } /* the twin, spelled out */
+
+fn apply(f: fn(i32) -> i32, v: i32) -> i32 { f(v) }
+
+fn main() -> i32 {
+  let a = apply(id, 21);      /* an argument slot instantiates */
+  let b = apply(idi32, 21);   /* the twin passes the same slot */
+  let g: fn(i32) -> i32 = id; /* a let's annotation instantiates */
+  let h = idi32;
+  let c = g(100);
+  let d = h(100);
+  let e = g(g(5));            /* through the value twice */
+  let p: fn(i32) -> i64 = pick; /* a chain: the want picks the member */
+  let q: fn(i32) -> i32 = pick;
+  a - b + c - d + e + @cast<i32>(p(1)) + @cast<i32>(q(1)) /* 5 + 1 + 1 = 7 */
+}
+
+fn pick<T>(x: T) -> T { x }
+fn pick(x: i32) -> i64 { return @cast<i64>(x); }

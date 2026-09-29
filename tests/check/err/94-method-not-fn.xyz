@@ -1,0 +1,8 @@
+/* a const member is not a method: the sugar calls fns only
+ * (05-traits.md) */
+struct Point { x: i32 }
+impl Point { const MAX: i32 = 7; }
+fn main() -> i32 {
+  let p = Point{ x: 1 };
+  p.MAX()
+}

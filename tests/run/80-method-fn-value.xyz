@@ -1,0 +1,17 @@
+/* a method as a fn value: Type::member is the fn, self its first
+ * parameter -- bound to a let, called through the value, the
+ * receiver among the arguments as written (04-generics.md's value
+ * rule, a method's shape) */
+struct Point { mut x: i32, y: i32 }
+impl Point {
+  fn scale(self: *mut Point, k: i32) { self.x = self.x * k; }
+  fn getx(self: Point) -> i32 { return self.x; }
+}
+fn main() -> i32 {
+  let mut p = Point{ x: 3, y: 4 };
+  let f = Point::scale;    /* the method's own fn, as a value */
+  f(&mut p, 2);            /* x: 6, through the value */
+  let g = Point::getx;
+  let q = Point{ x: 5, y: 0 };
+  g(q) + p.x               /* 5 + 6 */
+}

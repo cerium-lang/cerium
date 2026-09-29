@@ -301,8 +301,17 @@ prefixtype(void)
     n = mk(Nttuple);
     n->v.list.ts = vnew(Ast *, 4);
     for (;;) {
-      Ast *t = type_();
+      Ast *t;
 
+      if (accept(Tmut)) { /* (T, mut U): a writable row (01-types.md);
+                           * resolve wraps it in tymut, as [N]mut does */
+        Ast *m = mk(Ntmut);
+
+        m->v.un.mut = 1;
+        m->v.un.e = type_();
+        t = m;
+      } else
+        t = type_();
       npush(&n->v.list.ts, t);
       if (peek() == Tcomma) {
         next();

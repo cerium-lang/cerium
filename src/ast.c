@@ -508,6 +508,9 @@ dumpnode(Ast *n, int i)
       printf(" mut");
     child(n->v.un.e, i);
     break;
+  case Ntmut:
+    child(n->v.un.e, i);
+    break;
   case Ntarray:
     opt(n->v.arrlit.len, i);
     if (n->v.arrlit.mut)

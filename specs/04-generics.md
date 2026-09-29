@@ -68,6 +68,13 @@ let b = id(File{ fd: 0 }); // instantiates id<File>
 interchangeable as function pointers. The same instantiation is emitted once
 globally, no matter how many namespaces call it.
 
+A generic fn used as a value instantiates from the type expected of it: `let
+f: fn(i32) -> i32 = id;` is `id<i32>`, and an argument slot expecting
+`fn(i32) -> i32` instantiates `id` the same way. Without an expected type
+there is nothing to instantiate from — `let g = id;` does not compile. Generic
+arguments cannot be spelled in expression position (`id<i32>` parses as a
+comparison chain); the expected type is the only spelling.
+
 Dispatch is fully static: no vtables, no trait objects, no runtime cost. `dyn`
 (`06-dispatch.md`) is the opt-in dynamic path, and it is written in the type
 rather than inferred from it.

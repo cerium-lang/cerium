@@ -1,0 +1,25 @@
+/* (T, mut U): a row is its own writable slot -- writes land at the
+ * row's offset, reads strip the permission, and a plain row stays
+ * read-only beside it (01-types.md) */
+fn main() -> i32 {
+  let t: (i32, mut i64) = (7, 40);
+  t.1 = 41;                                  /* the mut row writes */
+  let mut n = t.0 + @cast<i32>(t.1);         /* 48 */
+  n = n + @cast<i32>(t.1);                   /* +41 = 89 */
+  t.1 += 1;                                  /* a compound form too */
+  n = n + @cast<i32>(t.1);                   /* +42 = 131 */
+  let u: (mut i32, i64) = (5, 6);            /* the mut can sit first */
+  u.0 = 9;
+  n = n + u.0 + @cast<i32>(u.1);             /* +15 = 146 */
+  let nest: ((i32, mut i64), i32) = ((1, 2), 3);
+  nest.0.1 = 4;                              /* nested rows chain */
+  n = n + nest.0.0 + @cast<i32>(nest.0.1) + nest.1; /* +8 = 154 */
+  let f = swap((10, 20));                    /* rows cross a call */
+  n = n + @cast<i32>(f.0) + f.1;             /* +40 +10 = 204 */
+  n
+}
+
+fn swap(t: (i32, mut i64)) -> (i64, i32) {
+  t.1 = t.1 * 2;
+  (t.1, t.0)
+}

@@ -1,0 +1,17 @@
+/* Type::member spelled out in full: the sugar's expansion itself
+ * (05-traits.md). A &mut argument freezes its root for the callee's
+ * parameter -- and the freeze ends with the call, so the place is
+ * writable again right after (01-types.md: across a fn boundary
+ * exclusivity is a promise, not a proof) */
+struct Point { mut x: i32, y: i32 }
+impl Point {
+  fn scale(self: *mut Point, k: i32) { self.x = self.x * k; }
+  fn getx(self: Point) -> i32 { return self.x; }
+}
+fn main() -> i32 {
+  let mut p = Point{ x: 3, y: 4 };
+  Point::scale(&mut p, 2); /* x: 6; the borrow ended with the call */
+  p.x = p.x + 1;           /* writable again: 7 */
+  let q = Point{ x: 10, y: 0 };
+  Point::getx(q)           /* the by-value self is the first argument */
+}

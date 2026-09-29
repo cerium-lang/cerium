@@ -71,8 +71,8 @@ observe is as safe as dropping it. `let a: [3]mut u32 = b;` therefore accepts a
 distinct: `is_same<[3]mut u32, [3]u32>::value` is false.
 
 `mut` is only meaningful inside a compound type — `*mut T`, `[3]mut T`,
-`mut c: T` — or on a named slot: `let mut a` for a variable, `mut self: Self`
-for a parameter. There is no standalone `mut i32`.
+`(T, mut U)`, `mut c: T` — or on a named slot: `let mut a` for a variable,
+`mut self: Self` for a parameter. There is no standalone `mut i32`.
 
 ## Array
 

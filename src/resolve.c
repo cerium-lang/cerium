@@ -423,6 +423,8 @@ rty(Ast *t, Env *env)
 
     return typtr(t->v.un.mut ? tymut(c) : c);
   }
+  case Ntmut: /* a tuple row's writable slot (01-types.md) */
+    return tymut(rty(t->v.un.e, env));
   case Ntarray: {
     Type *elem = rty(t->v.arrlit.t, env);
     Ast  *len = t->v.arrlit.len;
@@ -752,6 +754,18 @@ resolveimplmembers(Sym *s)
       case Nfn:
         dm->kind = Mfn;
         dm->ty = resolvefnsig(m, &env);
+        { /* the method's own fn Sym: outside the namespace -- the
+           * call sites write it back, the emitter names by it */
+          Sym *fs = arenaalloc(sizeof *fs);
+
+          memset(fs, 0, sizeof *fs);
+          fs->name = dm->name;
+          fs->kind = Sfn;
+          fs->decl = m;
+          fs->fnty = dm->ty;
+          fs->impl = s;
+          dm->sym = fs;
+        }
         break;
       case Ntypedef:
         if (!s->ifort)
@@ -1213,6 +1227,9 @@ declare(Ast **items)
       memset(s, 0, sizeof *s);
       s->kind = Simpl;
       s->decl = it;
+      s->gparams = it->v.impl.gparams; /* the head's own: the method
+                                        * gate reads them (04) */
+      s->ngparams = vlen(it->v.impl.gparams);
       break;
     default: /* Nuse: namespaces are their own feature */
       break;

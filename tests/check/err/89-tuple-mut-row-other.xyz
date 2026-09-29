@@ -1,0 +1,7 @@
+/* (T, mut U) lends its mut to the .1 row alone: .0 stays read-only
+ * (01-types.md) */
+fn main() -> i32 {
+  let t: (i32, mut i64) = (1, 2);
+  t.0 = 3;
+  t.0
+}

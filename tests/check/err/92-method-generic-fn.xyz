@@ -1,0 +1,10 @@
+/* a generic method: a family of fns, one per binding -- a call has
+ * no expected type to pick one with (04-generics.md) */
+struct Point { mut x: i32 }
+impl Point {
+  fn twice<T>(self: *Point, v: T) -> T { return v; }
+}
+fn main() -> i32 {
+  let mut p = Point{ x: 1 };
+  p.twice(3)
+}

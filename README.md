@@ -99,8 +99,10 @@ exactly what the trait declares, and orders every pair of impls by
 shape-pattern specificity or the `Copy`/`Drop` exclusion
 (`04-generics.md`), rejecting the rest on the spot. It then walks
 every function body: expressions get their types — the method sugar
-adapts its receiver, `None` takes its `?T` from the other side, a
-`match` is exhaustive variant by variant — and the flow rules hold:
+adapts its receiver, and every borrow a call writes — an argument's
+as much as the receiver's — ends with that call, `None` takes its
+`?T` from the other side, a `match` is exhaustive variant by
+variant — and the flow rules hold:
 a move kills its binding downstream, a borrow freezes what it
 touched, and `mut` stays two orthogonal levels, the slot and the
 field, with a pointer gating everything it lends (`01-types.md`,
@@ -117,13 +119,17 @@ narrows by the target), `@sizeof`/`@alignof` folding over the
 layout tables of `02-layout.md` in full — struct padding in
 declaration order, unions, enums as a tag and a payload union, the
 `?T` niche, `#[packed]` and `#[align(N)]` — calls through a name or
-a fn value, `#[extern(C)]` imports and exports keeping their
-symbols, and the aggregate half: a struct literal (a nested one
+a fn value, an inherent impl's methods emitted as the fns they are
+(the sugar's receiver adapted at the call, a `Type::member` call
+and a method held as a value included), `#[extern(C)]` imports and
+exports keeping their symbols, and the aggregate half: a struct literal (a nested one
 `blit`s into its field), a string landing in the data segment with
 its slice on the stack, `.ptr`/`.len` reads, and field/deref/slot
 places to read and write through, `mut` permitting. An overload
-chain resolves at emit time only by accident of order — the real
-resolution waits for monomorphization (M3d).
+chain resolves at the checker — the call site writes its pick back,
+and one instantiation is re-checked per binding (M3e); a fn value
+carries the same resolution, a generic one instantiated from the
+type expected of it.
 
 Control flow is M3c's, and in: `if` is an expression — value form,
 else-if chains, nesting — `&&`/`||` skip the right side, and the
@@ -155,8 +161,10 @@ an opaque `align N { size }` — memory carries it, correctness
 over speed. Parameters arrive as the copies qbe makes (C
 semantics); a shared borrow may stack on a live shared one, the
 checker now reading `01-types.md`'s "a `*T` is not exclusive"
-as written. Array literals and indexing, tuple expressions, and
-monomorphization wait for M3d.
+as written. Array literals and indexing, tuple expressions and
+row writes — `(T, mut U)`, one row its own slot — and
+monomorphization are in (M3d–M3f): one copy per binding, the
+same instance emitted once, all of it static.
 
 The layout and the behavior are tested by running them:
 `tests/run` holds one `.xyz` per binary with an `.expect` naming

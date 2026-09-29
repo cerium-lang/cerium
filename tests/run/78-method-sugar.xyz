@@ -1,0 +1,19 @@
+/* the method sugar, end to end (05-traits.md): p.f() is Type::f(&p)
+ * -- a *mut self takes &mut of a mut slot, a *self a shared borrow,
+ * a by-value self moves the receiver in, and every borrow ends with
+ * the call that took it */
+struct Point { mut x: i32, y: i32 }
+impl Point {
+  fn getx(self: Point) -> i32 { return self.x; }
+  fn getr(self: *Point) -> i32 { return self.x; }
+  fn scale(self: *mut Point, k: i32) { self.x = self.x * k; }
+}
+fn main() -> i32 {
+  let mut p = Point{ x: 3, y: 4 };
+  p.scale(2);              /* x: 6; the &mut ends with the call */
+  let a = p.x;             /* readable the moment the call is done */
+  let b = p.getr();        /* a shared borrow reads just as well */
+  let q = Point{ x: 10, y: 0 };
+  let c = q.getx();        /* the by-value self moves q in */
+  a + b + c                /* 6 + 6 + 10 */
+}

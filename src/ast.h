@@ -42,7 +42,7 @@
   X(Nclosure, "closure") X(Ncap, "cap") X(Nbuiltin, "builtin")                 \
   /* types */                                                                  \
   X(Ntopt, "topt") X(Ntresult, "tresult") X(Ntptr, "tptr")                     \
-  X(Ntarray, "tarray") X(Nttuple, "ttuple") X(Ntfn, "tfn")                     \
+  X(Ntmut, "tmut") X(Ntarray, "tarray") X(Nttuple, "ttuple") X(Ntfn, "tfn")    \
   X(Ntdyn, "tdyn") X(Nttype, "ttype") /* mut: dyn mut A */                      \
   /* items */                                                                  \
   X(Nfn, "fn") X(Nstruct, "struct") X(Nunion, "union") X(Nenum, "enum")        \
@@ -113,8 +113,10 @@ struct Ast
     } nm;
     struct
     {
-      Ast **segs; /* Npath: Nseg vector */
-      int   root; /* leading "::" */
+      Ast  **segs; /* Npath: Nseg vector */
+      int    root; /* leading "::" */
+      Sym   *sym;  /* Npath: the fn it names as a value, when it does */
+      Type **tys;  /* Npath: the instantiation the want picked (04) */
     } path;
     struct
     {
@@ -130,7 +132,7 @@ struct Ast
     {
       Ast *e;
       Tok  op;  /* Nun: the operator token */
-      int  mut; /* Nun: &mut; Ntptr: *mut */
+      int  mut; /* Nun: &mut; Ntptr: *mut; Ntmut: a tuple row's slot */
     } un;
     struct
     {
