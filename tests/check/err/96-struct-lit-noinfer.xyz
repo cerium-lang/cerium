@@ -1,0 +1,7 @@
+/* no expected type, no field naming T, no default: nothing to
+ * instantiate from (04-generics.md) */
+struct Empty<T> { z: i32 }
+fn main() -> i32 {
+  let e = Empty{ z: 1 };
+  e.z
+}

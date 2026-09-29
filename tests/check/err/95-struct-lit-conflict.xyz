@@ -1,0 +1,8 @@
+/* two fields naming one T: the bindings must agree, and a literal
+ * 7 binds i32 first (04-generics.md) */
+struct P<T> { a: T, b: T }
+fn main() -> i32 {
+  let x: i64 = 1;
+  let p = P{ a: 7, b: x };
+  0
+}

@@ -1,0 +1,21 @@
+/* a generic struct's literal instantiates the way a call does
+ * (04-generics.md): the type expected of it binds first, the field
+ * values bind what that leaves open, and a parameter no evidence
+ * names falls to its declaration's default. A field read out of a
+ * generic instance carries the instance's argument, not the
+ * declaration's bare T */
+struct Box<T> { mut v: T }
+struct Wrap<T> { inner: Box<T> }
+struct Table<K, V = u32> { k: K, v: V }
+fn mk<T>(v: T) -> Box<T> { Box{ v: v } }
+fn go(b: Box<i32>) -> i32 { b.v }
+fn main() -> i32 {
+  let a: Box<i32> = Box{ v: 7 };      /* the annotation binds */
+  let b = Box{ v: 40 };               /* the value binds: T = i32 */
+  let w = Wrap{ inner: Box{ v: 3 } }; /* nested: the outer T rides along */
+  let t = Table{ k: 1 };              /* V: the declaration's default */
+  let db = Box{ v: Box{ v: 11 } };    /* Box<Box<i32>> */
+  let n = a.v + b.v + w.inner.v + t.k + @cast<i32>(t.v);  /* 51: v, left out, reads 0 */
+  let bb = mk(9);                     /* inside a generic fn, rechecked per call */
+  go(Box{ v: 5 }) + db.v.v + n + bb.v /* 5 + 11 + 51 + 9 */
+}

@@ -1,0 +1,6 @@
+/* more initializers than the length is the error; fewer is the
+ * zero fill (01-types.md) */
+fn main() -> i32 {
+  let a = [2]u32{1, 2, 3};
+  0
+}

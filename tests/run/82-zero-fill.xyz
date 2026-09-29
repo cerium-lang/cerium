@@ -1,0 +1,18 @@
+/* fields and elements left out read as zero (01-types.md): the
+ * storage starts zeroed, and what is written lands on top. A bare
+ * {} is the whole-zero value, and an array's tail fills the same
+ * way -- [5]u32{1, 2, 3} is [1, 2, 3, 0, 0] */
+struct X { a: u32, b: u32, mut c: f32 }
+union U { w: u32, q: u8 }
+fn main() -> i32 {
+  let a = [5]u32{1, 2, 3};
+  let x = X{ a: 7 };
+  let e = X{};
+  let u = U{};
+  let mut n = @cast<i32>(a[0] + a[1] + a[2] + a[3] + a[4]);  /* 6 */
+  n = n + @cast<i32>(x.a);         /* +7: b and c read zero */
+  n = n + @cast<i32>(x.b + e.a + e.b);  /* +0 */
+  n = n + @cast<i32>(u.w);         /* +0: the union, nothing given */
+  n = n + @cast<i32>(x.c);         /* +0 */
+  n
+}

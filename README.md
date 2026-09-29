@@ -125,11 +125,16 @@ and a method held as a value included), `#[extern(C)]` imports and
 exports keeping their symbols, and the aggregate half: a struct literal (a nested one
 `blit`s into its field), a string landing in the data segment with
 its slice on the stack, `.ptr`/`.len` reads, and field/deref/slot
-places to read and write through, `mut` permitting. An overload
+places to read and write through, `mut` permitting. A literal's
+left-out half reads as zero — a struct's missing fields, an
+array's shorter tail, a bare `{}` — the storage starts zeroed
+(`01-types.md`). An overload
 chain resolves at the checker — the call site writes its pick back,
 and one instantiation is re-checked per binding (M3e); a fn value
 carries the same resolution, a generic one instantiated from the
-type expected of it.
+type expected of it, and a generic struct's literal instantiates
+the same way: the expected type first, the field values binding
+what it leaves open, the declaration's defaults covering the rest.
 
 Control flow is M3c's, and in: `if` is an expression — value form,
 else-if chains, nesting — `&&`/`||` skip the right side, and the
