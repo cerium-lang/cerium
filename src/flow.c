@@ -153,9 +153,17 @@ iscopy(Type *t)
   case Tystruct: {
     Sym *s = t->sym;
 
-    for (i = 0; i < s->nfields; i++)
-      if (!iscopy(s->fields[i].ty))
+    for (i = 0; i < s->nfields; i++) {
+      Type *ft = s->fields[i].ty;
+
+      if (t->nargs == (usize) s->ngparams) /* a generic struct is
+                                            * Copy under the
+                                            * instance: Box<i32>
+                                            * is, Box<File> is not */
+        ft = gsubst(ft, s->gparams, t->args, t->nargs);
+      if (!iscopy(ft))
         return 0;
+    }
     return 1;
   }
   case Tyunion: /* a union forgets (03): always Copy */

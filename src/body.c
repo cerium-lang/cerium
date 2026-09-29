@@ -104,8 +104,16 @@ rplace1(Ast *e, Fenv *fe)
     if (bt->k != Tystruct && bt->k != Tyunion)
       berr(e, "%s has no fields", btys(bt));
     for (i = 0; i < bt->sym->nfields; i++)
-      if (strcmp(bt->sym->fields[i].name, e->v.fld.name) == 0)
-        return bt->sym->fields[i].ty;
+      if (strcmp(bt->sym->fields[i].name, e->v.fld.name) == 0) {
+        Type *ft = bt->sym->fields[i].ty;
+
+        if (bt->nargs == (usize) bt->sym->ngparams) /* a generic
+                                                     * struct's field
+                                                     * reads under the
+                                                     * instance (04) */
+          ft = gsubst(ft, bt->sym->gparams, bt->args, bt->nargs);
+        return ft;
+      }
     berr(e, "'%s' has no field '%s'", bt->sym->name, e->v.fld.name);
     return 0; /* unreachable */
   }
@@ -1087,6 +1095,11 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
       if (strcmp(bt->sym->fields[i].name, e->v.fld.name) == 0) {
         Type *ft = bt->sym->fields[i].ty;
 
+        if (bt->nargs == (usize) bt->sym->ngparams) /* a generic
+                                                     * struct's field
+                                                     * reads under the
+                                                     * instance (04) */
+          ft = gsubst(ft, bt->sym->gparams, bt->args, bt->nargs);
         /* a field read out of a place moves it when it is not Copy;
          * @take is the way out (03-move.md). A computed base is a
          * value already -- a field out of it moves fine. */
@@ -1275,47 +1288,110 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
       }
     }
     if (e->v.arrlit.len && e->v.arrlit.len->k == Nint) {
-      if (e->v.arrlit.len->v.i.num != n)
+      if (e->v.arrlit.len->v.i.num < n) /* more initializers than the
+                                         * length is the error; fewer
+                                         * is the zero fill
+                                         * (01-types.md) */
         berr(e, "[%lu] holds %lu elements, %lu given", (unsigned long) e->v.arrlit.len->v.i.num,
-             (unsigned long) n, (unsigned long) n);
+             (unsigned long) e->v.arrlit.len->v.i.num, (unsigned long) n);
       return tyarray(e->v.arrlit.len->v.i.num, et);
     }
     return tyslice(et); /* []T: the unsized literal */
   }
   case Nstructlit: {
-    Type *st = rpath(e->v.slit.path, &fe->env);
-    Ast **inits = e->v.slit.inits;
-    usize n = vlen(inits), i, j;
+    Ast  **inits = e->v.slit.inits;
+    usize  n = vlen(inits), i, j;
+    Ast  **segs = e->v.slit.path->v.path.segs;
+    Sym   *s = vlen(segs) == 1 && !e->v.slit.path->v.path.root ? symfind(segs[0]->v.seg.name) : 0;
+    Type **tys = 0;
+    Type  *st;
 
-    if (!st)
-      return 0;
-    if (st->k != Tystruct && st->k != Tyunion)
-      berr(e, "%s is not a struct or union", btys(st));
+    if (s && s->kind == Stype && (s->tykind == TYstruct || s->tykind == TYunion) && s->ngparams) {
+      /* a generic struct or union literal: the binding comes the
+       * way a call's does (04-generics.md) -- the type expected of
+       * it first, the field values binding what that leaves open,
+       * the declaration's defaults covering the rest */
+      Type *w = want;
+
+      while (w && w->k == Tymut) /* the permission a place lends is
+                                  * not the type (01-types.md) */
+        w = w->t;
+      tys = tyargs(s->ngparams);
+      if (w && (w->k == Tystruct || w->k == Tyunion) && w->sym == s && w->nargs == s->ngparams) {
+        for (i = 0; i < s->ngparams; i++)
+          tys[i] = w->args[i];
+      }
+      st = 0; /* the walk binds; tysym closes */
+    } else {
+      st = rpath(e->v.slit.path, &fe->env);
+      if (!st)
+        return 0;
+      if (st->k != Tystruct && st->k != Tyunion)
+        berr(e, "%s is not a struct or union", btys(st));
+    }
     for (i = 0; i < n; i++) {
       Ast   *in = inits[i];
       Field *f = 0;
       usize  k;
 
-      for (k = 0; k < st->sym->nfields; k++)
-        if (strcmp(st->sym->fields[k].name, in->v.init.name) == 0) {
-          f = &st->sym->fields[k];
+      for (k = 0; k < (tys ? s : st->sym)->nfields; k++)
+        if (strcmp((tys ? s : st->sym)->fields[k].name, in->v.init.name) == 0) {
+          f = &(tys ? s : st->sym)->fields[k];
           break;
         }
       if (!f)
-        berr(in, "'%s' has no field '%s'", st->sym->name, in->v.init.name);
+        berr(in, "'%s' has no field '%s'", (tys ? s : st->sym)->name, in->v.init.name);
       for (j = 0; j < i; j++)
         if (strcmp(inits[j]->v.init.name, in->v.init.name) == 0)
           berr(in, "field '%s' given twice", in->v.init.name);
-      {
-        Type *at = rexpr(in->v.init.e, fe, f->ty);
+      { /* the field's type under the binding so far: while a slot
+         * is open gsubst would build a half-bound type, so the
+         * field carries no want at all -- the value names the
+         * open parameters itself, and T stands for T when a
+         * binding rides along, the call rule again (04-generics.md) */
+        Type *ft = f->ty;
+        usize g;
 
-        if (at && !tysame(at, f->ty)) {
-          Type *c = recoerce(in->v.init.e, f->ty, fe);
+        if (tys) {
+          for (g = 0; g < s->ngparams; g++)
+            if (!tys[g]) {
+              ft = 0;
+              break;
+            }
+          if (ft)
+            ft = gsubst(f->ty, s->gparams, tys, s->ngparams);
+        }
+        {
+          Type *at = rexpr(in->v.init.e, fe, ft);
 
-          if (!c || !tysame(c, f->ty))
-            berr(in->v.init.e, "field '%s' is %s, this is %s", f->name, btys(f->ty), btys(at));
+          if (at && ft && tysame(at, ft)) {
+            if (tys)
+              gunify(f->ty, at, s->gparams, tys, s->ngparams);
+            continue;
+          }
+          if (at && ft) {
+            Type *c = recoerce(in->v.init.e, ft, fe);
+
+            if (c && tysame(c, ft))
+              continue;
+          }
+          if (!at || !tys || !gunify(f->ty, at, s->gparams, tys, s->ngparams))
+            berr(in->v.init.e, "field '%s' is %s, this is %s", f->name, btys(ft), btys(at));
         }
       }
+    }
+    if (tys) {
+      for (i = 0; i < s->ngparams; i++)
+        if (!tys[i]) {
+          Ast *d = s->gparams[i]->v.gp.dflt;
+
+          if (!d)
+            berr(e, "cannot infer '%s' for '%s' from the literal", s->gparams[i]->v.gp.name,
+                 s->name);
+          tys[i] = rty(d, &fe->env); /* the declaration's own
+                                      * default (04-generics.md) */
+        }
+      st = tysym(s, tys, s->ngparams);
     }
     return st; /* fields left out are zero (01-types.md) */
   }

@@ -75,6 +75,14 @@ there is nothing to instantiate from — `let g = id;` does not compile. Generic
 arguments cannot be spelled in expression position (`id<i32>` parses as a
 comparison chain); the expected type is the only spelling.
 
+A generic struct's literal instantiates the same way: the type expected of it
+binds first (`let b: Box<i32> = Box{ v: p };`), the field values bind what
+that leaves open, and a parameter nothing names falls to its default, as
+ever. With no evidence and no default the literal does not compile —
+`Empty{ z: 1 }` says nothing about `T`. Generic arguments cannot be spelled
+in expression position here either; the expected type and the fields are the
+only spellings.
+
 Dispatch is fully static: no vtables, no trait objects, no runtime cost. `dyn`
 (`06-dispatch.md`) is the opt-in dynamic path, and it is written in the type
 rather than inferred from it.

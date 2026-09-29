@@ -158,9 +158,12 @@ typedef struct Em Em;
 struct Em
 {
   FILE  *o;
-  usize  tmp;   /* one a temporary: %t.N */
-  char **datas; /* the data lines, printed after the fns */
-  ELoc  *locs;  /* the bindings in scope */
+  usize  tmp;    /* one a temporary: %t.N */
+  char **datas;  /* the data lines, printed after the fns */
+  usize *zerosz; /* the zero blocks already grown, by size */
+  char **zeros;  /* their symbols, parallel */
+  usize  nzeros;
+  ELoc  *locs; /* the bindings in scope */
   usize  nlocs;
   usize  ormark; /* (usize)-1 when no or-pattern is being emitted:
                   * the reuse scan is off then -- a same-named slot
@@ -592,6 +595,34 @@ static void  emafor(Em *em, Ast *st);
 static void  emapat(Em *em, Ast *p, Type *t, char *addr, char *val, char *fail);
 static char *emamatch(Em *em, Ast *e, int *reached);
 static char *emavariant(Em *em, Type *t, Variant *v, Ast **args, usize n, Ast *at);
+
+/* a zero block in the data segment, one per size: a literal's
+ * left-out fields and elements read as zero (01-types.md), so the
+ * storage starts zeroed and what is written lands on top. Per fn:
+ * the strings grow the same way, one symbol each */
+static char *
+zeroblk(Em *em, usize sz)
+{
+  char *d, *base;
+  usize i;
+
+  for (i = 0; i < em->nzeros; i++)
+    if (em->zerosz[i] == sz)
+      return em->zeros[i];
+  if (!em->zeros) {
+    em->zeros = vnew(char *, 8);
+    em->zerosz = vnew(usize, 8);
+  }
+  base = arenaalloc(16);
+  sprintf(base, "$z.%lu", (unsigned long) ++dsn);
+  d = arenaalloc(48);
+  sprintf(d, "data %s = { z %lu }", base, (unsigned long) sz);
+  vappend(&em->datas, &d);
+  vappend(&em->zeros, &base);
+  vappend(&em->zerosz, &sz);
+  em->nzeros = vlen(em->zeros);
+  return base;
+}
 
 /* a scalar's storage touched by its load or store: the address is
  * emaplace's, the temporary qbety names the domain */
@@ -1833,6 +1864,7 @@ emaexpr(Em *em, Ast *e)
     usize i;
 
     fprintf(em->o, "\t%s =l alloc8 %lu\n", t, (unsigned long) sz);
+    fprintf(em->o, "\tblit %s, %s, %lu\n", zeroblk(em, sz), t, (unsigned long) sz);
     for (i = 0; i < vlen(inits); i++) {
       Ast  *ini = inits[i];
       char *v = emaexpr(em, ini->v.init.e);
@@ -1965,13 +1997,18 @@ emaexpr(Em *em, Ast *e)
     Type *et = at->t;
     Ast **es = e->v.arrlit.es;
     usize n = vlen(es), i, sz;
+    usize whole; /* the storage: [N]T holds N, a slice only what it lists */
     char *t;
 
     while (et && et->k == Tymut) /* []mut T: the element's own type */
       et = et->t;
     sz = sizeof_(et);
+    whole = at->k == Tyarray ? at->n * sz : n * sz;
     t = newtmp(em);
-    fprintf(em->o, "\t%s =l alloc8 %lu\n", t, (unsigned long) (n && sz ? n * sz : 1));
+    fprintf(em->o, "\t%s =l alloc8 %lu\n", t, (unsigned long) (whole ? whole : 1));
+    if (at->k == Tyarray && n < at->n) /* the elements left out read
+                                        * as zero (01-types.md) */
+      fprintf(em->o, "\tblit %s, %s, %lu\n", zeroblk(em, whole), t, (unsigned long) whole);
     for (i = 0; i < n; i++) { /* element i sits at i * size: no
                                * padding between, the elements one
                                * type (02-layout.md) */
