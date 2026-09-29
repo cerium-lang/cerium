@@ -1,0 +1,10 @@
+/* the loop shapes are not the evaluator's statements yet: iteration
+ * over an array is a runtime thing, a const for another section
+ * (08-reflection.md, 10-iteration.md) */
+fn f(n: i32) -> i32 {
+  let mut a = 0;
+  for i in [3]i32{1, 2, 3} { a += i; }
+  a
+}
+const X: i32 = f(5);
+fn main() -> i32 { X }

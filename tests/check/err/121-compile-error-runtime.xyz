@@ -1,0 +1,8 @@
+/* a fn the evaluator never ran: its @compileError is not a branch a
+ * compile-time run decided -- panic is the running program's report,
+ * and that arrives with its own milestone (08-reflection.md) */
+fn f(n: i32) -> i32 {
+  if n < 0 { @compileError("negative") };
+  n
+}
+fn main() -> i32 { f(-1) }

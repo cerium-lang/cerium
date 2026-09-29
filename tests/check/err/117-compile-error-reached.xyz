@@ -1,0 +1,8 @@
+/* an @compileError that a call actually reaches is the compile error
+ * itself -- the words in the string are the report (08-reflection.md) */
+fn f(n: i32) -> i32 {
+  if n < 0 { @compileError("negative input") };
+  n
+}
+const X: i32 = f(-1);
+fn main() -> i32 { X }

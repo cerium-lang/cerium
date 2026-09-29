@@ -23,6 +23,8 @@ void recheckfn(Sym *s, Ast *it, Type **tys); /* one instantiation, for
  * path in type position, against the names in scope */
 Type *rty(Ast *t, Env *env);
 Type *rpath(Ast *p, Env *env);
+Type *fnsigof(Sym *s); /* a fn's signature, on demand (eval.c: a
+                        * forward reference from a const) */
 
 /* resolve.c's trait-head bindings, shared by pass 4: the trait's
  * own parameters, as the impl's head named them */

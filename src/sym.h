@@ -110,6 +110,10 @@ struct Sym
   Type    *fnty;       /* Sfn: the resolved fn type */
   Sym     *impl;       /* Sfn: the impl a method's Sym belongs to,
                         * or NULL for a plain fn */
+  int evaled;          /* Sfn: the evaluator ran this body to its end
+                        * -- an @compileError it did not reach is a
+                        * branch of it, not a report the body check
+                        * makes (08-reflection.md) */
   Type *cty;           /* Sconst, Sstatic: the resolved type */
   u64   cval;          /* Sconst, Sstatic: the evaluated value -- a
                         * const's, or a static's first one (08) */

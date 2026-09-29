@@ -1,0 +1,6 @@
+/* a generic fn only binds at the call's own words, and those arrive
+ * with a later milestone -- the evaluator has no instance to run
+ * (04-generics.md, 08-reflection.md) */
+fn id<T>(x: T) -> T { x }
+const X: i32 = id(3);
+fn main() -> i32 { X }
