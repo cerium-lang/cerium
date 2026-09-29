@@ -32,4 +32,5 @@
     (fn remaining fn(*Range) -> i32))
   (trait IntoIter
     (type It)
-    (fn into_iter fn(Self) -> Self::It)))
+    (fn into_iter fn(Self) -> Self::It))
+  (fn take fn(dyn mut Iterator<i32>) -> i32))

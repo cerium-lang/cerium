@@ -93,29 +93,32 @@ struct Member
 struct Sym
 {
   char    *name;
-  int      kind;         /* one of Snone..Simpl above */
-  int      pub;          /* unused until namespaces land */
-  Ast     *decl;         /* the declaring item, or NULL for the prelude */
-  Ast    **gparams;      /* the Ngparam nodes */
-  usize    ngparams;     /* their count */
-  Sym     *next;         /* same-name overloads, fn only (04-generics.md) */
-  int      tykind;       /* Stype: one of TYstruct..TYalias above */
-  Field   *fields;       /* Stype: a struct or union's, or NULL */
-  usize    nfields;      /* their count */
-  Variant *variants;     /* Stype: an enum's, or NULL */
-  usize    nvariants;    /* their count */
-  Type    *tagty;        /* Stype: the enum tag, or NULL when compiler-picked */
-  Type    *aliasty;      /* Stype: an alias's resolved target */
-  int      resolving;    /* Stype: alias cycle detection, during pass 2 */
-  Type    *fnty;         /* Sfn: the resolved fn type */
-  Sym     *impl;         /* Sfn: the impl a method's Sym belongs to,
-                          * or NULL for a plain fn */
-  Type   *cty;           /* Sconst, Sstatic: the resolved type */
-  Member *members;       /* Strait, Simpl: in declaration order */
-  usize   nmembers;      /* their count */
-  Type   *ipath, *ifort; /* Simpl: the head. ipath is the trait (a trait
-                            impl) or the type itself (an inherent one);
-                            ifort, what a trait impl is for */
+  int      kind;       /* one of Snone..Simpl above */
+  int      pub;        /* unused until namespaces land */
+  Ast     *decl;       /* the declaring item, or NULL for the prelude */
+  Ast    **gparams;    /* the Ngparam nodes */
+  usize    ngparams;   /* their count */
+  Sym     *next;       /* same-name overloads, fn only (04-generics.md) */
+  int      tykind;     /* Stype: one of TYstruct..TYalias above */
+  Field   *fields;     /* Stype: a struct or union's, or NULL */
+  usize    nfields;    /* their count */
+  Variant *variants;   /* Stype: an enum's, or NULL */
+  usize    nvariants;  /* their count */
+  Type    *tagty;      /* Stype: the enum tag, or NULL when compiler-picked */
+  Type    *aliasty;    /* Stype: an alias's resolved target */
+  int      resolving;  /* Stype: alias cycle detection, during pass 2 */
+  Type    *fnty;       /* Sfn: the resolved fn type */
+  Sym     *impl;       /* Sfn: the impl a method's Sym belongs to,
+                        * or NULL for a plain fn */
+  Type   *cty;         /* Sconst, Sstatic: the resolved type */
+  Member *members;     /* Strait, Simpl: in declaration order */
+  usize   nmembers;    /* their count */
+  int     traitdone;   /* Strait: the member table is built -- pass 3
+                        * builds it, and a signature read that needs
+                        * it earlier builds it then (05-traits.md) */
+  Type *ipath, *ifort; /* Simpl: the head. ipath is the trait (a trait
+                          impl) or the type itself (an inherent one);
+                          ifort, what a trait impl is for */
 };
 
 void syminit(void);

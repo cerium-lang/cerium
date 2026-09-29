@@ -349,8 +349,38 @@ prefixtype(void)
     next();
     n = mk(Ntdyn);
     if (accept(Tmut)) /* dyn mut A: the writable handle (06) */
-      n->v.un.mut = 1;
-    n->v.un.e = typepath();
+      n->v.tdyn.mut = 1;
+    { /* the trait's name: "<" after it is not its arguments here --
+       * a handle's "<" gives associated types (06-dispatch.md), so
+       * the path is read without them */
+      Ast *p = mk(Npath);
+
+      p->v.path.segs = vnew(Ast *, 4);
+      for (;;) {
+        Ast *s = mk(Nseg);
+
+        s->v.seg.name = wantident("a trait name");
+        npush(&p->v.path.segs, s);
+        if (!accept(Tcoloncolon))
+          break;
+      }
+      n->v.tdyn.e = p;
+    }
+    if (peek() == Tlt) { /* dyn Iterator<Item = u32>: the associated
+                          * types given, an Ninit list (06-dispatch.md) */
+      next();
+      for (;;) {
+        Ast *a = mk(Ninit);
+
+        a->v.init.name = wantident("an associated type name");
+        want(Teq, "=");
+        a->v.init.e = type_();
+        npush(&n->v.tdyn.assocs, a);
+        if (!accept(Tcomma))
+          break;
+      }
+      want(Tgt, ">");
+    }
     return n;
   }
   case Ttype:

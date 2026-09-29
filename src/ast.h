@@ -136,6 +136,12 @@ struct Ast
     } un;
     struct
     {
+      Ast  *e;      /* the trait path */
+      int   mut;    /* dyn mut A */
+      Ast **assocs; /* <Item = u32>: Ninit list, name + the type (06) */
+    } tdyn;         /* Ntdyn */
+    struct
+    {
       Ast  *f;    /* Ncall, Nbuiltin: the callee */
       Ast **args; /* Ncall, Nbuiltin, Nmatch: args or arms */
       Sym  *sym;  /* Ncall: the overload the checker picked, so the
@@ -153,7 +159,7 @@ struct Ast
       Ast *e; /* Ntry, Nreturn, Nexprstmt, Ntopt, Ninit's value,
                   Npfield's sub-pattern */
     } n1;
-    /* Ntdyn borrows un: e is the trait path, mut is "dyn mut A" */
+    /* Ntdyn lives in v.tdyn (below) */
     struct
     {
       Ast *e;       /* the indexed/ranged/... base */

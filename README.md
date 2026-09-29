@@ -93,7 +93,9 @@ tree as S-expressions, one node a line, children indented. The type
 checker is in through the bodies: `xyz -T file.xyz` declares every
 name in the file, resolves every type a declaration carries — aliases
 expand to their targets, `?T`/`E?T` build on the prelude's
-`Option`/`Result`, `dyn A` names its trait — then resolves trait and
+`Option`/`Result`, `dyn A` names its trait and gives its
+associated types — `dyn Iterator<Item = u32>`, the slots aligned to
+the trait's declaration order — then resolves trait and
 impl members against their `Self`, checks a trait impl supplies
 exactly what the trait declares, and orders every pair of impls by
 shape-pattern specificity or the `Copy`/`Drop` exclusion
@@ -102,7 +104,9 @@ every function body: expressions get their types — the method sugar
 adapts its receiver, a trait method found by matching impl patterns
 against the receiver's type (`Trait::member(&p)` picks its impl the
 same way), a generic fn's bounds checked where the call binds its
-parameters, and every borrow a call writes — an argument's
+parameters, an associated type read outside an impl —
+`Counter::Item` — taking what the impl supplies, and every borrow a
+call writes — an argument's
 as much as the receiver's — ends with that call, `None` takes its
 `?T` from the other side, a `match` is exhaustive variant by
 variant — and the flow rules hold:
@@ -129,7 +133,9 @@ receiver adapted at the call, a `Type::member` call, a
 method held as a value included), `dyn A` handles — `&dyn b` builds
 the fat where the impl is known, one vtable per trait and concrete
 type in the data segment, the call reading its slot through the
-table (`dyn mut A` writing too) — `#[extern(C)]` imports and
+table (`dyn mut A` writing too), and a handle's spelling giving the
+associated types — a projected `?Self::Item` return takes its type
+from the spelling, not from the impl the vtable erased — `#[extern(C)]` imports and
 exports keeping their symbols, and the aggregate half: a struct literal (a nested one
 `blit`s into its field), a string landing in the data segment with
 its slice on the stack, `.ptr`/`.len` reads, and field/deref/slot

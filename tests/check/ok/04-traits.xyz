@@ -60,3 +60,5 @@ trait IntoIter {
   type It;
   fn into_iter(self: Self) -> Self::It;
 }
+
+fn take(i: dyn mut Iterator<Item = i32>) -> i32;

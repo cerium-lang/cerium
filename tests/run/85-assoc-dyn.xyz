@@ -1,0 +1,47 @@
+/* a handle's spelling names the associated types: the vtable erased
+ * the impl's choice, and what the trait declared a projection is the
+ * spelling's answer wherever the handle goes (05-traits.md,
+ * 06-dispatch.md) */
+trait Iterator {
+  type Item;
+  fn next(self: *mut Self) -> ?Self::Item;
+}
+struct Counter { mut n: u32, mut top: u32 }
+impl Iterator for Counter {
+  type Item = u32;
+  fn next(self: *mut Self) -> ?u32 {
+    self.n = self.n + 1;
+    if self.n > self.top { return None; };
+    return Some(self.n);
+  }
+}
+struct Down { mut n: u32, mut top: u32 }
+impl Iterator for Down {
+  type Item = u32; /* the same slot, a different supply */
+  fn next(self: *mut Self) -> ?u32 {
+    self.n = self.n - 1;
+    if self.n == self.top { return None; };
+    return Some(self.n);
+  }
+}
+fn drain(i: dyn mut Iterator<Item = u32>) -> u32 { /* the binding
+                                                   * travels the
+                                                   * parameter */
+  let mut t: u32 = 0;
+  for let Some(v) = i.next() {
+    t = t + v;
+  }
+  return t;
+}
+fn main() -> u32 {
+  let mut c = Counter{ n: 0, top: 4 };
+  let first = drain(&mut dyn c);       /* 1+2+3+4: made at the call */
+  let z: Counter::Item = 6;            /* the impl's supply, read outside (05) */
+  let mut d = Down{ n: 4, top: 0 };
+  let g: dyn mut Iterator<Item = u32> = &mut dyn d; /* made at a let */
+  let mut t: u32 = 0;
+  for let Some(v) = g.next() {         /* 3+2+1+0: through the table */
+    t = t + v;
+  }
+  return first + t + z;
+}

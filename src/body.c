@@ -252,6 +252,68 @@ selfsubst(Type *t, Type *self)
   }
 }
 
+/* what a declared projection was is the handle's own spelling: the
+ * vtable erased the impl's choice, and the spelling gives it back
+ * (06-dispatch.md). The handle's args are the Mtype slots, in the
+ * trait's declaration order. */
+static Type *
+projsubst(Type *t, Type *h)
+{
+  Type **as;
+  usize  i;
+
+  if (!t)
+    return t;
+  switch (t->k) {
+  case Typroj: { /* Self::Item under this handle's trait */
+    usize mi = 0;
+
+    if (t->sym != h->sym)
+      return t;
+    for (i = 0; i < h->sym->nmembers; i++) {
+      Member *m = &h->sym->members[i];
+
+      if (m->kind != Mtype)
+        continue;
+      if (strcmp(m->name, t->name) == 0)
+        return h->args[mi]; /* given: objectsafety checked the slot */
+      mi++;
+    }
+    return t;
+  }
+  case Typtr:
+    return typtr(projsubst(t->t, h));
+  case Tyslice:
+    return tyslice(projsubst(t->t, h));
+  case Tymut:
+    return tymut(projsubst(t->t, h));
+  case Tyarray:
+    return tyarray(t->n, projsubst(t->t, h));
+  case Tytuple:
+  case Tyfn:
+  case Tyenum:
+  case Tystruct:
+  case Tyunion:
+  case Tytrait:
+  case Tydyn:
+    as = t->nargs ? tyargs(t->nargs) : 0;
+    for (i = 0; i < t->nargs; i++)
+      as[i] = projsubst(t->args[i], h);
+    switch (t->k) {
+    case Tytuple:
+      return tytuple(as, t->nargs);
+    case Tyfn:
+      return tyfn(as, t->nargs, projsubst(t->t, h));
+    case Tydyn:
+      return tydyn(t->sym, as, t->nargs, t->mut);
+    default:
+      return tysym(t->sym, as, t->nargs);
+    }
+  default:
+    return t;
+  }
+}
+
 /* does a signature mention Self bare -- not behind a pointer, where
  * its size is not the caller's to know? Object safety's question,
  * asked of every position but the self one (06-dispatch.md) */
@@ -288,16 +350,20 @@ bareself(Type *t)
 /* a vtable can only be built for a trait whose methods all
  * dispatch without knowing Self (06-dispatch.md) */
 static void
-objectsafety(Sym *tr, Ast *at)
+objectsafety(Sym *tr, Ast *at, Type **given, usize ngiven)
 {
-  usize i;
+  usize i, mi = 0;
 
   for (i = 0; i < tr->nmembers; i++) {
     Member *m = &tr->members[i];
     Type   *sig;
 
-    if (m->kind == Mtype)
-      berr(at, "'%s' has an associated type; a handle needs it given (06-dispatch.md)", tr->name);
+    if (m->kind == Mtype) { /* the handle's own spelling gives it */
+      if (mi >= ngiven || !given[mi])
+        berr(at, "'%s' has an associated type; a handle needs it given (06-dispatch.md)", tr->name);
+      mi++;
+      continue;
+    }
     if (m->kind != Mfn)
       continue;
     sig = m->ty;
@@ -1021,7 +1087,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
 
         if (!im)
           berr(e->v.un.e, "no '%s' for %s", w->sym->name, btys(t));
-        objectsafety(w->sym, e);
+        objectsafety(w->sym, e, w->args, w->nargs);
       }
       freeze(e->v.un.e, fe, e->v.un.mut, (int) fe->n);
       return w; /* rplace wrote the concrete type on the operand;
@@ -1389,10 +1455,12 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
           berr(f, "'%s' has no '%s'", ty->sym->name, f->v.fld.name);
         if (dm->kind != Mfn)
           berr(f, "'%s::%s' is not a method", ty->sym->name, f->v.fld.name);
-        t = selfsubst(dm->ty, tyvoidptr()); /* Self erased: what
-                                             * survives object safety
-                                             * is pointers, all one
-                                             * width */
+        t = projsubst(selfsubst(dm->ty, tyvoidptr()), ty); /* Self
+                                                            * erased and the
+                                                            * projections given:
+                                                            * what survives object
+                                                            * safety is pointers,
+                                                            * all one width */
         if (t->nargs && t->args[0] && t->args[0]->k == Typtr && t->args[0]->t->k == Tymut &&
             !ty->mut)
           berr(f, "'%s' is a mut method; a 'dyn mut %s' handle carries it", f->v.fld.name,
@@ -1431,7 +1499,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
         }
         return t->t;
       }
-      if (ty->k != Tystruct && ty->k != Tyunion && ty->k != Tyenum)
+      if (ty->k != Tystruct && ty->k != Tyunion && ty->k != Tyenum && ty->k != Typaram)
         berr(f, "a method call needs a struct, union, or enum receiver; a trait's calls "
                 "come by its impls (05-traits.md)");
       { /* the inherent table first (05-traits.md: the namespaces are
@@ -1459,7 +1527,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
             if (!tr || tr->kind != Strait)
               continue;
             for (mi = 0; mi < tr->nmembers; mi++)
-              if (strcmp(tr->members[mi].name, f->v.fld.name) == 0) {
+              if (tr->members[mi].kind == Mfn && strcmp(tr->members[mi].name, f->v.fld.name) == 0) {
                 m = &tr->members[mi];
                 declared = 1;
                 break;
