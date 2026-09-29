@@ -839,11 +839,13 @@ resolveimplmembers(Sym *s)
         dm->ty = resolvefnsig(m, &env);
         { /* the method's own fn Sym: outside the namespace -- the
            * call sites write it back, the emitter names by it. The
-           * impl's parameters ride along as the Sym's own, so an
-           * instantiation of a generic impl's method is keyed and
-           * named exactly a generic fn's is (04-generics.md) */
+           * impl's parameters ride along as the Sym's own, a generic
+           * method's after them -- the instantiation key is the
+           * concatenation, exactly as a generic fn's is its own list
+           * (04-generics.md) */
           Sym  *fs = arenaalloc(sizeof *fs);
           usize ng = vlen(it->v.impl.gparams);
+          usize nm = vlen(m->v.fn.gparams);
 
           memset(fs, 0, sizeof *fs);
           fs->name = dm->name;
@@ -851,8 +853,17 @@ resolveimplmembers(Sym *s)
           fs->decl = m;
           fs->fnty = dm->ty;
           fs->impl = s;
-          fs->ngparams = ng;
-          fs->gparams = ng ? it->v.impl.gparams : 0;
+          if (ng + nm) {
+            Ast **gg = arenaalloc((ng + nm) * sizeof *gg);
+            usize g;
+
+            for (g = 0; g < ng; g++)
+              gg[g] = it->v.impl.gparams[g];
+            for (g = 0; g < nm; g++)
+              gg[ng + g] = m->v.fn.gparams[g];
+            fs->gparams = gg;
+            fs->ngparams = ng + nm;
+          }
           dm->sym = fs;
         }
         break;
@@ -984,11 +995,32 @@ checkimplcomplete(Sym *s)
                                  : "a const");
     if (tm->kind == Mtype)
       continue; /* the supplied type is the supply */
-    {
+    {           /* a method's own parameters are its own names: the trait's K
+                 * and the impl's K are different variables that must land the
+                 * same positions. Rename the impl's onto the trait's, and the
+                 * comparison sees one alphabet (04-generics.md) */
       Type *want = tsubst(tm->ty, &sub);
+      Type *got = im->ty;
 
-      if (!tysame(want, im->ty))
-        cerrat(im->decl, "'%s' must be %s, not %s", tm->name, tysprint1(want), tysprint1(im->ty));
+      if (tm->kind == Mfn && tm->decl) {
+        Ast **tg = tm->decl->v.fn.gparams;
+        Ast **ig = im->decl->v.fn.gparams;
+        usize nt = vlen(tg);
+
+        if (nt != vlen(ig))
+          cerrat(im->decl, "'%s' takes %lu parameters of its own, the trait declares %lu", tm->name,
+                 (unsigned long) vlen(ig), (unsigned long) nt);
+        if (nt) {
+          Type **tt = tyargs(nt);
+          usize  g;
+
+          for (g = 0; g < nt; g++)
+            tt[g] = typaram(tg[g]);
+          got = gsubst(got, ig, tt, nt);
+        }
+      }
+      if (!tysame(want, got))
+        cerrat(im->decl, "'%s' must be %s, not %s", tm->name, tysprint1(want), tysprint1(got));
     }
   }
   for (i = 0; i < s->nmembers; i++)

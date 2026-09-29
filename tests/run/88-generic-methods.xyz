@@ -1,0 +1,47 @@
+/* a method may take parameters of its own: the trait declares the
+ * family, the impl supplies it, and the arguments at each call pick
+ * a member -- the impl's parameters and the method's own bound
+ * together at the call, re-checked where a bound carried them
+ * (04-generics.md) */
+trait Store {
+  fn get<K>(self: *mut Self, k: *K) -> ?u32;
+}
+struct Map { mut v: u32, mut n: u32 }
+impl Store for Map {
+  fn get<K>(self: *mut Self, k: *K) -> ?u32 {
+    if self.n == 0 { return None; };
+    self.n = self.n - 1;
+    return Some(self.v);
+  }
+}
+struct Wrap<T> { mut v: T }
+impl<T> Store for Wrap<T> {
+  fn get<K>(self: *mut Self, k: *K) -> ?u32 { None }
+}
+fn probe<S: Store>(s: *mut S, key: *u32) -> u32 { /* the bound carries the family */
+  for let Some(v) = Store::get(s, key) {
+    return v;
+  }
+  return 0;
+}
+struct Pair { mut a: u32, mut b: u32 }
+impl Pair {
+  fn pick<T: Copy>(self: *Pair, v: T, w: T) -> T { return v; }
+}
+fn main() -> u32 {
+  let mut m = Map{ v: 9, n: 3 };
+  let k1: u32 = 1;
+  let k2: u64 = 2;
+  let mut t: u32 = 0;
+  for let Some(v) = Store::get(&mut m, &k2) { t = t + v; }  /* exact impl, K=u64 */
+  for let Some(v) = m.get(&k2) { t = t + v; }               /* the sugar, K=u64 */
+  for let Some(v) = m.get(&k1) { t = t + v; }               /* the sugar, K=u32 */
+  let mut w = Wrap{ v: 3 };
+  for let Some(v) = w.get(&k1) { t = t + v; }               /* a generic impl's family: zero rounds */
+  let mut m2 = Map{ v: 42, n: 1 };
+  t = t + probe(&mut m2, &k1);                              /* the bound re-checked: 42 */
+  let p = Pair{ a: 1, b: 2 };
+  let n: u32 = 5;
+  t = t + p.pick(n, n);                                     /* an inherent family, Copy answered: 5 */
+  return t;  /* 27 + 42 + 5 = 74 */
+}
