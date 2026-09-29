@@ -29,6 +29,14 @@ Type *rpath(Ast *p, Env *env);
  * emitter asks it again, printing the vtable */
 Sym *implfor(Sym *trait, Type *t, Type ***tysp);
 
+/* resolve.c's pattern order, shared by flow.c's call-site picks:
+ * does every type matching a also match b? The same order that
+ * checks overlap at declaration orders the matches a call finds
+ * (04-generics.md). And the bounds half of the joint order: a's
+ * bounds naming every trait b's do. */
+int specializes(Type *a, Type *b);
+int boundsincl(Sym *a, Sym *b);
+
 /* a diagnostic at a node: path:line:col: message, then exit(1) --
  * the same shape the lexer's and the parser's errors take */
 void cerrat(Ast *a, const char *fmt, ...);

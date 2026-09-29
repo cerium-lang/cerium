@@ -1,0 +1,46 @@
+/* the most specific matching impl wins (04-generics.md): an exact
+ * target above patterns, bounds ordering equal shapes, a bound the
+ * receiver cannot answer keeping its impl out of the running -- the
+ * sugar, the explicit form, a handle's table, and a bound's
+ * instantiation all pick the same one */
+trait Show {
+  fn show(self: *Self) -> u32;
+}
+struct Point { x: u32, y: u32 }
+struct Wrap<T> { mut v: T }
+struct File { fd: u32 }
+impl Drop for File {
+  fn drop(mut self: Self) -> () {}
+}
+impl<T> Show for T {       /* the plain fallback */
+  fn show(self: *Self) -> u32 { 1 }
+}
+impl<T: Copy> Show for T { /* bounds order it above the plain one */
+  fn show(self: *Self) -> u32 { 2 }
+}
+impl Show for Point {      /* exact: above every pattern */
+  fn show(self: *Self) -> u32 { 3 }
+}
+impl<T> Show for Wrap<T> { /* a shape pattern: above the fallbacks */
+  fn show(self: *Self) -> u32 { 4 }
+}
+fn announce<T: Show>(a: *T) -> u32 { /* the re-check picks per instance */
+  Show::show(a)
+}
+fn main() -> u32 {
+  let p = Point{ x: 3, y: 4 };
+  let n: u32 = 7;
+  let w: Wrap<u32> = Wrap{ v: 5 };
+  let f = File{ fd: 9 }; /* not Copy: the Drop impl excludes it */
+  let h: dyn Show = &dyn p; /* the vtable carries the exact impl */
+  let r = p.show()      /* 3: the sugar, the exact impl */
+    + Show::show(&p)    /* 3: the explicit form */
+    + h.show()          /* 3: through the table */
+    + announce(&p)      /* 3: the bound, re-checked for Point */
+    + n.show()          /* 2: a scalar receiver, the Copy-bounded one */
+    + Show::show(&n)    /* 2 */
+    + w.show()          /* 4: the Wrap<T> pattern beats the fallbacks */
+    + announce(&f)      /* 1: File answers only the plain fallback */
+    + Show::show(&f);   /* 1 */
+  return r;
+}

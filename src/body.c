@@ -1499,8 +1499,10 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
         }
         return t->t;
       }
-      if (ty->k != Tystruct && ty->k != Tyunion && ty->k != Tyenum && ty->k != Typaram)
-        berr(f, "a method call needs a struct, union, or enum receiver; a trait's calls "
+      if (ty->k != Tystruct && ty->k != Tyunion && ty->k != Tyenum && ty->k != Typaram &&
+          ty->k != Tyint && ty->k != Tybool && ty->k != Tyunit && ty->k != Tyvoidptr &&
+          ty->k != Typtr && ty->k != Tyslice && ty->k != Tyarray && ty->k != Tytuple)
+        berr(f, "a method call needs a receiver an impl can name; a trait's calls "
                 "come by its impls (05-traits.md)");
       { /* the inherent table first (05-traits.md: the namespaces are
          * separate), then the trait one: a match binds the impl's
@@ -1540,9 +1542,9 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                  f->v.fld.name);
         }
         if (!m)
-          berr(f, "'%s' has no method '%s'", ty->sym->name, f->v.fld.name);
+          berr(f, "'%s' has no method '%s'", btys(ty), f->v.fld.name);
         if (m->kind != Mfn)
-          berr(f, "'%s::%s' is not a method", ty->sym->name, f->v.fld.name);
+          berr(f, "'%s' is not a method", f->v.fld.name);
         if (declared) {
           t = selfsubst(m->ty, ty);
           e->v.call.sym = 0; /* the re-check writes the impl's pick */

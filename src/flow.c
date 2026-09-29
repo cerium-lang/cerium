@@ -11,6 +11,8 @@
 
 #include "ast.h"
 #include "body.h"
+#include "check.h" /* the pattern order the finders share with the
+                    * declaration's overlap check (04-generics.md) */
 #include "lex.h"
 #include "sym.h"
 #include "type.h"
@@ -117,6 +119,8 @@ locnarrow(Fenv *fe, char *name, Type *t)
 
 /* -- copy and drop (03-move.md) ------------------------------------------ */
 
+static int hasdrop(Type *t); /* the exclusion's other half, below */
+
 /* is a value of this type duplicated by an assignment rather than
  * moved? Typaram answers no: without its bounds resolved (dispatch),
  * move is the conservative reading, and a T that really is Copy gets
@@ -140,12 +144,16 @@ iscopy(Type *t)
   case Tymut: /* only under a slot; the answer is the child's */
     return iscopy(t->t);
   case Tytuple:
+    if (hasdrop(t)) /* a destructor inside kills the copy (03-move.md) */
+      return 0;
     for (i = 0; i < t->nargs; i++)
       if (!iscopy(t->args[i]))
         return 0;
     return 1;
   case Tyarray:
   case Tyenum:
+    if (hasdrop(t)) /* a destructor inside kills the copy (03-move.md) */
+      return 0;
     for (i = 0; i < t->nargs; i++)
       if (!iscopy(t->args[i]))
         return 0;
@@ -153,6 +161,8 @@ iscopy(Type *t)
   case Tystruct: {
     Sym *s = t->sym;
 
+    if (hasdrop(t)) /* a destructor inside kills the copy (03-move.md) */
+      return 0;
     for (i = 0; i < s->nfields; i++) {
       Type *ft = s->fields[i].ty;
 
@@ -693,72 +703,187 @@ implatch(Type *pat, Type *ty, Ast **gps, Type **tys, usize n)
     return tysame(pat, ty);
   }
 }
-/* the same walk keyed by a receiver's full type: an impl written
- * for exactly that type wins over one whose pattern still has
- * variables in it -- the exact pass binds nothing, the pattern pass
- * runs the match and hands the binding out through *tysp (the
- * caller demands every slot bound, 04-generics.md). */
+/* does a destructor live in this type -- its own impl, or a field's,
+ * inherited (03-move.md)? The exclusion's other half: what iscopy is
+ * not. A parameter's is its instantiation's business; the
+ * monomorphized re-check reads the real type. */
+static int
+hasdrop(Type *t)
+{
+  usize i, j;
+
+  if (!t)
+    return 0;
+  switch (t->k) {
+  case Tystruct: {
+    Sym *s = t->sym;
+
+    for (j = 0; j < chk_nimpls; j++) {
+      Sym *im = chk_impls[j];
+
+      if (im->ifort && im->ipath && im->ipath->sym == sym_drop && tysame(im->ifort, t))
+        return 1;
+    }
+    for (i = 0; i < s->nfields; i++) {
+      Type *ft = s->fields[i].ty;
+
+      if (t->nargs == (usize) s->ngparams) /* a generic struct drops
+                                            * under the instance */
+        ft = gsubst(ft, s->gparams, t->args, t->nargs);
+      if (hasdrop(ft))
+        return 1;
+    }
+    return 0;
+  }
+  case Tyenum:
+  case Tytuple:
+    for (i = 0; i < t->nargs; i++)
+      if (hasdrop(t->args[i]))
+        return 1;
+    return 0;
+  case Tyarray:
+    return hasdrop(t->t);
+  default: /* scalars, pointers, unions: nothing to destruct */
+    return 0;
+  }
+}
+
+/* does a type answer the bound an impl's parameter carries? Copy has
+ * no impls anywhere -- it is what a type is, read structurally
+ * against the exclusion (03-move.md, 04-generics.md) -- so the
+ * question is iscopy's; every other trait's is the impl table's. */
+static int
+boundsok(Sym *im, Type **tys)
+{
+  Ast **gps = im->decl->v.impl.gparams;
+  usize i, j;
+
+  for (i = 0; i < im->ngparams; i++) {
+    Ast **bs = gps[i]->v.gp.bounds;
+
+    for (j = 0; j < vlen(bs); j++) {
+      Ast **segs = bs[j]->v.path.segs;
+      Sym  *t = vlen(segs) == 1 ? symfind(segs[0]->v.seg.name) : 0;
+
+      if (!t || t->kind != Strait)
+        continue; /* collectbounds said it, at declaration */
+      if (!implsatisfies(t, tys[i]))
+        return 0; /* the receiver does not answer this bound */
+    }
+  }
+  return 1;
+}
+
+/* one impl's fit for a type: the target pattern matched, every
+ * variable landed, every bound answered (04-generics.md). The
+ * binding comes back through *tysp -- impl->ngparams slots, or NULL
+ * for an exact target -- for whoever needs the instance. */
+static int
+implfit(Sym *im, Type *t, Type ***tysp)
+{
+  Type  *pat = im->ifort ? im->ifort : im->ipath;
+  Type **tys;
+  usize  j, g;
+
+  if (im->ngparams) {
+    tys = tyargs(im->ngparams);
+    for (j = 0; j < im->ngparams; j++)
+      tys[j] = 0;
+    if (!implatch(pat, t, im->gparams, tys, im->ngparams))
+      return 0;
+    for (g = 0; g < im->ngparams; g++)
+      if (!tys[g])
+        return 0; /* the pattern left a slot open: not this one */
+    if (!boundsok(im, tys))
+      return 0; /* a bound the receiver does not answer */
+    if (tysp)
+      *tysp = tys;
+    return 1;
+  }
+  if (!tysame(pat, t))
+    return 0;
+  if (tysp)
+    *tysp = 0;
+  return 1;
+}
+
+/* the joint specificity order the declaration check ran: shape
+ * strictly first, then bounds (04-generics.md). Among one type's
+ * matches disjointness never differs them -- both matched the same
+ * type -- so this walk alone settles the pick. */
+static int
+implspecific(Sym *a, Sym *b)
+{
+  Type *fa = a->ifort ? a->ifort : a->ipath;
+  Type *fb = b->ifort ? b->ifort : b->ipath;
+  int   ab = specializes(fa, fb);
+  int   ba = specializes(fb, fa);
+
+  if (ab != ba)
+    return ab;                                  /* strictly ordered by shape */
+  return boundsincl(a, b) && !boundsincl(b, a); /* equal shape: bounds */
+}
+
+/* the same walk keyed by a receiver's full type: the matches ordered
+ * by the specialization the declaration checked (04-generics.md) --
+ * the most specific wins, exact targets above patterns, and a bound
+ * a binding cannot answer keeps its impl out of the running. The
+ * member names which impls run at all; the order picks among those
+ * that do. */
 Member *
 inherentfindt(Type *t, const char *name, Sym **imp, Type ***tysp)
 {
-  usize i, pass;
+  usize   i, j;
+  Sym    *best = 0;
+  Type  **btys = 0;
+  Member *bm = 0;
 
-  if (!t || (t->k != Tystruct && t->k != Tyunion && t->k != Tyenum))
-    return 0;
   if (imp)
     *imp = 0;
   if (tysp)
     *tysp = 0;
-  for (pass = 0; pass < 2; pass++)
-    for (i = 0; i < chk_nimpls; i++) {
-      Sym    *im = chk_impls[i];
-      Type  **tys;
-      Member *m = 0;
-      usize   j, g;
+  if (!t)
+    return 0;
+  for (i = 0; i < chk_nimpls; i++) {
+    Sym    *im = chk_impls[i];
+    Type  **tys;
+    Member *m = 0;
 
-      if (im->ifort || !im->ipath || im->ipath->sym != t->sym)
-        continue;
-      if (pass == 0) {
-        if (!tysame(im->ipath, t))
-          continue;
-      } else {
-        if (!im->ngparams)
-          continue;
-        tys = tyargs(im->ngparams);
-        for (j = 0; j < im->ngparams; j++)
-          tys[j] = 0;
-        if (!implatch(im->ipath, t, im->gparams, tys, im->ngparams))
-          continue;
-        for (g = 0; g < im->ngparams; g++)
-          if (!tys[g])
-            break; /* the pattern left a slot open: not this one */
-        if (g < im->ngparams)
-          continue;
+    if (im->ifort || !im->ipath || im->ipath->sym != t->sym)
+      continue;
+    for (j = 0; j < im->nmembers; j++)
+      if (strcmp(im->members[j].name, name) == 0) {
+        m = &im->members[j];
+        break;
       }
-      for (j = 0; j < im->nmembers; j++)
-        if (strcmp(im->members[j].name, name) == 0) {
-          m = &im->members[j];
-          break;
-        }
-      if (m) {
-        if (imp)
-          *imp = im;
-        if (tysp && pass == 1)
-          *tysp = tys;
-        return m;
-      }
+    if (!m)
+      continue; /* this impl does not carry the member */
+    if (!implfit(im, t, &tys))
+      continue;
+    if (!best || implspecific(im, best)) {
+      best = im;
+      btys = tys;
+      bm = m;
     }
-  return 0;
+  }
+  if (!best)
+    return 0;
+  if (imp)
+    *imp = best;
+  if (tysp && btys)
+    *tysp = btys;
+  return bm;
 }
 
 /* the impl of this trait for this type, any member of it: the
  * question a handle's construction asks (06-dispatch.md). The same
- * walk implfind runs, without a member to name -- a marker trait
- * has none. The binding comes back through *tysp, as implfind's. */
+ * order the finders keep -- the most specific fit, bounds answered. */
 Sym *
 implfor(Sym *trait, Type *t, Type ***tysp)
 {
-  usize i, j, g;
+  usize  i;
+  Sym   *best = 0;
+  Type **btys = 0;
 
   if (tysp)
     *tysp = 0;
@@ -770,38 +895,30 @@ implfor(Sym *trait, Type *t, Type ***tysp)
 
     if (!im->ifort || !im->ipath || im->ipath->sym != trait)
       continue;
-    if (im->ngparams) {
-      tys = tyargs(im->ngparams);
-      for (j = 0; j < im->ngparams; j++)
-        tys[j] = 0;
-      if (!implatch(im->ifort, t, im->gparams, tys, im->ngparams))
-        continue;
-      for (g = 0; g < im->ngparams; g++)
-        if (!tys[g])
-          break; /* the pattern left a slot open: not this one */
-      if (g < im->ngparams)
-        continue;
-      if (tysp)
-        *tysp = tys;
-    } else if (!tysame(im->ifort, t))
+    if (!implfit(im, t, &tys))
       continue;
-    return im;
+    if (!best || implspecific(im, best)) {
+      best = im;
+      btys = tys;
+    }
   }
-  return 0;
+  if (best && tysp && btys)
+    *tysp = btys;
+  return best;
 }
 
 /* a trait impl's member for this type, the trait named --
  * Trait::method(&p) spells both out, so the walk narrows to that
- * trait's impls. The binding the match made comes back through
- * *tysp (impl->ngparams of them, in the arena); every slot must
- * land, or the pattern does not pin the instance and the call does
- * not resolve. Strictly ordered patterns are the specialization
- * order's to rank (04-generics.md) -- pass 3 kept equal ones out,
- * so the first fit here is the only fit. */
+ * trait's impls. The most specific fit wins, exactly as the sugar's
+ * and a handle's walks (04-generics.md); pass 3 kept incomparables
+ * out, so the order here is total. */
 Member *
 implfind(Sym *trait, Type *t, const char *name, Sym **imp, Type ***tysp)
 {
-  usize i, j, g;
+  usize   i, j;
+  Sym    *best = 0;
+  Type  **btys = 0;
+  Member *bm = 0;
 
   if (imp)
     *imp = 0;
@@ -823,46 +940,48 @@ implfind(Sym *trait, Type *t, const char *name, Sym **imp, Type ***tysp)
       }
     if (!m)
       continue;
-    if (im->ngparams) {
-      tys = tyargs(im->ngparams);
-      for (j = 0; j < im->ngparams; j++)
-        tys[j] = 0;
-      if (!implatch(im->ifort, t, im->gparams, tys, im->ngparams))
-        continue;
-      for (g = 0; g < im->ngparams; g++)
-        if (!tys[g])
-          break; /* the pattern left a slot open: not this one */
-      if (g < im->ngparams)
-        continue;
-    } else if (!tysame(im->ifort, t))
+    if (!implfit(im, t, &tys))
       continue;
-    if (imp)
-      *imp = im;
-    if (tysp && im->ngparams)
-      *tysp = tys;
-    return m;
+    if (!best || implspecific(im, best)) {
+      best = im;
+      btys = tys;
+      bm = m;
+    }
   }
-  return 0;
+  if (!best)
+    return 0;
+  if (imp)
+    *imp = best;
+  if (tysp && btys)
+    *tysp = btys;
+  return bm;
 }
 
 /* the same walk for the sugar: no trait named, so every impl of
  * every trait that carries this member and fits this type is a
  * candidate. The inherent table was already walked and came up
- * empty, so what lands here is a trait method by elimination. */
+ * empty, so what lands here is a trait method by elimination. The
+ * order crosses trait lines: the most specific fit wins, and
+ * impls incomparable across traits keep the declaration's first --
+ * the explicit form is how a crossed sugar is disambiguated
+ * (05-traits.md). */
 Member *
 traitfindt(Type *t, const char *name, Sym **imp, Type ***tysp)
 {
-  usize i, j, g;
+  usize   i, j;
+  Sym    *best = 0;
+  Type  **btys = 0;
+  Member *bm = 0;
 
   if (imp)
     *imp = 0;
   if (tysp)
     *tysp = 0;
-  if (!t || (t->k != Tystruct && t->k != Tyunion && t->k != Tyenum))
+  if (!t)
     return 0;
   for (i = 0; i < chk_nimpls; i++) {
     Sym    *im = chk_impls[i];
-    Type  **tys = 0;
+    Type  **tys;
     Member *m = 0;
 
     if (!im->ifort || !im->ipath)
@@ -874,54 +993,66 @@ traitfindt(Type *t, const char *name, Sym **imp, Type ***tysp)
       }
     if (!m)
       continue;
-    if (im->ngparams) {
-      tys = tyargs(im->ngparams);
-      for (j = 0; j < im->ngparams; j++)
-        tys[j] = 0;
-      if (!implatch(im->ifort, t, im->gparams, tys, im->ngparams))
-        continue;
-      for (g = 0; g < im->ngparams; g++)
-        if (!tys[g])
-          break;
-      if (g < im->ngparams)
-        continue;
-    } else if (!tysame(im->ifort, t))
+    if (!implfit(im, t, &tys))
       continue;
-    if (imp)
-      *imp = im;
-    if (tysp && tys)
-      *tysp = tys;
-    return m;
+    if (!best || implspecific(im, best)) {
+      best = im;
+      btys = tys;
+      bm = m;
+    }
   }
-  return 0;
+  if (!best)
+    return 0;
+  if (imp)
+    *imp = best;
+  if (tysp && btys)
+    *tysp = btys;
+  return bm;
 }
 
 /* does this type implement this trait? A bound's question at a call
  * site (04-generics.md): the impl table answers, and what it finds
- * carries no binding -- the question is satisfied, not resolved. */
+ * carries no binding -- the question is satisfied, not resolved.
+ * Copy is the exception: no impl table ever answers it, the
+ * structure does (03-move.md). A blanket impl whose bound asks the
+ * question again under itself proves nothing -- another impl must
+ * answer, or the bound fails. */
+static struct
+{
+  Sym  *tr;
+  Type *ty;
+} satq[64]; /* the asks in flight, cycle depth's bound */
+static usize satn;
+
 int
 implsatisfies(Sym *trait, Type *t)
 {
-  usize i, j;
+  usize i;
+  int   r;
 
   if (!t)
     return 0;
+  if (trait == sym_copy)
+    return iscopy(t); /* structural: what the type is, not what it impls */
+  for (i = 0; i < satn; i++)
+    if (satq[i].tr == trait && tysame(satq[i].ty, t))
+      return 0; /* asked again under itself: this impl is not the answer */
+  if (satn >= sizeof satq / sizeof satq[0])
+    return 0;
+  satq[satn].tr = trait;
+  satq[satn].ty = t;
+  satn++;
+  r = 0;
   for (i = 0; i < chk_nimpls; i++) {
-    Sym   *im = chk_impls[i];
-    Type **tys;
+    Sym *im = chk_impls[i];
 
     if (!im->ifort || !im->ipath || im->ipath->sym != trait)
       continue;
-    if (!im->ngparams) {
-      if (tysame(im->ifort, t))
-        return 1;
-      continue; /* another impl of this trait may fit */
+    if (implfit(im, t, 0)) {
+      r = 1;
+      break;
     }
-    tys = tyargs(im->ngparams);
-    for (j = 0; j < im->ngparams; j++)
-      tys[j] = 0;
-    if (implatch(im->ifort, t, im->gparams, tys, im->ngparams))
-      return 1;
   }
-  return 0;
+  satn--;
+  return r;
 }

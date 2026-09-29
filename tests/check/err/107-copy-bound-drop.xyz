@@ -1,0 +1,14 @@
+/* a Copy-bounded generic fn takes only Copy types: the exclusion
+ * reads the structure, and a Drop impl is in it (03-move.md) */
+fn once<T: Copy>(x: T) -> u32 {
+  let a = x;
+  return 1;
+}
+struct File { fd: u32 }
+impl Drop for File {
+  fn drop(mut self: Self) -> () {}
+}
+fn main() -> u32 {
+  let f = File{ fd: 3 };
+  return once(f); /* File has a destructor: not Copy */
+}
