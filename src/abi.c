@@ -263,8 +263,10 @@ typereg(Type *t)
     break;
   }
   case Tydyn:
-    die("dyn values arrive with dispatch (06-dispatch.md)");
-    return 0;    /* unreachable */
+    /* fat, the slice's shape: the value's address, the vtable's
+     * (06-dispatch.md) */
+    sprintf(buf, "type %s = align %lu { l, l }", nm, (unsigned long) WORD);
+    break;
   case Tyenum: { /* tagged: the tag, then the payloads as a union --
                   * the niche shapes never arrive, isabb holding them
                   * out as the scalars they are at a call */

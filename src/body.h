@@ -89,6 +89,7 @@ Member *inherentfind(Sym *s, const char *name, Sym **imp);
 Member *inherentfindt(Type *t, const char *name, Sym **imp, Type ***tysp);
 Member *implfind(Sym *trait, Type *t, const char *name, Sym **imp, Type ***tysp);
 Member *traitfindt(Type *t, const char *name, Sym **imp, Type ***tysp);
+Sym    *implfor(Sym *trait, Type *t, Type ***tysp);
 int     implsatisfies(Sym *trait, Type *t);
 
 #endif

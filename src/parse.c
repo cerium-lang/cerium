@@ -691,6 +691,12 @@ unary(void)
     n->v.un.op = op;
     if (op == Tamp && accept(Tmut))
       n->v.un.mut = 1;
+    if (op == Tamp && peek() == Tdyn) { /* &dyn b, &mut dyn b: the
+                                         * fat handle, its value
+                                         * the operand (06-dispatch.md) */
+      next();
+      n->v.un.op = Tdyn; /* re-marked: not a borrow, a handle made */
+    }
     n->v.un.e = unary();
     return n;
   }

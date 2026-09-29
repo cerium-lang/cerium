@@ -1,0 +1,14 @@
+/* the trait a handle is made for comes from the expected type --
+ * nowhere else to read it (06-dispatch.md) */
+trait Show {
+  fn show(self: *Self) -> u32;
+}
+struct Point { x: u32 }
+impl Show for Point {
+  fn show(self: *Self) -> u32 { self.x }
+}
+fn main() -> u32 {
+  let p = Point{ x: 1 };
+  let a = &dyn p;
+  return a.show();
+}

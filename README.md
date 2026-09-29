@@ -126,7 +126,10 @@ a fn value, an impl's methods emitted as the fns they are, inherent
 or trait, exact or a pattern the receiver instantiates (the sugar's
 receiver adapted at the call, a `Type::member` call, a
 `Trait::member(&p)` one resolving its impl by the receiver, and a
-method held as a value included), `#[extern(C)]` imports and
+method held as a value included), `dyn A` handles — `&dyn b` builds
+the fat where the impl is known, one vtable per trait and concrete
+type in the data segment, the call reading its slot through the
+table (`dyn mut A` writing too) — `#[extern(C)]` imports and
 exports keeping their symbols, and the aggregate half: a struct literal (a nested one
 `blit`s into its field), a string landing in the data segment with
 its slice on the stack, `.ptr`/`.len` reads, and field/deref/slot

@@ -1,0 +1,15 @@
+/* a handle whose value implements nothing: no impl to pick, no
+ * table to carry (06-dispatch.md) */
+trait Show {
+  fn show(self: *Self) -> u32;
+}
+struct Point { x: u32 }
+struct Lone { v: u32 }
+impl Show for Point {
+  fn show(self: *Self) -> u32 { self.x }
+}
+fn main() -> u32 {
+  let l = Lone{ v: 1 };
+  let a: dyn Show = &dyn l;
+  return a.show();
+}

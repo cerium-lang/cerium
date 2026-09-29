@@ -252,6 +252,75 @@ selfsubst(Type *t, Type *self)
   }
 }
 
+/* does a signature mention Self bare -- not behind a pointer, where
+ * its size is not the caller's to know? Object safety's question,
+ * asked of every position but the self one (06-dispatch.md) */
+static int
+bareself(Type *t)
+{
+  usize i;
+
+  if (!t)
+    return 0;
+  switch (t->k) {
+  case Typaram:
+    return t->gp == sym_selfgp;
+  case Typtr:
+  case Tyslice:
+  case Tymut:
+    return 0; /* the shape knows the width; the pointee is erased */
+  case Tytuple:
+  case Tyfn:
+  case Tyenum:
+  case Tystruct:
+  case Tyunion:
+  case Tytrait:
+  case Tydyn:
+    for (i = 0; i < t->nargs; i++)
+      if (bareself(t->args[i]))
+        return 1;
+    return 0;
+  default:
+    return 0;
+  }
+}
+
+/* a vtable can only be built for a trait whose methods all
+ * dispatch without knowing Self (06-dispatch.md) */
+static void
+objectsafety(Sym *tr, Ast *at)
+{
+  usize i;
+
+  for (i = 0; i < tr->nmembers; i++) {
+    Member *m = &tr->members[i];
+    Type   *sig;
+
+    if (m->kind == Mtype)
+      berr(at, "'%s' has an associated type; a handle needs it given (06-dispatch.md)", tr->name);
+    if (m->kind != Mfn)
+      continue;
+    sig = m->ty;
+    if (m->decl && vlen(m->decl->v.fn.gparams))
+      berr(at, "'%s::%s' is generic: no one address fits a vtable (06-dispatch.md)", tr->name,
+           m->name);
+    if (sig->nargs && sig->args[0] && sig->args[0]->k == Typaram && sig->args[0]->gp == sym_selfgp)
+      berr(at, "'%s::%s' takes Self by value: its size is not known (06-dispatch.md)", tr->name,
+           m->name);
+    { /* every other Self in the signature hides behind a pointer */
+      usize j;
+
+      for (j = 1; j < sig->nargs; j++)
+        if (bareself(sig->args[j]))
+          berr(at, "'%s::%s' takes Self bare: its size is not known (06-dispatch.md)", tr->name,
+               m->name);
+      if (bareself(sig->t))
+        berr(at, "'%s::%s' returns Self bare: its size is not known (06-dispatch.md)", tr->name,
+             m->name);
+    }
+  }
+}
+
 /* the genericity gate for a member call: a member fn with
  * parameters of its own names a family -- picking one is the
  * specialization machinery's work (04-generics.md). An impl's own
@@ -928,6 +997,36 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
   case Nun: {
     Tok op = e->v.un.op;
 
+    if (op == Tdyn) { /* &dyn b / &mut dyn b: the fat handle. Which
+                       * trait is meant comes from the type the
+                       * handle is being made for -- the want names
+                       * it (06-dispatch.md) */
+      Type *t = rplace(e->v.un.e, fe);
+      Type *w = want;
+
+      while (w && w->k == Tymut) /* a slot's permission, not the
+                                  * handle's own shape */
+        w = w->t;
+      if (!t)
+        berr(e->v.un.e, "cannot make a handle of a temporary");
+      if (e->v.un.mut && !placewritable(e->v.un.e, fe))
+        berr(e->v.un.e, "a &mut dyn needs a mut slot (01-types.md)");
+      if (touchconflict(e->v.un.e, fe, e->v.un.mut))
+        berr(e->v.un.e, "this place is already borrowed (01-types.md)");
+      if (!w || w->k != Tydyn)
+        berr(e, "the trait a handle is made for comes from its expected type (06-dispatch.md)");
+      { /* the impl the vtable carries, chosen here -- the whole
+         * point of dyn: the choice travels (06-dispatch.md) */
+        Sym *im = implfor(w->sym, t, 0);
+
+        if (!im)
+          berr(e->v.un.e, "no '%s' for %s", w->sym->name, btys(t));
+        objectsafety(w->sym, e);
+      }
+      freeze(e->v.un.e, fe, e->v.un.mut, (int) fe->n);
+      return w; /* rplace wrote the concrete type on the operand;
+                 * the emitter re-finds the impl from the pair */
+    }
     if (op == Tamp) { /* &x / &mut x: the place is borrowed, not read */
       Type *t = rplace(e->v.un.e, fe);
 
@@ -1274,9 +1373,67 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
       if (!rt)
         return 0;
       ty = derefthrough(rt); /* a pointer receiver is dereferenced first */
+      if (ty->k == Tydyn) {  /* a handle's call: the vtable's, not any
+                              * table's -- the choice was made where
+                              * the handle was (06-dispatch.md) */
+        Member *dm = 0;
+        usize   di;
+        Type   *t;
+
+        for (di = 0; di < ty->sym->nmembers; di++)
+          if (strcmp(ty->sym->members[di].name, f->v.fld.name) == 0) {
+            dm = &ty->sym->members[di];
+            break;
+          }
+        if (!dm)
+          berr(f, "'%s' has no '%s'", ty->sym->name, f->v.fld.name);
+        if (dm->kind != Mfn)
+          berr(f, "'%s::%s' is not a method", ty->sym->name, f->v.fld.name);
+        t = selfsubst(dm->ty, tyvoidptr()); /* Self erased: what
+                                             * survives object safety
+                                             * is pointers, all one
+                                             * width */
+        if (t->nargs && t->args[0] && t->args[0]->k == Typtr && t->args[0]->t->k == Tymut &&
+            !ty->mut)
+          berr(f, "'%s' is a mut method; a 'dyn mut %s' handle carries it", f->v.fld.name,
+               ty->sym->name);
+        e->v.call.sym = 0; /* no direct fn: the emitter reads the vtable */
+        e->v.call.tys = 0;
+        {
+          Frzsave *svs = n ? arenaalloc(n * sizeof *svs) : 0;
+          usize    k;
+
+          if (svs) {
+            memset(svs, 0, n * sizeof *svs);
+            for (k = 0; k < n; k++)
+              argborrow(args[k], fe, &svs[k]);
+          }
+          if (n + 1 != t->nargs)
+            berr(e, "'%s' takes %lu arguments, %lu given", f->v.fld.name,
+                 (unsigned long) (t->nargs - 1), (unsigned long) n);
+          { /* the receiver is the fat itself: its type is the
+             * handle's, not any self -- the emitter adapts it */
+            usize i;
+
+            for (i = 0; i < n; i++) {
+              Type *at = rexpr(args[i], fe, t->args[i + 1]);
+
+              if (at && t->args[i + 1] && !tysame(at, t->args[i + 1])) {
+                Type *c = recoerce(args[i], t->args[i + 1], fe);
+
+                if (!c || !tysame(c, t->args[i + 1]))
+                  berr(args[i], "'%s' wants %s here, this is %s", f->v.fld.name,
+                       btys(t->args[i + 1]), btys(at));
+              }
+            }
+          }
+          thawargs(svs, n); /* the call is done; its borrows ended with it */
+        }
+        return t->t;
+      }
       if (ty->k != Tystruct && ty->k != Tyunion && ty->k != Tyenum)
-        berr(f, "a method call needs a struct, union, or enum receiver; trait calls "
-                "arrive with dispatch (06)");
+        berr(f, "a method call needs a struct, union, or enum receiver; a trait's calls "
+                "come by its impls (05-traits.md)");
       { /* the inherent table first (05-traits.md: the namespaces are
          * separate), then the trait one: a match binds the impl's
          * parameters from the receiver's type, the same walk a
