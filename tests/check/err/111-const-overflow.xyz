@@ -1,0 +1,5 @@
+/* overflow is an error on every step, checked against the type the
+ * step lands in -- not only on the literals (08-reflection.md) */
+const A: i8 = 127;
+const B: i8 = A + 1;
+fn main() -> i32 { return B; }

@@ -19,10 +19,12 @@
  * What this pass deliberately leaves alone: trait method calls and
  * operators on user types (dispatch, the next milestone -- the
  * scalar and pointer built-ins are checked here), const evaluation
- * (the one after), pack spreads, ranges, and type values ($$t,
- * reflection). Option and Result are checked as what they are --
- * prelude enums -- with their variants as constructors and their
- * narrowing spelled by the == None / != Err forms (01-types.md).
+ * beyond the leaf layer -- a literal length is the evaluator's own
+ * here (08-reflection.md), an fn call in it waits -- pack spreads,
+ * ranges, and type values ($$t, reflection). Option and Result are
+ * checked as what they are -- prelude enums -- with their variants as
+ * constructors and their narrowing spelled by the == None / != Err
+ * forms (01-types.md).
  *
  * The environment and the helpers it walks with -- bindings,
  * borrows, joins, the diagnostics -- live in flow.c; body.h is the
@@ -38,6 +40,7 @@
 #include "body.h"
 #include "check.h"
 #include "die.h"
+#include "eval.h"
 #include "lex.h"
 #include "sym.h"
 #include "type.h"
@@ -1953,14 +1956,17 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
         }
       }
     }
-    if (e->v.arrlit.len && e->v.arrlit.len->k == Nint) {
-      if (e->v.arrlit.len->v.i.num < n) /* more initializers than the
-                                         * length is the error; fewer
-                                         * is the zero fill
-                                         * (01-types.md) */
-        berr(e, "[%lu] holds %lu elements, %lu given", (unsigned long) e->v.arrlit.len->v.i.num,
-             (unsigned long) e->v.arrlit.len->v.i.num, (unsigned long) n);
-      return tyarray(e->v.arrlit.len->v.i.num, et);
+    if (e->v.arrlit.len) { /* the length is a const expression,
+                            * evaluated here as a type's own is
+                            * (08-reflection.md); more initializers
+                            * than the length is the error; fewer is
+                            * the zero fill (01-types.md) */
+      u64 ln = cevallong(e->v.arrlit.len, fe->env, tyint(IN_USIZE));
+
+      if (ln < n)
+        berr(e, "[%lu] holds %lu elements, %lu given", (unsigned long) ln, (unsigned long) ln,
+             (unsigned long) n);
+      return tyarray(ln, et);
     }
     return tyslice(et); /* []T: the unsized literal */
   }

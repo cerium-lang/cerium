@@ -253,30 +253,14 @@ prefixtype(void)
     n->v.un.e = prefixtype();
     return n;
   }
-  case Tlbracket: { /* [ [length] ] [mut] T -- the length is an
-                     * integer or a const-parameter name (08) */
+  case Tlbracket: { /* [ [length] ] [mut] T -- the length is a const
+                     * expression (08-reflection.md) */
     Ast *n;
 
     next();
     n = mk(Ntarray);
-    if (peek() == Tint) {
-      Ast *l;
-
-      next();
-      l = mk(Nint);
-      l->v.i.num = mknum();
-      n->v.arrlit.len = l;
-    } else if (peek() == Tident) {
-      next();
-      n->v.arrlit.len = mk(Npath);
-      n->v.arrlit.len->v.path.segs = vnew(Ast *, 1);
-      {
-        Ast *s = mk(Nseg);
-
-        s->v.seg.name = mkstr();
-        vappend(&n->v.arrlit.len->v.path.segs, &s);
-      }
-    }
+    if (peek() != Trbracket)
+      n->v.arrlit.len = expr();
     want(Trbracket, "]");
     if (accept(Tmut)) /* [N]mut T / []mut T: the elements are writable
                        * slots (01-types.md); resolve wraps the element */
@@ -965,14 +949,9 @@ arraylit(void) /* the "[" is peeked */
 
   headctx = 0; /* inside the literal, a "{ " is a literal again */
   next();
-  if (peek() == Tint) {
-    Ast *l;
-
-    next();
-    l = mk(Nint);
-    l->v.i.num = mknum();
-    n->v.arrlit.len = l;
-  }
+  if (peek() != Trbracket) /* the length is a const expression, as a
+                            * type's own is (08-reflection.md) */
+    n->v.arrlit.len = expr();
   want(Trbracket, "]");
   if (accept(Tmut))
     n->v.arrlit.mut = 1;
@@ -1657,12 +1636,9 @@ variants(void)
 
     v->attrs = attrs();
     v->v.variant.name = wantident("a variant name");
-    if (accept(Teq)) {
-      if (peek() != Tint)
-        perr("expected an integer after =");
-      next();
+    if (accept(Teq)) { /* "= const expr" (08-reflection.md) */
       v->v.variant.hasdisc = 1;
-      v->v.variant.disc = mknum();
+      v->v.variant.discexpr = expr();
     } else if (peek() == Tlparen) { /* positional payload: types */
       next();
       if (peek() != Trparen) {

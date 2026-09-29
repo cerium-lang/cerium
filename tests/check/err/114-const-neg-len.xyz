@@ -1,0 +1,5 @@
+/* an array's length is a const expression now (08-reflection.md),
+ * and a negative one is still not a length */
+const N: i32 = -1;
+fn f(x: [N]i32) -> i32 { return 0; }
+fn main() -> i32 { return 0; }

@@ -1627,6 +1627,33 @@ emaexpr(Em *em, Ast *e)
       fprintf(em->o, "\t%s =l copy $%s\n", t, nm);
       return t;
     }
+    if (s->kind == Sconst && s->cvaldone) { /* the value, as an
+                                             * immediate: compile-time
+                                             * known, so nothing to
+                                             * load (08-reflection.md) */
+      Type *t = e->ty ? e->ty : s->cty;
+
+      if (t->k == Tyint && t->num >= IN_F32) { /* a float rides the
+                                                * data segment, the
+                                                * literal's ride */
+        char *base = arenaalloc(16), *v = newtmp(em);
+        char  c = qbety(t, e);
+        char *d = arenaalloc(48);
+
+        sprintf(base, "$flt.%lu", (unsigned long) ++dsn);
+        fprintf(em->o, "\t%s =%c load%s %s\n", v, c, c == 's' ? "s" : "d", base);
+        /* 9 and 17 significant digits: the least that round-trips */
+        sprintf(d, "data %s = { %c %c_%.*g }", base, c, c, c == 's' ? 9 : 17, s->cflt);
+        vappend(&em->datas, &d);
+        return v;
+      }
+      {
+        char *v = newtmp(em);
+
+        fprintf(em->o, "\t%s =%c copy %lu\n", v, qbety(t, e), (unsigned long) s->cval);
+        return v;
+      }
+    }
     cerrat(e, "a value of this kind arrives with a later milestone");
     return 0; /* unreachable */
   }

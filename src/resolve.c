@@ -29,6 +29,7 @@
 #include "ast.h"
 #include "check.h"
 #include "die.h"
+#include "eval.h"
 #include "lex.h"
 #include "sym.h"
 #include "type.h"
@@ -504,17 +505,20 @@ rty(Ast *t, Env *env)
       elem = tymut(elem);
     if (!len)
       return tyslice(elem);
-    if (len->k == Nint)
-      return tyarray(len->v.i.num, elem);
-    { /* [N]T: the length names a const parameter */
-      char *name = len->v.path.segs[0]->v.seg.name;
-      Type *p = envfind(env, name);
+    { /* [N]T: a const parameter names the length symbolically (the
+       * generic's own binding); any other const expression is the
+       * length, evaluated (08-reflection.md) */
+      if (len->k == Npath && vlen(len->v.path.segs) == 1 && !len->v.path.root) {
+        char *nm = len->v.path.segs[0]->v.seg.name;
+        Type *p = envfind(env, nm);
 
-      if (!p)
-        cerrat(len, "unknown name '%s' as an array length", name);
-      if (p->k != Typaram || !p->gp->v.gp.cnst)
-        cerrat(len, "'%s' is not a const parameter", name);
-      return tyarrayp(p->gp, elem);
+        if (p) {
+          if (p->k != Typaram || !p->gp->v.gp.cnst)
+            cerrat(len, "'%s' is not a const parameter", nm);
+          return tyarrayp(p->gp, elem);
+        }
+      }
+      return tyarray(cevallong(len, *env, tyint(IN_USIZE)), elem);
     }
   }
   case Nttuple: {
@@ -690,7 +694,7 @@ resolveenum(Sym *s)
         cerrat(v, "duplicate variant '%s'", v->v.variant.name);
     dv->name = v->v.variant.name;
     dv->hasdisc = v->v.variant.hasdisc;
-    dv->disc = v->v.variant.hasdisc ? v->v.variant.disc : next;
+    dv->disc = v->v.variant.hasdisc ? cevallong(v->v.variant.discexpr, env, tyint(IN_USIZE)) : next;
     next = dv->disc + 1;
     if (s->tagty && !fits(dv->disc, s->tagty))
       cerrat(v, "discriminant %lu does not fit the tag type", (unsigned long) dv->disc);
@@ -1499,6 +1503,9 @@ checkfile(Ast **items)
       Env env = envnone();
 
       s->cty = rty(it->v.cst.t, &env);
+      cevalsym(s); /* the initializer is compile-time known, or it is
+                    * not a const (01-types.md); a static's first
+                    * value is too, its storage is runtime */
       break;
     }
     case Nimpl:

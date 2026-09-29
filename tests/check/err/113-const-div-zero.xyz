@@ -1,0 +1,4 @@
+/* division by zero at compile time is a compile error: the run the
+ * initializer would crash on never comes (08-reflection.md) */
+const A: i32 = 1 / 0;
+fn main() -> i32 { return A; }

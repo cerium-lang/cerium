@@ -233,8 +233,8 @@ struct Ast
     struct
     {
       Ast **attrs;
-      char *name; /* Nvariant, Nfield */
-      u64   disc; /* Nvariant: "= integer", when hasdisc */
+      char *name;     /* Nvariant, Nfield */
+      Ast  *discexpr; /* Nvariant: "= const expr", when hasdisc */
       int   hasdisc;
       Ast **payload; /* Nvariant: types or Nfield list, or NULL */
       int   named;   /* payload braces rather than parens */

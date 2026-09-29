@@ -129,6 +129,28 @@ and the member's `Rhs` is that argument (`04-generics.md`,
 `07-operators.md`). A fn's parameters come from its arguments and
 an impl's from the trait it implements: neither carries one.
 
+Compile-time evaluation has begun, the leaf layer: a `const` and a
+`static` initializer run in the compiler — literals, arithmetic and
+the operators over them, the signedness read from the type, the
+short circuit kept, `@sizeof`/`@alignof` over the layout tables,
+`@cast` across the matrix, a float truncating as `01-types.md` says
+— and the const references that chain them, lazy: each value is
+kept once it lands, so a chain resolves once however many read it.
+`08-reflection.md`'s four promises hold — every step checked
+against the type it lands in, so overflow and a division by zero
+are compile errors; the in-flight stack is the cycle check, a
+const that depends on itself an error, not a hang; a step budget
+ends what would not end; nothing is observed, so nothing varies.
+The sign rides a literal: `-2147483648` is i32's least, spelled
+the only way it can be — a `let`'s inference does not fold the
+sign yet, its `-128` still naming an i32, the one divergence.
+An array's length and a variant's discriminant are const
+expressions now, not only literals — `[N * 2 + 1]u8` and
+`enum E(u8) { A = D, B }` both evaluate, `B` counting from `D` —
+and a body reads a const as an immediate, a float riding the data
+segment, the literal's ride. An fn call in an initializer waits
+for the passes that know the bodies.
+
 Codegen has begun: `xyz -s file.xyz` prints the `.ssa` text — qbe's
 input — and `xyz -c file.xyz -o out` runs the pipeline, qbe as a
 subprocess and the system `cc` linking. Checking writes each node's

@@ -110,7 +110,12 @@ struct Sym
   Type    *fnty;       /* Sfn: the resolved fn type */
   Sym     *impl;       /* Sfn: the impl a method's Sym belongs to,
                         * or NULL for a plain fn */
-  Type   *cty;         /* Sconst, Sstatic: the resolved type */
+  Type *cty;           /* Sconst, Sstatic: the resolved type */
+  u64   cval;          /* Sconst, Sstatic: the evaluated value -- a
+                        * const's, or a static's first one (08) */
+  double cflt;         /* the float's own bits, when cty is one */
+  int    cvaldone;     /* the value is in: the chain may land here
+                        * again, and read it (08-reflection.md) */
   Member *members;     /* Strait, Simpl: in declaration order */
   usize   nmembers;    /* their count */
   int     traitdone;   /* Strait: the member table is built -- pass 3
