@@ -1,0 +1,4 @@
+/* a default names the parameters before it: V comes after U, and is
+ * not in scope where U's default stands (04-generics.md) */
+struct Pair<U = V, V = u32> { a: U, b: V }
+fn main() -> i32 { return 1; }

@@ -24,6 +24,10 @@ void recheckfn(Sym *s, Ast *it, Type **tys); /* one instantiation, for
 Type *rty(Ast *t, Env *env);
 Type *rpath(Ast *p, Env *env);
 
+/* resolve.c's trait-head bindings, shared by pass 4: the trait's
+ * own parameters, as the impl's head named them */
+Env envtraitargs(Env *e, Sym *s);
+
 /* flow.c's impl table walk: the impl of a trait for a type, the
  * question a handle's construction asks (06-dispatch.md). The
  * emitter asks it again, printing the vtable */

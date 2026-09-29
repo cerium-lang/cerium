@@ -2047,16 +2047,28 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
       }
     }
     if (tys) {
-      for (i = 0; i < s->ngparams; i++)
+      Env denv = envnone(); /* the declaration's own: a default sees
+                             * the parameters before it, not the
+                             * fn's names (04-generics.md) */
+
+      denv.b = arenaalloc(s->ngparams * sizeof *denv.b);
+      denv.n = 0;
+      for (i = 0; i < s->ngparams; i++) {
         if (!tys[i]) {
           Ast *d = s->gparams[i]->v.gp.dflt;
 
           if (!d)
             berr(e, "cannot infer '%s' for '%s' from the literal", s->gparams[i]->v.gp.name,
                  s->name);
-          tys[i] = rty(d, &fe->env); /* the declaration's own
-                                      * default (04-generics.md) */
+          tys[i] = rty(d, &denv);
         }
+        denv.b[i].name = s->gparams[i]->v.gp.name; /* the slot
+                                                    * reaches the
+                                                    * count only
+                                                    * once bound */
+        denv.b[i].t = tys[i];
+        denv.n = i + 1;
+      }
       st = tysym(s, tys, s->ngparams);
     }
     return st; /* fields left out are zero (01-types.md) */
@@ -2887,6 +2899,7 @@ checkbodyimpl(Sym *s, Ast *it)
 
   env.impl = s;
   env = envpush(&env, "Self", s->ifort ? s->ifort : s->ipath);
+  env = envtraitargs(&env, s); /* the head's trait parameters, bound */
   for (i = 0; i < n; i++)
     if (ms[i]->k == Nfn && ms[i]->v.fn.body) {
       Fenv  fe;
