@@ -1,0 +1,14 @@
+/* object safety: a method taking Self by value has no size to call
+ * it by (06-dispatch.md) */
+trait Eat {
+  fn eat(self: Self) -> u32;
+}
+struct Point { x: u32 }
+impl Eat for Point {
+  fn eat(self: Self) -> u32 { self.x }
+}
+fn main() -> u32 {
+  let p = Point{ x: 1 };
+  let a: dyn Eat = &dyn p;
+  return a.eat();
+}

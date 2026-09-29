@@ -624,6 +624,108 @@ zeroblk(Em *em, usize sz)
   return base;
 }
 
+/* -- vtables (06-dispatch.md) -------------------------------------------- */
+
+/* One table per trait and concrete type, an entry a method in the
+ * trait's declaration order. The construction site names its pair;
+ * the tables print after every fn, the instances they name already
+ * emitted -- a generic impl's method lands here as an instance the
+ * no static call ever found, so the print is what ensures it. */
+typedef struct Vt Vt;
+struct Vt
+{
+  Sym  *tr;   /* the trait */
+  Type *ty;   /* the concrete type behind the handle */
+  char *name; /* the data symbol, $-less */
+};
+
+static Vt   *vts;       /* every pair named, in first-seen order */
+static usize vtprinted; /* how many of them the text already holds */
+
+static char *
+vtname(Sym *tr, Type *ty)
+{
+  char  tb[256], buf[512];
+  usize i, same;
+
+  for (i = 0; i < vlen(vts); i++)
+    if (vts[i].tr == tr && vts[i].ty == ty)
+      return vts[i].name;
+  tymangle(ty, tb, sizeof tb);
+  sprintf(buf, "vt_%s_%s", tr->name, tb);
+  same = 0;
+  for (i = 0; i < vlen(vts); i++) /* two pairs the folding cannot
+                                   * tell apart: number them off */
+    if (strcmp(vts[i].name, buf) == 0)
+      same++;
+  { /* stable: the arena keeps the spelling one name */
+    Vt    vt;
+    char *n = arenaalloc(strlen(buf) + 12);
+
+    sprintf(n, "%s%s%lu", buf, same ? "_" : "", (unsigned long) same);
+    vt.tr = tr;
+    vt.ty = ty;
+    vt.name = n;
+    if (!vts)
+      vts = vnew(Vt, 8);
+    vappend(&vts, &vt);
+    return n;
+  }
+}
+
+/* the tables not yet printed: one line each, its entries the impl
+ * the pair picked -- a pattern impl's methods as instances, ensured
+ * here so the drain that follows emits them */
+static void
+printvts(FILE *o)
+{
+  usize i, j;
+
+  for (i = vtprinted; i < vlen(vts); i++) {
+    Vt    *vt = &vts[i];
+    Sym   *im;
+    Type **tys = 0;
+    char  *line;
+    char  *p;
+    usize  len = 32;
+
+    im = implfor(vt->tr, vt->ty, &tys);
+    if (!im)
+      cerrat(vt->tr->decl, "unreachable: the construction site checked");
+    for (j = 0; j < vt->tr->nmembers; j++)
+      if (vt->tr->members[j].kind == Mfn)
+        len += strlen(vt->tr->members[j].name) + 24;
+    line = arenaalloc(len);
+    p = line + sprintf(line, "data $%s = { ", vt->name);
+    for (j = 0; j < vt->tr->nmembers; j++) {
+      Member *tm = &vt->tr->members[j];
+      Member *fm = 0;
+      usize   k;
+      char   *nm;
+
+      if (tm->kind != Mfn)
+        continue; /* a handle exposes the methods (06-dispatch.md) */
+      for (k = 0; k < im->nmembers; k++)
+        if (strcmp(im->members[k].name, tm->name) == 0) {
+          fm = &im->members[k];
+          break;
+        }
+      if (!fm || fm->kind != Mfn || !fm->sym)
+        cerrat(vt->tr->decl, "unreachable: the impl supplies it");
+      if (tys)
+        nm = instensure(fm->sym, tys)->name; /* the instance this
+                                              * table names */
+      else
+        nm = fsymname(fm->sym, fm->sym->decl);
+      p += sprintf(p, "l $%s, ", nm);
+    }
+    sprintf(p, "}");
+    if (ipass == 2)
+      fprintf(o, "%s\n", line);
+  }
+  vtprinted = vlen(vts);
+}
+
 /* a scalar's storage touched by its load or store: the address is
  * emaplace's, the temporary qbety names the domain */
 static char *
@@ -1528,6 +1630,19 @@ emaexpr(Em *em, Ast *e)
     Tok   op = e->v.un.op;
     char *v, *t;
 
+    if (op == Tdyn) { /* &dyn b / &mut dyn b: the fat -- the place's
+                       * address, the impl's table (06-dispatch.md) */
+      char *addr = emaplace(em, e->v.un.e);
+      char *p8 = newtmp(em);
+      char *vt = vtname(e->ty->sym, e->v.un.e->ty);
+
+      t = newtmp(em);
+      fprintf(em->o, "\t%s =l alloc8 16\n", t);
+      fprintf(em->o, "\tstorel %s, %s\n", addr, t);
+      fprintf(em->o, "\t%s =l add %s, 8\n", p8, t);
+      fprintf(em->o, "\tstorel $%s, %s\n", vt, p8);
+      return t;
+    }
     if (op == Tamp)
       return emaplace(em, e->v.un.e); /* &place: the address itself */
     v = emaexpr(em, e->v.un.e);
@@ -1661,6 +1776,7 @@ emaexpr(Em *em, Ast *e)
     Sym   *s;
     char  *nm = 0;     /* a direct callee's symbol */
     char  *ra = 0;     /* the sugar's receiver, walking first */
+    char  *dynfp = 0;  /* a handle's call: the vtable slot (06) */
     Type  *selfty = 0; /* the receiver's parameter type, for the call's spelling */
     Type  *rty = 0;    /* the receiver as written */
 
@@ -1698,19 +1814,57 @@ emaexpr(Em *em, Ast *e)
         Type *ft; /* the instance's signature, when the receiver
                    * bound a pattern impl's parameters */
 
-        if (!ms || ms->kind != Sfn)
-          cerrat(f, "this method call was never checked");
-        ft = ms->fnty;
-        if (e->v.call.tys)
-          ft = gsubst(ft, ms->gparams, e->v.call.tys, ms->ngparams);
-        selfty = ft->nargs ? ft->args[0] : 0;
         rty = f->v.fld.e->ty;
-        if (selfty && selfty->k == Typtr && !(rty && rty->k == Typtr && tysame(rty, selfty)))
-          ra = emaplace(em, f->v.fld.e); /* a pointer self: &place */
-        else
-          ra = emaexpr(em, f->v.fld.e); /* as written: the pointer, or the move */
-        ra = nicheout(em, selfty, ra);
-        nm = e->v.call.tys ? instensure(ms, e->v.call.tys)->name : fsymname(ms, ms->decl);
+        if (rty && rty->k == Tydyn) { /* the fat call: the pointer
+                                       * the fat holds, the method
+                                       * its table names -- the
+                                       * choice was made where the
+                                       * handle was (06-dispatch.md) */
+          Sym  *tr = rty->sym;
+          char *fat = emaexpr(em, f->v.fld.e);
+          char *p8 = newtmp(em);
+          char *vt = newtmp(em);
+          char *mf = newtmp(em);
+          usize idx = 0, mi;
+
+          for (mi = 0; mi < tr->nmembers; mi++) {
+            if (tr->members[mi].kind != Mfn)
+              continue;
+            if (strcmp(tr->members[mi].name, f->v.fld.name) == 0)
+              break;
+            idx++;
+          }
+          if (mi == tr->nmembers)
+            cerrat(f, "unreachable: the checker found the member");
+          ra = newtmp(em);
+          fprintf(em->o, "\t%s =l loadl %s\n", ra, fat);
+          fprintf(em->o, "\t%s =l add %s, 8\n", p8, fat);
+          fprintf(em->o, "\t%s =l loadl %s\n", vt, p8);
+          if (idx) { /* the slot, in declaration order */
+            char *o = newtmp(em);
+
+            fprintf(em->o, "\t%s =l add %s, %lu\n", o, vt, (unsigned long) idx * 8);
+            vt = o;
+          }
+          fprintf(em->o, "\t%s =l loadl %s\n", mf, vt);
+          selfty = typtr(tyvoidptr()); /* Self erased (06): what
+                                        * survives is pointers, one
+                                        * width */
+          dynfp = mf;
+        } else {
+          if (!ms || ms->kind != Sfn)
+            cerrat(f, "this method call was never checked");
+          ft = ms->fnty;
+          if (e->v.call.tys)
+            ft = gsubst(ft, ms->gparams, e->v.call.tys, ms->ngparams);
+          selfty = ft->nargs ? ft->args[0] : 0;
+          if (selfty && selfty->k == Typtr && !(rty && rty->k == Typtr && tysame(rty, selfty)))
+            ra = emaplace(em, f->v.fld.e); /* a pointer self: &place */
+          else
+            ra = emaexpr(em, f->v.fld.e); /* as written: the pointer, or the move */
+          ra = nicheout(em, selfty, ra);
+          nm = e->v.call.tys ? instensure(ms, e->v.call.tys)->name : fsymname(ms, ms->decl);
+        }
       } else if (f->k == Npath && vlen(f->v.path.segs) == 2 && ms) {
         nm = e->v.call.tys ? instensure(ms, e->v.call.tys)->name : fsymname(ms, ms->decl);
       }
@@ -1738,6 +1892,8 @@ emaexpr(Em *em, Ast *e)
     }
     if (nm)
       fprintf(em->o, "\t%s =%s call $%s(", t, sigty(e->ty, e), nm);
+    else if (dynfp) /* the vtable slot: called through it (06) */
+      fprintf(em->o, "\t%s =%s call %s(", t, sigty(e->ty, e), dynfp);
     else { /* a fn held in a value, called through it */
       char *fp = emaexpr(em, f);
 
@@ -2393,10 +2549,25 @@ emitfile(FILE *out, Ast **items)
   ipass = 1;
   emitall(scratch, items);
   draininsts(scratch);
+  for (;;) { /* the tables the handles named: their entries name
+              * instances no static call found, so the print is
+              * what queues them */
+    draininsts(scratch);
+    if (vtprinted == vlen(vts))
+      break;
+    printvts(scratch);
+  }
   fclose(scratch);
   dsn = 0;       /* the naming pass burned numbers; the real one restarts */
+  vtprinted = 0; /* the text restarts with it */
   abidecls(out); /* the :type declarations, the order qbe reads */
   ipass = 2;
   emitall(out, items); /* pass two: the text */
   draininsts(out);
+  for (;;) {
+    draininsts(out);
+    if (vtprinted == vlen(vts))
+      break;
+    printvts(out);
+  }
 }

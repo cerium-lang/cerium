@@ -24,6 +24,11 @@ void recheckfn(Sym *s, Ast *it, Type **tys); /* one instantiation, for
 Type *rty(Ast *t, Env *env);
 Type *rpath(Ast *p, Env *env);
 
+/* flow.c's impl table walk: the impl of a trait for a type, the
+ * question a handle's construction asks (06-dispatch.md). The
+ * emitter asks it again, printing the vtable */
+Sym *implfor(Sym *trait, Type *t, Type ***tysp);
+
 /* a diagnostic at a node: path:line:col: message, then exit(1) --
  * the same shape the lexer's and the parser's errors take */
 void cerrat(Ast *a, const char *fmt, ...);

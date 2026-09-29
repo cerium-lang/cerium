@@ -1,0 +1,33 @@
+/* the fat handle: made where the impl is known, called where it is
+ * not -- the vtable carries the choice (06-dispatch.md) */
+trait Show {
+  fn show(self: *Self) -> u32;
+}
+struct Point { mut x: u32, mut y: u32 }
+impl Show for Point {
+  fn show(self: *Self) -> u32 { self.x + self.y }
+}
+struct Wrap<T> { mut v: T }
+impl<T: Copy> Show for Wrap<T> {
+  fn show(self: *Self) -> u32 { self.v }
+}
+trait Reset {
+  fn reset(self: *mut Self) -> ();
+}
+impl Reset for Point {
+  fn reset(self: *mut Self) -> () { self.x = 0; self.y = 0; }
+}
+fn run(a: dyn Show) -> u32 {
+  a.show()
+}
+fn main() -> u32 {
+  let mut p = Point{ x: 3, y: 4 };
+  let mut q = Point{ x: 30, y: 40 };
+  let mut w: Wrap<u32> = Wrap{ v: 50 };
+  let a: dyn Show = &dyn q;    /* the exact impl's table */
+  let b: dyn Show = &dyn w;    /* a pattern impl's: the instance the table names */
+  let was = p.x + p.y;         /* read before the mut handle freezes it */
+  let m: dyn mut Reset = &mut dyn p;
+  m.reset();                   /* through the handle, the write lands */
+  return run(a) + run(b) + was;  /* p stays frozen with its handle */
+}

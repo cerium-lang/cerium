@@ -751,6 +751,45 @@ inherentfindt(Type *t, const char *name, Sym **imp, Type ***tysp)
   return 0;
 }
 
+/* the impl of this trait for this type, any member of it: the
+ * question a handle's construction asks (06-dispatch.md). The same
+ * walk implfind runs, without a member to name -- a marker trait
+ * has none. The binding comes back through *tysp, as implfind's. */
+Sym *
+implfor(Sym *trait, Type *t, Type ***tysp)
+{
+  usize i, j, g;
+
+  if (tysp)
+    *tysp = 0;
+  if (!t)
+    return 0;
+  for (i = 0; i < chk_nimpls; i++) {
+    Sym   *im = chk_impls[i];
+    Type **tys;
+
+    if (!im->ifort || !im->ipath || im->ipath->sym != trait)
+      continue;
+    if (im->ngparams) {
+      tys = tyargs(im->ngparams);
+      for (j = 0; j < im->ngparams; j++)
+        tys[j] = 0;
+      if (!implatch(im->ifort, t, im->gparams, tys, im->ngparams))
+        continue;
+      for (g = 0; g < im->ngparams; g++)
+        if (!tys[g])
+          break; /* the pattern left a slot open: not this one */
+      if (g < im->ngparams)
+        continue;
+      if (tysp)
+        *tysp = tys;
+    } else if (!tysame(im->ifort, t))
+      continue;
+    return im;
+  }
+  return 0;
+}
+
 /* a trait impl's member for this type, the trait named --
  * Trait::method(&p) spells both out, so the walk narrows to that
  * trait's impls. The binding the match made comes back through
