@@ -529,9 +529,16 @@ dumpnode(Ast *n, int i)
     child(n->v.fnty.ret, i);
     break;
   case Ntdyn:
-    if (n->v.un.mut)
+    if (n->v.tdyn.mut)
       printf(" mut");
-    child(n->v.un.e, i);
+    child(n->v.tdyn.e, i);
+    {
+      usize j;
+
+      for (j = 0; j < vlen(n->v.tdyn.assocs); j++) {
+        child(n->v.tdyn.assocs[j], i);
+      }
+    }
     break;
   case Nfn:
     putattrs(n);

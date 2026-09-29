@@ -1,0 +1,16 @@
+/* a handle's bindings name associated types the trait declares --
+ * no others exist to give (05-traits.md) */
+trait Iterator {
+  type Item;
+  fn next(self: *mut Self) -> ?Self::Item;
+}
+struct Counter { mut n: u32, mut top: u32 }
+impl Iterator for Counter {
+  type Item = u32;
+  fn next(self: *mut Self) -> ?u32 { None }
+}
+fn main() -> u32 {
+  let mut c = Counter{ n: 0, top: 0 };
+  let i: dyn mut Iterator<Foo = u32> = &mut dyn c; /* no such member */
+  return 0;
+}

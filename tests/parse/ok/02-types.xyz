@@ -20,7 +20,7 @@ type Fn2 = fn(i32, u32) -> u32;
 type FnTC = fn(i32,);
 type TupTC = (i32, u32,);
 type NestedRes = Str??u32;
-type DynGen = dyn Read<Item>;
+type DynGen = dyn Read<Item = u32>;
 type WithConstGp<T, const N: usize> = [N]T;
 enum Tagged(u32) {
   A = 0,

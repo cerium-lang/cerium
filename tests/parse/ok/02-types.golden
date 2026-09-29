@@ -101,9 +101,9 @@
 
 (typedef DynGen
   (tdyn
-    (path
-      (seg Read
-        (path Item)))))
+    (path Read)
+    (init Item
+      (path u32))))
 
 (typedef WithConstGp
   (gparam T)

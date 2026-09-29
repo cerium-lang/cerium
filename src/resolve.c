@@ -315,6 +315,42 @@ rpath(Ast *p, Env *env)
       return m->val; /* what the impl supplied, resolved before any fn */
     return typroj(env->strait, selfty(), nm);
   }
+  if (nsegs == 2 && !p->v.path.root && !segs[0]->v.seg.args) {
+    /* It::Item outside: the associated type as the impl supplied it
+     * (05-traits.md). One hit resolves; two traits carrying the
+     * same name on one type is an ambiguity neither wins */
+    char *nm0 = segs[0]->v.seg.name;
+    char *nm1 = segs[1]->v.seg.name;
+    Sym  *s = symfind(nm0);
+
+    if (s && s->kind == Strait)
+      cerrat(p,
+             "'%s::%s' names the trait's own projection; the type implementing it "
+             "spells it (05-traits.md)",
+             nm0, nm1);
+    if (s && s->kind == Stype) {
+      Member *hit = 0;
+      usize   i, j;
+
+      for (i = 0; i < chk_nimpls; i++) {
+        Sym *im = chk_impls[i];
+
+        if (!im->ifort || !im->ipath || im->ifort->sym != s || im->ngparams)
+          continue; /* a pattern impl's reads under its instance (04) */
+        for (j = 0; j < im->nmembers; j++)
+          if (im->members[j].kind == Mtype && strcmp(im->members[j].name, nm1) == 0) {
+            if (hit)
+              cerrat(p, "'%s' carries '%s' twice; the trait cannot be told apart", nm0, nm1);
+            hit = &im->members[j];
+          }
+      }
+      if (hit) {
+        if (segs[1]->v.seg.args)
+          cerrat(p, "'%s' takes no type arguments", nm1);
+        return hit->val;
+      }
+    }
+  }
   if (nsegs != 1)
     cerrat(p, "a qualified type name needs its namespace (not yet)");
   seg = segs[0];
@@ -404,6 +440,11 @@ fits(u64 v, Type *t)
   }
 }
 
+/* a signature spelled in pass 2 may read a trait's member table
+ * before pass 3 builds it (a handle's associated types align against
+ * the declaration order); the read builds it then, once (05) */
+static void resolvetrait(Sym *s);
+
 Type *
 rty(Ast *t, Env *env)
 {
@@ -466,21 +507,60 @@ rty(Ast *t, Env *env)
     return tyfn(ts, n, t->v.fnty.ret ? rty(t->v.fnty.ret, env) : tyunit());
   }
   case Ntdyn: {
-    Ast *path = t->v.un.e;
+    Ast *path = t->v.tdyn.e;
     Ast *seg;
     Sym *s;
 
     if (path->k != Npath || vlen(path->v.path.segs) != 1)
       cerrat(path, "expected a trait after dyn");
     seg = path->v.path.segs[0];
-    if (seg->v.seg.args)
-      cerrat(seg, "dyn with associated bindings is not checked yet");
     s = symfind(seg->v.seg.name);
     if (!s)
       cerrat(path, "unknown trait '%s'", seg->v.seg.name);
     if (s->kind != Strait)
       cerrat(path, "'%s' is not a trait", seg->v.seg.name);
-    return tydyn(s, 0, 0, t->v.un.mut);
+    if (!s->traitdone)
+      resolvetrait(s); /* early: this signature needs the table now */
+    {                  /* the given associated types, aligned to the trait's Mtype
+                        * declaration order -- what a handle exposes of them (06) */
+      Ast  **as = t->v.tdyn.assocs;
+      usize  na = vlen(as), i, j;
+      Type **args = 0;
+      usize  nty = 0, mi;
+
+      for (i = 0; i < s->nmembers; i++)
+        if (s->members[i].kind == Mtype)
+          nty++;
+      for (i = 0; i < na; i++) { /* every spelling names one of them */
+        Member *m = 0;
+
+        for (j = 0; j < s->nmembers; j++)
+          if (s->members[j].kind == Mtype && strcmp(s->members[j].name, as[i]->v.init.name) == 0) {
+            m = &s->members[j];
+            break;
+          }
+        if (!m)
+          cerrat(as[i], "'%s' has no associated type '%s'", s->name, as[i]->v.init.name);
+      }
+      args = nty ? tyargs(nty) : 0;
+      mi = 0;
+      for (i = 0; i < s->nmembers; i++) { /* each slot what its spelling gave */
+        Member *m = &s->members[i];
+
+        if (m->kind != Mtype)
+          continue;
+        args[mi] = 0;
+        for (j = 0; j < na; j++)
+          if (strcmp(as[j]->v.init.name, m->name) == 0) {
+            args[mi] = rty(as[j]->v.init.e, env);
+            break;
+          }
+        if (!args[mi])
+          cerrat(t, "'%s' is not given; a handle leaves nothing open (06-dispatch.md)", m->name);
+        mi++;
+      }
+      return tydyn(s, args, nty, t->v.tdyn.mut);
+    }
   }
   case Nttype:
     return tytype();
@@ -677,6 +757,9 @@ resolvetrait(Sym *s)
   usize n = vlen(ms);
   usize i, j;
 
+  if (s->traitdone)
+    return; /* built early by a signature read, or already built */
+  s->traitdone = 1;
   env.strait = s;
   env = envpush(&env, "Self", selfty());
   s->nmembers = n;
