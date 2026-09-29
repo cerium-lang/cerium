@@ -173,6 +173,15 @@ against the bare binding. Arm order decides. Compound assignment
 covers the operators' full set with their signedness, and
 assigning an aggregate blits.
 
+A binding's stack is the fn's frame, asked for at the entry: every
+slot the body wants — a let, a pattern's, a value's, an
+iteration's — goes out at `@start`, once, the rounds of a loop
+reusing what they were given. An alloc left inside a loop is bytes
+taken again every round, and a long enough loop walks its frame
+off the guard page; the entry ask is Clang's alloca discipline,
+and the emitter holds the fn's text back so the asks can go ahead
+of it.
+
 Aggregates cross calls on the platform's C convention — that is
 what `01-types.md` made xyz's own convention, and qbe lowers it:
 register eightbytes, stack order, an sret, all of it. Every
