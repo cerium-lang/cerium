@@ -1,0 +1,16 @@
+/* a bound no impl answers for: the call site checks (04-generics.md) */
+trait Show {
+  fn show(self: *Self) -> u32;
+}
+struct Point { x: u32 }
+impl Show for Point {
+  fn show(self: *Self) -> u32 { self.x }
+}
+struct Lone { v: u32 }
+fn announce<T: Show>(a: *T) -> u32 {
+  Show::show(a)
+}
+fn main() -> u32 {
+  let l = Lone{ v: 1 };
+  return announce(&l);
+}

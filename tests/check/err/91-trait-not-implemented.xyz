@@ -1,0 +1,10 @@
+/* a trait method called with no impl for the receiver's type: the
+ * impl table has no answer (05-traits.md) */
+trait Show {
+  fn show(self: *Self) -> u32;
+}
+struct Point { x: u32 }
+fn go(p: Point) -> u32 {
+  p.show()
+}
+fn main() -> u32 { 0 }

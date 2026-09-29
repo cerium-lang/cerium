@@ -359,21 +359,21 @@ memname(Sym *s)
   char  b2[1024];
   usize same, i, j;
 
-  tymangle(s->impl->ipath, mt, sizeof mt);
+  tymangle(s->impl->ifort ? s->impl->ifort : s->impl->ipath, mt, sizeof mt);
   sprintf(buf, "xyz_%s_%s", mt, s->name);
   same = 0;
-  for (i = 0; i < chk_nimpls; i++) { /* every inherent method, in
-                                      * declaration order */
+  for (i = 0; i < chk_nimpls; i++) { /* every impl's methods, in
+                                      * declaration order -- a trait
+                                      * impl's target names it, an
+                                      * inherent's target is it */
     Sym    *iv = chk_impls[i];
     Member *ms;
 
-    if (iv->ifort)
-      continue; /* a trait impl's arrive with dispatch (06) */
     ms = iv->members;
     for (j = 0; j < iv->nmembers; j++) {
       if (ms[j].kind != Mfn || !ms[j].sym)
         continue;
-      tymangle(iv->ipath, mt, sizeof mt);
+      tymangle(iv->ifort ? iv->ifort : iv->ipath, mt, sizeof mt);
       sprintf(b2, "xyz_%s_%s", mt, ms[j].name);
       if (strcmp(b2, buf) != 0)
         continue;
@@ -1695,16 +1695,22 @@ emaexpr(Em *em, Ast *e)
       Sym *ms = e->v.call.sym;
 
       if (f->k == Naccess) {
+        Type *ft; /* the instance's signature, when the receiver
+                   * bound a pattern impl's parameters */
+
         if (!ms || ms->kind != Sfn)
           cerrat(f, "this method call was never checked");
-        selfty = ms->fnty->nargs ? ms->fnty->args[0] : 0;
+        ft = ms->fnty;
+        if (e->v.call.tys)
+          ft = gsubst(ft, ms->gparams, e->v.call.tys, ms->ngparams);
+        selfty = ft->nargs ? ft->args[0] : 0;
         rty = f->v.fld.e->ty;
         if (selfty && selfty->k == Typtr && !(rty && rty->k == Typtr && tysame(rty, selfty)))
           ra = emaplace(em, f->v.fld.e); /* a pointer self: &place */
         else
           ra = emaexpr(em, f->v.fld.e); /* as written: the pointer, or the move */
         ra = nicheout(em, selfty, ra);
-        nm = fsymname(ms, ms->decl);
+        nm = e->v.call.tys ? instensure(ms, e->v.call.tys)->name : fsymname(ms, ms->decl);
       } else if (f->k == Npath && vlen(f->v.path.segs) == 2 && ms) {
         nm = e->v.call.tys ? instensure(ms, e->v.call.tys)->name : fsymname(ms, ms->decl);
       }
@@ -2329,9 +2335,11 @@ emitall(FILE *out, Ast **items)
     Ast *it = items[i];
     Sym *s;
 
-    if (it->k == Nimpl && !it->v.impl.fort) {
-      /* an inherent impl: its methods emit as the fns they are
-       * (05-traits.md). A trait impl's wait for dispatch (06). */
+    if (it->k == Nimpl) {
+      /* an impl's methods emit as the fns they are (05-traits.md) --
+       * inherent or trait alike, when the impl is not a pattern. A
+       * generic impl's wait for the calls that instantiate them
+       * (04-generics.md): the drain below emits those. */
       usize j;
 
       for (j = 0; j < chk_nimpls; j++)

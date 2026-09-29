@@ -99,7 +99,10 @@ exactly what the trait declares, and orders every pair of impls by
 shape-pattern specificity or the `Copy`/`Drop` exclusion
 (`04-generics.md`), rejecting the rest on the spot. It then walks
 every function body: expressions get their types — the method sugar
-adapts its receiver, and every borrow a call writes — an argument's
+adapts its receiver, a trait method found by matching impl patterns
+against the receiver's type (`Trait::member(&p)` picks its impl the
+same way), a generic fn's bounds checked where the call binds its
+parameters, and every borrow a call writes — an argument's
 as much as the receiver's — ends with that call, `None` takes its
 `?T` from the other side, a `match` is exhaustive variant by
 variant — and the flow rules hold:
@@ -119,9 +122,11 @@ narrows by the target), `@sizeof`/`@alignof` folding over the
 layout tables of `02-layout.md` in full — struct padding in
 declaration order, unions, enums as a tag and a payload union, the
 `?T` niche, `#[packed]` and `#[align(N)]` — calls through a name or
-a fn value, an inherent impl's methods emitted as the fns they are
-(the sugar's receiver adapted at the call, a `Type::member` call
-and a method held as a value included), `#[extern(C)]` imports and
+a fn value, an impl's methods emitted as the fns they are, inherent
+or trait, exact or a pattern the receiver instantiates (the sugar's
+receiver adapted at the call, a `Type::member` call, a
+`Trait::member(&p)` one resolving its impl by the receiver, and a
+method held as a value included), `#[extern(C)]` imports and
 exports keeping their symbols, and the aggregate half: a struct literal (a nested one
 `blit`s into its field), a string landing in the data segment with
 its slice on the stack, `.ptr`/`.len` reads, and field/deref/slot

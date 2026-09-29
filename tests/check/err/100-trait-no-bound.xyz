@@ -1,0 +1,14 @@
+/* a trait method on a parameter with no bound to carry it: inside
+ * a generic fn the declaration's signature is the bound's to
+ * supply (04-generics.md) */
+trait Show {
+  fn show(self: *Self) -> u32;
+}
+struct Point { x: u32 }
+impl Show for Point {
+  fn show(self: *Self) -> u32 { self.x }
+}
+fn unbound<T>(a: *T) -> u32 {
+  Show::show(a)
+}
+fn main() -> u32 { 0 }
