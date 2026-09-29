@@ -387,18 +387,98 @@ objectsafety(Sym *tr, Ast *at, Type **given, usize ngiven)
   }
 }
 
-/* the genericity gate for a member call: a member fn with
- * parameters of its own names a family -- picking one is the
- * specialization machinery's work (04-generics.md). An impl's own
- * parameters are no longer a gate: the call binds them from the
- * receiver's type, exactly as a literal binds a struct's
- * (04-generics.md). */
-static void
-gatemember(Ast *at, Sym *imp, Member *m, const char *name)
+/* a member fn may name a family of its own, on top of its impl's
+ * (04-generics.md): these four carry the call-site half. The
+ * declaration side -- the signature's resolution, the body's env --
+ * was always ready; what was missing is the binding. */
+
+/* the member's own parameter list, from whichever decl supplied the
+ * signature the call holds -- a trait's declaration inside a generic
+ * body, the impl's everywhere else. Both name the same family; the
+ * nodes differ, and the binding keys on the ones the signature
+ * carries. */
+static Ast **
+membergps(Member *m, usize *np)
 {
-  (void) imp;
-  if (m->kind == Mfn && m->decl && vlen(m->decl->v.fn.gparams))
-    berr(at, "a generic '%s' arrives with specialization (04-generics.md)", name);
+  if (m->kind != Mfn || !m->decl || m->decl->k != Nfn) {
+    *np = 0;
+    return 0;
+  }
+  *np = vlen(m->decl->v.fn.gparams);
+  return m->decl->v.fn.gparams;
+}
+
+/* one argument against its parameter: the check the call always
+ * ran, plus the binding when the parameter names one of the
+ * member's own variables. A pass-through stands for itself -- the
+ * re-check binds it for real, exactly as a generic fn's recursive
+ * call inside a generic body (04-generics.md). */
+static void
+argfit(Ast *a, Type *pt, Type *at, Ast **mg, Type **mtys, usize nm, Fenv *fe, const char *who)
+{
+  if (!at || !pt)
+    return;
+  if (tysame(at, pt)) {
+    if (mtys)
+      gunify(pt, at, mg, mtys, nm);
+    return;
+  }
+  {
+    Type *c = recoerce(a, pt, fe);
+
+    if (c)
+      return;
+  }
+  if (!mtys || !gunify(pt, at, mg, mtys, nm))
+    berr(a, "'%s' wants %s here, this is %s", who, btys(pt), btys(at));
+}
+
+/* the binding, once the arguments spoke: every slot landed, every
+ * bound the parameters carry answered (04-generics.md) -- the same
+ * checks a generic fn's call runs over its own list. */
+static void
+memberdone(Ast *e, Ast **mg, Type **mtys, usize nm, const char *who)
+{
+  usize g, bi;
+
+  for (g = 0; g < nm; g++)
+    if (!mtys[g])
+      berr(e, "cannot infer '%s' for '%s' from the call", mg[g]->v.gp.name, who);
+  for (g = 0; g < nm; g++) {
+    Ast **bs = mg[g]->v.gp.bounds;
+
+    for (bi = 0; bi < vlen(bs); bi++) {
+      Ast **bsegs = bs[bi]->v.path.segs;
+      Sym  *tr = vlen(bsegs) == 1 ? symfind(bsegs[0]->v.seg.name) : 0;
+
+      if (!tr || tr->kind != Strait)
+        continue; /* collectbounds said it, at declaration */
+      if (!implsatisfies(tr, mtys[g]))
+        berr(e, "'%s' does not implement '%s'; '%s' cannot take it", btys(mtys[g]), tr->name, who);
+    }
+  }
+}
+
+/* the instance the call writes back: the impl's binding -- from the
+ * receiver -- with the member's own behind it, matching the method
+ * Sym's concatenated list (04-generics.md). */
+static Type **
+insttys(Sym *imp, Type **tys, Ast **mg, Type **mtys, usize nm)
+{
+  usize  ni = imp ? imp->ngparams : 0;
+  Type **c;
+  usize  i, z;
+
+  if (!ni && !nm)
+    return 0;
+  c = tyargs(ni + nm);
+  for (i = 0; i < ni; i++)
+    c[i] = tys ? tys[i] : 0;
+  for (z = 0; z < nm; z++)
+    c[ni + z] = mtys ? mtys[z] : typaram(mg[z]); /* an unbound slot
+                                                  * cannot happen --
+                                                  * memberdone spoke */
+  return c;
 }
 
 /* an argument written as a borrow: the callee's parameter holds it,
@@ -990,10 +1070,14 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
 
         if (!m)
           berr(e, "'%s' has no '%s'", s->name, nm1);
-        gatemember(e, imp, m, nm1);
+        if (m->kind == Mfn && m->decl && vlen(m->decl->v.fn.gparams))
+          berr(e,
+               "'%s' names a family of its own: call it, and the "
+               "arguments pick one (04-generics.md)",
+               nm1);
         if (m->kind == Mfn) {
           e->v.path.sym = m->sym; /* the fn it names: its address */
-          e->v.path.tys = 0;      /* a gated method is never generic */
+          e->v.path.tys = 0;
           return m->ty;
         }
         if (m->kind == Mconst)
@@ -1250,7 +1334,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
               Type  **tys = 0;
               Member *im;
               Type   *t;
-              usize   i;
+              usize   i, nmg, zi;
 
               if (self->k == Typaram) {
                 /* inside a generic fn: the declaration's signature
@@ -1275,6 +1359,66 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                 t = selfsubst(dm->ty, self);
                 e->v.call.sym = 0; /* the re-check writes the impl's pick */
                 e->v.call.tys = 0;
+                { /* the member's own family, bound from the arguments */
+                  Ast  **mg = membergps(dm, &nmg);
+                  Type **mtys;
+
+                  if (nmg) {
+                    mtys = tyargs(nmg);
+                    for (zi = 0; zi < nmg; zi++)
+                      mtys[zi] = 0;
+                  } else
+                    mtys = 0;
+                  {
+                    Frzsave *svs = n ? arenaalloc(n * sizeof *svs) : 0;
+                    usize    k;
+
+                    if (svs) {
+                      memset(svs, 0, n * sizeof *svs);
+                      for (k = 0; k < n; k++)
+                        argborrow(args[k], fe, &svs[k]);
+                    }
+                    if (n != t->nargs)
+                      berr(e, "'%s::%s' takes %lu arguments, %lu given", s->name, nm1,
+                           (unsigned long) t->nargs, (unsigned long) n);
+                    { /* the receiver already walked: check its type
+                       * where it stands, the rest against the shape */
+                      Type *c;
+
+                      if (tysame(rt, t->args[0]))
+                        c = rt;
+                      else
+                        c = recoerce(args[0], t->args[0], fe);
+                      if (!c || !tysame(c, t->args[0]))
+                        berr(args[0], "'%s::%s' wants %s here, this is %s", s->name, nm1,
+                             btys(t->args[0]), btys(rt));
+                    }
+                    for (i = 1; i < n; i++) {
+                      Type *at = rexpr(args[i], fe, t->args[i]);
+
+                      argfit(args[i], t->args[i], at, mg, mtys, nmg, fe, nm1);
+                    }
+                    thawargs(svs, n); /* the call is done; its borrows ended with it */
+                  }
+                  memberdone(e, mg, mtys, nmg, nm1);
+                  return nmg ? gsubst(t->t, mg, mtys, nmg) : t->t;
+                }
+              }
+              im = implfind(s, self, nm1, &imp, &tys);
+              if (!im)
+                berr(args[0], "no '%s' for %s", s->name, btys(self));
+              t = tys ? gsubst(im->ty, imp->gparams, tys, imp->ngparams) : im->ty;
+              e->v.call.sym = im->sym; /* the impl's member: the body that runs */
+              {                        /* the member's own family, bound from the arguments */
+                Ast  **mg = membergps(im, &nmg);
+                Type **mtys;
+
+                if (nmg) {
+                  mtys = tyargs(nmg);
+                  for (zi = 0; zi < nmg; zi++)
+                    mtys[zi] = 0;
+                } else
+                  mtys = 0;
                 {
                   Frzsave *svs = n ? arenaalloc(n * sizeof *svs) : 0;
                   usize    k;
@@ -1288,7 +1432,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                     berr(e, "'%s::%s' takes %lu arguments, %lu given", s->name, nm1,
                          (unsigned long) t->nargs, (unsigned long) n);
                   { /* the receiver already walked: check its type
-                     * where it stands, the rest against the shape */
+                     * where it stands, the rest against the instance */
                     Type *c;
 
                     if (tysame(rt, t->args[0]))
@@ -1302,63 +1446,14 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                   for (i = 1; i < n; i++) {
                     Type *at = rexpr(args[i], fe, t->args[i]);
 
-                    if (at && t->args[i] && !tysame(at, t->args[i])) {
-                      Type *c = recoerce(args[i], t->args[i], fe);
-
-                      if (!c || !tysame(c, t->args[i]))
-                        berr(args[i], "'%s::%s' wants %s here, this is %s", s->name, nm1,
-                             btys(t->args[i]), btys(at));
-                    }
+                    argfit(args[i], t->args[i], at, mg, mtys, nmg, fe, nm1);
                   }
                   thawargs(svs, n); /* the call is done; its borrows ended with it */
                 }
-                return t->t;
+                memberdone(e, mg, mtys, nmg, nm1);
+                e->v.call.tys = insttys(imp, tys, mg, mtys, nmg);
+                return nmg ? gsubst(t->t, mg, mtys, nmg) : t->t;
               }
-              im = implfind(s, self, nm1, &imp, &tys);
-              if (!im)
-                berr(args[0], "no '%s' for %s", s->name, btys(self));
-              gatemember(e, imp, im, nm1);
-              t = tys ? gsubst(im->ty, imp->gparams, tys, imp->ngparams) : im->ty;
-              e->v.call.sym = im->sym; /* the impl's member: the body that runs */
-              e->v.call.tys = tys;
-              {
-                Frzsave *svs = n ? arenaalloc(n * sizeof *svs) : 0;
-                usize    k;
-
-                if (svs) {
-                  memset(svs, 0, n * sizeof *svs);
-                  for (k = 0; k < n; k++)
-                    argborrow(args[k], fe, &svs[k]);
-                }
-                if (n != t->nargs)
-                  berr(e, "'%s::%s' takes %lu arguments, %lu given", s->name, nm1,
-                       (unsigned long) t->nargs, (unsigned long) n);
-                { /* the receiver already walked: check its type
-                   * where it stands, the rest against the instance */
-                  Type *c;
-
-                  if (tysame(rt, t->args[0]))
-                    c = rt;
-                  else
-                    c = recoerce(args[0], t->args[0], fe);
-                  if (!c || !tysame(c, t->args[0]))
-                    berr(args[0], "'%s::%s' wants %s here, this is %s", s->name, nm1,
-                         btys(t->args[0]), btys(rt));
-                }
-                for (i = 1; i < n; i++) {
-                  Type *at = rexpr(args[i], fe, t->args[i]);
-
-                  if (at && t->args[i] && !tysame(at, t->args[i])) {
-                    Type *c = recoerce(args[i], t->args[i], fe);
-
-                    if (!c || !tysame(c, t->args[i]))
-                      berr(args[i], "'%s::%s' wants %s here, this is %s", s->name, nm1,
-                           btys(t->args[i]), btys(at));
-                  }
-                }
-                thawargs(svs, n); /* the call is done; its borrows ended with it */
-              }
-              return t->t;
             }
           }
         }
@@ -1374,6 +1469,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
         {
           Sym    *imp;
           Member *m = inherentfind(s, nm1, &imp);
+          usize   nmg, zi;
 
           if (!m)
             berr(e,
@@ -1389,40 +1485,47 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                  "'%s' belongs to a generic impl; call it as a method, where the "
                  "receiver binds the parameters",
                  nm1);
-          gatemember(e, imp, m, nm1);
-          e->v.call.sym = m->sym; /* the method's own fn: the emitter's pick */
-          e->v.call.tys = 0;      /* a gated method is never generic */
-          {
-            Type    *t = m->ty;
-            Frzsave *svs = n ? arenaalloc(n * sizeof *svs) : 0;
-            usize    k;
+          { /* the member's own family: this form has no receiver
+             * binding to carry -- the impl is exact -- so the
+             * arguments bind all of it */
+            Ast  **mg = membergps(m, &nmg);
+            Type **mtys;
+            Type  *t = m->ty;
 
-            if (svs) { /* as in callfn: a borrow argument's freeze
-                        * ends with the call (01-types.md) */
-              memset(svs, 0, n * sizeof *svs);
-              for (k = 0; k < n; k++)
-                argborrow(args[k], fe, &svs[k]);
-            }
-            if (n != t->nargs)
-              berr(e, "'%s::%s' takes %lu arguments, %lu given", s->name, nm1,
-                   (unsigned long) t->nargs, (unsigned long) n);
+            if (nmg) {
+              mtys = tyargs(nmg);
+              for (zi = 0; zi < nmg; zi++)
+                mtys[zi] = 0;
+            } else
+              mtys = 0;
+            e->v.call.sym = m->sym; /* the method's own fn: the emitter's pick */
             {
-              usize i;
+              Frzsave *svs = n ? arenaalloc(n * sizeof *svs) : 0;
+              usize    k;
 
-              for (i = 0; i < n; i++) {
-                Type *at = rexpr(args[i], fe, t->args[i]);
+              if (svs) { /* as in callfn: a borrow argument's freeze
+                          * ends with the call (01-types.md) */
+                memset(svs, 0, n * sizeof *svs);
+                for (k = 0; k < n; k++)
+                  argborrow(args[k], fe, &svs[k]);
+              }
+              if (n != t->nargs)
+                berr(e, "'%s::%s' takes %lu arguments, %lu given", s->name, nm1,
+                     (unsigned long) t->nargs, (unsigned long) n);
+              {
+                usize i;
 
-                if (at && t->args[i] && !tysame(at, t->args[i])) {
-                  Type *c = recoerce(args[i], t->args[i], fe);
+                for (i = 0; i < n; i++) {
+                  Type *at = rexpr(args[i], fe, t->args[i]);
 
-                  if (!c || !tysame(c, t->args[i]))
-                    berr(args[i], "'%s::%s' wants %s here, this is %s", s->name, nm1,
-                         btys(t->args[i]), btys(at));
+                  argfit(args[i], t->args[i], at, mg, mtys, nmg, fe, nm1);
                 }
               }
+              thawargs(svs, n); /* the call is done; its borrows ended with it */
             }
-            thawargs(svs, n); /* the call is done; its borrows ended with it */
-            return t->t;
+            memberdone(e, mg, mtys, nmg, nm1);
+            e->v.call.tys = insttys(0, 0, mg, mtys, nmg);
+            return nmg ? gsubst(t->t, mg, mtys, nmg) : t->t;
           }
         }
       }
@@ -1433,6 +1536,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
       Member *m;
       Sym    *imp;
       Type   *t, *ty;
+      usize   nmg, zi;
 
       if (!rt)
         rt = rexpr(f->v.fld.e, fe, 0); /* a computed receiver: f().m() */
@@ -1550,50 +1654,58 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
           e->v.call.sym = 0; /* the re-check writes the impl's pick */
           e->v.call.tys = 0;
         } else {
-          gatemember(f, imp, m, f->v.fld.name);
           t = m->ty;
           if (tys) /* a pattern impl's method: Self and the pattern's
                     * variables, under the receiver's binding */
             t = gsubst(t, imp->gparams, tys, imp->ngparams);
           e->v.call.sym = m->sym; /* the method's own fn: the emitter's pick */
-          e->v.call.tys = tys;
+          e->v.call.tys = tys;    /* the impl's binding; the member's
+                                   * own joins it after the walk below */
         }
-      }
-      {
-        Frzsave  sv;
-        Frzsave *svs = n ? arenaalloc(n * sizeof *svs) : 0;
-        usize    k;
+        { /* the member's own family, bound from the arguments */
+          Ast  **mg = membergps(m, &nmg);
+          Type **mtys;
 
-        memset(&sv, 0, sizeof sv);
-        if (svs) { /* the explicit arguments' borrows end with the
-                    * call too, as any call's do (01-types.md) */
-          memset(svs, 0, n * sizeof *svs);
-          for (k = 0; k < n; k++)
-            argborrow(args[k], fe, &svs[k]);
-        }
-        recvadapt(f->v.fld.e, t->nargs ? t->args[0] : 0, rt, ty, fe, &sv);
-        if (n + 1 != t->nargs)
-          berr(e, "'%s' takes %lu arguments, %lu given", f->v.fld.name,
-               (unsigned long) (t->nargs - 1), (unsigned long) n);
-        {
-          usize i;
+          if (nmg) {
+            mtys = tyargs(nmg);
+            for (zi = 0; zi < nmg; zi++)
+              mtys[zi] = 0;
+          } else
+            mtys = 0;
+          {
+            Frzsave  sv;
+            Frzsave *svs = n ? arenaalloc(n * sizeof *svs) : 0;
+            usize    k;
 
-          for (i = 0; i < n; i++) {
-            Type *at = rexpr(args[i], fe, t->args[i + 1]);
-
-            if (at && t->args[i + 1] && !tysame(at, t->args[i + 1])) {
-              Type *c = recoerce(args[i], t->args[i + 1], fe);
-
-              if (!c || !tysame(c, t->args[i + 1]))
-                berr(args[i], "'%s' wants %s here, this is %s", f->v.fld.name, btys(t->args[i + 1]),
-                     btys(at));
+            memset(&sv, 0, sizeof sv);
+            if (svs) { /* the explicit arguments' borrows end with the
+                        * call too, as any call's do (01-types.md) */
+              memset(svs, 0, n * sizeof *svs);
+              for (k = 0; k < n; k++)
+                argborrow(args[k], fe, &svs[k]);
             }
+            recvadapt(f->v.fld.e, t->nargs ? t->args[0] : 0, rt, ty, fe, &sv);
+            if (n + 1 != t->nargs)
+              berr(e, "'%s' takes %lu arguments, %lu given", f->v.fld.name,
+                   (unsigned long) (t->nargs - 1), (unsigned long) n);
+            {
+              usize i;
+
+              for (i = 0; i < n; i++) {
+                Type *at = rexpr(args[i], fe, t->args[i + 1]);
+
+                argfit(args[i], t->args[i + 1], at, mg, mtys, nmg, fe, f->v.fld.name);
+              }
+            }
+            thawargs(svs, n); /* the explicit arguments' borrows, LIFO */
+            frzrestore(&sv);  /* the receiver's borrow ends with the call */
           }
+          memberdone(f, mg, mtys, nmg, f->v.fld.name);
+          if (!declared)
+            e->v.call.tys = insttys(imp, tys, mg, mtys, nmg);
+          return nmg ? gsubst(t->t, mg, mtys, nmg) : t->t;
         }
-        thawargs(svs, n); /* the explicit arguments' borrows, LIFO */
-        frzrestore(&sv);  /* the receiver's borrow ends with the call */
       }
-      return t->t;
     }
     { /* an arbitrary callee: a fn-typed expression */
       Type    *t = rexpr(f, fe, 0);
