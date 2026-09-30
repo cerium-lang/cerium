@@ -351,8 +351,15 @@ locbind(Em *em, char *name, char *slot, Type *ty)
   l.name = name;
   l.slot = slot;
   l.ty = ty;
-  vappend(&em->locs, &l);
-  em->nlocs = vlen(em->locs);
+  if (em->nlocs < vlen(em->locs)) /* a popped binding's slot, reused:
+                                   * the count is the stack, the vec
+                                   * only its high-water mark -- a
+                                   * bind here must not wake what a
+                                   * scope popped */
+    em->locs[em->nlocs] = l;
+  else
+    vappend(&em->locs, &l);
+  em->nlocs++;
 }
 
 /* the fn's symbol: #[extern(C)] and main keep their own name, every

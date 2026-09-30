@@ -1,0 +1,48 @@
+/* a variant's named payload, constructed by name in both walks the
+ * compiler takes: the const's own initializer and a body's let --
+ * the names in any order, the payload's own order the value's. A
+ * positional call constructs the same payload in its own order, a
+ * match reads it back by name or with the rest behind the dot dot,
+ * and a three-field payload reorders through both walks (01-types.md,
+ * 09-match.md) */
+enum TI(u8) { Nil, Two { a: u32, b: u32 } }
+enum Big(u8) { B { lo: u32, mid: u32, hi: u32 } }
+
+const CV: TI = TI::Two{a: 3, b: 4};        /* the const walk: 34 */
+const CW: TI = TI::Two{b: 6, a: 5};        /* reordered: 56 */
+const CB: Big = Big::B{mid: 3, hi: 2, lo: 1}; /* three, reordered */
+
+fn inbody() -> i32 {                       /* the body walk: 12 */
+  let v = TI::Two{a: 1, b: 2};
+
+  match v { TI::Two { a, b } => @cast<i32>(a * 10 + b), TI::Nil => 0, }
+}
+fn rest() -> i32 {                         /* the rest behind the names: 7 */
+  let v = TI::Two{b: 8, a: 7};
+
+  match v { TI::Two { a, .. } => @cast<i32>(a), TI::Nil => 0, }
+}
+fn positional() -> i32 {                   /* a call of the named payload: 12 */
+  let v = TI::Two(1, 2);
+
+  match v { TI::Two { a, b } => @cast<i32>(a * 10 + b), TI::Nil => 0, }
+}
+fn reorder() -> i32 {                      /* three by name in a body: 132 */
+  let v = Big::B{hi: 20, lo: 10, mid: 30};
+
+  match v {
+    Big::B { lo, mid, hi, } => @cast<i32>(lo * 100 + mid * 10 + hi),
+    _ => 0,
+  }
+}
+fn consts() -> i32 {                       /* the consts, matched: 34+56+132 */
+  let a = match CV { TI::Two { a, b } => @cast<i32>(a * 10 + b), TI::Nil => 0, };
+  let b = match CW { TI::Two { a, b } => @cast<i32>(a * 10 + b), TI::Nil => 0, };
+  let c = match CB { Big::B { lo, mid, hi, } => @cast<i32>(lo * 100 + mid * 10 + hi), _ => 0, };
+
+  a + b + c
+}
+
+fn main() -> i32 {
+  inbody() + rest() + positional() + reorder() + consts()
+}

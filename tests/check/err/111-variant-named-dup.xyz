@@ -1,0 +1,8 @@
+/* a field given twice says so itself, not as a missing one
+ * behind it (01-types.md) */
+enum TI(u8) { Nil, Two { a: u32, b: u32 } }
+
+fn main() -> i32 {
+  let v = TI::Two{a: 1, a: 2, b: 3};
+  0
+}

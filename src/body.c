@@ -2052,6 +2052,73 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
     Type **tys = 0;
     Type  *st;
 
+    if (vlen(segs) == 2 && !e->v.slit.path->v.path.root) {
+      Sym *es = symfind(segs[0]->v.seg.name);
+
+      if (es && es->kind == Stype && es->tykind == TYenum) {
+        /* Enum::Variant{..}: a named payload constructed by name,
+         * the fields' own order the same construction a positional
+         * call is -- the inits reordered into it, the node
+         * rewritten a call's shape, so every pass after walks it
+         * as one (01-types.md) */
+        struct Variant *v = varfind(es, segs[1]->v.seg.name);
+        Ast           **args;
+        usize           k;
+
+        if (!v)
+          berr(e, "'%s' has no variant '%s'", es->name, segs[1]->v.seg.name);
+        if (!v->named)
+          berr(e, "'%s::%s' carries a positional payload; construct it with parentheses", es->name,
+               v->name);
+        for (i = 0; i < n; i++) /* a name twice, before the order
+                                 * would mask it behind a missing one */
+          for (j = i + 1; j < n; j++)
+            if (strcmp(inits[i]->v.init.name, inits[j]->v.init.name) == 0)
+              berr(inits[j], "field '%s' given twice", inits[j]->v.init.name);
+        args = vnew(Ast *, v->nfields ? v->nfields : 1);
+        for (k = 0; k < v->nfields; k++) {
+          Ast *in = 0;
+
+          for (i = 0; i < n; i++)
+            if (strcmp(inits[i]->v.init.name, v->fields[k].name) == 0) {
+              for (j = 0; j < k; j++)
+                if (args[j] == inits[i]->v.init.e)
+                  berr(inits[i], "field '%s' given twice", v->fields[k].name);
+              in = inits[i];
+              break;
+            }
+          if (!in)
+            berr(e, "'%s::%s' is missing '%s'", es->name, v->name, v->fields[k].name);
+          { /* a vec: the passes after read the count off its head */
+            Ast *x = in->v.init.e;
+
+            vappend(&args, &x);
+          }
+        }
+        for (i = 0; i < n; i++) { /* a name the payload does not carry */
+          for (k = 0; k < v->nfields; k++)
+            if (strcmp(inits[i]->v.init.name, v->fields[k].name) == 0)
+              break;
+          if (k == v->nfields)
+            berr(inits[i], "'%s::%s' has no field '%s'", es->name, v->name, inits[i]->v.init.name);
+        }
+        { /* the rewrite: a call in the node's own place, the path
+           * kept -- the emitter and the evaluator walk it as the
+           * construction it is */
+          Ast  *p = e->v.slit.path;
+          Ast **as = args;
+          Type *r;
+
+          memset(&e->v, 0, sizeof e->v);
+          e->k = Ncall;
+          e->v.call.f = p;
+          e->v.call.args = as;
+          r = mkvariant(es, v, e, as, v->nfields, fe, want);
+          e->ty = r;
+          return r;
+        }
+      }
+    }
     if (s && s->kind == Stype && (s->tykind == TYstruct || s->tykind == TYunion) && s->ngparams) {
       /* a generic struct or union literal: the binding comes the
        * way a call's does (04-generics.md) -- the type expected of

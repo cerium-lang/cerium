@@ -299,6 +299,21 @@ without a frame, and a body's pass has none: `$$param`, a local,
 a const `for`'s round are refused where they stand, the per-call
 resolution arriving with `@typeinfo` (`08-reflection.md`).
 
+A variant's named payload constructs by name now, both walks a
+value takes: `Enum::V{x: 1}` in a const's initializer and in a
+body's let — the names in any order, the payload's own order the
+value's — and the node is rewritten a call's shape right where it
+stands, so the emitter and the evaluator walk it as the
+construction a positional call always was. The checks are the
+struct literal's own: a field left out, a name the payload does
+not carry, a name given twice. The bind the rewriting surfaced
+was older than it: emit's binding stack kept its popped frames in
+the vector and pulled the count back up on every bind, so a
+binding pushed after a scope popped — a match arm's name let'd
+again below it — read the arm's slot, the let never reached. The
+count is the stack now; the vector only its high-water mark
+(`01-types.md`, `09-match.md`).
+
 Codegen has begun: `xyz -s file.xyz` prints the `.ssa` text — qbe's
 input — and `xyz -c file.xyz -o out` runs the pipeline, qbe as a
 subprocess and the system `cc` linking. Checking writes each node's

@@ -1,0 +1,8 @@
+/* a positional payload takes its parentheses; the braces are the
+ * named form (01-types.md) */
+enum P(u8) { Q(u32) }
+
+fn main() -> i32 {
+  let v = P::Q{x: 1};
+  0
+}
