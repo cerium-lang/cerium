@@ -185,8 +185,7 @@ the words an array's value sits in are an address here, and
 comparing those compares nothing. An array crosses a frame as a
 parameter and comes back as an answer; a `const`'s value keeps its
 elements memoized beside its scalar half, and a body reading one
-still waits — emit has no aggregate immediate, and its data segment
-arrives with the milestone that gives it storage.
+walks the data segment it rides.
 
 The signed steps work through the negatives now too: the domain
 check asks the type's question, not the u64's — a borrow was an
@@ -212,8 +211,28 @@ a struct in a struct, an array of them; the frames carry them as
 parameters and answers; a const's Sym keeps the elements beside the
 scalar half. The operators stay the trait table's — `==` is `Eq`'s,
 and that table arrives with dispatch — and a generic's rows wait
-for the binding a call's own words spell. A body reading a const
-aggregate still waits for the data segment emit does not have.
+for the binding a call's own words spell.
+
+The data segment is here, and a body reads a const aggregate off
+it: the evaluator's memoized value spelled as qbe data items, the
+layout tables' offsets walked and the padding zero — a struct's
+fields in order, a tuple's rows, an array's elements, a union's
+active row with the rest zero, a tagged enum's discriminant at its
+own width with the payloads packed after it, and a niche enum the
+one word it is. A const has no address to lend (`01-types.md`), so
+a read that takes the value copies — `let p = A` blits into
+storage of its own, and a call's argument with it — and a read
+that walks it — a field, an index, a view, a loop's iterable, a
+match's scrutinee, a destructuring let — walks the segment where
+it sits, no copy at all. A static's first value rides the same
+way, but its symbol is its own slot: whole-program, and writable
+where `mut` marked it — the checker now reads the place's
+leftmost global, a const never writable however mut its fields,
+a static by its own `mut`; a `static mut`'s aggregate field and
+its scalar both write, and the write stays. A union's
+non-active row reads zero in a body — the evaluator would report
+it, the read cannot, and the report waits for reflection
+(`08-reflection.md`).
 
 The match runs, and the loops with it. A pattern destructures; it
 does not test — so an arm's turn is a discriminant's compare, the

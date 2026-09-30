@@ -36,19 +36,6 @@ __extension__ typedef long long i64; /* the signed kin of lex.h's u64 */
                          * the 256 unfoldings of a generic do (04-generics.md) */
 #define MAXLOCALS 16384 /* bindings across every frame on the stack */
 
-/* a value the walk carries: a scalar in its two words, an array as
- * its elements -- one Val each, the nesting recursive. The aggregate
- * half is the evaluator's own: nothing outside this file reads it,
- * for emit has no aggregate immediate to fold (08-reflection.md) */
-typedef struct Val Val;
-struct Val
-{
-  Type  *t;     /* what the checker would say; the derivation's answer */
-  u64    i;     /* an integer's or a bool's bits, two's complement */
-  double f;     /* a float's value */
-  Val   *elems; /* an array's elements, or NULL: the scalars' mark */
-};
-
 /* a binding a frame made: a parameter, a let. The frames stack
  * upward in one array -- locbase marks the current frame's floor,
  * so an inner frame never writes a slot a live outer one owns */

@@ -22,6 +22,8 @@
 #include "check.h"
 #include "die.h"
 #include "emit.h"
+#include "eval.h" /* Val: a const's memoized aggregate, folded into
+                   * the segment it rides (08-reflection.md) */
 #include "layout.h"
 #include "sym.h"
 #include "type.h"
@@ -642,6 +644,303 @@ zeroblk(Em *em, usize sz)
   return base;
 }
 
+/* -- the segment a const's aggregate rides (08-reflection.md) -----------
+ *
+ * A const has no address to lend (01-types.md), but its value has
+ * bytes, and a body's read copies them: the evaluator's memoized
+ * Val spelled as qbe data items, the layout tables' offsets walked
+ * and the padding zero. A static's first value rides the same way,
+ * its symbol its own slot -- whole-program, writable where mut
+ * marked it (01-types.md). */
+
+/* the variant a discriminant names: the value's own half */
+static Variant *
+dsvariant(Type *t, u64 disc)
+{
+  usize i;
+
+  for (i = 0; i < t->sym->nvariants; i++)
+    if (t->sym->variants[i].disc == disc)
+      return &t->sym->variants[i];
+  return 0;
+}
+
+/* the bytes a value takes, as qbe data items: the offsets the
+ * layout tables spell, the evaluator's value folded in, the
+ * padding zero. *p is the write cursor; the bytes written return */
+static usize
+dswrite(char **p, Type *t, Val *v)
+{
+  switch (t->k) {
+  case Tybool:
+    *p += sprintf(*p, "b %lu, ", (unsigned long) (v ? v->i : 0));
+    return 1;
+  case Tyint:
+    if (t->num >= IN_F32) { /* 9 and 17 significant digits: the
+                             * least that round-trips */
+      char c = t->num == IN_F32 ? 's' : 'd';
+
+      *p += sprintf(*p, "%c %c_%.*g, ", c, c, c == 's' ? 9 : 17, v ? v->f : 0.0);
+      return intwidth(t);
+    }
+    {
+      char c = intwidth(t) == 1 ? 'b' : intwidth(t) == 2 ? 'h' : intwidth(t) == 4 ? 'w' : 'l';
+
+      *p += sprintf(*p, "%c %lu, ", c, (unsigned long) (v ? v->i : 0));
+      return intwidth(t);
+    }
+  case Typtr:
+  case Tyvoidptr: /* a compile-time pointer is the null one, but the
+                   * walk stays general */
+    *p += sprintf(*p, "l %lu, ", (unsigned long) (v ? v->i : 0));
+    return WORD;
+  case Tystruct: {
+    Sym  *s = t->sym;
+    int   packed;
+    usize alignk, off = 0, cur = 0, i;
+
+    layoutattrs(s->decl, &packed, &alignk);
+    for (i = 0; i < s->nfields; i++) { /* the walk foffset takes */
+      Type *ft = gsubst(s->fields[i].ty, s->gparams, t->args, t->nargs);
+      usize w;
+
+      if (!packed)
+        off = alignto(off, alignof_(ft));
+      if (off > cur) {
+        *p += sprintf(*p, "z %lu, ", (unsigned long) (off - cur));
+        cur = off;
+      }
+      w = dswrite(p, ft, v ? &v->elems[i] : 0);
+      cur += w;
+      off += sizeof_(ft);
+    }
+    if (sizeof_(t) > cur) { /* the tail: the symbol's size is the
+                             * type's, the reads walk it all */
+      *p += sprintf(*p, "z %lu, ", (unsigned long) (sizeof_(t) - cur));
+      cur = sizeof_(t);
+    }
+    return cur;
+  }
+  case Tyunion: {
+    usize sz = sizeof_(t), w = 0;
+
+    if (v && v->i != ~(u64) 0) { /* the one row a literal wrote; the
+                                  * zeroed whole reads zero every
+                                  * row (01-types.md) */
+      Type *ft = gsubst(t->sym->fields[v->i].ty, t->sym->gparams, t->args, t->nargs);
+
+      w = dswrite(p, ft, &v->elems[0]);
+    }
+    if (sz > w) /* the rows overlap: what the active one left is zero */
+      *p += sprintf(*p, "z %lu, ", (unsigned long) (sz - w));
+    return sz;
+  }
+  case Tytuple: {
+    usize i, off = 0, cur = 0;
+
+    for (i = 0; i < t->nargs; i++) { /* the walk Ntupidx takes */
+      usize w;
+
+      off = alignto(off, alignof_(t->args[i]));
+      if (off > cur) {
+        *p += sprintf(*p, "z %lu, ", (unsigned long) (off - cur));
+        cur = off;
+      }
+      w = dswrite(p, t->args[i], v ? &v->elems[i] : 0);
+      cur += w;
+      off += sizeof_(t->args[i]);
+    }
+    if (sizeof_(t) > cur) {
+      *p += sprintf(*p, "z %lu, ", (unsigned long) (sizeof_(t) - cur));
+      cur = sizeof_(t);
+    }
+    return cur;
+  }
+  case Tyarray: {
+    usize i, cur = 0;
+
+    for (i = 0; i < t->n; i++) /* the elements packed, no padding
+                                * between them (02-layout.md) */
+      cur += dswrite(p, t->t, v ? &v->elems[i] : 0);
+    if (sizeof_(t) > cur) {
+      *p += sprintf(*p, "z %lu, ", (unsigned long) (sizeof_(t) - cur));
+      cur = sizeof_(t);
+    }
+    return cur;
+  }
+  case Tyenum: {
+    usize sz = sizeof_(t);
+
+    if (nicheness(t) != NICHE_NONE) { /* the one word it is: the unit
+                                       * side the null, the other
+                                       * side the value (02) */
+      Variant *vr = v ? dsvariant(t, v->i) : 0;
+      usize    np = 0;
+
+      if (vr)
+        np = vr->named ? vr->nfields : vr->npayload;
+      if (np && v) /* the value's own bits, the pointer itself */
+        *p += sprintf(*p, "l %lu, ", (unsigned long) v->elems[0].i);
+      else
+        *p += sprintf(*p, "z %lu, ", (unsigned long) sz);
+      return sz;
+    }
+    { /* the discriminant, then the payloads packed after it, the
+       * walk emavariant takes */
+      Type    *tt = tagtyof(t);
+      Variant *vr = v ? dsvariant(t, v->i) : 0;
+      char   c = intwidth(tt) == 1 ? 'b' : intwidth(tt) == 2 ? 'h' : intwidth(tt) == 4 ? 'w' : 'l';
+      usize  off, i, np = 0, cur;
+      Type **ps = 0;
+
+      *p += sprintf(*p, "%c %lu, ", c, (unsigned long) (v ? v->i : 0));
+      cur = intwidth(tt);
+      off = payloadoff(t);
+      if (off > cur) {
+        *p += sprintf(*p, "z %lu, ", (unsigned long) (off - cur));
+        cur = off;
+      }
+      if (vr) { /* the active variant's own payload types */
+        if (vr->named) {
+          ps = tyargs(vr->nfields);
+          for (i = 0; i < vr->nfields; i++)
+            ps[i] = gsubst(vr->fields[i].ty, t->sym->gparams, t->args, t->nargs);
+          np = vr->nfields;
+        } else if (vr->payload && vr->npayload) {
+          ps = tyargs(vr->npayload);
+          for (i = 0; i < vr->npayload; i++)
+            ps[i] = gsubst(vr->payload[i], t->sym->gparams, t->args, t->nargs);
+          np = vr->npayload;
+        }
+        for (i = 0; i < np; i++)
+          cur += dswrite(p, ps[i], v ? &v->elems[i] : 0);
+      }
+      if (sz > cur) {
+        *p += sprintf(*p, "z %lu, ", (unsigned long) (sz - cur));
+        cur = sz;
+      }
+      return cur;
+    }
+  }
+  default: /* unit and the rest: nothing rides, no bytes taken */
+    return 0;
+  }
+}
+
+/* an upper bound on the items the value spells, for the line's
+ * allocation: each takes its literal's worst case, a float's 17
+ * digits among the letters */
+static usize
+dsleaves(Type *t)
+{
+  usize i, n = 0;
+
+  switch (t->k) {
+  case Tystruct:
+    for (i = 0; i < t->sym->nfields; i++)
+      n += dsleaves(gsubst(t->sym->fields[i].ty, t->sym->gparams, t->args, t->nargs));
+    return n;
+  case Tyunion:
+    for (i = 0; i < t->sym->nfields; i++) /* the widest row would do;
+                                           * the sum is simpler */
+      n += dsleaves(gsubst(t->sym->fields[i].ty, t->sym->gparams, t->args, t->nargs));
+    return n;
+  case Tytuple:
+    for (i = 0; i < t->nargs; i++)
+      n += dsleaves(t->args[i]);
+    return n;
+  case Tyarray:
+    return t->n ? dsleaves(t->t) * t->n : 1;
+  case Tyenum: {
+    usize m = 0;
+
+    if (nicheness(t) != NICHE_NONE)
+      return 1;
+    for (i = 0; i < t->sym->nvariants; i++) { /* the widest payload */
+      Variant *vr = &t->sym->variants[i];
+      usize    k = 0, j;
+
+      if (vr->named)
+        for (j = 0; j < vr->nfields; j++)
+          k += dsleaves(gsubst(vr->fields[j].ty, t->sym->gparams, t->args, t->nargs));
+      else
+        for (j = 0; j < vr->npayload; j++)
+          k += dsleaves(gsubst(vr->payload[j], t->sym->gparams, t->args, t->nargs));
+      if (k > m)
+        m = k;
+    }
+    return 2 + m;
+  }
+  default:
+    return 1;
+  }
+}
+
+/* the data symbol a const's or a static's value rides: the line
+ * printed after the fns with the rest, the symbol handed to whoever
+ * reads the value -- a blit's source, a place's base. The symbols
+ * are the compilation's own -- a name's line goes out once a pass,
+ * with whichever fn first read it, and the naming pass's text goes
+ * nowhere, so the real pass takes it again */
+static Sym  **conss;     /* the ones already named, per compilation */
+static char **conssyms;  /* their symbols, parallel */
+static char **conslines; /* their data lines, for the passes after */
+static int   *conspass;  /* the pass each line last went out in */
+static usize  nconss;
+
+static char *
+constsym(Em *em, Sym *s)
+{
+  char *base, *line, *p;
+  usize i, sz;
+
+  for (i = 0; i < nconss; i++)
+    if (conss[i] == s) {
+      if (conspass[i] == ipass)
+        return conssyms[i]; /* this pass already carries the line */
+      vappend(&em->datas, &conslines[i]);
+      conspass[i] = ipass;
+      return conssyms[i];
+    }
+  base = arenaalloc(strlen(s->name) + 16);
+  sprintf(base, "$%s.%s", s->kind == Sconst ? "const" : "static", s->name);
+  sz = sizeof_(s->cty);
+  line = arenaalloc(dsleaves(s->cty) * 32 + 2 * 32 + 64);
+  p = line + sprintf(line, "data %s = { ", base);
+  if (sz) {
+    Val top; /* the Sym's halves, as the walk's one value: cval the
+              * tag half -- an enum's discriminant, a union's active
+              * row -- celems the elements beside it */
+
+    top.t = s->cty;
+    top.i = s->cval;
+    top.f = s->cflt;
+    top.elems = s->celems;
+    dswrite(&p, s->cty, &top);
+    p -= 2; /* the last item's ", ": the line's own close */
+    sprintf(p, "}");
+  } else /* a sizeless aggregate: a byte the symbol wants, nothing
+          * reads it */
+    sprintf(p, "z 1 }");
+  vappend(&em->datas, &line);
+  if (!conss) {
+    conss = vnew(Sym *, 8);
+    conssyms = vnew(char *, 8);
+    conslines = vnew(char *, 8);
+    conspass = vnew(int, 8);
+  }
+  vappend(&conss, &s);
+  vappend(&conssyms, &base);
+  vappend(&conslines, &line);
+  {
+    int pi = ipass;
+
+    vappend(&conspass, &pi);
+  }
+  nconss = vlen(conss);
+  return base;
+}
+
 /* -- vtables (06-dispatch.md) -------------------------------------------- */
 
 /* One table per trait and concrete type, an entry a method in the
@@ -771,6 +1070,24 @@ idxl(Em *em, Ast *ix)
   return t;
 }
 
+/* the storage an aggregate expression's value sits at, without
+ * copying it: a const's rides the data segment read-only, a
+ * static's is its own slot -- writable where mut marked it. What
+ * walks a value this way reads it -- a place's base, a view's, a
+ * loop's iterable, a match's scrutinee -- and what writes goes
+ * through the checker's mut first (01-types.md) */
+static char *
+aggbase(Em *em, Ast *e)
+{
+  if (e->k == Npath && e->ty && isagg(e->ty) && vlen(e->v.path.segs) == 1 && !e->v.path.root) {
+    Sym *s = symfind(e->v.path.segs[0]->v.seg.name);
+
+    if (s && s->cvaldone && (s->kind == Sconst || s->kind == Sstatic))
+      return constsym(em, s);
+  }
+  return emaexpr(em, e);
+}
+
 /* the address of one element. The base's value is its storage -- a
  * slice's first word is the data pointer -- and the index scales by
  * the element's size, qbe having no scaled addressing. A constant
@@ -781,7 +1098,7 @@ idxaddr(Em *em, Ast *e)
   Type *bt = e->v.n2.a->ty;
   Type *et = bt->t;
   usize sz;
-  char *b = emaexpr(em, e->v.n2.a);
+  char *b = aggbase(em, e->v.n2.a);
 
   while (et && et->k == Tymut) /* []mut T: the element's own type */
     et = et->t;
@@ -816,12 +1133,18 @@ emaplace(Em *em, Ast *e)
   case Npath: {
     ELoc *l = locfind(em, e->v.path.segs[0]->v.seg.name);
 
-    if (!l)
+    if (!l) { /* a static's own slot: the one global a place names
+               * (01-types.md) */
+      Sym *s = symfind(e->v.path.segs[0]->v.seg.name);
+
+      if (s && s->kind == Sstatic && s->cvaldone)
+        return constsym(em, s);
       cerrat(e, "'%s' is not a local here", e->v.path.segs[0]->v.seg.name);
+    }
     return l->slot;
   }
   case Naccess: {
-    char *b = emaexpr(em, e->v.fld.e);
+    char *b = aggbase(em, e->v.fld.e);
     char *t = newtmp(em);
     usize off = foffset(derefthrough(e->v.fld.e->ty), e->v.fld.name, e);
 
@@ -833,7 +1156,7 @@ emaplace(Em *em, Ast *e)
   case Ntupidx: {          /* the row's address: the offset walk emaexpr takes,
                             * stopping before the load (01-types.md) */
     Type *tt = e->v.tup.e->ty;
-    char *b = emaexpr(em, e->v.tup.e); /* an aggregate base is its address */
+    char *b = aggbase(em, e->v.tup.e); /* an aggregate base is its address */
     usize i, off = 0;
 
     for (i = 0; i < e->v.tup.idx; i++) {
@@ -1327,7 +1650,7 @@ emamatch(Em *em, Ast *e, int *reached)
   while (st && st->k == Tymut)
     st = st->t;
   agg = isagg(st);
-  sv = emaexpr(em, e->v.call.f);
+  sv = aggbase(em, e->v.call.f); /* the scrutinee, read where it sits */
   if (t && t->k != Tyunit)
     slot = mkslot(em, t);
   for (i = 0; i < n; i++) {
@@ -1402,7 +1725,8 @@ emafor(Em *em, Ast *st)
     em->loops[em->nloops].cont = lc;
     em->nloops++;
     fprintf(em->o, "%s\n", lc);
-    v = emaexpr(em, st->v.forx.b);
+    v = aggbase(em, st->v.forx.b); /* re-read every round: a static's
+                                    * own slot, a const's segment */
     nbase = em->nlocs;
     emapat(em, st->v.forx.a, et, agg ? v : 0, agg ? 0 : v, lx);
     emablockval(em, body, &reached);
@@ -1424,7 +1748,7 @@ emafor(Em *em, Ast *st)
        * would (10-iteration.md) */
       Type *pt = et->args[0];
       int   nc = nicheness(et);
-      char *sv = emaexpr(em, st->v.forx.b);
+      char *sv = aggbase(em, st->v.forx.b);
       char *lsome = newlbl(em), *lx = newlbl(em);
       char *c, *pv = 0;
       int   reached;
@@ -1468,7 +1792,7 @@ emafor(Em *em, Ast *st)
     { /* a slice or an array: ptr/len stepped by the element size */
       Type *it = et->t;
       usize sz = sizeof_(it);
-      char *sv = emaexpr(em, st->v.forx.b); /* the storage it sits at */
+      char *sv = aggbase(em, st->v.forx.b); /* the storage it sits at */
       char *ptr, *len, *islot, *i, *c;
       char *lc = newlbl(em), *lb = newlbl(em), *lcont = newlbl(em), *lx = newlbl(em);
       int   reached;
@@ -1633,16 +1957,16 @@ emaexpr(Em *em, Ast *e)
                                              * load (08-reflection.md) */
       Type *t = e->ty ? e->ty : s->cty;
 
-      if (t->k == Tyarray || t->k == Tystruct || t->k == Tyunion || t->k == Tytuple ||
-          t->k == Tyenum) /* an aggregate has no immediate to be: its
-                           * data segment arrives with the milestone
-                           * that gives emit one (08) */
-        cerrat(e, "a const %s's value in a body arrives with a later milestone (08-reflection.md)",
-               t->k == Tyarray    ? "array"
-               : t->k == Tystruct ? "struct"
-               : t->k == Tyunion  ? "union"
-               : t->k == Tytuple  ? "tuple"
-                                  : "enum");
+      if (isagg(t)) { /* the segment the value rides, copied into
+                       * storage of the read's own: a const has no
+                       * address to lend, so the copy is the read
+                       * (01-types.md, 08-reflection.md) */
+        char *slot = stackslot(em, sizeof_(t) ? sizeof_(t) : 1);
+
+        if (sizeof_(t))
+          fprintf(em->o, "\tblit %s, %s, %lu\n", constsym(em, s), slot, (unsigned long) sizeof_(t));
+        return slot;
+      }
       if (t->k == Tyint && t->num >= IN_F32) { /* a float rides the
                                                 * data segment, the
                                                 * literal's ride */
@@ -1661,6 +1985,28 @@ emaexpr(Em *em, Ast *e)
         char *v = newtmp(em);
 
         fprintf(em->o, "\t%s =%c copy %lu\n", v, qbety(t, e), (unsigned long) s->cval);
+        return v;
+      }
+    }
+    if (s->kind == Sstatic && s->cvaldone) { /* a slot that lives the
+                                              * whole program: the
+                                              * read loads it, an
+                                              * aggregate's value
+                                              * copies out of it
+                                              * (01-types.md) */
+      Type *t = e->ty ? e->ty : s->cty;
+
+      if (isagg(t)) {
+        char *slot = stackslot(em, sizeof_(t) ? sizeof_(t) : 1);
+
+        if (sizeof_(t))
+          fprintf(em->o, "\tblit %s, %s, %lu\n", constsym(em, s), slot, (unsigned long) sizeof_(t));
+        return slot;
+      }
+      {
+        char *v = newtmp(em);
+
+        fprintf(em->o, "\t%s =%c %s %s\n", v, qbety(t, e), ldins(t), constsym(em, s));
         return v;
       }
     }
@@ -2190,7 +2536,7 @@ emaexpr(Em *em, Ast *e)
     Type *bt = e->v.ridx.e->ty;
     Type *et = bt->t;
     usize sz;
-    char *b = emaexpr(em, e->v.ridx.e);
+    char *b = aggbase(em, e->v.ridx.e);
     char *data = b, *len = 0, *t = mkslot(em, e->ty);
     char *lo = 0, *hi = 0;
 
@@ -2335,8 +2681,9 @@ emastmt(Em *em, Ast *st)
       }
       return;
     }
-    /* a destructuring pattern: the value once, the bindings in it */
-    v = st->v.let.e ? emaexpr(em, st->v.let.e) : 0;
+    /* a destructuring pattern: the value once, the bindings in it --
+     * read where it sits, for the bindings copy out of it */
+    v = st->v.let.e ? aggbase(em, st->v.let.e) : 0;
     emapat(em, pat, t, isagg(t) ? v : 0, isagg(t) ? 0 : v, 0);
     return;
   }

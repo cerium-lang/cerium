@@ -1,0 +1,5 @@
+/* a const has no address, so no place of it is writable, however
+ * mut its fields are (01-types.md) */
+struct P { mut x: i32 }
+const A: P = P{x: 1};
+fn main() -> i32 { A.x = 5; A.x }
