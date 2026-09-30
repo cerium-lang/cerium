@@ -1,0 +1,5 @@
+/* a body reading a const array: the value is an aggregate, and emit
+ * has no immediate for one -- its data segment arrives with the
+ * milestone that gives it storage (08-reflection.md) */
+const A: [3]i32 = [3]i32{1, 2, 3};
+fn main() -> i32 { A[0] }

@@ -1,0 +1,5 @@
+/* a constant index past the length: out of range, read at the
+ * length the initializer spelled (01-types.md) */
+const A: [3]i32 = [3]i32{1, 2, 3};
+const S: i32 = A[3];
+fn main() -> i32 { S }

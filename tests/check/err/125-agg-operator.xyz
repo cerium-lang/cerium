@@ -1,0 +1,7 @@
+/* no operator spans aggregates yet: the words an array's value sits
+ * in are an address here, and comparing those compares nothing
+ * (08-reflection.md) */
+const A: [2]i32 = [2]i32{1, 2};
+const B: [2]i32 = [2]i32{3, 4};
+const E: bool = A == B;
+fn main() -> i32 { 0 }

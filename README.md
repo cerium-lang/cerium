@@ -174,6 +174,29 @@ belongs to the running program — while a fn the evaluator never
 ran still owns every `@compileError` it holds, a misuse. Loops,
 `match`, and aggregate values are the next layer.
 
+The arrays are values now: a literal's elements evaluate — the
+zero fill behind them, a const chain inside them, a call as the
+length, the nesting an element at a time — and an index reads one,
+checked against the length the initializer spelled. A `mut` in the
+type is the slot's permission, not the element's own, so the reads
+are the same either way. A slice literal is a borrow, and
+evaluation allocates nothing; no operator spans aggregates yet —
+the words an array's value sits in are an address here, and
+comparing those compares nothing. An array crosses a frame as a
+parameter and comes back as an answer; a `const`'s value keeps its
+elements memoized beside its scalar half, and a body reading one
+still waits — emit has no aggregate immediate, and its data segment
+arrives with the milestone that gives it storage.
+
+The signed steps work through the negatives now too: the domain
+check asks the type's question, not the u64's — a borrow was an
+overflow, a negative product wrapped the wrong domain — and the
+division rounds the way the running program's does, toward zero,
+not the floor the host's C89 might have chosen. An i64's own ends
+are the signs' to catch: operands agreeing, an answer that flipped
+is past them, and the least times minus one is the one quotient no
+division holds.
+
 Codegen has begun: `xyz -s file.xyz` prints the `.ssa` text — qbe's
 input — and `xyz -c file.xyz -o out` runs the pipeline, qbe as a
 subprocess and the system `cc` linking. Checking writes each node's

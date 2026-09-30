@@ -1,0 +1,5 @@
+/* an unsized literal is a slice, and a slice borrows storage
+ * someone else owns: an allocation is an effect, and the evaluation
+ * has none (08-reflection.md) */
+const S: []i32 = []i32{1, 2, 3};
+fn main() -> i32 { 0 }
