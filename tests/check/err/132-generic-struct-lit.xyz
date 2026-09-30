@@ -1,0 +1,5 @@
+/* a generic struct's literal: the binding the call's own words
+ * spell, and that arrives with a later milestone (04-generics.md) */
+struct G<T> { v: T }
+const A: G<i32> = G{v: 3};
+fn main() -> i32 { 0 }

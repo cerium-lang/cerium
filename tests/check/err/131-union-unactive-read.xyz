@@ -1,0 +1,7 @@
+/* a row a union's value did not set: that read is unspecified at
+ * runtime, and the promise of determinism turns it into a report
+ * here (01-types.md, 08-reflection.md) */
+union U { a: i32, b: u32 }
+const V: U = U{a: 7};
+const S: u32 = V.b;
+fn main() -> i32 { @cast<i32>(S) }

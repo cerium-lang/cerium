@@ -1633,11 +1633,16 @@ emaexpr(Em *em, Ast *e)
                                              * load (08-reflection.md) */
       Type *t = e->ty ? e->ty : s->cty;
 
-      if (t->k == Tyarray) /* an aggregate has no immediate to be:
-                            * its data segment arrives with the
-                            * milestone that gives emit one (08) */
-        cerrat(e,
-               "a const array's value in a body arrives with a later milestone (08-reflection.md)");
+      if (t->k == Tyarray || t->k == Tystruct || t->k == Tyunion || t->k == Tytuple ||
+          t->k == Tyenum) /* an aggregate has no immediate to be: its
+                           * data segment arrives with the milestone
+                           * that gives emit one (08) */
+        cerrat(e, "a const %s's value in a body arrives with a later milestone (08-reflection.md)",
+               t->k == Tyarray    ? "array"
+               : t->k == Tystruct ? "struct"
+               : t->k == Tyunion  ? "union"
+               : t->k == Tytuple  ? "tuple"
+                                  : "enum");
       if (t->k == Tyint && t->num >= IN_F32) { /* a float rides the
                                                 * data segment, the
                                                 * literal's ride */
@@ -1994,6 +1999,25 @@ emaexpr(Em *em, Ast *e)
       int tl = to->k == Tyint && !tf && intwidth(to) == 8;
       int fb = from->k == Tybool, tb = to->k == Tybool;
 
+      if (from->k == Tyenum) { /* the discriminant out: the tag at
+                                * the head of the value, loaded at
+                                * its own width and widened by the
+                                * target -- a tag is unsigned, the
+                                * numbers count up (01-types.md) */
+        Type *tt = tagtyof(from);
+        char *tv = newtmp(em);
+        char *r;
+
+        if ((to->k == Tyint && to->num >= IN_F32) || tb)
+          cerrat(e, "an enum casts to an integer, the tag's own kind (01-types.md)");
+        fprintf(em->o, "\t%s =%c %s %s\n", tv, qbety(tt, e), ldins(tt), a);
+        if (tl) {
+          r = newtmp(em);
+          fprintf(em->o, "\t%s =l extuw %s\n", r, tv);
+        } else /* the word: the load zero-extended it already */
+          r = tv;
+        return r;
+      }
       if (fb && tb)
         return a; /* both are the 0/1 in the word */
       if (fb && tw)

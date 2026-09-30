@@ -197,6 +197,24 @@ are the signs' to catch: operands agreeing, an answer that flipped
 is past them, and the least times minus one is the one quotient no
 division holds.
 
+The aggregates are values in full now: a struct's rows evaluate by
+name with the ones left out zero, a tuple's by position, and the
+reading matches — a field by name, a row by number. A union keeps
+one row active — the last name a literal wrote, or the zeroed whole
+reading zero every row — and a read of any other is the unspecified
+thing the spec says not to rely on, which the promise of determinism
+turns into a report. An enum constructs in every shape it parses:
+positional, named, payloadless by path, and the prelude's bare
+`Some`/`None`; the discriminant rides the value, `@cast<u32>` reads
+it out — at compile time and in a body now, the tag loaded at its
+own width — and the payload waits for `match`. The nesting recurses,
+a struct in a struct, an array of them; the frames carry them as
+parameters and answers; a const's Sym keeps the elements beside the
+scalar half. The operators stay the trait table's — `==` is `Eq`'s,
+and that table arrives with dispatch — and a generic's rows wait
+for the binding a call's own words spell. A body reading a const
+aggregate still waits for the data segment emit does not have.
+
 Codegen has begun: `xyz -s file.xyz` prints the `.ssa` text — qbe's
 input — and `xyz -c file.xyz -o out` runs the pipeline, qbe as a
 subprocess and the system `cc` linking. Checking writes each node's
