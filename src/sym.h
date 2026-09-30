@@ -118,7 +118,10 @@ struct Sym
   u64   cval;          /* Sconst, Sstatic: the evaluated value -- a
                         * const's, or a static's first one (08) */
   double cflt;         /* the float's own bits, when cty is one */
-  int    cvaldone;     /* the value is in: the chain may land here
+  void  *celems;       /* an aggregate's elements, when cty is an
+                        * array: eval.c's Val vector, memoized beside
+                        * cval the way it is (08-reflection.md) */
+  int cvaldone;        /* the value is in: the chain may land here
                         * again, and read it (08-reflection.md) */
   Member *members;     /* Strait, Simpl: in declaration order */
   usize   nmembers;    /* their count */

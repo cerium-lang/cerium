@@ -1633,6 +1633,11 @@ emaexpr(Em *em, Ast *e)
                                              * load (08-reflection.md) */
       Type *t = e->ty ? e->ty : s->cty;
 
+      if (t->k == Tyarray) /* an aggregate has no immediate to be:
+                            * its data segment arrives with the
+                            * milestone that gives emit one (08) */
+        cerrat(e,
+               "a const array's value in a body arrives with a later milestone (08-reflection.md)");
       if (t->k == Tyint && t->num >= IN_F32) { /* a float rides the
                                                 * data segment, the
                                                 * literal's ride */

@@ -1,0 +1,4 @@
+/* more initializers than the length: the count is the error, at
+ * every layer that reads it (01-types.md) */
+const A: [2]i32 = [2]i32{1, 2, 3};
+fn main() -> i32 { 0 }

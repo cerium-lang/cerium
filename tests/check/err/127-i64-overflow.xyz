@@ -1,0 +1,5 @@
+/* the i64's own end: the wrap the u64 representation cannot see, an
+ * overflow the signs catch (08-reflection.md) */
+const A: i64 = 9223372036854775807;
+const B: i64 = A + 1;
+fn main() -> i32 { 0 }

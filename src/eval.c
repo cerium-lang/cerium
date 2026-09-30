@@ -36,12 +36,18 @@ __extension__ typedef long long i64; /* the signed kin of lex.h's u64 */
                          * the 256 unfoldings of a generic do (04-generics.md) */
 #define MAXLOCALS 16384 /* bindings across every frame on the stack */
 
-typedef struct
+/* a value the walk carries: a scalar in its two words, an array as
+ * its elements -- one Val each, the nesting recursive. The aggregate
+ * half is the evaluator's own: nothing outside this file reads it,
+ * for emit has no aggregate immediate to fold (08-reflection.md) */
+typedef struct Val Val;
+struct Val
 {
-  Type  *t; /* what the checker would say; the derivation's answer */
-  u64    i; /* an integer's or a bool's bits, two's complement */
-  double f; /* a float's value */
-} Val;
+  Type  *t;     /* what the checker would say; the derivation's answer */
+  u64    i;     /* an integer's or a bool's bits, two's complement */
+  double f;     /* a float's value */
+  Val   *elems; /* an array's elements, or NULL: the scalars' mark */
+};
 
 /* a binding a frame made: a parameter, a let. The frames stack
  * upward in one array -- locbase marks the current frame's floor,
@@ -141,12 +147,19 @@ domcheck(u64 v, Type *t, Ast *at)
 
 /* -- the operators, overflow checked ------------------------------------- */
 
+/* the signs decide a signed step: the u64 bits are two's complement,
+ * and a wrap there is one only the u64's own ends make. The operands
+ * agreeing, an answer that flipped is past the i64; differing, one
+ * that took the first's sign is (add goes one way, sub the other) */
 static u64
 ovadd(u64 a, u64 b, Type *t, Ast *at)
 {
   u64 r = a + b;
 
-  if (r < a) /* the u64 wrapped: no type but u64 could hold it */
+  if (issignedty(t)) {
+    if (((i64) a >= 0) == ((i64) b >= 0) && ((i64) r >= 0) != ((i64) a >= 0))
+      domerr(at, t);
+  } else if (r < a) /* unsigned: the u64 wrapped */
     domerr(at, t);
   domcheck(r, t, at);
   return r;
@@ -157,7 +170,10 @@ ovsub(u64 a, u64 b, Type *t, Ast *at)
 {
   u64 r = a - b;
 
-  if (r > a) /* wrapped the other way */
+  if (issignedty(t)) {
+    if (((i64) a >= 0) != ((i64) b >= 0) && ((i64) r >= 0) != ((i64) a >= 0))
+      domerr(at, t);
+  } else if (r > a) /* unsigned: wrapped the other way */
     domerr(at, t);
   domcheck(r, t, at);
   return r;
@@ -168,7 +184,23 @@ ovmul(u64 a, u64 b, Type *t, Ast *at)
 {
   u64 r = a * b;
 
-  if (a && b > ~(u64) 0 / a)
+  if (issignedty(t)) { /* the u64 domain asks the wrong question of a
+                        * negative pair; the i64's own wrap is what
+                        * cannot be -- the signs the product must
+                        * carry, the quotient that does not divide
+                        * back, and the one the division cannot ask */
+    i64 ia = (i64) a, ib = (i64) b, ir = (i64) r;
+
+    if (ia == 0 || ib == 0)
+      return 0;
+    if (ia == ((i64) 1 << 63) && ib == -1)
+      domerr(at, t);
+    if (((ia >= 0) == (ib >= 0)) != (ir >= 0))
+      domerr(at, t); /* operands agreeing carry a nonnegative
+                      * product, differing a nonpositive one */
+    if (ir / ib != ia)
+      domerr(at, t);                /* the product does not divide back */
+  } else if (a && b > ~(u64) 0 / a) /* unsigned: the u64 wrapped */
     domerr(at, t);
   domcheck(r, t, at);
   return r;
@@ -182,7 +214,7 @@ sdiv(u64 a, u64 b, Type *t, Ast *at)
 {
   i64 x = (i64) a;
   i64 y = (i64) b;
-  i64 q;
+  u64 ax, ay, q;
 
   if (b == 0)
     cerrat(at, "division by zero at compile time (08-reflection.md)");
@@ -190,23 +222,39 @@ sdiv(u64 a, u64 b, Type *t, Ast *at)
                                               * quotient no signed
                                               * type holds */
     domerr(at, t);
-  q = x / y;
-  if (x % y != 0 && ((x < 0) != (y < 0)))
-    q--; /* the host's floor, to trunc */
-  domcheck((u64) q, t, at);
-  return (u64) q;
+  /* absolute values in the u64: C89 leaves a negative division's
+   * rounding to the host, and the running program's is qbe's --
+   * trunc, toward zero. The sign goes back after; the least's own
+   * absolute value wraps to itself, and the quotient survives it
+   * (min / 1 is min) */
+  ax = x < 0 ? (u64) 0 - a : a;
+  ay = y < 0 ? (u64) 0 - b : b;
+  q = ax / ay;
+  q = (x < 0) != (y < 0) ? (u64) 0 - q : q;
+  domcheck(q, t, at);
+  return q;
 }
 
 static u64
-smod(u64 a, u64 b, Ast *at)
+smod(u64 a, u64 b, Type *t, Ast *at)
 {
   i64 x = (i64) a;
   i64 y = (i64) b;
 
   if (b == 0)
     cerrat(at, "division by zero at compile time (08-reflection.md)");
-  return (u64) (x % y); /* trunc's remainder: the sign follows the
-                         * dividend */
+  if (!issignedty(t)) /* the u64's own remainder: the bits are the
+                       * answer, no reading of them as signed */
+    return a % b;
+  { /* trunc's remainder: the magnitude the operands', the sign the
+     * dividend's -- C89 leaves the host to choose, the running
+     * program's choice is qbe's (07-operators.md) */
+    u64 ax = x < 0 ? (u64) 0 - a : a;
+    u64 ay = y < 0 ? (u64) 0 - b : b;
+    u64 r = ax % ay;
+
+    return x < 0 ? (u64) 0 - r : r;
+  }
 }
 
 static int
@@ -258,6 +306,7 @@ valint(u64 v, Type *t)
   r.t = t;
   r.i = v;
   r.f = 0;
+  r.elems = 0;
   return r;
 }
 
@@ -303,6 +352,10 @@ locfind(char *name)
 static Val
 valbin(Val a, Val b, Tok op, Ast *e)
 {
+  if (a.elems || b.elems) /* an aggregate has no operator: the words
+                           * are an address here, and comparing those
+                           * compares nothing (08-reflection.md) */
+    cerrat(e, "an operator over aggregates arrives with a later milestone (08-reflection.md)");
   if (isfloatty(a.t)) {
     switch (op) {
     case Tplus:
@@ -359,7 +412,7 @@ valbin(Val a, Val b, Tok op, Ast *e)
   case Tslash:
     return valint(sdiv(a.i, b.i, a.t, e), a.t);
   case Tpercent:
-    return valint(smod(a.i, b.i, e), a.t);
+    return valint(smod(a.i, b.i, a.t, e), a.t);
   case Tamp:
     return valint(a.i & b.i, a.t);
   case Tbar:
@@ -477,12 +530,71 @@ ceval(Ast *e, Env env, Type *want)
     r.t = litty(e, want);
     r.i = 0;
     r.f = e->v.f.flt;
+    r.elems = 0;
     return r;
   }
   case Nbool:
     return valint(e->v.i.num ? 1 : 0, tybool());
   case Nunit:
     return valint(0, tyunit());
+  case Narraylit: { /* the elements, the zero fill behind them
+                     * (01-types.md); the length is the const
+                     * expression it always was (08) */
+    Env   e2 = env;
+    Type *et = rty(e->v.arrlit.t, &e2);
+    Type *vt;
+    Ast **es = e->v.arrlit.es;
+    usize n = vlen(es), ln, i;
+    Val  *els;
+    Val   r;
+
+    if (!e->v.arrlit.len) /* []T borrows storage someone else owns:
+                           * an allocation is an effect, and the
+                           * evaluation has none (08-reflection.md) */
+      cerrat(e, "a slice literal is a borrow: evaluation allocates nothing (08-reflection.md)");
+    if (e->v.arrlit.mut) /* the writability is the type's own row,
+                          * as a type-position [N]mut T takes */
+      et = tymut(et);
+    vt = et;
+    while (vt->k == Tymut) /* the value the elements land in: the mut
+                            * is the slot's permission, not the
+                            * element's own type */
+      vt = vt->t;
+    ln = cevallong(e->v.arrlit.len, env, tyint(IN_USIZE));
+    if (ln < n) /* the checker says it too; this walk says it wherever
+                 * it runs alone (01-types.md) */
+      cerrat(e, "[%lu] holds %lu elements, %lu given (01-types.md)", (unsigned long) ln,
+             (unsigned long) ln, (unsigned long) n);
+    els = arenaalloc((ln ? ln : 1) * sizeof *els);
+    for (i = 0; i < n; i++)
+      els[i] = valcoerce(ceval(es[i], env, vt), vt, es[i]);
+    for (; i < ln; i++) { /* fewer than the length: the zero fill */
+      els[i] = valint(0, vt);
+      if (isfloatty(vt))
+        els[i].f = 0;
+    }
+    r.t = tyarray(ln, et);
+    r.i = 0;
+    r.f = 0;
+    r.elems = els;
+    return r;
+  }
+  case Nindex: { /* an element of a known array: the index checked
+                  * against the length, the read against the element's
+                  * own type (01-types.md) */
+    Val b = ceval(e->v.n2.a, env, 0);
+    Val ix = ceval(e->v.n2.b, env, 0);
+
+    if (b.t->k != Tyarray)
+      cerrat(e->v.n2.a,
+             "only an array's elements are known at compile time: %s is not one (08-reflection.md)",
+             tnm(b.t));
+    if (ix.t->k != Tyint || isfloatty(ix.t))
+      cerrat(e->v.n2.b, "an index is an integer, this is %s (01-types.md)", tnm(ix.t));
+    if ((i64) ix.i < 0 || ix.i >= b.t->n)
+      cerrat(e->v.n2.b, "index %ld out of range for %s (01-types.md)", (long) (i64) ix.i, tnm(b.t));
+    return b.elems[ix.i];
+  }
   case Npath: { /* a local's read, or a const reference: the chain (08) */
     char *nm = e->v.path.segs[0]->v.seg.name;
     Sym  *s;
@@ -577,7 +689,9 @@ ceval(Ast *e, Env env, Type *want)
       b = ceval(r, env, 0);
       a = ceval(l, env, b.t);
     } else {
-      a = ceval(l, env, 0);
+      a = ceval(l, env, want); /* the want reaches the left too: a
+                                * wide literal's default would else be
+                                * i32, narrower than the answer (08) */
       b = ceval(r, env, a.t);
     }
     if (!tysame(a.t, b.t))
@@ -676,6 +790,7 @@ symval(Sym *s, Ast *at)
     v.t = s->cty;
     v.i = s->cval;
     v.f = s->cflt;
+    v.elems = s->celems; /* the aggregate half rides the same memo */
     return v;
   }
   if (s->kind != Sconst && s->kind != Sstatic) /* an entry from pass 2
@@ -719,6 +834,7 @@ symval(Sym *s, Ast *at)
   }
   s->cval = v.i;
   s->cflt = v.f;
+  s->celems = v.elems;
   s->cvaldone = 1;
   ninflight--;
   return v;
