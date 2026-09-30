@@ -14,19 +14,31 @@
 #include "sym.h"
 #include "type.h"
 
-/* a value the walk carries: a scalar in its two words, an aggregate
- * as its elements -- one Val each, the nesting recursive. The
- * aggregate half is a const's memoized value beside its Sym's
- * scalar one, and emit folds it into the data segment a body's read
- * copies from (08-reflection.md) */
+/* a value the walk carries: a scalar in its own two words, an
+ * aggregate as its elements -- one Val each, the nesting recursive.
+ * The aggregate half carries a tag beside the elements: an enum's
+ * discriminant, a union's active row. A scalar's own bits never sit
+ * in the tag, so no consumer has to ask which kind of bits it is
+ * holding -- i is a value, tag is an aggregate's own metadata
+ * (08-reflection.md) */
 typedef struct Val Val;
 struct Val
 {
-  Type  *t;     /* what the checker would say; the derivation's answer */
-  u64    i;     /* an integer's or a bool's bits, two's complement */
-  double f;     /* a float's value */
-  Val   *elems; /* an aggregate's elements, or NULL: the scalars' mark */
+  Type  *t;   /* what the checker would say; the derivation's answer */
+  u64    i;   /* an integer's or a bool's bits, two's complement */
+  double f;   /* a float's value */
+  u64    tag; /* an enum's discriminant, a union's active row; zero
+               * everywhere else */
+  Val *elems; /* an aggregate's elements in their own order -- an
+               * array's, a struct's fields, a tuple's rows, an
+               * enum's payloads, a union's active row alone -- or
+               * NULL: the scalars' mark */
 };
+
+/* a union's no-active-row: the zeroed whole, every row reading zero
+ * (01-types.md). A row number is always below the field count, so
+ * this one is never a row's */
+#define VNONROW ((u64) ~(u64) 0)
 
 void cevalsym(Sym *s);                      /* a const's value, now or never: the
                                              * initializer must be compile-time known
