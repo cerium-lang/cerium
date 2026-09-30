@@ -1,0 +1,6 @@
+/* the splice asks the value it reads for a type; an integer const
+ * holds an integer (08-reflection.md) */
+const N: i32 = 5;
+const Q: $$N = 7;
+
+fn main() -> i32 { Q }

@@ -1,0 +1,4 @@
+/* @typeof takes one value: the type out of it (08-reflection.md) */
+const T: type = @typeof();
+
+fn main() -> i32 { 0 }

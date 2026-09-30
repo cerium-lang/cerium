@@ -331,7 +331,26 @@ valint(u64 v, Type *t)
   r.i = v;
   r.f = 0;
   r.tag = 0;
+  r.tyval = 0;
   r.elems = 0;
+  r.len = 0;
+  return r;
+}
+
+/* a type's reference, as a value: the lift's own answer, and
+ * @typeof's (08-reflection.md) */
+static Val
+valtype(Type *t)
+{
+  Val r;
+
+  r.t = tytype();
+  r.i = 0;
+  r.f = 0;
+  r.tag = 0;
+  r.tyval = t;
+  r.elems = 0;
+  r.len = 0;
   return r;
 }
 
@@ -546,6 +565,8 @@ variantval(Sym *s, Variant *v, Type **targs, usize ntargs, Ast **args, usize na,
   r.i = 0;
   r.f = 0;
   r.tag = v->disc; /* the discriminant: @cast reads it out (01) */
+  r.tyval = 0;
+  r.len = 0;
   r.elems = np ? arenaalloc(np * sizeof *r.elems) : 0;
   for (i = 0; i < np; i++) {
     r.elems[i] = valcoerce(ceval(args[i], env, ps[i]), ps[i], args[i]);
@@ -591,13 +612,15 @@ structlitval(Type *t, Ast **inits, Env env, Ast *at)
     r.t = t;
     r.i = 0;
     r.f = 0;
+    r.tyval = 0;
+    r.len = 0;
     r.tag = VNONROW; /* the zeroed whole: every row reads zero */
     r.elems = arenaalloc(sizeof *r.elems);
     if (n) {
       Ast *in = inits[n - 1];
 
       r.i = 0;
-      r.tag = (u64) seen;
+      r.tag = (u64) seen; /* seen's row, set below with its value */
       r.elems[0] =
           valcoerce(ceval(in->v.init.e, env, s->fields[seen].ty), s->fields[seen].ty, in->v.init.e);
     }
@@ -621,7 +644,9 @@ structlitval(Type *t, Ast **inits, Env env, Ast *at)
   r.i = 0;
   r.f = 0;
   r.tag = 0;
+  r.tyval = 0;
   r.elems = els;
+  r.len = 0;
   return r;
 }
 
@@ -885,8 +910,14 @@ ceval(Ast *e, Env env, Type *want)
 {
   tick(e);
   switch (e->k) {
-  case Nint:
-    return valint(e->v.i.num, litty(e, want));
+  case Nint: {
+    Type *t = litty(e, want);
+
+    domcheck(e->v.i.num, t, e); /* the first step is a step too: the
+                                 * literal is asked of the type it
+                                 * lands in (08-reflection.md) */
+    return valint(e->v.i.num, t);
+  }
   case Nflt: {
     Val r;
 
@@ -894,7 +925,9 @@ ceval(Ast *e, Env env, Type *want)
     r.i = 0;
     r.f = e->v.f.flt;
     r.tag = 0;
+    r.tyval = 0;
     r.elems = 0;
+    r.len = 0;
     return r;
   }
   case Nbool:
@@ -941,7 +974,9 @@ ceval(Ast *e, Env env, Type *want)
     r.i = 0;
     r.f = 0;
     r.tag = 0;
+    r.tyval = 0;
     r.elems = els;
+    r.len = 0;
     return r;
   }
   case Nindex: { /* an element of a known array: the index checked
@@ -1045,7 +1080,9 @@ ceval(Ast *e, Env env, Type *want)
       r.i = 0;
       r.f = 0;
       r.tag = 0;
+      r.tyval = 0;
       r.elems = els;
+      r.len = 0;
       if (want && want->k == Tytuple &&
           want->nargs == n) { /* the
                                * want names the rows: each lands in its own, the
@@ -1249,19 +1286,39 @@ ceval(Ast *e, Env env, Type *want)
     return callval(e, env);
   }
   case Nun: {
-    Val v = ceval(e->v.un.e, env, want);
+    Val v;
+
+    if (e->v.un.op == Tcaret2) { /* the lift: the operand is a type
+                                  * spelled in a value's slot, the
+                                  * answer a reference to it
+                                  * (08-reflection.md) */
+      Env   e2 = env;            /* rty may bind the generic names it reads */
+      Type *t = rty(e->v.un.e, &e2);
+
+      return valtype(t);
+    }
+    if (e->v.un.op == Tdollar2) /* a splice names a type slot; this
+                                 * is a value's (08-reflection.md) */
+      cerrat(e, "a splice names a type slot (08-reflection.md)");
+    if (e->v.un.op == Tminus && e->v.un.e->k == Nint) { /* the sign
+                                                         * rides the literal: i32's least,
+                                                         * -2147483648, is spelled with it,
+                                                         * and no other way is.  Folded
+                                                         * before the operand's own step:
+                                                         * that step's check asks the
+                                                         * magnitude alone, which the sign
+                                                         * may yet fit (08-reflection.md) */
+      Type *lt = litty(e->v.un.e, want);
+      u64   m = 0 - e->v.un.e->v.i.num;
+
+      domcheck(m, lt, e);
+      return valint(m, lt);
+    }
+    v = ceval(e->v.un.e, env, want);
 
     switch (e->v.un.op) {
-    case Tminus:
-      if (e->v.un.e->k == Nint) { /* the sign rides the literal: i32's
-                                   * least, -2147483648, is spelled
-                                   * with it, and no other way is */
-        Type *lt = litty(e->v.un.e, want);
-        u64   m = 0 - e->v.un.e->v.i.num;
-
-        domcheck(m, lt, e);
-        return valint(m, lt);
-      }
+    case Tminus: /* the literal fold ran above: the operand here is a
+                  * value of its own, a negation of it */
       if (isfloatty(v.t)) {
         v.f = -v.f;
         return v;
@@ -1387,6 +1444,21 @@ ceval(Ast *e, Env env, Type *want)
         cerrat(e, "this cast is not compile-time known (08-reflection.md)");
       return valint(v.i, t);
     }
+    if (strcmp(nm, "typeof") == 0) { /* the value's own type, up as a
+                                      * reference: the one crossing
+                                      * from a value to a type, the
+                                      * operand's derivation the
+                                      * answer (08-reflection.md) */
+      Type *held;
+
+      if (vlen(e->v.blt.targs) || vlen(e->v.blt.args) != 1)
+        cerrat(e, "@typeof takes one value");
+      held = ceval(e->v.blt.args[0], env, 0).t; /* no want: the
+                                                 * operand's own
+                                                 * derivation, not
+                                                 * the slot's */
+      return valtype(held);
+    }
     cerrat(e, "@%s is not compile-time known here (08-reflection.md)", nm);
     return valint(0, tyint(IN_I32)); /* unreachable */
   }
@@ -1410,7 +1482,11 @@ symval(Sym *s, Ast *at)
     v.i = s->cval;
     v.f = s->cflt;
     v.tag = s->ctag;
+    v.tyval = s->ctyval; /* a type value's half rides the same memo */
     v.elems = s->celems; /* the aggregate half rides the same memo */
+    v.len = 0;           /* a slice's length is the value's own, and
+                          * no const holds one yet: []T borrows
+                          * (08-reflection.md) */
     return v;
   }
   if (s->kind != Sconst && s->kind != Sstatic) /* an entry from pass 2
@@ -1455,6 +1531,7 @@ symval(Sym *s, Ast *at)
   s->cval = v.i;
   s->cflt = v.f;
   s->ctag = v.tag;
+  s->ctyval = v.tyval;
   s->celems = v.elems;
   s->cvaldone = 1;
   ninflight--;
@@ -1465,6 +1542,20 @@ void
 cevalsym(Sym *s)
 {
   symval(s, s->decl);
+}
+
+/* a $$ operand's value, as the type its slot takes: the splice's own
+ * half. The operand is an ordinary expression -- a const, a lift, a
+ * call -- and its derivation must be `type`, or the splice names
+ * nothing (08-reflection.md) */
+Type *
+tysplice(Ast *e, Env *env)
+{
+  Val v = ceval(e, *env, 0);
+
+  if (v.t->k != Tytype)
+    cerrat(e, "the value is %s, a type is (08-reflection.md)", tnm(v.t));
+  return v.tyval;
 }
 
 /* an integer's value, at a place a type's own parts need one: an
@@ -1813,6 +1904,8 @@ tytoexpr(Type *t, Ast *at)
     return 0; /* unreachable */
   case Tybool:
     return pathsegs("bool", 0, at);
+  case Tytype: /* the keyword itself: a field's or a row's own slot */
+    return mknear(Nttype, at);
   case Tyarray: /* [N]T, the length from the type */
     p = mknear(Ntarray, at);
     p->v.arrlit.len = intnear(t->n, at);
@@ -1889,6 +1982,14 @@ valtoexpr(Val v, Ast *at)
     return n;
   case Tyunit:
     return mknear(Nunit, at);
+  case Tytype: { /* the type it holds, lifted back: ^^T spells the
+                  * value the round bound (08-reflection.md) */
+    Ast *n = mknear(Nun, at);
+
+    n->v.un.op = Tcaret2;
+    n->v.un.e = tytoexpr(v.tyval, at);
+    return n;
+  }
   case Tyenum: { /* the variant the discriminant names */
     Sym     *s = v.t->sym;
     Variant *var = 0;

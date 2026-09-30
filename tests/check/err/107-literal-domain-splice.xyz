@@ -1,0 +1,7 @@
+/* the splice names the type the literal lands in, and the domain
+ * check asks it there the same: the slot is i32, the literal is not
+ * in it (08-reflection.md) */
+const T: type = ^^i32;
+const Y: $$T = 2147483648;
+
+fn main() -> i32 { Y }

@@ -1,0 +1,8 @@
+/* the splice's value must stand without a frame: a parameter's own
+ * value arrives per call, and the body's pass has no frame to read
+ * it in (08-reflection.md) */
+fn sz(t: type) -> usize {
+  @sizeof<$$t>()
+}
+
+fn main() -> i32 { 0 }

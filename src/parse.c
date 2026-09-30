@@ -205,7 +205,10 @@ typepath(void)
 
           a = mk(Nun);
           a->v.un.op = op;
-          a->v.un.e = postfix();
+          a->v.un.e =
+              op == Tcaret2 ? type_() : postfix(); /* a lift's
+                                                    * operand is a type; a splice's, a value */
+
         } else {
           a = type_();
         }
@@ -276,6 +279,22 @@ prefixtype(void)
   case Tident:
   case Tcoloncolon:
     return typepath();
+  case Tdollar2: /* $$x, the splice: a type slot's own crossing, the
+                  * operand a value that holds a type
+                  * (08-reflection.md); a ^^ here parses too, and the
+                  * resolver says which way each crosses */
+  case Tcaret2: {
+    Tok  op = next();
+    Ast *n = mk(Nun);
+
+    n->v.un.op = op;
+    n->v.un.e = op == Tcaret2 ? type_() : postfix(); /* a lift's
+                                                      * operand is a
+                                                      * type; a
+                                                      * splice's, a
+                                                      * value */
+    return n;
+  }
   case Tlparen: { /* () or a tuple type */
     Ast *n;
 
@@ -441,7 +460,9 @@ tryargs(void)
 
       a = mk(Nun);
       a->v.un.op = op;
-      a->v.un.e = postfix();
+      a->v.un.e = op == Tcaret2 ? type_() : postfix(); /* a lift's
+                                                        * operand is a type; a splice's, a value */
+
     } else {
       a = type_();
     }
@@ -711,7 +732,9 @@ unary(void)
       next();
       n->v.un.op = Tdyn; /* re-marked: not a borrow, a handle made */
     }
-    n->v.un.e = unary();
+    /* a lift's operand is a type spelled in the value's slot
+     * (08-reflection.md); a splice's is the value that holds one */
+    n->v.un.e = op == Tcaret2 ? type_() : unary();
     return n;
   }
   default:
@@ -919,7 +942,10 @@ builtin(void) /* the "@" is peeked */
 
         a = mk(Nun);
         a->v.un.op = op;
-        a->v.un.e = postfix();
+        a->v.un.e =
+            op == Tcaret2 ? type_() : postfix(); /* a lift's
+                                                  * operand is a type; a splice's, a value */
+
       } else {
         a = type_();
       }

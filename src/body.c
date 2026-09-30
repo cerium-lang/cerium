@@ -777,7 +777,18 @@ rbuiltin(Ast *e, Fenv *fe)
                         * gives it no runtime behavior (08) */
     berr(e, "%.*s", (int) args[0]->v.s.len, args[0]->v.s.s);
   }
-  /* offset, field, count, typeinfo, typeof: reflection's own pass */
+  if (strcmp(nm, "typeof") == 0) { /* the value's own type, as a
+                                    * reference: $$ puts it back into
+                                    * a slot (08-reflection.md) */
+    if (nt != 0 || na != 1)
+      berr(e, "@typeof takes one value");
+    rexpr(args[0], fe, 0); /* the operand is checked for its own
+                            * sake; the reference names its type, and
+                            * the evaluator reads that when a splice
+                            * asks */
+    return tytype();
+  }
+  /* offset, field, count, typeinfo: reflection's own pass */
   berr(e, "@%s arrives with reflection (08-reflection.md)", nm);
   return 0; /* unreachable */
 }
@@ -1247,6 +1258,16 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                              * landed in; the emitter negates it */
       return want;
     }
+    if (op == Tcaret2) {        /* the lift: the operand is a type spelled
+                                 * in a value's slot, the value a reference
+                                 * to it (08-reflection.md) */
+      rty(e->v.un.e, &fe->env); /* the operand resolves as a type, or
+                                 * says why it is not one */
+      return tytype();
+    }
+    if (op == Tdollar2) /* a splice names a type slot; this is a
+                         * value's (08-reflection.md) */
+      berr(e, "a splice names a type slot (08-reflection.md)");
     {
       Type *t = rexpr(e->v.un.e, fe, 0);
 

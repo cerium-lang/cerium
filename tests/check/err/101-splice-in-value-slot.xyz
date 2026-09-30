@@ -1,0 +1,8 @@
+/* a splice names a type slot; a value slot is not one, and the let
+ * says so (08-reflection.md) */
+const T: type = ^^i32;
+
+fn main() -> i32 {
+  let x: i32 = $$T;
+  x
+}

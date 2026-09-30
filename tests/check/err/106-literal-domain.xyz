@@ -1,0 +1,5 @@
+/* the domain check asks the first step too: the literal against the
+ * type it lands in, not only the steps after it (08-reflection.md) */
+const Y: i32 = 2147483648;
+
+fn main() -> i32 { Y }

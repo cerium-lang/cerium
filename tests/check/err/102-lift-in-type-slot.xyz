@@ -1,0 +1,5 @@
+/* a lift is a value; the declaration's type slot takes a type or a
+ * splice, and the lift is neither (08-reflection.md) */
+const X: ^^i32 = 5;
+
+fn main() -> i32 { X }

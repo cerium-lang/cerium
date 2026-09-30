@@ -142,7 +142,9 @@ alignof_(Type *t)
     return 1;
   switch (t->k) {
   case Tyunit:
-    return 1; /* a ZST (02-layout.md) */
+  case Tytype: /* a ZST beside (): a type's value carries no bits,
+                * its uses compile-time's own (08-reflection.md) */
+    return 1;  /* a ZST (02-layout.md) */
   case Tybool:
     return 1;
   case Tyint:
@@ -249,7 +251,8 @@ sizeof_(Type *t)
     return 0;
   switch (t->k) {
   case Tyunit:
-    return 0; /* a ZST: no space, unit alignment */
+  case Tytype: /* no space: a type's value rides nothing */
+    return 0;  /* a ZST: no space, unit alignment */
   case Tybool:
     return 1;
   case Tyint:

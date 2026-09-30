@@ -916,7 +916,11 @@ constsym(Em *em, Sym *s)
     top.i = s->cval;
     top.f = s->cflt;
     top.tag = s->ctag;
+    top.tyval = 0; /* the walk reads none of the two -- a type value
+                    * rides no bytes, and no const holds a slice yet
+                    * -- but every constructor names every half */
     top.elems = s->celems;
+    top.len = 0;
     dswrite(&p, s->cty, &top);
     p -= 2; /* the last item's ", ": the line's own close */
     sprintf(p, "}");
@@ -1201,7 +1205,9 @@ emaif(Em *em, Ast *e, int *reached)
   char *vt = 0;
 
   *reached = 1;
-  if (lf && t && t->k != Tyunit)
+  if (lf && t && t->k != Tyunit && t->k != Tytype) /* a type's value
+                                                    * joins as the word it is, storage
+                                                    * would ask more of it than zero */
     slot = mkslot(em, t);
   fprintf(em->o, "\tjnz %s, %s, %s\n", c, lt, lf ? lf : lend);
   fprintf(em->o, "%s\n", lt);
@@ -1231,12 +1237,18 @@ emaif(Em *em, Ast *e, int *reached)
     *reached = rt || re;
   }
   if (!*reached)
-    return 0;  /* every way out left already: no join to read */
-  if (!slot) { /* the statement form, or an implicit unit */
-    fprintf(em->o, "%s\n", lend);
+    return 0; /* every way out left already: no join to read */
+  fprintf(em->o, "%s\n", lend);
+  if (!slot) { /* the statement form, an implicit unit -- or a type,
+                * whose word is the constant zero it always was */
+    if (t && t->k == Tytype) {
+      char *z = newtmp(em);
+
+      fprintf(em->o, "\t%s =w copy 0\n", z);
+      return z;
+    }
     return 0;
   }
-  fprintf(em->o, "%s\n", lend);
   return slotload(em, t, e, slot);
 }
 
@@ -1651,8 +1663,9 @@ emamatch(Em *em, Ast *e, int *reached)
   while (st && st->k == Tymut)
     st = st->t;
   agg = isagg(st);
-  sv = aggbase(em, e->v.call.f); /* the scrutinee, read where it sits */
-  if (t && t->k != Tyunit)
+  sv = aggbase(em, e->v.call.f);             /* the scrutinee, read where it sits */
+  if (t && t->k != Tyunit && t->k != Tytype) /* as an if's: a type
+                                              * joins in its word */
     slot = mkslot(em, t);
   for (i = 0; i < n; i++) {
     Ast  *arm = arms[i];
@@ -1676,8 +1689,15 @@ emamatch(Em *em, Ast *e, int *reached)
   fprintf(em->o, "\tret 0\n");
   fprintf(em->o, "%s\n", lend);
   *reached = any;
-  if (!slot)
+  if (!slot) { /* as an if's: the unit is nothing, a type the word */
+    if (t && t->k == Tytype) {
+      char *z = newtmp(em);
+
+      fprintf(em->o, "\t%s =w copy 0\n", z);
+      return z;
+    }
     return 0;
+  }
   return slotload(em, t, e, slot);
 }
 
@@ -1897,8 +1917,19 @@ emaexpr(Em *em, Ast *e)
     ELoc *l = locfind(em, nm);
     Sym  *s;
 
-    if (l)
-      return isagg(l->ty) ? l->slot : emaload(em, e);
+    if (l) { /* a local's value: an aggregate is its storage, a ZST
+              * -- () or a type's reference -- a word of zero (the
+              * registers stay honest), the rest a load */
+      if (isagg(l->ty))
+        return l->slot;
+      if (!sizeof_(l->ty)) {
+        char *z = newtmp(em);
+
+        fprintf(em->o, "\t%s =w copy 0\n", z);
+        return z;
+      }
+      return emaload(em, e);
+    }
     if (vlen(e->v.path.segs) == 2) { /* Enum::Variant, the
                                       * payloadless read (01-types.md) */
       char *tn = e->v.path.segs[0]->v.seg.name;
@@ -2040,6 +2071,15 @@ emaexpr(Em *em, Ast *e)
     }
     if (op == Tamp)
       return emaplace(em, e->v.un.e); /* &place: the address itself */
+    if (op == Tcaret2) {              /* a type's value: sizeless -- a word of
+                                       * zero keeps the registers honest, for the
+                                       * uses are compile-time's own, the $$
+                                       * splices (08-reflection.md) */
+      char *z = newtmp(em);
+
+      fprintf(em->o, "\t%s =w copy 0\n", z);
+      return z;
+    }
     if (op == Tminus && e->v.un.e->k == Nint) {
       /* the folded least (01-types.md): a signed type's least is
        * negated at the check, and here in one step -- a copy of the
@@ -2274,8 +2314,13 @@ emaexpr(Em *em, Ast *e)
         nm = e->v.call.tys ? instensure(ms, e->v.call.tys)->name : fsymname(ms, ms->decl);
       }
     }
-    for (i = 0; i < n; i++)
+    for (i = 0; i < n; i++) {
       as[i] = nicheout(em, args[i]->ty, emaexpr(em, args[i]));
+      if (!as[i]) /* a ZST argument -- () or a type's reference --
+                   * crosses as the word zero it arrived in
+                   * (08-reflection.md) */
+        as[i] = "0";
+    }
     if (!nm && f->k == Npath && vlen(f->v.path.segs) == 1 &&
         !locfind(em, f->v.path.segs[0]->v.seg.name)) {
       s = symfind(f->v.path.segs[0]->v.seg.name);
@@ -2420,6 +2465,16 @@ emaexpr(Em *em, Ast *e)
       /* fl && tw: copy truncates to the word */
       fprintf(em->o, "\t%s =w copy %s\n", t, a);
       return t;
+    }
+    if (strcmp(nm, "typeof") == 0) { /* a type's reference: sizeless
+                                      * -- a word of zero keeps the
+                                      * registers honest; the $$
+                                      * splices it at compile time
+                                      * (08-reflection.md) */
+      char *z = newtmp(em);
+
+      fprintf(em->o, "\t%s =w copy 0\n", z);
+      return z;
     }
     cerrat(e, "this builtin arrives with a later milestone");
     return 0; /* unreachable */
@@ -2731,7 +2786,8 @@ emastmt(Em *em, Ast *st)
     {
       char *v = emaexpr(em, st->v.bin.r);
 
-      fprintf(em->o, "\t%s %s, %s\n", stins(lhs->ty), v, p);
+      if (sizeof_(lhs->ty)) /* a ZST's assignment moves no bits */
+        fprintf(em->o, "\t%s %s, %s\n", stins(lhs->ty), v, p);
     }
     return;
   }
@@ -2872,7 +2928,10 @@ emitfn(FILE *o, Sym *s, Ast *it, char *name, Type **ats, Type *ret)
       char *slot = newtmp(&em);
 
       fprintf(o, "\t%s =l alloc8 %lu\n", slot, (unsigned long) (sizeof_(pt) ? sizeof_(pt) : 1));
-      fprintf(o, "\t%s %%%s, %s\n", stins(pt), nm, slot);
+      if (sizeof_(pt)) /* a ZST -- () or `type` -- crosses in the
+                        * word it arrived in, and the slot stays
+                        * unused (08-reflection.md) */
+        fprintf(o, "\t%s %%%s, %s\n", stins(pt), nm, slot);
       locbind(&em, nm, slot, pt);
     }
   }

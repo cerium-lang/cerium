@@ -120,6 +120,8 @@ struct Sym
   double cflt;         /* the float's own bits, when cty is one */
   u64    ctag;         /* the aggregate half's own metadata: an enum's
                         * discriminant, a union's active row (08) */
+  Type *ctyval;        /* a type value's own half, when cty is `type`:
+                        * the type it holds (08-reflection.md) */
   void *celems;        /* an aggregate's elements, when cty is an
                         * array: eval.c's Val vector, memoized beside
                         * cval the way it is (08-reflection.md) */
