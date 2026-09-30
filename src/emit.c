@@ -724,10 +724,10 @@ dswrite(char **p, Type *t, Val *v)
   case Tyunion: {
     usize sz = sizeof_(t), w = 0;
 
-    if (v && v->i != ~(u64) 0) { /* the one row a literal wrote; the
-                                  * zeroed whole reads zero every
-                                  * row (01-types.md) */
-      Type *ft = gsubst(t->sym->fields[v->i].ty, t->sym->gparams, t->args, t->nargs);
+    if (v && v->tag != VNONROW) { /* the one row a literal wrote; the
+                                   * zeroed whole reads zero every
+                                   * row (01-types.md) */
+      Type *ft = gsubst(t->sym->fields[v->tag].ty, t->sym->gparams, t->args, t->nargs);
 
       w = dswrite(p, ft, &v->elems[0]);
     }
@@ -774,7 +774,7 @@ dswrite(char **p, Type *t, Val *v)
     if (nicheness(t) != NICHE_NONE) { /* the one word it is: the unit
                                        * side the null, the other
                                        * side the value (02) */
-      Variant *vr = v ? dsvariant(t, v->i) : 0;
+      Variant *vr = v ? dsvariant(t, v->tag) : 0;
       usize    np = 0;
 
       if (vr)
@@ -788,12 +788,12 @@ dswrite(char **p, Type *t, Val *v)
     { /* the discriminant, then the payloads packed after it, the
        * walk emavariant takes */
       Type    *tt = tagtyof(t);
-      Variant *vr = v ? dsvariant(t, v->i) : 0;
+      Variant *vr = v ? dsvariant(t, v->tag) : 0;
       char   c = intwidth(tt) == 1 ? 'b' : intwidth(tt) == 2 ? 'h' : intwidth(tt) == 4 ? 'w' : 'l';
       usize  off, i, np = 0, cur;
       Type **ps = 0;
 
-      *p += sprintf(*p, "%c %lu, ", c, (unsigned long) (v ? v->i : 0));
+      *p += sprintf(*p, "%c %lu, ", c, (unsigned long) (v ? v->tag : 0));
       cur = intwidth(tt);
       off = payloadoff(t);
       if (off > cur) {
@@ -915,6 +915,7 @@ constsym(Em *em, Sym *s)
     top.t = s->cty;
     top.i = s->cval;
     top.f = s->cflt;
+    top.tag = s->ctag;
     top.elems = s->celems;
     dswrite(&p, s->cty, &top);
     p -= 2; /* the last item's ", ": the line's own close */

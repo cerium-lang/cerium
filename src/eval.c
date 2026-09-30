@@ -46,6 +46,17 @@ typedef struct
   int   mut;
 } Loc;
 
+/* the caller's frame, held whole around a call: its bindings' top
+ * and floor, its loop marks, its return state -- saved as one and
+ * put back as one, so a new context cannot forget its pair */
+typedef struct
+{
+  usize nlocs, locbase;
+  int   returning, breaking, continuing;
+  Val   retv;
+  Type *fnret;
+} FrSaved;
+
 static Sym *inflight[MAXDEPTH]; /* the consts being resolved, for the
                                  * cycle check */
 static usize ninflight;
@@ -64,13 +75,14 @@ static Type *fnret; /* the frame's fn, its return type: a return's
 
 /* the lets a const for's unroll bound, round by round: the body's
  * own pass walks them in order, so an inner const for -- iterating
- * the outer's variable -- reads the literal of the round it stands
- * in. The name maps to the tree the round spelled, and reading it
- * is evaluating that tree again, the cheapest copy there is */
+ * the outer's variable -- reads the value of the round it stands
+ * in, the binding's own one, held as it was bound */
 static struct
 {
   char *name;
-  Ast  *e;
+  Val   v; /* the round's value itself, not the literal that spelled
+            * it: the inner loop's iterable reads it without
+            * re-deriving the type (10-iteration.md) */
 } cforlets[256];
 static usize ncforlets;
 
@@ -318,6 +330,7 @@ valint(u64 v, Type *t)
   r.t = t;
   r.i = v;
   r.f = 0;
+  r.tag = 0;
   r.elems = 0;
   return r;
 }
@@ -364,11 +377,12 @@ locfind(char *name)
 static Val
 valbin(Val a, Val b, Tok op, Ast *e)
 {
-  if (a.elems || b.elems || isaggty(a.t) || isaggty(b.t)) /* the words
-                                                           * are an address or a tag here, and
-                                                           * comparing those compares nothing; the
-                                                           * operators over aggregates are the trait
-                                                           * table's, a later milestone (07) */
+  if (a.elems || b.elems || isaggty(a.t) || isaggty(b.t)) /* an
+                                                           * aggregate's words carry nothing to
+                                                           * compare -- the elements are the value,
+                                                           * and the operators over aggregates are
+                                                           * the trait table's, a later milestone
+                                                           * (07) */
     cerrat(e, "an operator over aggregates arrives with a later milestone (08-reflection.md)");
   if (isfloatty(a.t)) {
     switch (op) {
@@ -529,8 +543,9 @@ variantval(Sym *s, Variant *v, Type **targs, usize ntargs, Ast **args, usize na,
     cerrat(at, "'%s' carries %lu payload%s, %lu given (01-types.md)", v->name, (unsigned long) np,
            np == 1 ? "" : "s", (unsigned long) na);
   r.t = et;
-  r.i = v->disc; /* the discriminant: @cast reads it out (01) */
+  r.i = 0;
   r.f = 0;
+  r.tag = v->disc; /* the discriminant: @cast reads it out (01) */
   r.elems = np ? arenaalloc(np * sizeof *r.elems) : 0;
   for (i = 0; i < np; i++) {
     r.elems[i] = valcoerce(ceval(args[i], env, ps[i]), ps[i], args[i]);
@@ -574,13 +589,15 @@ structlitval(Type *t, Ast **inits, Env env, Ast *at)
   }
   if (t->k == Tyunion) {
     r.t = t;
-    r.i = ~(u64) 0; /* the zeroed whole: every row reads zero */
+    r.i = 0;
     r.f = 0;
+    r.tag = VNONROW; /* the zeroed whole: every row reads zero */
     r.elems = arenaalloc(sizeof *r.elems);
     if (n) {
       Ast *in = inits[n - 1];
 
-      r.i = (u64) seen;
+      r.i = 0;
+      r.tag = (u64) seen;
       r.elems[0] =
           valcoerce(ceval(in->v.init.e, env, s->fields[seen].ty), s->fields[seen].ty, in->v.init.e);
     }
@@ -603,6 +620,7 @@ structlitval(Type *t, Ast **inits, Env env, Ast *at)
   r.t = t;
   r.i = 0;
   r.f = 0;
+  r.tag = 0;
   r.elems = els;
   return r;
 }
@@ -661,7 +679,7 @@ patfits(Ast *p, Val v)
 
     if (!var)
       return 1; /* the binding form: it fits */
-    if (v.t->k != Tyenum || v.i != var->disc)
+    if (v.t->k != Tyenum || v.tag != var->disc)
       return 0; /* another variant's round */
     if (!p->v.ppath.payload)
       return 1;             /* the variant names itself; the niche's unit payload
@@ -875,6 +893,7 @@ ceval(Ast *e, Env env, Type *want)
     r.t = litty(e, want);
     r.i = 0;
     r.f = e->v.f.flt;
+    r.tag = 0;
     r.elems = 0;
     return r;
   }
@@ -921,6 +940,7 @@ ceval(Ast *e, Env env, Type *want)
     r.t = tyarray(ln, et);
     r.i = 0;
     r.f = 0;
+    r.tag = 0;
     r.elems = els;
     return r;
   }
@@ -1024,6 +1044,7 @@ ceval(Ast *e, Env env, Type *want)
       r.t = tytuple(ats, n);
       r.i = 0;
       r.f = 0;
+      r.tag = 0;
       r.elems = els;
       if (want && want->k == Tytuple &&
           want->nargs == n) { /* the
@@ -1079,9 +1100,9 @@ ceval(Ast *e, Env env, Type *want)
                               * row, the write of one makes the
                               * others unspecified, and the promise
                               * is determinism (08) */
-      if (b.i == ~(u64) 0)
+      if (b.tag == VNONROW)
         return valint(0, b.t->sym->fields[i].ty);
-      if (b.i != i)
+      if (b.tag != i)
         cerrat(e,
                "'%s' was not the field this union's value set: that read is unspecified, and the "
                "promise is determinism (01-types.md, 08-reflection.md)",
@@ -1128,7 +1149,7 @@ ceval(Ast *e, Env env, Type *want)
 
       for (ci = ncforlets; ci > 0; ci--)
         if (strcmp(cforlets[ci - 1].name, nm) == 0)
-          return ceval(cforlets[ci - 1].e, env, 0);
+          return cforlets[ci - 1].v;
     }
     p = envfind(&env, nm);
     if (p) /* a generic's const parameter: it has a value only at a
@@ -1356,8 +1377,8 @@ ceval(Ast *e, Env env, Type *want)
                                * (01-types.md: @cast<u32>(X::A)) */
         if (isfloatty(t) || t->k == Tybool)
           cerrat(e, "an enum casts to an integer, the tag's own kind (01-types.md)");
-        domcheck(v.i, t, e);
-        return valint(v.i, t);
+        domcheck(v.tag, t, e);
+        return valint(v.tag, t);
       }
       if (v.t->k == Tyint || v.t->k == Tybool)
         domcheck(v.i, t, e); /* the widening and the narrowing both:
@@ -1388,6 +1409,7 @@ symval(Sym *s, Ast *at)
     v.t = s->cty;
     v.i = s->cval;
     v.f = s->cflt;
+    v.tag = s->ctag;
     v.elems = s->celems; /* the aggregate half rides the same memo */
     return v;
   }
@@ -1432,6 +1454,7 @@ symval(Sym *s, Ast *at)
   }
   s->cval = v.i;
   s->cflt = v.f;
+  s->ctag = v.tag;
   s->celems = v.elems;
   s->cvaldone = 1;
   ninflight--;
@@ -1576,7 +1599,7 @@ execfor(Ast *st, Env env)
        * (10-iteration.md) */
       Variant *some = symvarfind(et->sym, "Some");
 
-      if (some && src.i == some->disc) {
+      if (some && src.tag == some->disc) {
         tick(st);
         if (execround(body, st->v.forx.a, src.elems[0], env))
           return;
@@ -1872,7 +1895,7 @@ valtoexpr(Val v, Ast *at)
     usize    np;
 
     for (i = 0; i < (usize) s->nvariants; i++)
-      if (s->variants[i].disc == v.i) {
+      if (s->variants[i].disc == v.tag) {
         var = &s->variants[i];
         break;
       }
@@ -1921,10 +1944,10 @@ valtoexpr(Val v, Ast *at)
     n = mknear(Nstructlit, at);
     n->v.slit.path = pathsegs(s->name, 0, at);
     n->v.slit.inits = vnew(Ast *, 1);
-    if (v.i != ~(u64) 0) {
+    if (v.tag != VNONROW) {
       Ast *in = mknear(Ninit, at);
 
-      in->v.init.name = s->fields[v.i].name;
+      in->v.init.name = s->fields[v.tag].name;
       in->v.init.e = valtoexpr(v.elems[0], at);
       vappend(&n->v.slit.inits, &in);
     }
@@ -2091,16 +2114,16 @@ bindround(Ast *p, Val v, int mut, Rbind **out)
  * shadows the way bindings do -- each round's names over the ones
  * before them */
 static void
-cforlet(Rbind *bs, usize nb, Ast **es)
+cforlet(Ast *st, Rbind *bs, usize nb)
 {
   usize i;
 
   for (i = 0; i < nb; i++) {
     if (ncforlets >= sizeof cforlets / sizeof cforlets[0])
-      cerrat(es[i], "too many const for rounds in flight (10-iteration.md)");
+      cerrat(st, "too many const for rounds in flight (10-iteration.md)");
     cforlets[ncforlets].name = bs[i].name;
-    cforlets[ncforlets].e = es[i]->v.let.e; /* the literal, not the
-                                             * let that carries it */
+    cforlets[ncforlets].v = bs[i].v; /* the binding's own value, what
+                                      * the round spelled */
     ncforlets++;
   }
 }
@@ -2172,7 +2195,7 @@ cforunroll(Ast *st)
      * (10-iteration.md) */
     Variant *some = symvarfind(et->sym, "Some");
 
-    if (some && src.i == some->disc) {
+    if (some && src.tag == some->disc) {
       rounds = src.elems;
       n = 1;
     }
@@ -2210,7 +2233,7 @@ cforunroll(Ast *st)
       es[k] = let;
       vappend(&un, &let);
     }
-    cforlet(bs, nb, es); /* the inner loops iterate this round's names */
+    cforlet(st, bs, nb); /* the inner loops iterate this round's names */
     cforbody(st->v.forx.body, &un);
   }
   ncforlets = save; /* the loop's rounds end; the listing goes back */
@@ -2232,10 +2255,8 @@ callval(Ast *e, Env env)
   int         arity = 0, usable = 0, fits = 0;
   const char *why = 0;
   Type       *sig;
-  usize       savenlocs, savelocbase, saveret;
-  int         savebrk, savecont;
-  Val         saveretv, r;
-  Type       *savefnret;
+  FrSaved     save;
+  Val         r;
 
   /* the callee: a plain fn by name. A method, a trait member, a
    * spelling with generic arguments -- anything the impl table or a
@@ -2335,13 +2356,14 @@ callval(Ast *e, Env env)
 
   /* the frame: its floor above the caller's bindings, so no inner
    * push ever writes a live outer slot */
-  savenlocs = nlocs;
-  savelocbase = locbase;
-  saveret = returning;
-  savebrk = breaking;
-  savecont = continuing;
-  saveretv = retv;
-  savefnret = fnret;
+  save.nlocs = nlocs; /* the caller's frame, held whole for the way
+                       * back -- one struct, one save, one restore */
+  save.locbase = locbase;
+  save.returning = returning;
+  save.breaking = breaking;
+  save.continuing = continuing;
+  save.retv = retv;
+  save.fnret = fnret;
   locbase = nlocs;
   returning = breaking = continuing = 0;
   fnret = sig->t;
@@ -2366,13 +2388,13 @@ callval(Ast *e, Env env)
   r = valcoerce(r, sig->t, e); /* the tail's answer, against the fn's
                                 * own word -- a unit body under an
                                 * i32 return is the mismatch it is */
-  nlocs = savenlocs;
-  locbase = savelocbase;
-  returning = saveret;
-  breaking = savebrk;
-  continuing = savecont;
-  retv = saveretv;
-  fnret = savefnret;
+  nlocs = save.nlocs;
+  locbase = save.locbase;
+  returning = save.returning;
+  breaking = save.breaking;
+  continuing = save.continuing;
+  retv = save.retv;
+  fnret = save.fnret;
   calldepth--;
   pick->evaled = 1; /* the body ran to its end: what it did not
                      * reach is a branch of it, not a misuse of
