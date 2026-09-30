@@ -635,6 +635,18 @@ resolvefn(Sym *s)
   s->fnty = resolvefnsig(s->decl, 0);
 }
 
+/* a signature read on demand -- the evaluator meets a forward
+ * reference (a const initializer calling a fn below it) before this
+ * pass reached it; resolvefnsig reads the declaration alone, so the
+ * lazy form is the same answer */
+Type *
+fnsigof(Sym *s)
+{
+  if (!s->fnty)
+    s->fnty = resolvefnsig(s->decl, 0);
+  return s->fnty;
+}
+
 /* the fields of a struct or union, and of a named enum payload */
 static Field *
 resolvefields(Ast **fs, Env *env, usize n, int isunion)

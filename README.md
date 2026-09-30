@@ -154,6 +154,26 @@ and a body reads a const as an immediate, a float riding the data
 segment, the literal's ride. An fn call in an initializer waits
 for the passes that know the bodies.
 
+The wait is over for the plain fns: a call whose arguments are
+compile-time known runs the callee in the compiler, no annotation
+asked — `08-reflection.md`'s own words. Its body walks a statement
+subset: a `let` that binds one name, an assignment to a local —
+the compound six included — an `if` in either shape with the
+else-if chain, an early `return`, and the tail. Each call gets a
+frame — a floor on the binding stack, so an inner call never
+writes a live outer slot — and the depth has a budget (128) of
+its own, before the shared step budget has to speak. A forward
+reference resolves lazily, the signature read on demand; an
+overload chain picks by the arguments, and a name that cannot run
+says why — extern, generic, no body — instead of a shrug. A call
+lands anywhere a const does, a length included. `@compileError`
+is the report: reached, it is the compile error itself; a branch
+a finished run did not take stands as a branch — the body check
+leaves it, and emit gives it no runtime behavior, for panic
+belongs to the running program — while a fn the evaluator never
+ran still owns every `@compileError` it holds, a misuse. Loops,
+`match`, and aggregate values are the next layer.
+
 Codegen has begun: `xyz -s file.xyz` prints the `.ssa` text — qbe's
 input — and `xyz -c file.xyz -o out` runs the pipeline, qbe as a
 subprocess and the system `cc` linking. Checking writes each node's

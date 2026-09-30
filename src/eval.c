@@ -31,6 +31,10 @@ __extension__ typedef long long i64; /* the signed kin of lex.h's u64 */
 #define MAXDEPTH                                                                                   \
   64 /* consts in flight: a cycle is an error, not a                                               \
       * deep one */
+#define CALLDEPTH                                                                                  \
+  128                   /* frames in flight: recursion has an end, as                              \
+                         * the 256 unfoldings of a generic do (04-generics.md) */
+#define MAXLOCALS 16384 /* bindings across every frame on the stack */
 
 typedef struct
 {
@@ -39,10 +43,28 @@ typedef struct
   double f; /* a float's value */
 } Val;
 
+/* a binding a frame made: a parameter, a let. The frames stack
+ * upward in one array -- locbase marks the current frame's floor,
+ * so an inner frame never writes a slot a live outer one owns */
+typedef struct
+{
+  char *name;
+  Val   v;
+  int   mut;
+} Loc;
+
 static Sym *inflight[MAXDEPTH]; /* the consts being resolved, for the
                                  * cycle check */
 static usize ninflight;
 static usize steps;
+static Loc   locs[MAXLOCALS];
+static usize nlocs;   /* the stack's top */
+static usize locbase; /* the current frame's floor */
+static usize calldepth;
+static int   returning; /* a return is unwinding this frame */
+static Val   retv;
+static Type *fnret; /* the frame's fn, its return type: a return's
+                     * want */
 
 /* -- the value domain ---------------------------------------------------- */
 
@@ -239,10 +261,177 @@ valint(u64 v, Type *t)
   return r;
 }
 
+/* a value landing where a type is spelled: an integer may land wide
+ * and narrow by fit, a float rounds, the rest must be the same type
+ * (01-types.md) -- the const declaration's own rule, at a let, a
+ * parameter, a return, an assignment */
+static Val
+valcoerce(Val v, Type *t, Ast *at)
+{
+  if (tysame(v.t, t))
+    return v;
+  if (v.t->k == Tyint && t->k == Tyint && !isfloatty(v.t) && !isfloatty(t)) {
+    domcheck(v.i, t, at);
+    return valint(v.i, t);
+  }
+  if (isfloatty(v.t) && isfloatty(t)) {
+    v.f = t->num == IN_F32 ? (double) (float) v.f : v.f;
+    v.t = t;
+    return v;
+  }
+  cerrat(at, "the value is %s, %s is expected (01-types.md)", tnm(v.t), tnm(t));
+  return valint(0, t); /* unreachable */
+}
+
+/* the current frame's binding, innermost last: a later let shadows
+ * an earlier one, a local shadows a const of the same name */
+static Loc *
+locfind(char *name)
+{
+  usize i;
+
+  for (i = nlocs; i > locbase;)
+    if (strcmp(locs[--i].name, name) == 0)
+      return &locs[i];
+  return 0;
+}
+
+/* two agreeing sides and an operator: the arithmetic, the
+ * comparisons, the bitwise -- every step checked against the type it
+ * lands in (08-reflection.md). Extracted so a compound assignment
+ * runs the same rules a binary expression does */
+static Val
+valbin(Val a, Val b, Tok op, Ast *e)
+{
+  if (isfloatty(a.t)) {
+    switch (op) {
+    case Tplus:
+      a.f = a.f + b.f;
+      return a;
+    case Tminus:
+      a.f = a.f - b.f;
+      return a;
+    case Tstar:
+      a.f = a.f * b.f;
+      return a;
+    case Tslash:
+      if (b.f == 0)
+        cerrat(e, "division by zero at compile time (08-reflection.md)");
+      a.f = a.f / b.f;
+      return a;
+    case Tlt:
+      return valint(a.f < b.f, tybool());
+    case Tgt:
+      return valint(a.f > b.f, tybool());
+    case Tle:
+      return valint(a.f <= b.f, tybool());
+    case Tge:
+      return valint(a.f >= b.f, tybool());
+    case Teqeq:
+      return valint(a.f == b.f, tybool());
+    case Tne:
+      return valint(a.f != b.f, tybool());
+    default:
+      cerrat(e, "this operator is not defined for floats (07-operators.md)");
+      return valint(0, tybool()); /* unreachable */
+    }
+  }
+  if (a.t->k == Tybool) {
+    switch (op) {
+    case Teqeq:
+      return valint(a.i == b.i, tybool());
+    case Tne:
+      return valint(a.i != b.i, tybool());
+    default:
+      cerrat(e, "this operator is not defined for bools (07-operators.md)");
+      return valint(0, tybool()); /* unreachable */
+    }
+  }
+  if (a.t->k != Tyint)
+    cerrat(e, "this expression is not compile-time known (08-reflection.md)");
+  switch (op) {
+  case Tplus:
+    return valint(ovadd(a.i, b.i, a.t, e), a.t);
+  case Tminus:
+    return valint(ovsub(a.i, b.i, a.t, e), a.t);
+  case Tstar:
+    return valint(ovmul(a.i, b.i, a.t, e), a.t);
+  case Tslash:
+    return valint(sdiv(a.i, b.i, a.t, e), a.t);
+  case Tpercent:
+    return valint(smod(a.i, b.i, e), a.t);
+  case Tamp:
+    return valint(a.i & b.i, a.t);
+  case Tbar:
+    return valint(a.i | b.i, a.t);
+  case Tcaret:
+    return valint(a.i ^ b.i, a.t);
+  case Tshl:
+    return valint(ovshl(a.i, b.i, a.t, e), a.t);
+  case Tshr:
+    return valint(ovshr(a.i, b.i, a.t, e), a.t);
+  case Tlt:
+  case Tgt:
+  case Tle:
+  case Tge: {
+    int sg = issignedty(a.t);
+
+    switch (op) {
+    case Tlt:
+      return valint(sg ? (i64) a.i < (i64) b.i : a.i < b.i, tybool());
+    case Tgt:
+      return valint(sg ? (i64) a.i > (i64) b.i : a.i > b.i, tybool());
+    case Tle:
+      return valint(sg ? (i64) a.i <= (i64) b.i : a.i <= b.i, tybool());
+    default:
+      return valint(sg ? (i64) a.i >= (i64) b.i : a.i >= b.i, tybool());
+    }
+  }
+  case Teqeq:
+    return valint(a.i == b.i, tybool());
+  case Tne:
+    return valint(a.i != b.i, tybool());
+  default:
+    cerrat(e, "this operator is not compile-time known (08-reflection.md)");
+    return valint(0, tyint(IN_I32)); /* unreachable */
+  }
+}
+
+/* a compound assignment's operator: += is +, the rest as they come;
+ * the plain = is not one of them */
+static int
+assignop(Tok op, Tok *base)
+{
+  switch (op) {
+  case Tpluseq:
+    *base = Tplus;
+    return 1;
+  case Tminuseq:
+    *base = Tminus;
+    return 1;
+  case Tstareq:
+    *base = Tstar;
+    return 1;
+  case Tslasheq:
+    *base = Tslash;
+    return 1;
+  case Tshleq:
+    *base = Tshl;
+    return 1;
+  case Tshreq:
+    *base = Tshr;
+    return 1;
+  default:
+    return 0;
+  }
+}
+
 /* -- the walk ------------------------------------------------------------ */
 
 static Val ceval(Ast *e, Env env, Type *want);
 static Val symval(Sym *s, Ast *at);
+static Val callval(Ast *e, Env env);
+static Val execblk(Ast *b, Env env, Type *want);
 
 /* a bare literal bends to the type the other side brought; nothing
  * else does */
@@ -294,13 +483,21 @@ ceval(Ast *e, Env env, Type *want)
     return valint(e->v.i.num ? 1 : 0, tybool());
   case Nunit:
     return valint(0, tyunit());
-  case Npath: { /* a const reference: the chain (08) */
+  case Npath: { /* a local's read, or a const reference: the chain (08) */
     char *nm = e->v.path.segs[0]->v.seg.name;
     Sym  *s;
     Type *p;
 
     if (vlen(e->v.path.segs) != 1 || e->v.path.root)
       cerrat(e, "this path is not compile-time known (08-reflection.md)");
+    if (nlocs > locbase) { /* a frame is running: its bindings are
+                            * the innermost names, shadowing the
+                            * consts below them */
+      Loc *l = locfind(nm);
+
+      if (l)
+        return l->v;
+    }
     p = envfind(&env, nm);
     if (p) /* a generic's const parameter: it has a value only at a
             * call, and the evaluator runs before any */
@@ -310,6 +507,24 @@ ceval(Ast *e, Env env, Type *want)
       cerrat(e, "'%s' is not a const here (08-reflection.md)", nm);
     return symval(s, e);
   }
+  case Nif: { /* the condition is known, so the branch is (08) */
+    Val c = ceval(e->v.ifx.cond, env, tybool());
+
+    if (c.t->k != Tybool)
+      cerrat(e->v.ifx.cond, "the condition is not a bool (10-iteration.md)");
+    if (c.i)
+      return execblk(e->v.ifx.then, env, want);
+    if (e->v.ifx.els)
+      return e->v.ifx.els->k == Nif ? ceval(e->v.ifx.els, env, want)
+                                    : execblk(e->v.ifx.els, env, want);
+    return valint(0, tyunit()); /* no else: the statement form; a
+                                 * value wanted of it is the mismatch
+                                 * it is */
+  }
+  case Nblock:
+    return execblk(e, env, want);
+  case Ncall: /* a fn, its arguments known (08-reflection.md) */
+    return callval(e, env);
   case Nun: {
     Val v = ceval(e->v.un.e, env, want);
 
@@ -367,102 +582,20 @@ ceval(Ast *e, Env env, Type *want)
     }
     if (!tysame(a.t, b.t))
       cerrat(e, "the sides differ: %s and %s (07-operators.md)", tnm(a.t), tnm(b.t));
-    if (isfloatty(a.t)) {
-      switch (op) {
-      case Tplus:
-        a.f = a.f + b.f;
-        return a;
-      case Tminus:
-        a.f = a.f - b.f;
-        return a;
-      case Tstar:
-        a.f = a.f * b.f;
-        return a;
-      case Tslash:
-        if (b.f == 0)
-          cerrat(e, "division by zero at compile time (08-reflection.md)");
-        a.f = a.f / b.f;
-        return a;
-      case Tlt:
-        return valint(a.f < b.f, tybool());
-      case Tgt:
-        return valint(a.f > b.f, tybool());
-      case Tle:
-        return valint(a.f <= b.f, tybool());
-      case Tge:
-        return valint(a.f >= b.f, tybool());
-      case Teqeq:
-        return valint(a.f == b.f, tybool());
-      case Tne:
-        return valint(a.f != b.f, tybool());
-      default:
-        cerrat(e, "this operator is not defined for floats (07-operators.md)");
-        return valint(0, tybool()); /* unreachable */
-      }
-    }
-    if (a.t->k == Tybool) {
-      switch (op) {
-      case Teqeq:
-        return valint(a.i == b.i, tybool());
-      case Tne:
-        return valint(a.i != b.i, tybool());
-      default:
-        cerrat(e, "this operator is not defined for bools (07-operators.md)");
-        return valint(0, tybool()); /* unreachable */
-      }
-    }
-    if (a.t->k != Tyint)
-      cerrat(e, "this expression is not compile-time known (08-reflection.md)");
-    switch (op) {
-    case Tplus:
-      return valint(ovadd(a.i, b.i, a.t, e), a.t);
-    case Tminus:
-      return valint(ovsub(a.i, b.i, a.t, e), a.t);
-    case Tstar:
-      return valint(ovmul(a.i, b.i, a.t, e), a.t);
-    case Tslash:
-      return valint(sdiv(a.i, b.i, a.t, e), a.t);
-    case Tpercent:
-      return valint(smod(a.i, b.i, e), a.t);
-    case Tamp:
-      return valint(a.i & b.i, a.t);
-    case Tbar:
-      return valint(a.i | b.i, a.t);
-    case Tcaret:
-      return valint(a.i ^ b.i, a.t);
-    case Tshl:
-      return valint(ovshl(a.i, b.i, a.t, e), a.t);
-    case Tshr:
-      return valint(ovshr(a.i, b.i, a.t, e), a.t);
-    case Tlt:
-    case Tgt:
-    case Tle:
-    case Tge: {
-      int sg = issignedty(a.t);
-
-      switch (op) {
-      case Tlt:
-        return valint(sg ? (i64) a.i < (i64) b.i : a.i < b.i, tybool());
-      case Tgt:
-        return valint(sg ? (i64) a.i > (i64) b.i : a.i > b.i, tybool());
-      case Tle:
-        return valint(sg ? (i64) a.i <= (i64) b.i : a.i <= b.i, tybool());
-      default:
-        return valint(sg ? (i64) a.i >= (i64) b.i : a.i >= b.i, tybool());
-      }
-    }
-    case Teqeq:
-      return valint(a.i == b.i, tybool());
-    case Tne:
-      return valint(a.i != b.i, tybool());
-    default:
-      cerrat(e, "this operator is not compile-time known (08-reflection.md)");
-      return valint(0, tyint(IN_I32)); /* unreachable */
-    }
+    return valbin(a, b, op, e);
   }
   case Nbuiltin: {
     char *nm = e->v.blt.name;
 
+    if (strcmp(nm, "compileError") == 0) { /* how compile-time code
+                                            * reports (08-reflection.md):
+                                            * reached is raised, an
+                                            * unreached branch never
+                                            * runs to raise */
+      if (vlen(e->v.blt.args) != 1 || e->v.blt.args[0]->k != Nstr)
+        cerrat(e, "@compileError takes one string");
+      cerrat(e, "%.*s", (int) e->v.blt.args[0]->v.s.len, e->v.blt.args[0]->v.s.s);
+    }
     if (strcmp(nm, "sizeof") == 0 || strcmp(nm, "alignof") == 0) {
       Env   e2 = env; /* rty may bind the generic names it reads */
       Type *t;
@@ -613,4 +746,252 @@ cevallong(Ast *e, Env env, Type *want)
   if ((i64) v.i < 0)
     cerrat(e, "the value is negative: a length and a discriminant are not (08-reflection.md)");
   return v.i;
+}
+
+/* -- the calls (08-reflection.md) ----------------------------------------
+ *
+ * A fn runs where its arguments are compile-time known, no
+ * annotation asked of it. The statement set is the small one the
+ * leaf layer's values cover -- a let of a plain binding, an
+ * assignment to a mut one, an if, a return -- and what it does not
+ * cover says so, with the milestone it arrives with: a loop, a
+ * match, a place that is not a binding. */
+
+/* does the value land in the type? -- valcoerce's question, asked
+ * without the answer it would give */
+static int
+valfits(Val v, Type *t)
+{
+  if (tysame(v.t, t))
+    return 1;
+  if (v.t->k == Tyint && t->k == Tyint && !isfloatty(v.t) && !isfloatty(t))
+    return inrange(v.i, t);
+  return isfloatty(v.t) && isfloatty(t);
+}
+
+static void execstmt(Ast *st, Env env);
+
+/* a block: its statements, then its tail, the block's own value.
+ * A return unwinds past the rest, the frame's value in hand */
+static Val
+execblk(Ast *b, Env env, Type *want)
+{
+  Ast **sts = b->v.blk.stmts;
+  usize n = vlen(sts), i;
+
+  for (i = 0; i < n; i++) {
+    execstmt(sts[i], env);
+    if (returning)
+      return retv;
+  }
+  return b->v.blk.tail ? ceval(b->v.blk.tail, env, want) : valint(0, tyunit());
+}
+
+static void
+execstmt(Ast *st, Env env)
+{
+  switch (st->k) {
+  case Nlet: {
+    Ast  *pat = st->v.let.pat;
+    Type *want = 0;
+    Loc   l;
+
+    if (pat->k != Nppath || pat->v.ppath.payload || pat->v.ppath.rest ||
+        vlen(pat->v.ppath.path->v.path.segs) != 1 || pat->v.ppath.path->v.path.root)
+      cerrat(st, "this pattern is not a plain binding: destructuring arrives with a later "
+                 "milestone (08-reflection.md)");
+    if (st->v.let.t) {
+      Env e2 = env;
+      want = rty(st->v.let.t, &e2);
+    }
+    l.v = ceval(st->v.let.e, env, want);
+    if (want)
+      l.v = valcoerce(l.v, want, st->v.let.e);
+    l.name = pat->v.ppath.path->v.path.segs[0]->v.seg.name;
+    l.mut = st->v.let.mut;
+    if (nlocs >= MAXLOCALS)
+      cerrat(st, "too many bindings in flight (08-reflection.md)");
+    locs[nlocs++] = l; /* a later binding of the name shadows this
+                        * one: the find walks from the top */
+    return;
+  }
+  case Nexprstmt:
+    ceval(st->v.n1.e, env, 0);
+    return;
+  case Nassign: {
+    Ast *l = st->v.bin.l;
+    Tok  op = st->v.bin.op;
+    Loc *loc;
+    Tok  base;
+
+    if (l->k != Npath || vlen(l->v.path.segs) != 1 || l->v.path.root)
+      cerrat(l, "this place is not a binding: a field or an element arrives with a later milestone "
+                "(08-reflection.md)");
+    loc = locfind(l->v.path.segs[0]->v.seg.name);
+    if (!loc)
+      cerrat(l, "'%s' is not a binding of this frame (08-reflection.md)",
+             l->v.path.segs[0]->v.seg.name);
+    if (!loc->mut)
+      cerrat(l, "'%s' is not mut (01-types.md)", loc->name);
+    if (assignop(op, &base)) { /* a = a op b: the operator's rules */
+      Val a = loc->v;          /* read first: the slot keeps its type */
+      Val b = ceval(st->v.bin.r, env, a.t);
+
+      if (!tysame(a.t, b.t))
+        cerrat(st, "the sides differ: %s and %s (07-operators.md)", tnm(a.t), tnm(b.t));
+      loc->v = valbin(a, b, base, st);
+      return;
+    }
+    if (op != Teq)
+      cerrat(st, "this assignment arrives with a later milestone (08-reflection.md)");
+    {
+      Val nv = ceval(st->v.bin.r, env, loc->v.t);
+
+      loc->v = valcoerce(nv, loc->v.t, st->v.bin.r);
+    }
+    return;
+  }
+  case Nreturn: {
+    retv = st->v.n1.e ? ceval(st->v.n1.e, env, fnret) : valint(0, tyunit());
+    if (fnret)
+      retv = valcoerce(retv, fnret, st);
+    returning = 1;
+    return;
+  }
+  default:
+    cerrat(st, "this statement is not compile-time known (08-reflection.md)");
+  }
+}
+
+/* a call at compile time: the chain's member whose parameters take
+ * these values, its frame, its body -- the value its tail or its
+ * return leaves, against the signature it declared */
+static Val
+callval(Ast *e, Env env)
+{
+  Ast        *f = e->v.call.f;
+  Ast       **args = e->v.call.args;
+  usize       na = vlen(args), i;
+  Val        *avs;
+  Sym        *c, *pick = 0;
+  int         arity = 0, usable = 0, fits = 0;
+  const char *why = 0;
+  Type       *sig;
+  usize       savenlocs, savelocbase, saveret;
+  Val         saveretv, r;
+  Type       *savefnret;
+
+  /* the callee: a plain fn by name. A method, a trait member, a
+   * spelling with generic arguments -- anything the impl table or a
+   * substitution answers -- arrives with the passes that know them */
+  if (f->k != Npath || vlen(f->v.path.segs) != 1 || f->v.path.root || f->v.path.segs[0]->v.seg.args)
+    cerrat(f, "this call is not compile-time known here (08-reflection.md)");
+  c = symfind(f->v.path.segs[0]->v.seg.name);
+  if (!c || c->kind != Sfn)
+    cerrat(f, "'%s' is not a fn here (08-reflection.md)", f->v.path.segs[0]->v.seg.name);
+
+  avs = na ? arenaalloc(na * sizeof *avs) : 0;
+  for (i = 0; i < na; i++)
+    avs[i] = ceval(args[i], env, 0);
+
+  for (; c; c = c->next) { /* the overload chain: the one whose
+                            * parameters take these values
+                            * (04-generics.md) */
+    Type *cs;
+
+    if (vlen(c->decl->v.fn.params) != na)
+      continue;
+    arity = 1;
+    if (c->ngparams) { /* a stencil: the call's own words bind it,
+                        * and those arrive with M5c */
+      if (!why)
+        why = "is generic: the call's own words bind it, and those arrive with a later milestone "
+              "(08-reflection.md)";
+      continue;
+    }
+    if (c->impl) { /* a method: its impl's table decides */
+      if (!why)
+        why = "is a method: the impl's table decides, and that arrives with a later milestone "
+              "(08-reflection.md)";
+      continue;
+    }
+    if (attrfind(c->decl->attrs, "extern")) { /* the linker is not
+                                               * part of evaluation
+                                               * (08-reflection.md) */
+      if (!why)
+        why = "is #[extern(C)]: the linker is not part of evaluation (08-reflection.md)";
+      continue;
+    }
+    if (!c->decl->v.fn.body) {
+      if (!why)
+        why = "has no body to run";
+      continue;
+    }
+    cs = fnsigof(c);
+    usable = 1;
+    for (i = 0; i < na; i++)
+      if (!valfits(avs[i], cs->args[i])) {
+        usable = 0;
+        break;
+      }
+    if (!usable) {
+      fits = 0;
+      continue;
+    }
+    if (pick)
+      cerrat(e, "the call is ambiguous at compile time (04-generics.md)");
+    pick = c;
+  }
+  if (!pick) {
+    if (!arity)
+      cerrat(e, "no '%s' takes %lu arguments (04-generics.md)", f->v.path.segs[0]->v.seg.name,
+             (unsigned long) na);
+    if (why && !fits) /* the chain held this one, and it was not
+                       * callable -- say why, not "these arguments" */
+      cerrat(e, "'%s' %s", f->v.path.segs[0]->v.seg.name, why);
+    cerrat(e, "no '%s' takes these arguments at compile time (08-reflection.md)",
+           f->v.path.segs[0]->v.seg.name);
+  }
+
+  sig = fnsigof(pick);
+  if (++calldepth > CALLDEPTH)
+    cerrat(e, "the calls nest too deep: the budget is an end (08-reflection.md)");
+
+  /* the frame: its floor above the caller's bindings, so no inner
+   * push ever writes a live outer slot */
+  savenlocs = nlocs;
+  savelocbase = locbase;
+  saveret = returning;
+  saveretv = retv;
+  savefnret = fnret;
+  locbase = nlocs;
+  returning = 0;
+  fnret = sig->t;
+  for (i = 0; i < na; i++) { /* the parameters, bound */
+    Ast *p = pick->decl->v.fn.params[i];
+    Loc  l;
+
+    l.name = p->v.param.name;
+    l.v = valcoerce(avs[i], sig->args[i], args[i]);
+    l.mut = p->v.param.mut;
+    if (nlocs >= MAXLOCALS)
+      cerrat(e, "too many bindings in flight (08-reflection.md)");
+    locs[nlocs++] = l;
+  }
+  r = execblk(pick->decl->v.fn.body, envnone(), sig->t);
+  if (returning)
+    r = retv;
+  r = valcoerce(r, sig->t, e); /* the tail's answer, against the fn's
+                                * own word -- a unit body under an
+                                * i32 return is the mismatch it is */
+  nlocs = savenlocs;
+  locbase = savelocbase;
+  returning = saveret;
+  retv = saveretv;
+  fnret = savefnret;
+  calldepth--;
+  pick->evaled = 1; /* the body ran to its end: what it did not
+                     * reach is a branch of it, not a misuse of
+                     * @compileError the body check reports (08) */
+  return r;
 }

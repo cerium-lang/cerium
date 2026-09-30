@@ -1,0 +1,59 @@
+/* const evaluation, the calls: a plain fn runs when its arguments are
+ * compile-time known -- the recursion, the assignments, the early
+ * return, the shadowing, the overload the parameters pick, the
+ * forward reference, the unreached @compileError, and the call that
+ * goes where a length goes (08-reflection.md) */
+fn fib(n: i32) -> i32 {
+  if n < 2 { n } else { fib(n - 1) + fib(n - 2) }
+}
+const F: i32 = fib(8);                           /* the recursion: 21 */
+
+fn work(n: i32) -> i32 {
+  let mut a = n;
+  a = a + 1;
+  a += 10;
+  a <<= 1;
+  a
+}
+const W: i32 = work(4);                          /* the assignments: 30 */
+
+fn clamp(n: i32) -> i32 {
+  if n < 0 { return 0; };
+  if n > 9 { return 9; };
+  n
+}
+const C: i32 = clamp(42) * 10 + clamp(-5);       /* the early return: 90 */
+
+fn sh(n: i32) -> i32 {
+  let x = 1;
+  let x = x + n;
+  let x = x * 2;
+  x
+}
+const S: i32 = sh(10);                           /* the shadowing: 22 */
+
+fn twice(x: i32) -> i32 { x * 2 }
+fn twice(x: f32) -> f32 { x * 4.0 }
+const T: i32 = twice(21) + @cast<i32>(twice(1.5)); /* the overload picks: 48 */
+
+const G: i32 = later(5);                         /* the forward reference: 15 */
+fn later(n: i32) -> i32 { n * 3 }
+
+fn guard(n: i32) -> i32 {
+  if n < 0 { @compileError("negative") };
+  n
+}
+const U: i32 = guard(3);                         /* the branch around it: 3 */
+
+fn nest(n: i32) -> i32 { twice(n) }              /* a parameter flows: 12 */
+const N: i32 = nest(6);
+
+const TOTAL: i32 = F + W + C + S + T + G + U + N; /* 21+30+90+22+48+15+3+12 */
+
+fn width() -> usize { 4 }
+fn main() -> i32 {
+  let a = [width()]i32{1, 2, 3, 4};              /* a call as a length */
+  let mut n = 0;
+  for x in a { n = n + x; }                      /* a runtime loop: 10 */
+  n + TOTAL - 10                                 /* 241 */
+}

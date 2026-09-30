@@ -1,0 +1,6 @@
+/* mutual recursion without an end: the call depth is the budget that
+ * ends it, long before the step limit has to (08-reflection.md) */
+fn a(n: i32) -> i32 { b(n) }
+fn b(n: i32) -> i32 { a(n) }
+const X: i32 = a(1);
+fn main() -> i32 { X }

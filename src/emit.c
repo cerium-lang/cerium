@@ -1958,6 +1958,14 @@ emaexpr(Em *em, Ast *e)
     char *nm = e->v.blt.name;
     Ast **targs = e->v.blt.targs;
 
+    if (strcmp(nm, "compileError") == 0) {
+      char *t = newtmp(em); /* the evaluator ran the fn and did not
+                             * reach this branch: emit gives it no
+                             * runtime behavior -- panic is the
+                             * running program's report (08) */
+      fprintf(em->o, "\t%s =w copy 0\n", t);
+      return t;
+    }
     if (strcmp(nm, "sizeof") == 0 || strcmp(nm, "alignof") == 0) {
       char *t = newtmp(em);
       Type *ty = targs[0]->ty;

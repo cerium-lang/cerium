@@ -1,0 +1,6 @@
+/* an #[extern(C)] fn has no body to run: the linker is not part of
+ * evaluation (08-reflection.md) */
+#[extern(C)]
+fn c_abs(n: i32) -> i32;
+const X: i32 = c_abs(-5);
+fn main() -> i32 { X }

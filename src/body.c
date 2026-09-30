@@ -48,6 +48,11 @@
 static Type *rexpr(Ast *e, Fenv *fe, Type *want);
 static Type *rexpr1(Ast *e, Fenv *fe, Type *want);
 
+/* the fn whose body pass 4 is walking: an @compileError it holds is
+ * a report only when the evaluator never ran the body -- the run
+ * itself decides the branch (08-reflection.md) */
+static Sym *bodyfn;
+
 /* -- places, read (03-move.md) ------------------------------------------- */
 
 static Type *rplace(Ast *e, Fenv *fe);
@@ -761,6 +766,10 @@ rbuiltin(Ast *e, Fenv *fe)
     st = rexpr(args[0], fe, 0);
     if (!st || st->k != Tyslice || !st->t || st->t->k != Tyint || st->t->num != IN_U8)
       berr(args[0], "@compileError takes a string");
+    if (bodyfn && bodyfn->evaled)
+      return tyunit(); /* the evaluator ran this body and did not
+                        * reach here: the branch stands, and emit
+                        * gives it no runtime behavior (08) */
     berr(e, "%.*s", (int) args[0]->v.s.len, args[0]->v.s.s);
   }
   /* offset, field, count, typeinfo, typeof: reflection's own pass */
@@ -2895,6 +2904,7 @@ runbody(Ast *it, Env env, Type **argtys, Type *ret)
 void
 checkbodyfn(Sym *s, Ast *it)
 {
+  bodyfn = s;
   runbody(it, envgparams(0, it->v.fn.gparams, vlen(it->v.fn.gparams)), s->fnty->args, s->fnty->t);
 }
 
@@ -2930,6 +2940,7 @@ recheckfn(Sym *s, Ast *it, Type **tys)
   }
   for (i = 0; i < vlen(it->v.fn.params); i++)
     ats[i] = gsubst(s->fnty->args[i], s->gparams, tys, ng);
+  bodyfn = s;
   runbody(it, env, ats, gsubst(s->fnty->t, s->gparams, tys, ng));
 }
 
@@ -2961,6 +2972,7 @@ checkbodyimpl(Sym *s, Ast *it)
       if (fnty->t->k == Tyslice && localview(ms[i]->v.fn.body->v.blk.tail, &fe))
         berr(ms[i]->v.fn.body->v.blk.tail, "this slice views the fn's own storage; return the "
                                            "array by value instead (01-types.md)");
+      bodyfn = s->members[i].sym;
       rblock(ms[i]->v.fn.body, &fe, fnty->t);
     }
 }
