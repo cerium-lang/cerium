@@ -1,0 +1,4 @@
+/* a row given twice (01-types.md) */
+struct P { x: i32, y: i32 }
+const A: P = P{x: 1, x: 2};
+fn main() -> i32 { 0 }

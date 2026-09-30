@@ -1,0 +1,7 @@
+/* no operator spans an enum: == is the Eq table's, and that table
+ * arrives with dispatch (07-operators.md, 08-reflection.md) */
+enum E(u8) { A, B }
+const X: E = E::A;
+const Y: E = E::B;
+const Q: bool = X == Y;
+fn main() -> i32 { 0 }

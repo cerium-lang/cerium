@@ -126,6 +126,16 @@ isfloatty(Type *t)
   return t->k == Tyint && t->num >= IN_F32;
 }
 
+/* an aggregate's value is its parts, not its words: the elements a
+ * Val carries, an enum's tag, a union's one -- the operators ask the
+ * trait table for these, and that table is a later milestone */
+static int
+isaggty(Type *t)
+{
+  return t->k == Tyarray || t->k == Tystruct || t->k == Tyunion || t->k == Tytuple ||
+         t->k == Tyenum;
+}
+
 static int
 issignedty(Type *t)
 {
@@ -352,9 +362,11 @@ locfind(char *name)
 static Val
 valbin(Val a, Val b, Tok op, Ast *e)
 {
-  if (a.elems || b.elems) /* an aggregate has no operator: the words
-                           * are an address here, and comparing those
-                           * compares nothing (08-reflection.md) */
+  if (a.elems || b.elems || isaggty(a.t) || isaggty(b.t)) /* the words
+                                                           * are an address or a tag here, and
+                                                           * comparing those compares nothing; the
+                                                           * operators over aggregates are the trait
+                                                           * table's, a later milestone (07) */
     cerrat(e, "an operator over aggregates arrives with a later milestone (08-reflection.md)");
   if (isfloatty(a.t)) {
     switch (op) {
@@ -486,6 +498,113 @@ static Val symval(Sym *s, Ast *at);
 static Val callval(Ast *e, Env env);
 static Val execblk(Ast *b, Env env, Type *want);
 
+/* a variant's value: the discriminant in the tag's own bits, the
+ * payload in the variant's own order -- under the enum's instance a
+ * call spelled or a want named (01-types.md) */
+static Val
+variantval(Sym *s, Variant *v, Type **targs, usize ntargs, Ast **args, usize na, Env env, Ast *at)
+{
+  Val    r;
+  Type  *et;
+  Type **ps;
+  usize  np, i;
+
+  et = tysym(s, targs, ntargs);
+  if (v->named) {
+    np = v->nfields;
+    ps = tyargs(np);
+    for (i = 0; i < np; i++)
+      ps[i] =
+          s->ngparams ? gsubst(v->fields[i].ty, s->gparams, targs, s->ngparams) : v->fields[i].ty;
+  } else {
+    np = v->payload && v->npayload ? v->npayload : 0;
+    ps = np ? tyargs(np) : 0;
+    if (ps)
+      for (i = 0; i < np; i++)
+        ps[i] = s->ngparams ? gsubst(v->payload[i], s->gparams, targs, s->ngparams) : v->payload[i];
+  }
+  if (na != np) /* the checker's own count, kept here (01-types.md) */
+    cerrat(at, "'%s' carries %lu payload%s, %lu given (01-types.md)", v->name, (unsigned long) np,
+           np == 1 ? "" : "s", (unsigned long) na);
+  r.t = et;
+  r.i = v->disc; /* the discriminant: @cast reads it out (01) */
+  r.f = 0;
+  r.elems = np ? arenaalloc(np * sizeof *r.elems) : 0;
+  for (i = 0; i < np; i++) {
+    r.elems[i] = valcoerce(ceval(args[i], env, ps[i]), ps[i], args[i]);
+  }
+  return r;
+}
+
+/* a struct or union's literal, against its own declared shape: the
+ * rows by name, the ones left out zero. A union keeps one row active
+ * -- the last name a literal wrote, or the zeroed whole -- and a read
+ * of any other is the unspecified thing the spec says not to rely
+ * on, which the promise of determinism turns into a report (01, 08) */
+static Val
+structlitval(Type *t, Ast **inits, Env env, Ast *at)
+{
+  Sym  *s = t->sym;
+  usize n = vlen(inits), nf = s->nfields, i, k;
+  int   seen = -1;
+  Val  *els;
+  Val   r;
+
+  (void) at;                /* the errors point at the rows themselves */
+  for (i = 0; i < n; i++) { /* the checker's own rule, kept here:
+                             * a name the shape does not hold, a name
+                             * given twice */
+    int f = -1;
+
+    for (k = 0; k < nf; k++)
+      if (strcmp(s->fields[k].name, inits[i]->v.init.name) == 0) {
+        f = (int) k;
+        break;
+      }
+    if (f < 0)
+      cerrat(inits[i], "'%s' has no field '%s' (01-types.md)", s->name, inits[i]->v.init.name);
+    for (k = 0; k < i; k++)
+      if (strcmp(inits[k]->v.init.name, inits[i]->v.init.name) == 0)
+        cerrat(inits[i], "field '%s' given twice (01-types.md)", inits[i]->v.init.name);
+    if (s->tykind == TYunion) /* the last write wins, as C's own
+                               * designated rule (01-types.md) */
+      seen = f;
+  }
+  if (t->k == Tyunion) {
+    r.t = t;
+    r.i = ~(u64) 0; /* the zeroed whole: every row reads zero */
+    r.f = 0;
+    r.elems = arenaalloc(sizeof *r.elems);
+    if (n) {
+      Ast *in = inits[n - 1];
+
+      r.i = (u64) seen;
+      r.elems[0] =
+          valcoerce(ceval(in->v.init.e, env, s->fields[seen].ty), s->fields[seen].ty, in->v.init.e);
+    }
+    return r;
+  }
+  els = arenaalloc((nf ? nf : 1) * sizeof *els);
+  for (i = 0; i < nf; i++) { /* the zero every left-out row is */
+    els[i] = valint(0, s->fields[i].ty);
+    if (isfloatty(s->fields[i].ty))
+      els[i].f = 0;
+  }
+  for (i = 0; i < n; i++) {
+    Ast *in = inits[i];
+
+    for (k = 0; k < nf; k++)
+      if (strcmp(s->fields[k].name, in->v.init.name) == 0)
+        break;
+    els[k] = valcoerce(ceval(in->v.init.e, env, s->fields[k].ty), s->fields[k].ty, in->v.init.e);
+  }
+  r.t = t;
+  r.i = 0;
+  r.f = 0;
+  r.elems = els;
+  return r;
+}
+
 /* a bare literal bends to the type the other side brought; nothing
  * else does */
 static int
@@ -595,11 +714,177 @@ ceval(Ast *e, Env env, Type *want)
       cerrat(e->v.n2.b, "index %ld out of range for %s (01-types.md)", (long) (i64) ix.i, tnm(b.t));
     return b.elems[ix.i];
   }
+  case Nstructlit: { /* the rows by name, the ones left out zero
+                      * (01-types.md); a generic's rows arrive bound
+                      * or not at all here */
+    Ast **segs = e->v.slit.path->v.path.segs;
+    Sym  *s;
+    Type *t;
+
+    if (vlen(segs) == 2 && !e->v.slit.path->v.path.root) { /* Enum::V{x:
+                                                            * y}: a
+                                                            * named
+                                                            * payload,
+                                                            * by name */
+      Sym     *es = symfind(segs[0]->v.seg.name);
+      Variant *v;
+
+      if (!es || es->kind != Stype || es->tykind != TYenum)
+        cerrat(e, "this literal is not compile-time known (08-reflection.md)");
+      v = symvarfind(es, segs[1]->v.seg.name);
+      if (!v)
+        cerrat(e, "'%s' has no variant '%s' (01-types.md)", es->name, segs[1]->v.seg.name);
+      if (!v->named)
+        cerrat(e, "'%s' is positional: construct it with a call (01-types.md)", v->name);
+      if (es->ngparams)
+        cerrat(e, "a generic enum's construction arrives with a later milestone (04-generics.md)");
+      { /* the rows by name, in the payload's own order */
+        Ast **inits = e->v.slit.inits;
+        usize n = vlen(inits), nf = v->nfields, i, k;
+        Ast **args;
+
+        if (n != nf)
+          cerrat(e, "'%s' carries %lu payloads, %lu given (01-types.md)", v->name,
+                 (unsigned long) nf, (unsigned long) n);
+        args = arenaalloc((nf ? nf : 1) * sizeof *args);
+        for (k = 0; k < nf; k++) {
+          for (i = 0; i < n; i++)
+            if (strcmp(inits[i]->v.init.name, v->fields[k].name) == 0)
+              break;
+          if (i == n)
+            cerrat(e, "'%s' has no field '%s' (01-types.md)", v->name, v->fields[k].name);
+          args[k] = inits[i]->v.init.e;
+        }
+        return variantval(es, v, 0, 0, args, nf, env, e);
+      }
+    }
+    if (vlen(segs) != 1 || e->v.slit.path->v.path.root)
+      cerrat(e, "this literal is not compile-time known (08-reflection.md)");
+    s = symfind(segs[0]->v.seg.name);
+    if (!s || s->kind != Stype || (s->tykind != TYstruct && s->tykind != TYunion))
+      cerrat(e, "'%s' is not a struct or union here (01-types.md)", segs[0]->v.seg.name);
+    if (s->ngparams)
+      cerrat(e, "a generic struct's literal arrives with a later milestone (04-generics.md)");
+    t = tysym(s, 0, 0);
+    return structlitval(t, e->v.slit.inits, env, e);
+  }
+  case Nbarestructlit: { /* the want names the struct (01-types.md) */
+    Type *t = want;
+
+    while (t && t->k == Tymut)
+      t = t->t;
+    if (!t || (t->k != Tystruct && t->k != Tyunion))
+      cerrat(e, "a bare literal needs the struct from its context (01-types.md)");
+    if (t->sym->ngparams)
+      cerrat(e, "a generic struct's literal arrives with a later milestone (04-generics.md)");
+    return structlitval(t, e->v.list.ts, env, e);
+  }
+  case Ntuple: { /* the rows, by position (01-types.md) */
+    Ast **ts = e->v.list.ts;
+    usize n = vlen(ts), i;
+    Val  *els;
+    Val   r;
+
+    els = arenaalloc((n ? n : 1) * sizeof *els);
+    for (i = 0; i < n; i++)
+      els[i] = ceval(ts[i], env, 0);
+    { /* the rows' own types, the derivation's answer; the want's
+       * coerce happens after */
+      Type **ats = n ? tyargs(n) : 0;
+      Val    w;
+
+      for (i = 0; i < n; i++)
+        ats[i] = els[i].t;
+      r.t = tytuple(ats, n);
+      r.i = 0;
+      r.f = 0;
+      r.elems = els;
+      if (want && want->k == Tytuple &&
+          want->nargs == n) { /* the
+                               * want names the rows: each lands in its own, the
+                               * elements' coerce the declaration's rule */
+        for (i = 0; i < n; i++)
+          els[i] = valcoerce(els[i], want->args[i], ts[i]);
+        w = r;
+        w.t = want;
+        return w;
+      }
+    }
+    return r;
+  }
+  case Ntupidx: { /* a row by position: the tuple's own count bounds
+                   * it, the checker's rule the walk keeps (01) */
+    Val b = ceval(e->v.tup.e, env, 0);
+
+    if (b.t->k != Tytuple)
+      cerrat(e->v.tup.e, "only a tuple's rows are read by number: %s is not one (01-types.md)",
+             tnm(b.t));
+    if (e->v.tup.idx >= b.t->nargs)
+      cerrat(e, "row %lu out of range for %s (01-types.md)", (unsigned long) e->v.tup.idx,
+             tnm(b.t));
+    return b.elems[e->v.tup.idx];
+  }
+  case Naccess: { /* a field by name: the struct's rows in their
+                   * declaration order, the union's one, the slice's
+                   * two a borrow the evaluation does not take (01) */
+    Val   b = ceval(e->v.fld.e, env, 0);
+    char *nm = e->v.fld.name;
+    usize i;
+
+    if (b.t->k == Tyslice)
+      cerrat(e,
+             "'%s' of a slice is a borrow of its storage: evaluation takes none (08-reflection.md)",
+             nm);
+    if (b.t->k != Tystruct && b.t->k != Tyunion)
+      cerrat(e, "%s has no fields (01-types.md)", tnm(b.t));
+    if (b.t->nargs != (usize) b.t->sym->ngparams) /* a generic's rows
+                                                   * arrive bound; the
+                                                   * eval reads them
+                                                   * bound or not at
+                                                   * all */
+      cerrat(e, "a generic struct's fields arrive with a later milestone (04-generics.md)");
+    for (i = 0; i < b.t->sym->nfields; i++)
+      if (strcmp(b.t->sym->fields[i].name, nm) == 0)
+        break;
+    if (i == b.t->sym->nfields)
+      cerrat(e, "'%s' has no field '%s' (01-types.md)", b.t->sym->name, nm);
+    if (b.t->k == Tyunion) { /* the one row the write made active;
+                              * the zeroed whole reads zero every
+                              * row, the write of one makes the
+                              * others unspecified, and the promise
+                              * is determinism (08) */
+      if (b.i == ~(u64) 0)
+        return valint(0, b.t->sym->fields[i].ty);
+      if (b.i != i)
+        cerrat(e,
+               "'%s' was not the field this union's value set: that read is unspecified, and the "
+               "promise is determinism (01-types.md, 08-reflection.md)",
+               nm);
+      return b.elems[0];
+    }
+    return b.elems[i];
+  }
   case Npath: { /* a local's read, or a const reference: the chain (08) */
     char *nm = e->v.path.segs[0]->v.seg.name;
     Sym  *s;
     Type *p;
 
+    if (vlen(e->v.path.segs) == 2 && !e->v.path.root) { /* Enum::V:
+                                                         * the payloadless
+                                                         * constructor */
+      Sym     *es = symfind(e->v.path.segs[0]->v.seg.name);
+      Variant *v;
+
+      if (!es || es->kind != Stype || es->tykind != TYenum)
+        cerrat(e, "this path is not compile-time known (08-reflection.md)");
+      v = symvarfind(es, e->v.path.segs[1]->v.seg.name);
+      if (!v)
+        cerrat(e, "'%s' has no variant '%s' (01-types.md)", es->name,
+               e->v.path.segs[1]->v.seg.name);
+      if (v->named || v->payload)
+        cerrat(e, "'%s' carries a payload; construct it (01-types.md)", v->name);
+      return variantval(es, v, 0, 0, 0, 0, env, e);
+    }
     if (vlen(e->v.path.segs) != 1 || e->v.path.root)
       cerrat(e, "this path is not compile-time known (08-reflection.md)");
     if (nlocs > locbase) { /* a frame is running: its bindings are
@@ -615,6 +900,18 @@ ceval(Ast *e, Env env, Type *want)
             * call, and the evaluator runs before any */
       cerrat(e, "'%s' is a const parameter: it has no value until the call (08-reflection.md)", nm);
     s = symfind(nm);
+    if (!s) { /* Some, None, Ok: a bare constructor, the want naming
+               * the enum (01-types.md) */
+      Sym     *owner = symvariantowner(nm);
+      Variant *v;
+
+      if (owner && want && want->k == Tyenum && want->sym == owner) {
+        v = symvarfind(owner, nm);
+        if (v->named || v->payload)
+          cerrat(e, "'%s' carries a payload; construct it (01-types.md)", nm);
+        return variantval(owner, v, want->args, want->nargs, 0, 0, env, e);
+      }
+    }
     if (!s || s->kind != Sconst)
       cerrat(e, "'%s' is not a const here (08-reflection.md)", nm);
     return symval(s, e);
@@ -635,8 +932,41 @@ ceval(Ast *e, Env env, Type *want)
   }
   case Nblock:
     return execblk(e, env, want);
-  case Ncall: /* a fn, its arguments known (08-reflection.md) */
+  case Ncall: { /* a constructor first -- Enum::V(...), Some(v) --
+                 * then a fn, its arguments known (08-reflection.md) */
+    Ast **segs;
+    Ast  *f = e->v.call.f;
+
+    if (f->k == Npath && !f->v.path.root && !f->v.path.segs[0]->v.seg.args) {
+      segs = f->v.path.segs;
+      if (vlen(segs) == 1) { /* Some(3), Ok(v): the prelude's bare
+                              * constructors, the want naming the
+                              * enum (01-types.md) */
+        char *nm = segs[0]->v.seg.name;
+        Sym  *owner = symfind(nm) ? 0 : symvariantowner(nm);
+
+        if (owner && want && want->k == Tyenum && want->sym == owner)
+          return variantval(owner, symvarfind(owner, nm), want->args, want->nargs, e->v.call.args,
+                            vlen(e->v.call.args), env, e);
+      } else if (vlen(segs) == 2) { /* Enum::V(...): the enum's own */
+        Sym *es = symfind(segs[0]->v.seg.name);
+
+        if (es && es->kind == Stype && es->tykind == TYenum) {
+          Variant *v = symvarfind(es, segs[1]->v.seg.name);
+
+          if (!v)
+            cerrat(f, "'%s' has no variant '%s' (01-types.md)", es->name, segs[1]->v.seg.name);
+          if (es->ngparams) /* the instance a call would spell rides
+                             * in the path's own arguments; a want
+                             * may name one, and both arrive later */
+            cerrat(f,
+                   "a generic enum's construction arrives with a later milestone (04-generics.md)");
+          return variantval(es, v, 0, 0, e->v.call.args, vlen(e->v.call.args), env, e);
+        }
+      }
+    }
     return callval(e, env);
+  }
   case Nun: {
     Val v = ceval(e->v.un.e, env, want);
 
@@ -761,6 +1091,14 @@ ceval(Ast *e, Env env, Type *want)
       }
       if (t->k == Tybool && v.t->k != Tybool)
         cerrat(e, "@cast to bool is not a conversion (01-types.md)");
+      if (v.t->k == Tyenum) { /* the discriminant out, the spec's own
+                               * read of a variant's number
+                               * (01-types.md: @cast<u32>(X::A)) */
+        if (isfloatty(t) || t->k == Tybool)
+          cerrat(e, "an enum casts to an integer, the tag's own kind (01-types.md)");
+        domcheck(v.i, t, e);
+        return valint(v.i, t);
+      }
       if (v.t->k == Tyint || v.t->k == Tybool)
         domcheck(v.i, t, e); /* the widening and the narrowing both:
                               * the target's domain is the check */

@@ -1,0 +1,49 @@
+/* const evaluation, the aggregates: a struct's rows by name -- the
+ * ones left out zero -- a tuple's by position, a union's one active
+ * row with the zeroed whole reading zero, an enum's construction in
+ * every shape with @cast reading the discriminant out, the nesting,
+ * and the frames they cross. The operators stay the trait table's,
+ * a later milestone (08-reflection.md) */
+struct P { x: i32, y: i32 }
+const P1: P = P{x: 3, y: 4};                     /* 7 */
+const P2: P = P{x: 5};                           /* y zero: 5 */
+
+const T: (i32, u8) = (7, 9);                     /* 16 */
+const TS: i32 = T.0 + @cast<i32>(T.1);
+
+union U { a: i32, b: u32 }
+const UA: U = U{a: 7};                           /* 7 */
+const UZ: U = U{};                               /* the zeroed whole */
+
+enum Op(u8) { Add(i32, i32), Neg(i32) }          /* positional */
+enum E(u8) { A, B, C }                           /* payloadless */
+enum E2(u8) { Pt { x: i32, y: i32 } }            /* named */
+const D1: u8 = @cast<u8>(Op::Add(3, 4));         /* 0 */
+const D2: u8 = @cast<u8>(Op::Neg(9));            /* 1 */
+const D3: u8 = @cast<u8>(E::B);                  /* 1 */
+const D4: u8 = @cast<u8>(E2::Pt{x: 8, y: 9});    /* 0 */
+
+const O: ?i32 = Some(42);                        /* the niche's own */
+const N: ?i32 = None;
+const D5: u8 = @cast<u8>(O) + @cast<u8>(N);      /* 1 + 0 */
+
+struct Inner { v: i32 }
+struct Outer { inr: Inner, arr: [2]i32 }         /* the nesting */
+const OUT: Outer = Outer{inr: Inner{v: 5}, arr: [2]i32{6, 7}};
+const NEST: i32 = OUT.inr.v + OUT.arr[1];        /* 12 */
+const ARR: [2]Inner = [2]Inner{Inner{v: 1}, Inner{v: 2}};
+const AR: i32 = ARR[1].v;                        /* 2 */
+
+fn getx(p: P) -> i32 { p.x }                     /* frames */
+fn tag(o: Op) -> u8 { @cast<u8>(o) }
+const FX: i32 = getx(P{x: 10, y: 20});           /* 10 */
+const FT: i32 = @cast<i32>(tag(Op::Neg(5)));     /* 1 */
+
+const TOTAL: i32 = P1.x + P1.y + P2.x + P2.y     /* 7 + 5 */
+  + TS + UA.a + UZ.a                             /* 16 + 7 + 0 */
+  + @cast<i32>(D1 + D2 + D3 + D4 + D5)           /* 0+1+1+0+1 */
+  + NEST + AR + FX + FT;                         /* 12+2+10+1: 63 */
+fn main() -> i32 {
+  let p = P{x: 100, y: 200};                     /* a runtime struct */
+  p.x + p.y + TOTAL - 300                        /* 300 + 63 - 300: 63 */
+}
