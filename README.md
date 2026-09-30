@@ -215,6 +215,28 @@ and that table arrives with dispatch — and a generic's rows wait
 for the binding a call's own words spell. A body reading a const
 aggregate still waits for the data segment emit does not have.
 
+The match runs, and the loops with it. A pattern destructures; it
+does not test — so an arm's turn is a discriminant's compare, the
+patterns that miss naming another variant, and the bindings an arm
+spelled land in the frame and end with it. A `let` takes a pattern
+now, the tuple by position, the struct by field, a variant's
+payload under it — irrefutable, and a value that says otherwise is
+the abort it would be where it runs, reported here. The three `for`
+heads unwind: a condition while it holds, a `let` while its
+pattern fits the value re-read every round, an `in` over an owned
+array's elements or the `?T` niche — one round at most, so a
+`continue` ends it like a `break` would — and a refutable element
+pattern ends the loop the way a `for let`'s misfit does. `break`
+and `continue` unwind one level, a `return` everything; a round
+costs a step, so a body that empties still meets the budget, and
+what would not end ends. Iterating a borrow stays out — the
+pointer a slice lends is a runtime thing — and so does an iterator
+the method table would pick. A call's arguments take their wants
+from the one plain overload that takes them, so `Some(3)`
+constructs in an argument's place, and a match lands at a const's
+own initializer, as the `if` already did. The const `for`'s unroll
+waits with its own milestone.
+
 Codegen has begun: `xyz -s file.xyz` prints the `.ssa` text — qbe's
 input — and `xyz -c file.xyz -o out` runs the pipeline, qbe as a
 subprocess and the system `cc` linking. Checking writes each node's

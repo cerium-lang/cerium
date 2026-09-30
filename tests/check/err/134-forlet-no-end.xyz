@@ -1,0 +1,8 @@
+/* a for let whose pattern always fits: the round never ends, and
+ * the step limit is the end the promise makes (08-reflection.md) */
+fn f() -> i32 {
+  for let (a, b) = (1, 2) { }
+  0
+}
+const X: i32 = f();
+fn main() -> i32 { X }

@@ -1,0 +1,8 @@
+/* a let's pattern is irrefutable; a value it does not fit is the
+ * abort it would be where it runs, reported here (09-match.md) */
+fn f(o: ?i32) -> i32 {
+  let Some(x) = o;
+  x
+}
+const X: i32 = f(None);
+fn main() -> i32 { X }
