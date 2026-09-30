@@ -75,6 +75,18 @@ static Val   retv;
 static Type *fnret; /* the frame's fn, its return type: a return's
                      * want */
 
+/* the lets a const for's unroll bound, round by round: the body's
+ * own pass walks them in order, so an inner const for -- iterating
+ * the outer's variable -- reads the literal of the round it stands
+ * in. The name maps to the tree the round spelled, and reading it
+ * is evaluating that tree again, the cheapest copy there is */
+static struct
+{
+  char *name;
+  Ast  *e;
+} cforlets[256];
+static usize ncforlets;
+
 /* -- the value domain ---------------------------------------------------- */
 
 /* a type's name, for a message: two a line, at the most */
@@ -1122,6 +1134,15 @@ ceval(Ast *e, Env env, Type *want)
       if (l)
         return l->v;
     }
+    { /* a const for's round, bound by the unroll the body's pass is
+       * walking: the literal of the round it stands in, the inner
+       * loop's iterable (10-iteration.md) */
+      usize ci;
+
+      for (ci = ncforlets; ci > 0; ci--)
+        if (strcmp(cforlets[ci - 1].name, nm) == 0)
+          return ceval(cforlets[ci - 1].e, env, 0);
+    }
     p = envfind(&env, nm);
     if (p) /* a generic's const parameter: it has a value only at a
             * call, and the evaluator runs before any */
@@ -1637,6 +1658,16 @@ execstmt(Ast *st, Env env)
   case Nfor:
     execfor(st, env);
     return;
+  case Ncfor: /* the const marker changes nothing in a fn the
+               * evaluator runs: every value is compile-time known
+               * here or the fn would not run (08-reflection.md) --
+               * but the marker promises an iteration, and the other
+               * two shapes are runtime ones the body pass rejects */
+    if (st->v.forx.shape != FIN)
+      cerrat(st, "a const for iterates: the condition and the let forms are runtime shapes "
+                 "(10-iteration.md)");
+    execfor(st, env);
+    return;
   case Nbreak:
     breaking = 1;
     return;
@@ -1686,6 +1717,518 @@ execstmt(Ast *st, Env env)
   default:
     cerrat(st, "this statement is not compile-time known (08-reflection.md)");
   }
+}
+
+/* -- the const for's unroll (10-iteration.md) ---------------------------
+ *
+ * The iteration runs here, in the evaluator; what it spelled goes
+ * back into the tree as ordinary statements -- each round's value a
+ * let that spells it as a literal, the body following as itself, the
+ * same tree shared between the rounds, for the passes that follow
+ * read the tree without writing it. No loop survives into the
+ * generated code, which is the marker's whole promise. */
+
+/* mk with another node's position: the materialized tree reports
+ * where the loop stood, not wherever the lexer happens to sit */
+static Ast *
+mknear(Nk k, Ast *at)
+{
+  Ast *n = mk(k);
+
+  n->line = at->line;
+  n->col = at->col;
+  return n;
+}
+
+/* an integer literal, placed like the rest of the materialized
+ * tree */
+static Ast *
+intnear(u64 num, Ast *at)
+{
+  Ast *n = mknear(Nint, at);
+
+  n->v.i.num = num;
+  return n;
+}
+
+/* one path segment, or two: a scalar's keyword, a declaration's
+ * name -- and a variant's, which is the second segment of its
+ * enum's */
+static Ast *
+pathsegs(char *a, char *b, Ast *at)
+{
+  Ast *p = mknear(Npath, at);
+  Ast *s0 = mknear(Nseg, at), *s1 = b ? mknear(Nseg, at) : 0;
+
+  s0->v.seg.name = a;
+  if (s1)
+    s1->v.seg.name = b;
+  p->v.path.segs = vnew(Ast *, b ? 2 : 1);
+  vappend(&p->v.path.segs, &s0);
+  if (s1)
+    vappend(&p->v.path.segs, &s1);
+  return p;
+}
+
+/* the checker's type, back to the tree that spells it: a let's
+ * annotation and an array literal's element type are tree slots, so
+ * a materialized value's parts walk back through here. The sugar is
+ * spelled back (?T, E?T); what the tree cannot say -- a pointer, a
+ * generic -- stops the unroll where it stands */
+static Ast *
+tytoexpr(Type *t, Ast *at)
+{
+  static const struct
+  {
+    char *n;
+    int   num;
+  } ps[] = {
+      /* resolve.c's prim, mirrored: the names are keywords
+       * in type position, so no declaration shadows them */
+      {"i8", IN_I8},       {"i16", IN_I16},     {"i32", IN_I32}, {"i64", IN_I64}, {"i128", IN_I128},
+      {"u8", IN_U8},       {"u16", IN_U16},     {"u32", IN_U32}, {"u64", IN_U64}, {"u128", IN_U128},
+      {"isize", IN_ISIZE}, {"usize", IN_USIZE}, {"f32", IN_F32}, {"f64", IN_F64},
+  };
+  Ast  *p;
+  usize i;
+
+  if (!t)
+    return 0;
+  switch (t->k) {
+  case Tyint: /* the scalars: keywords in type position (resolve.c) */
+    for (i = 0; i < sizeof ps / sizeof ps[0]; i++)
+      if (ps[i].num == t->num)
+        return pathsegs(ps[i].n, 0, at);
+    cerrat(at, "this width does not materialize (08-reflection.md)");
+    return 0; /* unreachable */
+  case Tybool:
+    return pathsegs("bool", 0, at);
+  case Tyarray: /* [N]T, the length from the type */
+    p = mknear(Ntarray, at);
+    p->v.arrlit.len = intnear(t->n, at);
+    p->v.arrlit.t = tytoexpr(t->t, at);
+    return p;
+  case Tyslice: /* []T: the same tree, its length slot empty */
+    p = mknear(Ntarray, at);
+    p->v.arrlit.t = tytoexpr(t->t, at);
+    return p;
+  case Tytuple: /* the rows, each its own tree */
+    p = mknear(Nttuple, at);
+    p->v.list.ts = vnew(Ast *, t->nargs ? t->nargs : 1);
+    for (i = 0; i < t->nargs; i++) {
+      Ast *r = tytoexpr(t->args[i], at);
+
+      vappend(&p->v.list.ts, &r);
+    }
+    return p;
+  case Tystruct:
+  case Tyunion:
+  case Tyenum:
+    if (t->sym == sym_option && t->nargs == 1) { /* ?T, spelled back */
+      p = mknear(Ntopt, at);
+      p->v.n1.e = tytoexpr(t->args[0], at);
+      return p;
+    }
+    if (t->sym == sym_result && t->nargs == 2) { /* E?T likewise */
+      p = mknear(Ntresult, at);
+      p->v.n2.a = tytoexpr(t->args[0], at);
+      p->v.n2.b = tytoexpr(t->args[1], at);
+      return p;
+    }
+    if (t->nargs) /* a generic's rows wait for the binding a
+                   * declaration's own words spell (04-generics.md) */
+      cerrat(at,
+             "'%s' is generic here: a generic's materialization arrives with a later milestone "
+             "(04-generics.md)",
+             t->sym->name);
+    return pathsegs(t->sym->name, 0, at);
+  default: /* pointers and the rest are runtime things (08) */
+    cerrat(at, "%s does not materialize: it is not compile-time known here (08-reflection.md)",
+           tnm(t));
+  }
+  return 0; /* unreachable */
+}
+
+/* a value the walk holds, back to the expression that spells it: a
+ * literal the passes that follow read the way they read the
+ * program's own. A variant's payload is spelled positionally -- the
+ * body's resolver does not take the braces form yet, and the
+ * payload's order is the declaration's own */
+static Ast *
+valtoexpr(Val v, Ast *at)
+{
+  Ast  *n;
+  usize i;
+
+  switch (v.t->k) {
+  case Tybool:
+    n = mknear(Nbool, at);
+    n->v.i.num = v.i != 0;
+    return n;
+  case Tyint:
+    if (v.t->num == IN_F32 || v.t->num == IN_F64) { /* a float rides
+                                                     * its own slot */
+      n = mknear(Nflt, at);
+      n->v.f.flt = v.f;
+      return n;
+    }
+    n = mknear(Nint, at); /* the bits whole: the domain check at the
+                           * other end reads them the way this end
+                           * wrote them */
+    n->v.i.num = v.i;
+    return n;
+  case Tyunit:
+    return mknear(Nunit, at);
+  case Tyenum: { /* the variant the discriminant names */
+    Sym     *s = v.t->sym;
+    Variant *var = 0;
+    usize    np;
+
+    for (i = 0; i < (usize) s->nvariants; i++)
+      if (s->variants[i].disc == v.i) {
+        var = &s->variants[i];
+        break;
+      }
+    if (!var) /* the declaration changed under the value: cannot be,
+               * for the evaluator read it to build the value */
+      cerrat(at, "'%s' holds a discriminant none of its variants own", s->name);
+    np = var->named ? var->nfields : (var->payload ? var->npayload : 0);
+    if (!np)
+      return pathsegs(s->name, var->name, at); /* payloadless: E::B */
+    { /* E::V(args...): a call the checker and the emitter read the
+       * way they read the program's own */
+      Ast *c = mknear(Ncall, at);
+
+      c->v.call.f = pathsegs(s->name, var->name, at);
+      c->v.call.args = vnew(Ast *, np);
+      for (i = 0; i < np; i++) {
+        Ast *a = valtoexpr(v.elems[i], at);
+
+        vappend(&c->v.call.args, &a);
+      }
+      return c;
+    }
+  }
+  case Tystruct: { /* every row by name: the value already holds the
+                    * zero the left-out half reads as (01-types.md) */
+    Sym  *s = v.t->sym;
+    usize nf = s->nfields;
+
+    n = mknear(Nstructlit, at);
+    n->v.slit.path = pathsegs(s->name, 0, at);
+    n->v.slit.inits = vnew(Ast *, nf ? nf : 1);
+    for (i = 0; i < nf; i++) {
+      Ast *in = mknear(Ninit, at);
+
+      in->v.init.name = s->fields[i].name;
+      in->v.init.e = valtoexpr(v.elems[i], at);
+      vappend(&n->v.slit.inits, &in);
+    }
+    return n;
+  }
+  case Tyunion: { /* the one row the write made active -- or the
+                   * zeroed whole, which is the literal with no rows
+                   * at all */
+    Sym *s = v.t->sym;
+
+    n = mknear(Nstructlit, at);
+    n->v.slit.path = pathsegs(s->name, 0, at);
+    n->v.slit.inits = vnew(Ast *, 1);
+    if (v.i != ~(u64) 0) {
+      Ast *in = mknear(Ninit, at);
+
+      in->v.init.name = s->fields[v.i].name;
+      in->v.init.e = valtoexpr(v.elems[0], at);
+      vappend(&n->v.slit.inits, &in);
+    }
+    return n;
+  }
+  case Tytuple: /* by position, the rows' own types */
+    n = mknear(Ntuple, at);
+    n->v.list.ts = vnew(Ast *, v.t->nargs ? v.t->nargs : 1);
+    for (i = 0; i < v.t->nargs; i++) {
+      Ast *r = valtoexpr(v.elems[i], at);
+
+      vappend(&n->v.list.ts, &r);
+    }
+    return n;
+  case Tyarray: { /* the elements in a row, the length from the type */
+    usize ne = v.t->n;
+
+    n = mknear(Narraylit, at);
+    n->v.arrlit.len = intnear(ne, at);
+    n->v.arrlit.t = tytoexpr(v.t->t, at);
+    n->v.arrlit.es = vnew(Ast *, ne ? ne : 1);
+    for (i = 0; i < ne; i++) {
+      Ast *el = valtoexpr(v.elems[i], at);
+
+      vappend(&n->v.arrlit.es, &el);
+    }
+    return n;
+  }
+  default: /* a slice's elements lend out as pointers, a pointer is a
+            * runtime address: neither is a literal (08) */
+    cerrat(at, "%s does not materialize: it is not compile-time known here (08-reflection.md)",
+           tnm(v.t));
+  }
+  return 0; /* unreachable */
+}
+
+/* a round's binding, flattened: the pattern's names and the values
+ * under them -- the whole pattern walked, a tuple by position, a
+ * struct by field, a variant's payload in the declaration's order,
+ * an or-pattern the branch that fits. What lands here is a plain
+ * name with its value, for the let that spells a round is a flat
+ * one -- the emitter's let reads a pattern as irrefutable
+ * (09-match.md), and the round's own fit was proven here */
+typedef struct
+{
+  char *name;
+  Val   v;
+  int   mut; /* the field's own, where the pattern reached one */
+} Rbind;
+
+static void
+bindround(Ast *p, Val v, int mut, Rbind **out)
+{
+  usize i, k;
+
+  switch (p->k) {
+  case Npwild:
+  case Nunit:
+    return;
+  case Nppath: {
+    Ast    **segs = p->v.ppath.path->v.path.segs;
+    Variant *var = patvariant(p, v.t);
+
+    if (!var) { /* the binding form: the name, the whole value */
+      Rbind b;
+
+      b.name = segs[0]->v.seg.name;
+      b.v = v;
+      b.mut = mut;
+      vappend(out, &b);
+      return;
+    }
+    { /* a variant's payload, positionally in its own order */
+      Ast **ps = p->v.ppath.payload;
+      usize np = vlen(ps);
+
+      for (i = 0; i < np; i++) {
+        int fm = 0;
+        Val pv;
+
+        if (p->v.ppath.named) { /* by field name, the declaration's
+                                 * order (01-types.md) */
+          Field *f = 0;
+
+          for (k = 0; k < var->nfields; k++)
+            if (strcmp(var->fields[k].name, ps[i]->v.init.name) == 0) {
+              f = &var->fields[k];
+              break;
+            }
+          if (!f)
+            cerrat(p, "'%s' has no field '%s' (01-types.md)", var->name, ps[i]->v.init.name);
+          fm = f->mut;
+          pv = v.elems[k];
+          if (ps[i]->v.init.e) /* the sub-pattern, not the field
+                                * name alone */
+            bindround(ps[i]->v.init.e, pv, mut || fm, out);
+          else {
+            Rbind b;
+
+            b.name = f->name;
+            b.v = pv;
+            b.mut = mut || fm;
+            vappend(out, &b);
+          }
+        } else {
+          pv = v.elems[i];
+          bindround(ps[i], pv, mut, out);
+        }
+      }
+    }
+    return;
+  }
+  case Nptuple: { /* by position */
+    Ast **ps = p->v.list.ts;
+    usize n = vlen(ps);
+
+    for (i = 0; i < n && i < v.t->nargs; i++)
+      bindround(ps[i], v.elems[i], mut, out);
+    return;
+  }
+  case Npstruct: { /* by field name */
+    Ast **fs = p->v.pstruct.fields;
+    usize n = vlen(fs);
+
+    for (i = 0; i < n; i++) {
+      usize nf = v.t->sym->nfields;
+
+      for (k = 0; k < nf; k++)
+        if (strcmp(v.t->sym->fields[k].name, fs[i]->v.init.name) == 0)
+          break;
+      if (k == nf)
+        cerrat(p, "'%s' has no field '%s' (01-types.md)", v.t->sym->name, fs[i]->v.init.name);
+      if (fs[i]->v.init.e)
+        bindround(fs[i]->v.init.e, v.elems[k], mut || v.t->sym->fields[k].mut, out);
+      else {
+        Rbind b;
+
+        b.name = fs[i]->v.init.name;
+        b.v = v.elems[k];
+        b.mut = mut || v.t->sym->fields[k].mut;
+        vappend(out, &b);
+      }
+    }
+    return;
+  }
+  case Npor: { /* the branch that fits -- the fit was proven above */
+    Ast **alts = p->v.list.ts;
+    usize n = vlen(alts);
+
+    for (i = 0; i < n; i++)
+      if (patfits(alts[i], v)) {
+        bindround(alts[i], v, mut, out);
+        return;
+      }
+    return;
+  }
+  default:
+    cerrat(p, "this pattern does not bind a round (09-match.md)");
+  }
+}
+
+/* a round's binding, listed for the inner const for that iterates
+ * its name: the unroll builds the rounds in order, so the listing
+ * shadows the way bindings do -- each round's names over the ones
+ * before them */
+static void
+cforlet(Rbind *bs, usize nb, Ast **es)
+{
+  usize i;
+
+  for (i = 0; i < nb; i++) {
+    if (ncforlets >= sizeof cforlets / sizeof cforlets[0])
+      cerrat(es[i], "too many const for rounds in flight (10-iteration.md)");
+    cforlets[ncforlets].name = bs[i].name;
+    cforlets[ncforlets].e = es[i]->v.let.e; /* the literal, not the
+                                             * let that carries it */
+    ncforlets++;
+  }
+}
+
+/* the body's statements, the inner const fors among them already
+ * unrolled: a nested one iterates the outer's variable, and the
+ * round it lands in is the round being spelled -- so it expands
+ * here, inside the round, not later as a node the passes would
+ * reach once per round with only one unroll slot to share. A
+ * runtime for stays itself: it is a statement like any other */
+static void
+cforbody(Ast *body, Ast ***un)
+{
+  Ast **ss = body->v.blk.stmts;
+  usize n = vlen(ss), i, k;
+
+  for (i = 0; i < n; i++) {
+    if (ss[i]->k == Ncfor) { /* the recursion, flattened in where
+                              * it stood */
+      Ast **inner = cforunroll(ss[i]);
+
+      for (k = 0; k < vlen(inner); k++)
+        vappend(un, &inner[k]);
+    } else
+      vappend(un, &ss[i]);
+  }
+  if (body->v.blk.tail) { /* the body's last expression, an
+                           * expression's statement now -- the loop
+                           * had it as its own tail, the unroll has
+                           * no tail (15-grammar.md) */
+    Ast *x = mknear(Nexprstmt, body);
+
+    x->v.n1.e = body->v.blk.tail;
+    vappend(un, &x);
+  }
+}
+
+/* the const for's statements: the iteration already ran, and each
+ * round binds its values as lets that spell them -- the types
+ * spelled too, so the checking walks them the way it walks the
+ * program's own words. The pattern is flattened into one binding a
+ * let, for the round's fit was proven here and a let's pattern is
+ * irrefutable where it is checked (09-match.md); a pattern the
+ * element does not fit ends the loop, the way a for-in's does
+ * (10-iteration.md). What is not compile-time known stops where it
+ * stands, for the marker is a promise, not a hope (08-reflection.md) */
+Ast **
+cforunroll(Ast *st)
+{
+  Ast **un;
+  Val   src;
+  Type *et;
+  Val  *rounds = 0;
+  usize n = 0, i, save = ncforlets;
+
+  if (st->v.forx.shape != FIN)
+    cerrat(st, "a const for iterates: the condition and the let forms are runtime shapes "
+               "(10-iteration.md)");
+  src = ceval(st->v.forx.b, envnone(), 0);
+  et = src.t;
+  while (et && et->k == Tymut)
+    et = et->t;
+  if (et->k == Tyarray) { /* an owned array: each element itself,
+                           * one round apiece */
+    rounds = src.elems;
+    n = et->n;
+  } else if (et->k == Tyenum && et->sym == sym_option && et->nargs == 1) {
+    /* ?T yields its one payload or nothing: at most one round
+     * (10-iteration.md) */
+    Variant *some = symvarfind(et->sym, "Some");
+
+    if (some && src.i == some->disc) {
+      rounds = src.elems;
+      n = 1;
+    }
+  } else if (et->k == Tyslice) /* a slice lends each element out: the
+                                * binding would be a pointer, and no
+                                * loop is emitted to lend it */
+    cerrat(st->v.forx.b,
+           "iterating a slice lends each element out: the binding is a pointer, and no loop is "
+           "emitted to lend one (10-iteration.md)");
+  else
+    cerrat(st->v.forx.b,
+           "iterating %s is not compile-time known: its iterators arrive with a later milestone "
+           "(10-iteration.md)",
+           tnm(et));
+
+  un = vnew(Ast *, n ? n * 4 : 1);
+  for (i = 0; i < n; i++) {
+    Rbind *bs = vnew(Rbind, 4);
+    Ast  **es;
+    usize  nb, k;
+
+    if (!patfits(st->v.forx.a, rounds[i]))
+      break; /* the element pattern ends the loop (10-iteration.md) */
+    bindround(st->v.forx.a, rounds[i], 0, &bs);
+    nb = vlen(bs);
+    es = arenaalloc((nb ? nb : 1) * sizeof *es);
+    for (k = 0; k < nb; k++) { /* a binding a let, each flat: the
+                                * value the compiler holds, spelled */
+      Ast *let = mknear(Nlet, st);
+
+      let->v.let.pat = pathsegs(bs[k].name, 0, st);
+      let->v.let.t = tytoexpr(bs[k].v.t, st);
+      let->v.let.e = valtoexpr(bs[k].v, st);
+      let->v.let.mut = bs[k].mut;
+      es[k] = let;
+      vappend(&un, &let);
+    }
+    cforlet(bs, nb, es); /* the inner loops iterate this round's names */
+    cforbody(st->v.forx.body, &un);
+  }
+  ncforlets = save; /* the loop's rounds end; the listing goes back */
+  st->v.forx.unroll = un;
+  return un;
 }
 
 /* a call at compile time: the chain's member whose parameters take

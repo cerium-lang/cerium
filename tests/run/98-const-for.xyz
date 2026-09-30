@@ -1,0 +1,123 @@
+/* the const for, every shape it takes today: the iteration ran in the
+ * compiler, each round's binding spelled as a let where it stood, and
+ * no loop surviving into the code. The helpers below run at runtime,
+ * their bodies unrolled -- and S runs the evaluator's own for through
+ * a const fn (10-iteration.md, 08-reflection.md) */
+struct Pt { x: i32, y: i32 }
+enum Op(u8) { Add(i32, i32), Neg(i32), Zilch }
+enum P(u8) { Pt(i32, i32) }
+
+const ROW: [4]i32 = [4]i32{1, 2, 3, 4};
+const WIDE: [2]u32 = [2]u32{3, 4};
+const BYTES: [4]u8 = [4]u8{70, 70, 70, 70};
+const PTS: [2]Pt = [2]Pt{Pt{x: 1, y: 2}, Pt{x: 3, y: 4}};
+const PAIRS: [2](i32, i32) = [2](i32, i32){(2, 3), (4, 5)};
+const OPS: [4]Op = [4]Op{Op::Add(3, 4), Op::Neg(5), Op::Zilch, Op::Add(1, 2)};
+const HELD: ?i32 = Some(20);
+const OPTS: [3]?i32 = [3]?i32{Some(1), None, Some(2)};
+const GRID: [2][2]u32 = [2][2]u32{[2]u32{1, 2}, [2]u32{3, 4}};
+const EMPTY: [0]i32 = [0]i32{};
+const PS: [1]P = [1]P{P::Pt(3, 4)};
+
+fn dbl(v: i32) -> i32 { v * 2 }
+
+fn sumrow() -> i32 { /* plain rounds, a mut outside: 1+2+3+4 */
+  let mut s = 0;
+  const for v in ROW { s = s + v; }
+  s
+}
+
+fn digits() -> i32 { /* u32 arithmetic: 3, then 34 */
+  let mut s: u32 = 0;
+  const for v in WIDE { s = s * 10 + v; }
+  @cast<i32>(s)
+}
+
+fn wrapped() -> i32 { /* u8 rounds wrap in their own width: 280-256 */
+  let mut s: u8 = 0;
+  const for b in BYTES { s = s + b; }
+  @cast<i32>(s)
+}
+
+fn fields() -> i32 { /* a struct's rows, read by field: 1+2+3+4 */
+  let mut s = 0;
+  const for p in PTS { s = s + p.x + p.y; }
+  s
+}
+
+fn pairs() -> i32 { /* tuple patterns: 2+3+4+5 */
+  let mut s = 0;
+  const for (a, b) in PAIRS { s = s + a + b; }
+  s
+}
+
+fn onmatch() -> i32 { /* enum rounds against a match: 7-5+0+3 */
+  let mut s = 0;
+  const for op in OPS {
+    match op {
+      Op::Add(a, b) => { s = s + a + b; },
+      Op::Neg(a) => { s = s - a; },
+      Op::Zilch => { s = s; },
+    }
+  }
+  s
+}
+
+fn held() -> i32 { /* ?T yields its payload, one round: 20 */
+  let mut s = 0;
+  const for v in HELD { s = s + v; }
+  s
+}
+
+fn through() -> i32 { /* the element pattern ends the loop: 1, no more */
+  let mut s = 0;
+  const for Some(v) in OPTS { s = s + v; }
+  s
+}
+
+fn nested() -> i32 { /* an inner const for, the outer's round spelled: 10 */
+  let mut s: u32 = 0;
+  const for row in GRID {
+    const for v in row { s = s + v; }
+  }
+  @cast<i32>(s)
+}
+
+fn early() -> i32 { /* a return in a round returns from the fn: 6 */
+  const for x in [3]i32{5, 6, 7} {
+    if x > 5 { return x; };
+  }
+  0
+}
+
+fn zero() -> i32 { /* no rounds, the body never ran: 9 */
+  let mut s = 9;
+  const for v in EMPTY { s = s + v; }
+  s
+}
+
+fn calls() -> i32 { /* a runtime fn called from the unrolled body: 6+8 */
+  let mut s = 0;
+  const for v in [2]i32{3, 4} { s = s + dbl(v); }
+  s
+}
+
+fn variant() -> i32 { /* a variant pattern, flattened flat: 3+4 */
+  let mut s = 0;
+  const for P::Pt(x, y) in PS { s = s + x + y; }
+  s
+}
+
+fn inner() -> i32 { /* the evaluator's for, inside a const fn: 1+2+3+4 */
+  let mut s = 0;
+  const for v in ROW { s = s + v; }
+  s
+}
+
+const S: i32 = inner();
+
+fn main() -> i32 {
+  sumrow() + digits() + wrapped() + fields() + pairs() + onmatch() +
+    held() + through() + nested() + early() + zero() + calls() +
+    variant() + S
+}

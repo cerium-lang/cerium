@@ -234,8 +234,30 @@ pointer a slice lends is a runtime thing — and so does an iterator
 the method table would pick. A call's arguments take their wants
 from the one plain overload that takes them, so `Some(3)`
 constructs in an argument's place, and a match lands at a const's
-own initializer, as the `if` already did. The const `for`'s unroll
-waits with its own milestone.
+own initializer, as the `if` already did.
+
+The const `for` unrolls, and no loop survives it. The `in` shape
+only — the condition and the `let` forms re-read their terms, so
+they are runtime shapes — and the iterable is compile-time known or
+it stops where it stands: the marker is a promise, not a hope. An
+owned array gives an element a round; a `?T` gives its payload or
+nothing; a slice lends each element out, and no loop is emitted to
+lend one; anything else arrives with a later milestone. The
+iteration runs in the compiler, and each round lands as the words it
+stands for: a `let` a binding — the value the evaluator holds
+spelled back as a literal, the type spelled with it, so the passes
+walk the round the way they walk the program's own words — and the
+body after it, shared between the rounds, for the passes read it
+without writing it. The pattern's fit was proven in the evaluator,
+so it flattens into one binding a `let` — a `let`'s pattern is
+irrefutable where it is checked — and a misfit ends the loop the way
+a `for let`'s does. A nested const `for` at the body's top level
+expands in the round it stands in, its iterable the outer round's
+own name; below the top level — a branch, an arm — one unroll slot
+cannot serve the rounds, and it waits with a later milestone. A
+`break`, a `continue` have no for to reach; a `return` returns from
+the fn as any return would. In a compile-time fn the loop runs as
+the runtime one does, a round a step against the budget.
 
 Codegen has begun: `xyz -s file.xyz` prints the `.ssa` text — qbe's
 input — and `xyz -c file.xyz -o out` runs the pipeline, qbe as a

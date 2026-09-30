@@ -1,0 +1,8 @@
+/* a local's array is runtime storage; the marker is a promise, not a
+ * hope (10-iteration.md, 08-reflection.md) */
+fn main() -> i32 {
+  let a = [3]i32{1, 2, 3};
+  let mut s = 0;
+  const for x in a { s = s + x; }
+  s
+}

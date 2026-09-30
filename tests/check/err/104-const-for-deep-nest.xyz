@@ -1,0 +1,14 @@
+/* the body is shared between the rounds, and one unroll slot cannot
+ * serve them all: a const for below the top level arrives with a
+ * later milestone (10-iteration.md) */
+const A: [2]i32 = [2]i32{1, 2};
+fn main() -> i32 {
+  let mut s = 0;
+  const for x in A {
+    if x > 0 {
+      const for y in A { s = s + y; }
+    };
+    s = s + x;
+  }
+  s
+}

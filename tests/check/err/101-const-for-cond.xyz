@@ -1,0 +1,7 @@
+/* the condition form re-reads its terms every round: a runtime shape
+ * (10-iteration.md) */
+fn main() -> i32 {
+  let mut i = 0;
+  const for i < 3 { i = i + 1; }
+  i
+}
