@@ -16,6 +16,12 @@ static FILE       *inf;
 static const char *inpath = "<stdin>";
 static unsigned    line = 1, col = 1; /* position of the NEXT character */
 
+/* the embedded source, when one is bound: std's prelude is a string
+ * in the binary (08-reflection.md's std::meta parses like any other
+ * source), and C89 has no fmemopen to serve it as a FILE */
+static const char *srcbuf;
+static usize       srcpos;
+
 static Token cur;   /* the token peek/next last produced */
 static Token thead; /* peeked token; t == Txxx means empty */
 
@@ -72,17 +78,27 @@ clogput(int c)
   nread++;
 }
 
+static int
+rdc(void) /* the next raw character: the file's, or the embedded
+           * source's -- the prelude's text is NUL-terminated, so the
+           * NUL is the EOF and the cursor stops on it */
+{
+  if (srcbuf)
+    return srcbuf[srcpos] ? (unsigned char) srcbuf[srcpos++] : EOF;
+  return fgetc(inf);
+}
+
 static void
-fill(void) /* pull one folded character from the file into the log */
+fill(void) /* pull one folded character from the source into the log */
 {
   int c, c2;
 
   if (eofseen || nread >= (int) (sizeof clog / sizeof clog[0]))
     return; /* defensive: the cursor keeps gc() below refilling */
-  c = fgetc(inf);
+  c = rdc();
   if (c == '\r') {
     for (;;) {
-      c2 = fgetc(inf);
+      c2 = rdc();
       if (c2 == '\n') { /* the fold sits where the '\r' sat */
         clogput('\n');
         return;
@@ -1095,9 +1111,33 @@ lexdrop(LexSnap *s) /* the trial stands: give up the rewind right */
 
 /* -- setup -------------------------------------------------------------- */
 
+/* every slot back to its birth state. One lexer now serves two
+ * sources per compilation -- the prelude's embedded text first, then
+ * the user's file -- and the second must not inherit the first's
+ * seats. lexinit never reset these before: one file per process was
+ * the assumption, and the prelude ended it. */
+static void
+lexreset(void)
+{
+  cur.t = Txxx;
+  thead.t = Txxx;
+  prevtok = Txxx;
+  nread = 0;
+  npos = 0;
+  eofseen = 0;
+  line = 1;
+  col = 1;
+  live = 0; /* a parse that finished unwound them all; strays here
+             * are dropped, a leak only in a path that is exiting */
+  srcbuf = 0;
+  srcpos = 0;
+  buf = vnew(char, 64);
+}
+
 void
 lexinit(const char *path)
 {
+  lexreset();
   inpath = path ? path : "<stdin>";
   inf = path ? fopen(path, "r") : stdin;
   if (!inf)
@@ -1109,7 +1149,15 @@ lexinit(const char *path)
   fill();
   if (nread == 3 && clog[0].c == 0xef && clog[1].c == 0xbb && clog[2].c == 0xbf)
     nread = 0; /* dropped; the cursor at 0 reads what follows */
-  buf = vnew(char, 64);
+}
+
+void
+lexsrc(const char *text) /* the embedded source, errors name it "<std>" */
+{
+  lexreset();
+  inpath = "<std>";
+  inf = 0;
+  srcbuf = text;
 }
 
 const char *

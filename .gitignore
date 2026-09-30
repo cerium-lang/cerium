@@ -1,3 +1,4 @@
 *.o
 /xyz
 core.*
+src/prelude_text.h

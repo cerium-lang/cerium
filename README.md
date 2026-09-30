@@ -314,6 +314,25 @@ again below it — read the arm's slot, the let never reached. The
 count is the stack now; the vector only its high-water mark
 (`01-types.md`, `09-match.md`).
 
+The language's own source ships inside the compiler now, and
+std::meta is the first of it: `std/meta.xyz` — the `TypeInfo` enum
+and its five companions, exactly as `08-reflection.md` spells them —
+is embedded as a table of string literals (`tools/embed.sh`), joined
+in the arena, and parsed before the user's file, the lexer reading
+the memory text through a source of its own; its items declare and
+resolve under the clean symbol table, and its names are taken before
+the first line is read. A field may be named `type` — a keyword and
+a field's name both, `Field{type: ^^u32}` — in a declaration, a
+literal, a pattern, and the access. A zero-sized payload holds no
+value and emits nothing now: the variant's and the literal's stores
+skip it (the join slots already did, `08-reflection.md`), and a type
+reference is Copy — no bits, no destructor, nothing to move — so a
+stored reference reads back out and passes along. What a const's
+own hand cannot build yet stays honestly refused: a string, an
+empty slice — evaluation allocates nothing, and the values that
+carry them arrive with `@typeinfo`, built inside the compiler rather
+than spelt (`08-reflection.md`).
+
 Codegen has begun: `xyz -s file.xyz` prints the `.ssa` text — qbe's
 input — and `xyz -c file.xyz -o out` runs the pipeline, qbe as a
 subprocess and the system `cc` linking. Checking writes each node's

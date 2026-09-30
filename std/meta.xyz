@@ -1,0 +1,60 @@
+/* std::meta -- the reflection model (08-reflection.md).
+ *
+ * This is the language's own source, embedded in the compiler and
+ * parsed before the user's file: TypeInfo is ordinary data -- stored,
+ * compared, matched -- and @typeinfo produces it. The names are flat
+ * and global for now; std's namespace discipline (11-namespaces.md)
+ * is a later stage.
+ *
+ * A 'type' field holds a type reference: a value whose type is
+ * 'type' and whose value is a type. Lazy on purpose -- a reference
+ * names a type without inlining that type's TypeInfo, which is what
+ * keeps a recursive struct's reflection finite. */
+
+enum TypeInfo {
+  Bool,
+  Int      { bits: u16, signed: bool },
+  Float    { bits: u16 },
+  Pointer  { child: type, mutable: bool },   /* *T / *mut T */
+  Slice    { child: type, mutable: bool },   /* []T / []mut T */
+  Array    { len: usize, child: type, mutable: bool }, /* [N]T */
+  Struct   { fields: []Field, attrs: []Attr },
+  Union    { fields: []Field, attrs: []Attr },
+  Enum     { tag: type, variants: []EnumField },
+  Tuple    { fields: []Field },              /* () has none */
+  Fn       { args: []FnArg, ret: type },     /* fn(A) -> R */
+  Optional { child: type },                  /* ?T, the sugar */
+  Result   { ok: type, err: type },          /* E?T, the sugar */
+  Voidptr,                                   /* voidptr */
+}
+
+struct Field {
+  name: []u8,
+  type: type,   /* a type reference */
+  offset: usize,
+  mutable: bool,
+  attrs: []Attr,
+}
+
+struct EnumField {
+  name: []u8,
+  value: i64,
+  type: ?type,  /* None when the variant carries no payload */
+  attrs: []Attr,
+}
+
+struct FnArg {
+  name: []u8,   /* always empty -- a name lives in the declaration */
+  type: type,
+}
+
+struct Attr {
+  name: []u8,
+  args: []AttrArg,
+}
+
+enum AttrArg {   /* an argument is an identifier, a number, or a string */
+  Ident([]u8),   /* #[build(debug)] -- debug */
+  Int(i64),      /* #[align(16)] -- 16 */
+  Str([]u8),     /* a string literal */
+}

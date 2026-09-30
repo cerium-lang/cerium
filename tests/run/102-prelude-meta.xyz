@@ -1,0 +1,60 @@
+/* std::meta's six types, embedded as the language's own source and
+ * parsed before this file: constructed here by name in both walks
+ * the compiler takes, read back by match, and a 'type' field crossed
+ * both ways -- a lift stored into one, the field read back out and
+ * passed along, a type value being data (08). The splicing of a
+ * stored reference back where a type is spelled is the @typeinfo
+ * milestone's test, not this one; the names are flat and global, and
+ * a redeclaration of one is the err test beside this. */
+
+const CI: TypeInfo = TypeInfo::Int{bits: 32, signed: true}; /* the
+  * const walk: an Int's shape, no slice in it */
+
+fn intback() -> u32 { /* the shape, matched back out: 32 */
+  let t: TypeInfo = TypeInfo::Int{bits: 16, signed: false};
+
+  match t {
+    TypeInfo::Int { bits, .. } => @cast<u32>(bits),
+    _ => 99,
+  }
+}
+fn pointer() -> u32 { /* a reference stored, the mutability read: 1 */
+  let p: TypeInfo = TypeInfo::Pointer{child: ^^u8, mutable: true};
+
+  match p {
+    TypeInfo::Pointer { child, mutable } => @cast<u32>(mutable),
+    _ => 99,
+  }
+}
+fn passthrough() -> u32 { /* a reference through two holders: 4 */
+  let p: TypeInfo = TypeInfo::Pointer{child: ^^u8, mutable: false};
+
+  match p {
+    TypeInfo::Pointer { child, .. } => {
+      let f: Field = Field{name: c"child", type: child, offset: 4, mutable: false, attrs: []Attr{}};
+      let t: type = f.type; /* read back through 'type', the name */
+
+      @cast<u32>(f.offset)
+    },
+    _ => 99,
+  }
+}
+fn optional() -> u32 { /* EnumField's ?type: None, then Some: 21 */
+  let a: EnumField = EnumField{name: c"Nil", value: 0, type: None, attrs: []Attr{}};
+  let b: EnumField = EnumField{name: c"Some", value: 1, type: Some(^^i32), attrs: []Attr{}};
+  let x = match a { { type: None, .. } => 1, _ => 100, };
+  let y = match b { { type: Some(t), .. } => 20, _ => 200, };
+
+  x + y
+}
+fn attrarg() -> u32 { /* an attribute's argument, positional: 16 */
+  let a: AttrArg = AttrArg::Int(16);
+
+  match a { AttrArg::Int(n) => @cast<u32>(n), _ => 99, }
+}
+fn main() -> u32 { /* 16 + 1 + 4 + 21 + 16 + 32 = 90 */
+  intback() + pointer() + passthrough() + optional() + attrarg() + (match CI {
+    TypeInfo::Int { bits, .. } => @cast<u32>(bits),
+    _ => 99,
+  })
+}

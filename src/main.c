@@ -117,6 +117,9 @@ checked(const char *path)
 {
   Ast **items = vnew(Ast *, 16);
 
+  preludeparse(); /* std's embedded source first: the lexer is one
+                   * global, so its text reads out before the user's
+                   * file binds it. Its items resolve in checkinit. */
   lexinit(path);
   while (peek() != Teof) {
     Ast *it = parseitem();

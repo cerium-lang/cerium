@@ -1,0 +1,6 @@
+/* std's embedded source declares its names before this file is
+ * read: a redeclaration of one of them is the same answer a std
+ * source file on disk would give (08-reflection.md) */
+enum TypeInfo { Mine }
+
+fn main() -> i32 { 0 }

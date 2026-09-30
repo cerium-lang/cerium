@@ -175,8 +175,12 @@ extern usize chk_nimpls;
 /* Self's one generic parameter, built by syminit (sym.c) */
 extern Ast *sym_selfgp;
 
-/* the prelude's own declarations (prelude.c) */
+/* the prelude's own declarations (prelude.c): the hand-built pair,
+ * and std's embedded source -- parsed before the user's file (the
+ * lexer is one global), resolved once the table is clean */
 void prelude(void);
+void preludeparse(void);
+void preludefile(void);
 
 /* the prelude enums the sugar builds on, and the exclusion pair
  * (prelude.c). The operator traits (07-operators.md) join them as
