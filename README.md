@@ -278,6 +278,27 @@ cannot serve the rounds, and it waits with a later milestone. A
 the fn as any return would. In a compile-time fn the loop runs as
 the runtime one does, a round a step against the budget.
 
+The types are values now, and a value's type reads back out of it:
+`^^i32` lifts a type into a value — the compounds too, an array, a
+tuple, an option — and `@typeof(v)` is the way back, the type a
+value holds. A type value splices where a type is spelled: `$$R`
+in a const's or a static's own declaration, the operand evaluated
+in the compiler — a const's chain, a call's answer spelled right
+there, `$$pick(true)` the branch it took — and the slot the splice
+names is the type the value holds, the initializer asked of it as
+any slot's initializer is: the domain check asks the first step
+too now, a literal checked against the type it lands in — the sign
+still rides a literal, `-2147483648` folding before the literal's
+own step asks the magnitude alone — and a splice that names i32
+asks its initializer the same question there. A type is a
+zero-sized word: the layout says zero and one, the ABI carries it
+in a word like a unit's, a branch joins it as the constant zero
+it is, and an array of types rides the data segment, an index of
+it a type anywhere one is wanted. The splice's value must stand
+without a frame, and a body's pass has none: `$$param`, a local,
+a const `for`'s round are refused where they stand, the per-call
+resolution arriving with `@typeinfo` (`08-reflection.md`).
+
 Codegen has begun: `xyz -s file.xyz` prints the `.ssa` text — qbe's
 input — and `xyz -c file.xyz -o out` runs the pipeline, qbe as a
 subprocess and the system `cc` linking. Checking writes each node's

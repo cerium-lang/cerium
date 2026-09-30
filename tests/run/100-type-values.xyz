@@ -1,0 +1,62 @@
+/* the type values, every face they show today: a type lifted into a
+ * value (^^i32), a value's type read back out of it (@typeof), a
+ * type value spliced where a type is spelled ($$) -- a const's own
+ * declaration, a static's, a call's answer spelled right there, the
+ * branch that picks one -- the compound lifts (an array, a tuple,
+ * an option), a fn crossing a call with a type in its word, an
+ * array of types indexed where it sits, the lift of a splice
+ * (^^$$TA), and the literal asked of the type the splice names: the
+ * domain check the evaluator promised every step (08-reflection.md) */
+struct Pt { x: i32, y: i32 }
+
+const I: type = ^^i32;             /* the lift itself */
+const T4: type = @typeof(42);      /* the value's type, read back: i32 */
+const F: type = @typeof(3.14);     /* a float literal's default: f32 */
+const B: type = @typeof(true);     /* the bool */
+const ARR: type = ^^[2]i32;        /* the compounds lift too */
+const PAIR: type = ^^(i32, i64);
+const OPT: type = ^^?i32;
+
+fn show(t: type) -> type { t }     /* a type across a call, both ways */
+const R: type = show(I);           /* the memo: the answer kept */
+
+const Q: $$R = 77;                 /* the splice names i32 */
+const W: $$T4 = 9;
+const N: $$ARR = [2]i32{2, 3};     /* the array the splice spelled */
+const P: $$PAIR = (4, 5);          /* the tuple it spelled */
+
+const A: Pt = Pt{x: 3, y: 4};
+const TA: type = @typeof(A);       /* a struct's own type */
+const V: $$TA = Pt{x: 13, y: 14};  /* the struct the splice spelled */
+
+static SM: $$R = 40;               /* a static's type slot splices too */
+
+fn pick(c: bool) -> type {
+  if c { ^^i32 } else { ^^u8 }     /* the branch picks its word */
+}
+const A1: $$pick(true) = 1;        /* i32, the call spelled in the slot */
+const A2: $$pick(false) = 2;       /* u8, truly: the cast below says so */
+
+const TS: [2]type = [2]type{^^i32, ^^u8};
+const LITS: [2]type = [2]type{^^i32, ^^$$TA}; /* a value place takes the
+                                               * lift of a splice */
+fn second() -> type { TS[1] }      /* the array indexed where it sits */
+const W2: $$second() = 9;          /* u8 again */
+
+fn spliced() -> i32 {              /* 77+9+1+2: 89 */
+  Q + W + A1 + @cast<i32>(A2)
+}
+fn rows() -> i32 { N[0] * 10 + N[1] + P.0 + @cast<i32>(P.1) } /* 23+9: 32 */
+fn fields() -> i32 { V.x + V.y }   /* 27 */
+fn sizes() -> i32 {                /* 4+4+8+8+4+1: 29 */
+  @cast<i32>(@sizeof<$$R>()) + @cast<i32>(@alignof<$$ARR>()) +
+    @cast<i32>(@sizeof<$$OPT>()) + @cast<i32>(@sizeof<$$LITS[1]>()) +
+    @cast<i32>(@sizeof<$$F>()) + @cast<i32>(@sizeof<$$B>())
+}
+fn statics() -> i32 { SM }         /* 40 */
+fn held() -> i32 { @cast<i32>(W2) } /* 9 */
+fn pair() -> i32 { @cast<i32>(@alignof<$$PAIR>()) } /* i64's: 8 */
+
+fn main() -> i32 {
+  spliced() + rows() + fields() + sizes() + statics() + held() + pair()
+}

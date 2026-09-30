@@ -278,13 +278,9 @@ rargs(Ast *seg, Env *env, usize *np)
     return 0;
   }
   ts = tyargs(n);
-  for (i = 0; i < n; i++) {
-    Ast *a = as[i];
-
-    if (a->k == Nun && (a->v.un.op == Tdollar2 || a->v.un.op == Tcaret2))
-      cerrat(a, "type splicing needs the compile-time evaluator (not yet)");
-    ts[i] = rty(a, env);
-  }
+  for (i = 0; i < n; i++)
+    ts[i] = rty(as[i], env); /* a $$ among them: rty's own case
+                              * splices it (08-reflection.md) */
   *np = n;
   return ts;
 }
@@ -598,6 +594,16 @@ rty(Ast *t, Env *env)
   }
   case Nttype:
     return tytype();
+  case Nun:
+    if (t->v.un.op == Tdollar2) /* the splice: the operand's value is
+                                 * the type this slot takes
+                                 * (08-reflection.md) */
+      return tysplice(t->v.un.e, env);
+    if (t->v.un.op == Tcaret2) /* a lift is a value: it crosses the
+                                * other way (08-reflection.md) */
+      cerrat(t, "a lift is a value, a type slot takes a type or a splice (08-reflection.md)");
+    cerrat(t, "expected a type");
+    return 0; /* unreachable */
   case Npath:
     return rpath(t, env);
   default:

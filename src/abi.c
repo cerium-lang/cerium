@@ -28,7 +28,10 @@ qbety(Type *ret, Ast *at)
 {
   if (!ret)
     return 0;
-  if (ret->k == Tyunit)
+  if (ret->k == Tyunit || ret->k == Tytype) /* a type's value is a
+                                             * ZST like (): a word
+                                             * keeps the registers
+                                             * honest (08) */
     return 'w';
   if (ret->k == Tyint) {
     if (ret->num == IN_F32)

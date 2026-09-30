@@ -1,0 +1,5 @@
+/* a const of type holds a type value: an integer initializer is the
+ * mismatch it is (08-reflection.md) */
+const T: type = 5;
+
+fn main() -> i32 { 0 }
