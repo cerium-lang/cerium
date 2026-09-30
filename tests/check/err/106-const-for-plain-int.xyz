@@ -1,0 +1,6 @@
+/* an integer carries nothing to iterate: its iterators arrive with a
+ * later milestone (10-iteration.md) */
+fn main() -> i32 {
+  const for x in 3 { }
+  0
+}

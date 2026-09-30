@@ -155,6 +155,11 @@ rplace1(Ast *e, Fenv *fe)
 static void rstmt(Ast *st, Fenv *fe);
 static int  placewritable(Ast *p, Fenv *fe);
 
+/* inside a const for's unroll walk: a const for met here sits below
+ * a shared body's top level, and one unroll slot cannot serve the
+ * rounds it would appear in (10-iteration.md) */
+static int ununroll;
+
 /* re-derive a literal against the type the other side of an
  * operator or an assignment turned out to be: 42 < u32's length */
 static Type *
@@ -2803,8 +2808,6 @@ rstmt(Ast *st, Fenv *fe)
     Fenv  fb = fefork(fe);
     usize nbase = fb.n;
 
-    if (st->v.forx.cnst)
-      berr(st, "const for arrives with const evaluation");
     /* the loop marks: moves of bindings from before the outermost
      * loop repeat every round (03-move.md) */
     fb.loopbase = fe->loopd > 0 ? fe->loopbase : fb.n;
@@ -2857,8 +2860,29 @@ rstmt(Ast *st, Fenv *fe)
     locpop(&fb, nbase); /* what the round bound -- and froze -- ends here */
     return;
   }
+  case Ncfor: { /* the iteration already ran (eval.c); what it
+                 * spelled walks here, statement by statement -- the
+                 * inner const fors flattened where they stood, a
+                 * runtime for staying itself -- with no loop around
+                 * any of it: a break or a continue has no for to
+                 * reach, and the check above says so
+                 * (10-iteration.md) */
+    Ast **un;
+    usize i;
+
+    if (ununroll) /* a const for below the body's top level: the
+                   * body is shared between the rounds, and this
+                   * node would carry one unroll across them all */
+      berr(st, "a const for nested below a const for's top level arrives with a later milestone "
+               "(10-iteration.md)");
+    un = cforunroll(st);
+    ununroll++;
+    for (i = 0; i < vlen(un); i++)
+      rstmt(un[i], fe);
+    ununroll--;
+    return;
+  }
   case Ncif:
-  case Ncfor:
     berr(st, "const control flow arrives with const evaluation");
     return; /* unreachable */
   case Nexprstmt:

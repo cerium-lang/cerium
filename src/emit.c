@@ -2416,6 +2416,17 @@ emastmt(Em *em, Ast *st)
   case Nfor:
     emafor(em, st);
     return;
+  case Ncfor: { /* the unroll the evaluator spelled: each round's
+                 * let, the body it owns -- and no loop surviving
+                 * into this text, which is the marker's whole
+                 * promise (10-iteration.md) */
+    Ast **un = st->v.forx.unroll;
+    usize i;
+
+    for (i = 0; i < vlen(un); i++)
+      emastmt(em, un[i]);
+    return;
+  }
   default: /* if, match, blocks: expressions in statement position */
     emaexpr(em, st);
   }

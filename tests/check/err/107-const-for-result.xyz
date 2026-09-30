@@ -1,0 +1,6 @@
+/* a Result is not its iterator today; ?T is (10-iteration.md) */
+const R: i32?i32 = Ok(3);
+fn main() -> i32 {
+  const for x in R { }
+  0
+}

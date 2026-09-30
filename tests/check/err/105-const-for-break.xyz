@@ -1,0 +1,7 @@
+/* the loop does not survive to the code: a break has no for to reach
+ * (10-iteration.md) */
+const A: [3]i32 = [3]i32{1, 2, 3};
+fn main() -> i32 {
+  const for x in A { break; }
+  0
+}

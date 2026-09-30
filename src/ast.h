@@ -293,11 +293,14 @@ struct Ast
     } let;
     struct
     {
-      int  cnst;
       int  shape; /* FCOND, FLET, FIN (below) */
       Ast *a, *b; /* per shape: the condition; the pattern and the
-                      source; the pattern and the iterable */
-      Ast *body;
+                      source; the iterable */
+      Ast  *body;
+      Ast **unroll; /* Ncfor only: the statements the iteration
+                     * spelled, each round's let and the body --
+                     * shared between the rounds, for the passes read
+                     * it without writing it (10-iteration.md) */
     } forx;
     struct
     {

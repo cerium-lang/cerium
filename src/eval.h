@@ -22,5 +22,11 @@ u64 cevallong(Ast *e, Env env, Type *want); /* an integer's value,
                                              * where a type's own parts need one: an
                                              * array's length, a variant's discriminant
                                              * (08-reflection.md) */
+Ast **cforunroll(Ast *st);                  /* a const for's statements: the
+                                             * iteration ran, each round's value bound
+                                             * as a let that spells it, the body shared
+                                             * -- what the checker walks and the
+                                             * emitter emits where the loop stood, no
+                                             * loop surviving (10-iteration.md) */
 
 #endif

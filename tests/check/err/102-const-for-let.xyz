@@ -1,0 +1,7 @@
+/* the let form re-reads its source every round: a runtime shape
+ * (10-iteration.md) */
+fn main() -> i32 {
+  let mut cell: ?i32 = Some(0);
+  const for let Some(v) = *cell { }
+  0
+}

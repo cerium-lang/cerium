@@ -1,0 +1,8 @@
+/* a slice view is a borrow: not compile-time known, and no loop is
+ * emitted to lend one out (10-iteration.md) */
+const A: [3]i32 = [3]i32{1, 2, 3};
+fn main() -> i32 {
+  let mut s = 0;
+  const for x in A[..] { s = s + x; }
+  s
+}
