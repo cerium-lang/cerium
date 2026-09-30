@@ -1,0 +1,8 @@
+/* iteration over a borrow: the pointer it lends is a runtime thing,
+ * and the evaluator takes none (10-iteration.md, 08-reflection.md) */
+fn f(a: [3]i32) -> i32 {
+  for x in &a { }
+  0
+}
+const X: i32 = f([3]i32{1, 2, 3});
+fn main() -> i32 { X }

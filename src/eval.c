@@ -68,6 +68,9 @@ static usize nlocs;   /* the stack's top */
 static usize locbase; /* the current frame's floor */
 static usize calldepth;
 static int   returning; /* a return is unwinding this frame */
+static int   breaking;  /* a break is unwinding to its for, one level
+                         * deep (10-iteration.md) */
+static int   continuing;
 static Val   retv;
 static Type *fnret; /* the frame's fn, its return type: a return's
                      * want */
@@ -605,6 +608,230 @@ structlitval(Type *t, Ast **inits, Env env, Ast *at)
   return r;
 }
 
+/* a binding into the frame, above the rounds and the arms that made
+ * it -- a later binding of the name shadows this one, for the find
+ * walks from the top */
+static void
+locpush(char *name, Val v, int mut, Ast *at)
+{
+  if (nlocs >= MAXLOCALS)
+    cerrat(at, "too many bindings in flight (08-reflection.md)");
+  locs[nlocs].name = name;
+  locs[nlocs].v = v;
+  locs[nlocs].mut = mut;
+  nlocs++;
+}
+
+/* -- patterns (09-match.md) ------------------------------------------------
+ *
+ * A pattern destructures; it does not test. The one thing it can
+ * miss is a variant pattern naming another variant, so fitting is a
+ * discriminant's compare and binding is the rows the checker typed
+ * each name with -- the checker's rpat, run. */
+
+/* the variant an Nppath names, when it names one: Enum::V by its two
+ * segments, or the short name the scrutinee's own enum picks out.
+ * NULL: the pattern is the binding form (09-match.md) */
+static Variant *
+patvariant(Ast *p, Type *vt)
+{
+  Ast **segs = p->v.ppath.path->v.path.segs;
+  Sym  *s;
+
+  if (vlen(segs) == 2) {
+    s = symfind(segs[0]->v.seg.name);
+    if (!s || s->kind != Stype || s->tykind != TYenum)
+      return 0; /* unreachable: the checker fitted it */
+    return symvarfind(s, segs[1]->v.seg.name);
+  }
+  if (vt->k != Tyenum)
+    return 0; /* the bare name that binds, over anything else */
+  return symvarfind(vt->sym, segs[0]->v.seg.name);
+}
+
+/* does the pattern fit the value? The arms take their turn by it,
+ * and a for let runs its rounds while it holds (09, 10) */
+static int
+patfits(Ast *p, Val v)
+{
+  switch (p->k) {
+  case Npwild:
+    return 1;
+  case Nppath: {
+    Variant *var = patvariant(p, v.t);
+
+    if (!var)
+      return 1; /* the binding form: it fits */
+    if (v.t->k != Tyenum || v.i != var->disc)
+      return 0; /* another variant's round */
+    if (!p->v.ppath.payload)
+      return 1;             /* the variant names itself; the niche's unit payload
+                             * binds nothing (09) */
+    if (p->v.ppath.named) { /* by field name, mirroring the decl */
+      Ast **fs = p->v.ppath.payload;
+      usize n = vlen(fs), i;
+
+      for (i = 0; i < n; i++) {
+        Ast  *pf = fs[i];
+        usize k;
+
+        if (!pf->v.init.e)
+          continue; /* the field name is the binding name */
+        for (k = 0; k < var->nfields; k++)
+          if (strcmp(var->fields[k].name, pf->v.init.name) == 0)
+            break;
+        if (k == var->nfields)
+          continue; /* unreachable: the checker fitted it */
+        if (!patfits(pf->v.init.e, v.elems[k]))
+          return 0;
+      }
+      return 1;
+    }
+    { /* by position */
+      Ast **ps = p->v.ppath.payload;
+      usize n = vlen(ps), i;
+
+      for (i = 0; i < n; i++)
+        if (!patfits(ps[i], v.elems[i]))
+          return 0;
+      return 1;
+    }
+  }
+  case Nptuple: {
+    Ast **ps = p->v.list.ts;
+    usize n = vlen(ps), i;
+
+    for (i = 0; i < n; i++)
+      if (!patfits(ps[i], v.elems[i]))
+        return 0;
+    return 1;
+  }
+  case Npstruct: {
+    Ast **fs = p->v.pstruct.fields;
+    usize n = vlen(fs), i;
+
+    for (i = 0; i < n; i++) {
+      Ast  *pf = fs[i];
+      usize k;
+
+      if (!pf->v.init.e)
+        continue;
+      for (k = 0; k < v.t->sym->nfields; k++)
+        if (strcmp(v.t->sym->fields[k].name, pf->v.init.name) == 0)
+          break;
+      if (k == v.t->sym->nfields)
+        continue; /* unreachable: the checker fitted it */
+      if (!patfits(pf->v.init.e, v.elems[k]))
+        return 0;
+    }
+    return 1;
+  }
+  case Npor: { /* whichever of them fits (09-match.md) */
+    Ast **ps = p->v.list.ts;
+    usize n = vlen(ps), i;
+
+    for (i = 0; i < n; i++)
+      if (patfits(ps[i], v))
+        return 1;
+    return 0;
+  }
+  default:
+    return 1; /* the shapes the parser does not make; nothing tests */
+  }
+}
+
+/* bind the pattern's names against the value: every name the pattern
+ * spells gets the row the checker typed it with. An or-pattern binds
+ * each alternative that fits, as the emitter binds them all to the
+ * one place -- the body has one spelling to refer to them by (09) */
+static void
+bindpat(Ast *p, Val v, int mut)
+{
+  switch (p->k) {
+  case Npwild:
+    return;
+  case Nppath: {
+    Ast    **segs = p->v.ppath.path->v.path.segs;
+    Variant *var = patvariant(p, v.t);
+    usize    i;
+
+    if (!var) { /* the binding form */
+      locpush(segs[0]->v.seg.name, v, mut, p);
+      return;
+    }
+    if (!p->v.ppath.payload)
+      return;
+    if (p->v.ppath.named) { /* by field name, mirroring the decl */
+      Ast **fs = p->v.ppath.payload;
+      usize n = vlen(fs);
+
+      for (i = 0; i < n; i++) {
+        Ast  *pf = fs[i];
+        usize k;
+
+        for (k = 0; k < var->nfields; k++)
+          if (strcmp(var->fields[k].name, pf->v.init.name) == 0)
+            break;
+        if (k == var->nfields)
+          continue; /* unreachable: the checker fitted it */
+        if (pf->v.init.e)
+          bindpat(pf->v.init.e, v.elems[k], mut || var->fields[k].mut);
+        else /* the field name is the binding name (09) */
+          locpush(pf->v.init.name, v.elems[k], mut || var->fields[k].mut, pf);
+      }
+      return;
+    }
+    { /* by position */
+      Ast **ps = p->v.ppath.payload;
+      usize n = vlen(ps);
+
+      for (i = 0; i < n; i++)
+        bindpat(ps[i], v.elems[i], mut);
+    }
+    return;
+  }
+  case Nptuple: {
+    Ast **ps = p->v.list.ts;
+    usize n = vlen(ps), i;
+
+    for (i = 0; i < n; i++)
+      bindpat(ps[i], v.elems[i], mut);
+    return;
+  }
+  case Npstruct: {
+    Ast **fs = p->v.pstruct.fields;
+    usize n = vlen(fs), i;
+
+    for (i = 0; i < n; i++) {
+      Ast  *pf = fs[i];
+      usize k;
+
+      for (k = 0; k < v.t->sym->nfields; k++)
+        if (strcmp(v.t->sym->fields[k].name, pf->v.init.name) == 0)
+          break;
+      if (k == v.t->sym->nfields)
+        continue; /* unreachable: the checker fitted it */
+      if (pf->v.init.e)
+        bindpat(pf->v.init.e, v.elems[k], mut || v.t->sym->fields[k].mut);
+      else /* the field name is the binding name (09) */
+        locpush(pf->v.init.name, v.elems[k], mut || v.t->sym->fields[k].mut, pf);
+    }
+    return;
+  }
+  case Npor: { /* each alternative that fits, its own names (09) */
+    Ast **ps = p->v.list.ts;
+    usize n = vlen(ps), i;
+
+    for (i = 0; i < n; i++)
+      if (patfits(ps[i], v))
+        bindpat(ps[i], v, mut);
+    return;
+  }
+  default:
+    return;
+  }
+}
+
 /* a bare literal bends to the type the other side brought; nothing
  * else does */
 static int
@@ -932,6 +1159,31 @@ ceval(Ast *e, Env env, Type *want)
   }
   case Nblock:
     return execblk(e, env, want);
+  case Nmatch: { /* the arms take their turn: a pattern destructures,
+                  * so the one that can miss names another variant
+                  * (09-match.md). Exhaustiveness was checked -- the
+                  * report past the last arm is the net the emitter's
+                  * abort is */
+    Val   v = ceval(e->v.call.f, env, 0);
+    Ast **arms = e->v.call.args;
+    usize n = vlen(arms), i;
+
+    for (i = 0; i < n; i++) {
+      Ast  *arm = arms[i];
+      usize save = nlocs;
+      Val   r;
+
+      if (!patfits(arm->v.n2.a, v))
+        continue; /* the next arm's turn */
+      bindpat(arm->v.n2.a, v, 0);
+      r = arm->v.n2.b->k == Nblock ? execblk(arm->v.n2.b, env, want)
+                                   : ceval(arm->v.n2.b, env, want);
+      nlocs = save; /* the arm's bindings end with the arm */
+      return r;
+    }
+    cerrat(e, "the match fell past its arms: the checker says it cannot (09-match.md)");
+    return valint(0, tyint(IN_I32)); /* unreachable */
+  }
   case Ncall: { /* a constructor first -- Enum::V(...), Some(v) --
                  * then a fn, its arguments known (08-reflection.md) */
     Ast **segs;
@@ -1205,11 +1457,11 @@ cevallong(Ast *e, Env env, Type *want)
 /* -- the calls (08-reflection.md) ----------------------------------------
  *
  * A fn runs where its arguments are compile-time known, no
- * annotation asked of it. The statement set is the small one the
- * leaf layer's values cover -- a let of a plain binding, an
- * assignment to a mut one, an if, a return -- and what it does not
- * cover says so, with the milestone it arrives with: a loop, a
- * match, a place that is not a binding. */
+ * annotation asked of it. The statement set is the language's own
+ * now -- a let of any pattern, an assignment to a mut one, an if, a
+ * match, a for, a return -- and what it does not cover says so,
+ * with the milestone it arrives with: a place that is not a
+ * binding, a borrow, a method, an extern. */
 
 /* does the value land in the type? -- valcoerce's question, asked
  * without the answer it would give */
@@ -1226,7 +1478,9 @@ valfits(Val v, Type *t)
 static void execstmt(Ast *st, Env env);
 
 /* a block: its statements, then its tail, the block's own value.
- * A return unwinds past the rest, the frame's value in hand */
+ * A return unwinds past the rest, the frame's value in hand; a break
+ * or a continue unwinds to the for they belong to, one level deep,
+ * and the tail waits for it (10-iteration.md) */
 static Val
 execblk(Ast *b, Env env, Type *want)
 {
@@ -1237,40 +1491,157 @@ execblk(Ast *b, Env env, Type *want)
     execstmt(sts[i], env);
     if (returning)
       return retv;
+    if (breaking || continuing)
+      return valint(0, tyunit());
   }
   return b->v.blk.tail ? ceval(b->v.blk.tail, env, want) : valint(0, tyunit());
+}
+
+/* one round of a loop: the pattern's names first, the body's own
+ * lets above them, all popped at the round's end -- a binding is
+ * fresh every round (10-iteration.md). Returns 1 when the loop ends:
+ * a return unwinds past it, a break ends its run; a continue only
+ * its round. */
+static int
+execround(Ast *body, Ast *pat, Val pv, Env env)
+{
+  usize save = nlocs;
+
+  if (pat)
+    bindpat(pat, pv, 0);
+  execblk(body, env, 0);
+  nlocs = save;
+  if (returning)
+    return 1;
+  if (breaking) {
+    breaking = 0;
+    return 1;
+  }
+  continuing = 0;
+  return 0;
+}
+
+/* the for, unwound: the three heads the grammar spells, the round
+ * the budget bounds -- a step a round, for a round's body may be
+ * empty and evaluate nothing (08: an end) */
+static void
+execfor(Ast *st, Env env)
+{
+  Ast *body = st->v.forx.body;
+
+  switch (st->v.forx.shape) {
+  case FCOND: { /* while the condition holds (10-iteration.md) */
+    for (;;) {
+      Val c;
+
+      tick(st);
+      c = ceval(st->v.forx.a, env, tybool());
+      if (c.t->k != Tybool)
+        cerrat(st->v.forx.a, "the condition is not a bool (10-iteration.md)");
+      if (!c.i)
+        return;
+      if (execround(body, 0, valint(0, tyunit()), env))
+        return;
+    }
+  }
+  case FLET: { /* while the pattern fits the re-read value (10) */
+    for (;;) {
+      Val v;
+
+      tick(st);
+      v = ceval(st->v.forx.b, env, 0);
+      if (!patfits(st->v.forx.a, v))
+        return; /* a value the pattern does not fit ends the loop */
+      if (execround(body, st->v.forx.a, v, env))
+        return;
+    }
+  }
+  case FIN: { /* what the iterable yields, one binding a round (10) */
+    Val   src = ceval(st->v.forx.b, env, 0);
+    Type *et = src.t;
+
+    while (et && et->k == Tymut)
+      et = et->t;
+    if (et->k == Tyenum && et->sym == sym_option) {
+      /* ?T yields its one payload or nothing: one round at most, so
+       * the loop is an if -- a continue ends it like a break would
+       * (10-iteration.md) */
+      Variant *some = symvarfind(et->sym, "Some");
+
+      if (some && src.i == some->disc) {
+        tick(st);
+        if (execround(body, st->v.forx.a, src.elems[0], env))
+          return;
+        breaking = continuing = 0; /* either jump ends the one round */
+      }
+      return;
+    }
+    if (et->k == Tyslice) /* a slice lends each element out: the
+                           * binding would be a pointer, and
+                           * evaluation takes none (10) */
+      cerrat(st->v.forx.b,
+             "iterating a slice lends each element out: the binding is a pointer, and evaluation "
+             "takes none (10-iteration.md)");
+    if (et->k != Tyarray)
+      cerrat(st->v.forx.b,
+             "iterating %s is not compile-time known: its iterators arrive with a "
+             "later milestone (10-iteration.md)",
+             tnm(et));
+    { /* an owned array: each element itself, the array consumed */
+      usize n = (usize) et->n, i;
+
+      for (i = 0; i < n; i++) {
+        tick(st);
+        if (!patfits(st->v.forx.a, src.elems[i]))
+          return; /* a pattern the element does not fit ends the loop, as a for let's would (10) */
+        if (execround(body, st->v.forx.a, src.elems[i], env))
+          return;
+      }
+    }
+    return;
+  }
+  default:
+    cerrat(st, "this for shape is not one of the three (10-iteration.md)");
+  }
 }
 
 static void
 execstmt(Ast *st, Env env)
 {
   switch (st->k) {
-  case Nlet: {
+  case Nlet: { /* a pattern, not only a name: the tuple by position,
+                * the struct by field, the variant's payload under it
+                * (09-match.md) */
     Ast  *pat = st->v.let.pat;
     Type *want = 0;
-    Loc   l;
+    Val   v;
 
-    if (pat->k != Nppath || pat->v.ppath.payload || pat->v.ppath.rest ||
-        vlen(pat->v.ppath.path->v.path.segs) != 1 || pat->v.ppath.path->v.path.root)
-      cerrat(st, "this pattern is not a plain binding: destructuring arrives with a later "
-                 "milestone (08-reflection.md)");
     if (st->v.let.t) {
       Env e2 = env;
       want = rty(st->v.let.t, &e2);
     }
-    l.v = ceval(st->v.let.e, env, want);
+    v = ceval(st->v.let.e, env, want);
     if (want)
-      l.v = valcoerce(l.v, want, st->v.let.e);
-    l.name = pat->v.ppath.path->v.path.segs[0]->v.seg.name;
-    l.mut = st->v.let.mut;
-    if (nlocs >= MAXLOCALS)
-      cerrat(st, "too many bindings in flight (08-reflection.md)");
-    locs[nlocs++] = l; /* a later binding of the name shadows this
-                        * one: the find walks from the top */
+      v = valcoerce(v, want, st->v.let.e);
+    if (!patfits(pat, v)) /* the binding is irrefutable, the value
+                           * says otherwise: the abort it would be
+                           * where it runs, reported here (09) */
+      cerrat(st, "the pattern does not fit this value: a let is irrefutable, and where it runs "
+                 "this would abort (09-match.md)");
+    bindpat(pat, v, st->v.let.mut);
     return;
   }
   case Nexprstmt:
     ceval(st->v.n1.e, env, 0);
+    return;
+  case Nfor:
+    execfor(st, env);
+    return;
+  case Nbreak:
+    breaking = 1;
+    return;
+  case Ncontinue:
+    continuing = 1;
     return;
   case Nassign: {
     Ast *l = st->v.bin.l;
@@ -1332,6 +1703,7 @@ callval(Ast *e, Env env)
   const char *why = 0;
   Type       *sig;
   usize       savenlocs, savelocbase, saveret;
+  int         savebrk, savecont;
   Val         saveretv, r;
   Type       *savefnret;
 
@@ -1344,9 +1716,29 @@ callval(Ast *e, Env env)
   if (!c || c->kind != Sfn)
     cerrat(f, "'%s' is not a fn here (08-reflection.md)", f->v.path.segs[0]->v.seg.name);
 
-  avs = na ? arenaalloc(na * sizeof *avs) : 0;
-  for (i = 0; i < na; i++)
-    avs[i] = ceval(args[i], env, 0);
+  { /* the arguments' wants, when the chain holds exactly one plain
+     * fn that takes this many: its parameters are the types the
+     * checker gave them, and a bare constructor -- Some(3) in an
+     * argument's place -- needs its enum named by one (01-types.md).
+     * Two candidates or none: no want to give, as before. */
+    Sym  *c2, *one = 0;
+    Type *wsig = 0;
+    int   nplain = 0;
+
+    for (c2 = c; c2; c2 = c2->next) {
+      if (vlen(c2->decl->v.fn.params) != na || c2->ngparams || c2->impl)
+        continue;
+      if (attrfind(c2->decl->attrs, "extern") || !c2->decl->v.fn.body)
+        continue;
+      one = c2;
+      nplain++;
+    }
+    if (nplain == 1)
+      wsig = fnsigof(one);
+    avs = na ? arenaalloc(na * sizeof *avs) : 0;
+    for (i = 0; i < na; i++)
+      avs[i] = ceval(args[i], env, wsig ? wsig->args[i] : 0);
+  }
 
   for (; c; c = c->next) { /* the overload chain: the one whose
                             * parameters take these values
@@ -1416,10 +1808,12 @@ callval(Ast *e, Env env)
   savenlocs = nlocs;
   savelocbase = locbase;
   saveret = returning;
+  savebrk = breaking;
+  savecont = continuing;
   saveretv = retv;
   savefnret = fnret;
   locbase = nlocs;
-  returning = 0;
+  returning = breaking = continuing = 0;
   fnret = sig->t;
   for (i = 0; i < na; i++) { /* the parameters, bound */
     Ast *p = pick->decl->v.fn.params[i];
@@ -1433,6 +1827,10 @@ callval(Ast *e, Env env)
     locs[nlocs++] = l;
   }
   r = execblk(pick->decl->v.fn.body, envnone(), sig->t);
+  if (breaking || continuing) /* the net: a jump never crosses a
+                               * frame's end -- its for is inside the
+                               * body, the checker says so (10) */
+    cerrat(e, "a break or a continue left its fn: the checker says it cannot (10-iteration.md)");
   if (returning)
     r = retv;
   r = valcoerce(r, sig->t, e); /* the tail's answer, against the fn's
@@ -1441,6 +1839,8 @@ callval(Ast *e, Env env)
   nlocs = savenlocs;
   locbase = savelocbase;
   returning = saveret;
+  breaking = savebrk;
+  continuing = savecont;
   retv = saveretv;
   fnret = savefnret;
   calldepth--;
