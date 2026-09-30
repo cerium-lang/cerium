@@ -1,6 +1,6 @@
-/* a body reading a const struct: the value is an aggregate, and emit
- * has no immediate for one -- its data segment arrives with the
- * milestone that gives it storage (08-reflection.md) */
+/* a body reading a const struct: the value rides the data segment,
+ * and the read -- a field, a copy into a binding -- walks it where
+ * it sits (08-reflection.md) */
 struct P { x: i32, y: i32 }
 const A: P = P{x: 1, y: 2};
 fn main() -> i32 { A.x }

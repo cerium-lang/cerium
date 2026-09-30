@@ -2634,6 +2634,37 @@ localview(Ast *e, Fenv *fe)
   return 0;
 }
 
+/* the leftmost name a place grows from, when it is a global: a
+ * const has no address to write, a static's mut is its own
+ * permission (01-types.md). What does not root in a global says
+ * yes and the walk below decides */
+static int
+globwritable(Ast *p, Fenv *fe)
+{
+  while (p->k == Naccess || p->k == Nindex || p->k == Ntupidx || p->k == Nrangeindex) {
+    if (p->k == Naccess)
+      p = p->v.fld.e;
+    else if (p->k == Nindex)
+      p = p->v.n2.a;
+    else if (p->k == Ntupidx)
+      p = p->v.tup.e;
+    else
+      p = p->v.ridx.e;
+  }
+  if (p->k == Npath && vlen(p->v.path.segs) == 1 && !p->v.path.root) {
+    Sym *s;
+
+    if (locfind(fe, p->v.path.segs[0]->v.seg.name))
+      return 1; /* a local root: the walk below decides */
+    s = symfind(p->v.path.segs[0]->v.seg.name);
+    if (s && s->kind == Sstatic && s->decl && s->decl->v.cst.mut)
+      return 1;
+    return 0; /* a const has no address to write (01-types.md); the
+               * rest are not globals a place writes */
+  }
+  return 1;
+}
+
 static int
 placewritable(Ast *p, Fenv *fe)
 {
@@ -2641,7 +2672,13 @@ placewritable(Ast *p, Fenv *fe)
   case Npath: {
     Local *l = locfind(fe, p->v.path.segs[0]->v.seg.name);
 
-    return l && l->mut;
+    if (l)
+      return l->mut;
+    { /* a global: a static mut's own slot; a const has none */
+      Sym *s = symfind(p->v.path.segs[0]->v.seg.name);
+
+      return s && s->kind == Sstatic && s->decl && s->decl->v.cst.mut;
+    }
   }
   case Naccess: { /* the two mut levels are orthogonal (01-types.md):
                    * a.b is writable by b's own mut, never by the
@@ -2650,6 +2687,8 @@ placewritable(Ast *p, Fenv *fe)
     Type *bt;
     usize i;
 
+    if (!globwritable(p, fe))
+      return 0; /* the base's own global says no (01-types.md) */
     if (!derefswritable(p->v.fld.e, fe))
       return 0; /* a *T lends nothing writable */
     bt = rplace(p->v.fld.e, fe);
@@ -2671,6 +2710,8 @@ placewritable(Ast *p, Fenv *fe)
   case Nindex: {
     Type *bt;
 
+    if (!globwritable(p, fe))
+      return 0; /* the base's own global says no (01-types.md) */
     if (!derefswritable(p->v.n2.a, fe))
       return 0;
     bt = rplace(p->v.n2.a, fe);
@@ -2685,6 +2726,8 @@ placewritable(Ast *p, Fenv *fe)
   case Ntupidx: { /* (T, mut U): the row is its own slot (01-types.md) */
     Type *bt;
 
+    if (!globwritable(p, fe))
+      return 0; /* the base's own global says no (01-types.md) */
     if (!derefswritable(p->v.tup.e, fe))
       return 0;
     bt = rplace(p->v.tup.e, fe);
@@ -2697,6 +2740,8 @@ placewritable(Ast *p, Fenv *fe)
   case Nrangeindex: {
     Type *bt;
 
+    if (!globwritable(p, fe))
+      return 0; /* the base's own global says no (01-types.md) */
     if (!derefswritable(p->v.ridx.e, fe))
       return 0;
     bt = rplace(p->v.ridx.e, fe);

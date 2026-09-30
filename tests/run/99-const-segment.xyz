@@ -1,0 +1,112 @@
+/* the segment a const's aggregate rides, every shape reading it:
+ * a field, a copy that writes its own storage, a nested walk, a
+ * tuple row, a union's active row and its zeroed whole, a tagged
+ * enum's match and tag, an array's index and view and loop, ?T held
+ * and empty, the niche, floats, packed fields, a call's argument, a
+ * destructuring let -- and the statics beside it, their slots
+ * whole-program, writable where mut marked them (01-types.md,
+ * 08-reflection.md) */
+struct Pt { x: i32, y: i32 }
+struct In { y: i32 }
+struct Nest { x: i32, inner: In }
+struct MutP { mut x: i32, y: i32 }
+union U { a: i32, b: i64 }
+enum E(u8) { A(i32), B, C(i32, i32) }
+struct F { a: f32, b: f64 }
+#[packed]
+struct Pk { a: u8, b: u32, c: u8 }
+struct Row { t: (i32, i64) }
+
+const A: Pt = Pt{x: 1, y: 2};
+const N: Nest = Nest{x: 1, inner: In{y: 7}};
+const T: (i32, i64) = (3, 4);
+const UV: U = U{a: 42};
+const UZ: U = U{};
+const EV: E = E::C(10, 20);
+const ARR: [4]i32 = [4]i32{5, 6, 7, 8};
+const SO: ?i32 = Some(30);
+const NO: ?i32 = None;
+const NP: ?voidptr = None;
+const FV: F = F{a: 1.5, b: 2.5};
+const PV: Pk = Pk{a: 1, b: 2, c: 3};
+const DEEP: [2]Row = [2]Row{Row{t: (1, 2)}, Row{t: (3, 4)}};
+const MUTA: MutP = MutP{x: 1, y: 2};
+
+static ST: Pt = Pt{x: 1, y: 2};
+static mut SC: i32 = 5;
+static mut SSP: MutP = MutP{x: 1, y: 2};
+
+fn fields() -> i32 { A.x + A.y }
+
+fn copied() -> i32 { /* the copy writes its own storage, the original holds */
+  let mut p = MUTA;
+  p.x = 5;
+  p.x + A.x
+}
+
+fn nested() -> i32 { N.x * 10 + N.inner.y }
+
+fn tuple() -> i32 { T.0 + @cast<i32>(T.1) }
+
+fn unions() -> i32 { UV.a + UZ.a } /* 42 and the zeroed whole */
+
+fn tagged() -> i32 {
+  let t = @cast<i32>(EV);
+  match EV { E::A(x) => x, E::B => 1, E::C(a, b) => a + b + t, }
+}
+
+fn array() -> i32 { /* an index, a view, a loop over the same ride */
+  let mut s = ARR[2];
+  let v = ARR[1..];
+  s = s + v[0];
+  for x in ARR { s = s + x; }
+  s
+}
+
+fn options() -> i32 {
+  let mut s = 0;
+  for v in SO { s = s + v; }
+  match NO { Some(v) => s + v, None => s + 1, }
+}
+
+fn niche() -> i32 { match NP { Some(p) => 1, None => 7, } }
+
+fn floats() -> i32 { @cast<i32>(FV.a) * 10 + @cast<i32>(FV.b) }
+
+fn packed() -> i32 { /* the packed walk rides the same bytes */
+  @cast<i32>(PV.a) + @cast<i32>(PV.b) + @cast<i32>(PV.c) + @cast<i32>(@sizeof<Pk>())
+}
+
+fn take(p: Pt) -> i32 { p.x + p.y }
+
+fn arged() -> i32 { take(A) }
+
+fn destr() -> i32 {
+  let { x, y } = A;
+  let mut t: (i32, i32) = (x, y);
+  t.0 * 10 + t.1
+}
+
+fn deep() -> i32 {
+  let mut s = 0;
+  for r in DEEP { s = s + r.t.0 + @cast<i32>(r.t.1); }
+  s
+}
+
+fn statics() -> i32 { ST.x + ST.y }
+
+fn bumped() -> i32 { /* a static mut's own slot, written and re-read */
+  SSP.x = 5;
+  SSP.x + SSP.y
+}
+
+fn counted() -> i32 {
+  SC = SC + 1;
+  SC
+}
+
+fn main() -> i32 {
+  fields() + copied() + nested() + tuple() + unions() + tagged() + array() +
+    options() + niche() + floats() + packed() + arged() + destr() + deep() +
+    statics() + bumped() + counted()
+}

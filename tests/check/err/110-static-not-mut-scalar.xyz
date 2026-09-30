@@ -1,0 +1,4 @@
+/* a static without mut is read-only storage, like any other
+ * non-mut slot (01-types.md) */
+static C: i32 = 40;
+fn main() -> i32 { C = 5; C }

@@ -1,0 +1,5 @@
+/* a static's mut is its own permission: a field's mut does not
+ * carry a non-mut static (01-types.md) */
+struct P { mut x: i32 }
+static S: P = P{x: 1};
+fn main() -> i32 { S.x = 5; S.x }

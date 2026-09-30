@@ -12,6 +12,21 @@
 
 #include "ast.h"
 #include "sym.h"
+#include "type.h"
+
+/* a value the walk carries: a scalar in its two words, an aggregate
+ * as its elements -- one Val each, the nesting recursive. The
+ * aggregate half is a const's memoized value beside its Sym's
+ * scalar one, and emit folds it into the data segment a body's read
+ * copies from (08-reflection.md) */
+typedef struct Val Val;
+struct Val
+{
+  Type  *t;     /* what the checker would say; the derivation's answer */
+  u64    i;     /* an integer's or a bool's bits, two's complement */
+  double f;     /* a float's value */
+  Val   *elems; /* an aggregate's elements, or NULL: the scalars' mark */
+};
 
 void cevalsym(Sym *s);                      /* a const's value, now or never: the
                                              * initializer must be compile-time known
