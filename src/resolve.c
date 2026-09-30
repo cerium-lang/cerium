@@ -1449,6 +1449,8 @@ checkinit(void)
 {
   syminit();
   prelude();
+  preludefile(); /* std's embedded source: declared and resolved under
+                  * the clean table, before the user's items */
   chk_impls = 0;
   chk_nimpls = 0;
 }
@@ -1487,12 +1489,15 @@ checkdefaults(Sym *s)
   }
 }
 
+/* pass 1 + 2: every name declared, then every declaration resolved.
+ * The user's file walks this inside checkfile; std's embedded source
+ * walks it alone first, under a clean symbol table -- its items are
+ * self-contained (types only), and nothing of it reaches the user's
+ * dumps or output. */
 void
-checkfile(Ast **items)
+checkdecls(Ast **items)
 {
   usize i, n = vlen(items);
-  Sym **impls;
-  usize nimpls;
 
   declare(items);
   for (i = 0; i < n; i++) {
@@ -1533,6 +1538,16 @@ checkfile(Ast **items)
       break;
     }
   }
+}
+
+void
+checkfile(Ast **items)
+{
+  usize i, n = vlen(items);
+  Sym **impls;
+  usize nimpls;
+
+  checkdecls(items);
 
   /* pass 3: traits and impls, then coherence. The bounds check runs
    * first so a bound nobody overlaps against still gets diagnosed. */

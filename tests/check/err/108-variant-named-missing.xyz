@@ -1,0 +1,9 @@
+/* a named payload constructed by name is checked the way a struct
+ * literal is: a field left out, a name the payload does not carry
+ * (01-types.md) */
+enum TI(u8) { Nil, Two { a: u32, b: u32 } }
+
+fn main() -> i32 {
+  let v = TI::Two{a: 1};
+  0
+}

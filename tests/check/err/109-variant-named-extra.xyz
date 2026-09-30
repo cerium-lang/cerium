@@ -1,0 +1,8 @@
+/* a name the payload does not carry, the struct literal rule
+ * again (01-types.md) */
+enum TI(u8) { Nil, Two { a: u32, b: u32 } }
+
+fn main() -> i32 {
+  let v = TI::Two{a: 1, b: 2, c: 3};
+  0
+}

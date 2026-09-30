@@ -1,29 +1,73 @@
 /* prelude.c -- the declarations the language itself writes.
  *
- * Decision made in the M2 plan: the compiler knows these symbols
- * first (option A), and the real std/ source replaces them file by
- * file once the passes that check it exist. What M2a needs is the
- * pair the sugar builds on:
- *
- *   enum Option<T> { None, Some(T) }
- *   enum Result<T, E> { Ok(T), Err(E) }
- *
- * They are declared through symdecl, in the same namespace the
- * file's items enter, so 'Option' is a taken name before the first
- * line is read -- the same answer a std source file would give.
- * Copy/Drop and the operator traits (07-operators.md) join here as
- * their passes arrive; the compiler-provided impls for the built-in
- * types are pass-3 work, not declarations.
+ * Two kinds live here. The hand-built pair below is M2's: Option,
+ * Result, Copy, Drop -- declared through symdecl, in the same
+ * namespace the file's items enter, so 'Option' is a taken name
+ * before the first line is read. The rest is std's own source,
+ * embedded: std/meta.xyz parses like any other source (its text
+ * arrives from tools/embed.sh as src/prelude_text.h) before the
+ * user's file does, and its items resolve under the clean symbol
+ * table. What M5h loads this way is std::meta's reflection model
+ * (08-reflection.md); the flat names are global for now --
+ * namespaces (11-namespaces.md) are a later stage.
  */
 
 #include <string.h>
 
 #include "ast.h"
+#include "check.h"
+#include "lex.h"
+#include "parse.h"
+#include "prelude_text.h"
 #include "sym.h"
 #include "type.h"
+#include "vec.h"
 
 Sym *sym_option, *sym_result;
 Sym *sym_copy, *sym_drop;
+
+/* std's parsed items, held between preludeparse (the lexer serves
+ * them before the user's file binds it) and preludefile (the checker
+ * resolves them, once the table is clean) */
+static Ast **metaitems;
+
+void
+preludeparse(void) /* first: the lexer is one global, so the embedded
+                    * source reads out before the user's file opens */
+{
+  Ast  *it;
+  usize len = 0, i, p = 0;
+  char *text;
+
+  /* join the table's lines into one NUL-terminated text: each line
+   * is a literal within C90's 509-char minimum, the whole is not
+   * (-Woverlength-strings), so embed.sh writes the table and the
+   * joining happens here, in the arena */
+  for (i = 0; prelude_src[i]; i++)
+    len += strlen(prelude_src[i]);
+  text = arenaalloc(len + 1);
+  for (i = 0; prelude_src[i]; i++) {
+    usize n = strlen(prelude_src[i]);
+
+    memcpy(text + p, prelude_src[i], n + 1); /* with the NUL */
+    p += n;
+  }
+  metaitems = vnew(Ast *, 16);
+  lexsrc(text);
+  while (peek() != Teof) {
+    it = parseitem();
+    vappend(&metaitems, &it);
+  }
+}
+
+void
+preludefile(void) /* from checkinit, after syminit and the hand pair:
+                   * declare and resolve, nothing more. The items are
+                   * types only today -- a std fn would want pass 4
+                   * here too, and that day the call grows. */
+{
+  checkdecls(metaitems);
+}
 
 /* an Ngparam without a lexer behind it: the prelude's type
  * parameters carry no position, and nothing prints one */

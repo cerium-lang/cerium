@@ -351,8 +351,15 @@ locbind(Em *em, char *name, char *slot, Type *ty)
   l.name = name;
   l.slot = slot;
   l.ty = ty;
-  vappend(&em->locs, &l);
-  em->nlocs = vlen(em->locs);
+  if (em->nlocs < vlen(em->locs)) /* a popped binding's slot, reused:
+                                   * the count is the stack, the vec
+                                   * only its high-water mark -- a
+                                   * bind here must not wake what a
+                                   * scope popped */
+    em->locs[em->nlocs] = l;
+  else
+    vappend(&em->locs, &l);
+  em->nlocs++;
 }
 
 /* the fn's symbol: #[extern(C)] and main keep their own name, every
@@ -1309,9 +1316,16 @@ emavariant(Em *em, Type *t, Variant *v, Ast **args, usize n, Ast *at)
       cerrat(at, "'%s' carries %lu payloads, %lu given", v->name, (unsigned long) np,
              (unsigned long) n);
     for (i = 0; i < np; i++) {
-      char *av = emaexpr(em, args[i]);
-      char *p = addrplus(em, s, off);
+      char *av, *p;
 
+      if (!sizeof_(ps[i])) /* a zero-sized payload (a 'type' field,
+                            * 08-reflection.md) holds no value: nothing
+                            * to store, and nothing to evaluate for it
+                            * either -- the only producers of a type
+                            * value are side-effect-free */
+        continue;
+      av = emaexpr(em, args[i]);
+      p = addrplus(em, s, off);
       if (isagg(ps[i]))
         fprintf(em->o, "\tblit %s, %s, %lu\n", av, p, (unsigned long) sizeof_(ps[i]));
       else
@@ -2516,7 +2530,7 @@ emaexpr(Em *em, Ast *e)
     fprintf(em->o, "\tblit %s, %s, %lu\n", zeroblk(em, sz), t, (unsigned long) sz);
     for (i = 0; i < vlen(inits); i++) {
       Ast  *ini = inits[i];
-      char *v = emaexpr(em, ini->v.init.e);
+      char *v;
       Type *ft = 0;
       usize off = foffset(st, ini->v.init.name, e);
       usize j;
@@ -2524,6 +2538,10 @@ emaexpr(Em *em, Ast *e)
       for (j = 0; j < st->sym->nfields; j++)
         if (strcmp(st->sym->fields[j].name, ini->v.init.name) == 0)
           ft = gsubst(st->sym->fields[j].ty, st->sym->gparams, st->args, st->nargs);
+      if (!sizeof_(ft)) /* a zero-sized field holds no value -- the
+                         * same skip a variant's payload makes */
+        continue;
+      v = emaexpr(em, ini->v.init.e);
       if (isagg(ft)) { /* the nested literal has its own storage; a
                         * blit copies it into the field */
         if (off) {

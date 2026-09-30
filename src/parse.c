@@ -91,6 +91,25 @@ wantident(const char *what)
   return mkstr();
 }
 
+/* a field's name, where a field's name is parsed: the declaration
+ * (a struct's field, an enum variant's named payload), a literal's
+ * init, a pattern's binding, and the access. 'type' is a keyword and
+ * a field's name both -- Field carries 'type: type'
+ * (08-reflection.md) -- so these four spots admit it. A keyword token
+ * carries no v.str, the spelling is the keyword itself. */
+static char *
+fieldname(const char *what)
+{
+  if (peek() == Ttype) {
+    char *s = arenaalloc(5);
+
+    next();
+    strcpy(s, "type");
+    return s;
+  }
+  return wantident(what);
+}
+
 /* -- attributes -------------------------------------------------------- */
 
 static Ast *
@@ -798,7 +817,7 @@ postfix(void)
         Ast *n = mk(Naccess);
 
         n->v.fld.e = e;
-        n->v.fld.name = wantident("a field name");
+        n->v.fld.name = fieldname("a field name");
         e = n;
       }
       continue;
@@ -1014,7 +1033,7 @@ fieldinits(Ast *n, Ast ***slot) /* "{ f: e, ... }" is peeked; the
     for (;;) {
       Ast *fi = mk(Ninit);
 
-      fi->v.init.name = wantident("a field name");
+      fi->v.init.name = fieldname("a field name");
       want(Tcolon, ":");
       fi->v.init.e = expr();
       npush(slot, fi);
@@ -1397,7 +1416,7 @@ pfield(void)
 {
   Ast *n = mk(Npfield);
 
-  n->v.init.name = wantident("a field");
+  n->v.init.name = fieldname("a field");
   if (accept(Tcolon))
     n->v.init.e = pattern();
   return n;
@@ -1625,7 +1644,7 @@ fieldnode(void) /* attributes [mut] ident : type */
   n->attrs = attrs();
   if (accept(Tmut))
     n->v.variant.mut = 1;
-  n->v.variant.name = wantident("a field name");
+  n->v.variant.name = fieldname("a field name");
   want(Tcolon, ":");
   n->v.variant.t = type_();
   return n;

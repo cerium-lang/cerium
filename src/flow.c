@@ -140,6 +140,9 @@ iscopy(Type *t)
   case Typtr:
   case Tyslice:
   case Tydyn:
+  case Tytype: /* a type reference is a compile-time label: no
+                * bits, no destructor, nothing to move -- it is
+                * stored in a field and passed along (08) */
     return 1;
   case Tymut: /* only under a slot; the answer is the child's */
     return iscopy(t->t);
@@ -192,7 +195,7 @@ iscopy(Type *t)
     }
     return 0;
   }
-  default: /* Tytrait, Typroj, Tyfn, Tytype */
+  default: /* Tytrait, Typroj, Tyfn */
     return 0;
   }
 }

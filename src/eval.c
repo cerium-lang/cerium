@@ -1021,9 +1021,14 @@ ceval(Ast *e, Env env, Type *want)
         cerrat(e, "a generic enum's construction arrives with a later milestone (04-generics.md)");
       { /* the rows by name, in the payload's own order */
         Ast **inits = e->v.slit.inits;
-        usize n = vlen(inits), nf = v->nfields, i, k;
+        usize n = vlen(inits), nf = v->nfields, i, k, j;
         Ast **args;
 
+        for (i = 0; i < n; i++) /* a name twice says so itself, not
+                                 * as a missing one after it */
+          for (j = i + 1; j < n; j++)
+            if (strcmp(inits[i]->v.init.name, inits[j]->v.init.name) == 0)
+              cerrat(inits[j], "field '%s' given twice (01-types.md)", inits[j]->v.init.name);
         if (n != nf)
           cerrat(e, "'%s' carries %lu payloads, %lu given (01-types.md)", v->name,
                  (unsigned long) nf, (unsigned long) n);

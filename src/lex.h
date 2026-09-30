@@ -94,8 +94,11 @@ struct Token
   } v;
 };
 
-/* one lexer per process, like qbe: the state is static in lex.c */
+/* one lexer per process, like qbe: the state is static in lex.c.
+ * Each binding resets the whole state -- a compilation lexes the
+ * prelude's embedded source first, then the user's file. */
 void        lexinit(const char *path); /* NULL reads stdin */
+void        lexsrc(const char *text);  /* NUL-terminated memory text */
 const char *lexpath(void);
 
 Tok    peek(void);   /* look at the next token without consuming */
