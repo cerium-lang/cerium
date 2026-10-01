@@ -1600,120 +1600,134 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
   case Npath: {
     Ast **segs = e->v.path.segs;
     usize nsegs = vlen(segs);
-    char *nm0 = segs[0]->v.seg.name;
+    Ns   *ns;
+    usize k = nshead(segs, nsegs, &ns);
 
-    if (nsegs == 1)
-      return rexprpath1(e, fe, nm0, want);
-    if (nsegs == 2) {
-      char *nm1 = segs[1]->v.seg.name;
-      Sym  *s = symfind(nm0);
+    if (k == nsegs) /* the whole path a namespace walk: a namespace
+                     * names no value (11-namespaces.md) */
+      berr(e, "a namespace names no value; name what is in it (11-namespaces.md)");
+    segs += k; /* the namespaces walked fall away; what is left
+                * reads as it stood, the bare name's own path the
+                * prelude's std half still answering through
+                * symfind's fallthrough (11-namespaces.md) */
+    nsegs -= k;
+    {
+      char *nm0 = segs[0]->v.seg.name;
 
-      if (!s || s->kind != Stype) {
-        if (s && s->kind == Strait) /* a trait method as a value
-                                     * names a family: one impl per
-                                     * receiver, and a value has
-                                     * none -- dyn A (06) carries
-                                     * that, when it arrives */
-          berr(e, "'%s::%s' names one impl per receiver; call it", s->name, nm1);
-        berr(e, "unknown name '%s'", nm0);
-      }
-      if (s->tykind == TYenum) {
-        struct Variant *v = varfind(s, nm1);
+      if (nsegs == 1)
+        return rexprpath1(e, fe, nm0, want);
+      if (nsegs == 2) {
+        char *nm1 = segs[1]->v.seg.name;
+        Sym  *s = symfind(nm0);
 
-        if (!v)
-          berr(e, "'%s' has no variant '%s'", s->name, nm1);
-        if (v->named || v->payload)
-          berr(e, "'%s::%s' carries a payload; construct it", s->name, nm1);
-        if (s->ngparams)
-          berr(e, "cannot infer '%s' for '%s' here", s->gparams[0]->v.gp.name, s->name);
-        return tysym(s, 0, 0);
-      }
-      { /* an inherent impl's member: a fn value or a const */
-        Sym    *imp;
-        Member *m = inherentfind(s, nm1, &imp);
-        Ast   **gas = segs[0]->v.seg.args; /* the path's own <...>:
-                                            * the instance it names */
-        Type **tys = 0;
-
-        if (vlen(gas)) { /* the args name a receiver: the impls
-                          * fitted against it, the most specific
-                          * one's member the read -- the (T, T) of an
-                          * is_same landing true where it fits, the
-                          * <A, B> false behind it (05-traits.md) */
-          Type *recv;
-          usize gi, k = vlen(gas);
-
-          if (k != s->ngparams)
-            berr(e, "'%s' takes %lu parameters, %lu given", s->name, (unsigned long) s->ngparams,
-                 (unsigned long) k);
-          tys = tyargs(k);
-          for (gi = 0; gi < k; gi++)
-            tys[gi] = rty(gas[gi], &fe->env); /* the args resolve in
-                                               * the body's own
-                                               * scope: a fn's
-                                               * variables included
-                                               * (04-generics.md) */
-          for (gi = 0; gi < k; gi++)          /* a fn's own variable among the
-                                               * args: the read is the
-                                               * instance's, deferred -- the
-                                               * re-check under the binding
-                                               * folds it (04-generics.md) */
-            if (tys[gi]->k == Typaram) {
-              evalblackbox++;
-              return want ? want : tybool();
-            }
-          recv = tysym(s, tys, k);
-          { /* the pick: the receiver's own, most specific first */
-            Member *bm = inherentfindt(recv, nm1, &imp, &tys);
-
-            if (!bm)
-              berr(e, "no '%s' of '%s' fits %s", nm1, s->name, btys(recv));
-            m = bm; /* tys: the binding the pick made */
-          }
-        } else if (s->ngparams && m && m->kind == Mconst)
-          berr(e, "cannot infer '%s' for '%s' here", s->gparams[0]->v.gp.name, s->name);
-        if (!m)
-          berr(e, "'%s' has no '%s'", s->name, nm1);
-        if (m->kind == Mfn && m->decl && vlen(m->decl->v.fn.gparams))
-          berr(e,
-               "'%s' names a family of its own: call it, and the "
-               "arguments pick one (04-generics.md)",
-               nm1);
-        if (m->kind == Mfn) {
-          e->v.path.sym = m->sym; /* the fn it names: its address */
-          e->v.path.tys = 0;
-          return m->ty;
+        if (!s || s->kind != Stype) {
+          if (s && s->kind == Strait) /* a trait method as a value
+                                       * names a family: one impl per
+                                       * receiver, and a value has
+                                       * none -- dyn A (06) carries
+                                       * that, when it arrives */
+            berr(e, "'%s::%s' names one impl per receiver; call it", s->name, nm1);
+          berr(e, "unknown name '%s'", nm0);
         }
-        if (m->kind == Mconst) {
-          Type *ct = imp && imp->ngparams ? gsubst(m->ty, imp->gparams, tys, imp->ngparams) : m->ty;
+        if (s->tykind == TYenum) {
+          struct Variant *v = varfind(s, nm1);
 
-          if (m->decl && (ct->k == Tybool || (ct->k == Tyint && ct->num != IN_F32 &&
-                                              ct->num != IN_F64))) { /* the value
-                                                                      * folded in place:
-                                                                      * the const is a
-                                                                      * compile-time
-                                                                      * fact, the read
-                                                                      * its own literal
-                                                                      * (05-traits.md) */
-            Ast  *init = m->decl->v.cst.e;
-            Env   env = envnone();
-            Val   v;
-            usize gi;
+          if (!v)
+            berr(e, "'%s' has no variant '%s'", s->name, nm1);
+          if (v->named || v->payload)
+            berr(e, "'%s::%s' carries a payload; construct it", s->name, nm1);
+          if (s->ngparams)
+            berr(e, "cannot infer '%s' for '%s' here", s->gparams[0]->v.gp.name, s->name);
+          return tysym(s, 0, 0);
+        }
+        { /* an inherent impl's member: a fn value or a const */
+          Sym    *imp;
+          Member *m = inherentfind(s, nm1, &imp);
+          Ast   **gas = segs[0]->v.seg.args; /* the path's own <...>:
+                                              * the instance it names */
+          Type **tys = 0;
 
-            for (gi = 0; imp && gi < imp->ngparams; gi++)
-              env = envpush(&env, imp->gparams[gi]->v.gp.name, tys[gi]);
-            v = ceval(init, env, ct);
-            e->k = ct->k == Tybool ? Nbool : Nint;
-            e->v.i.num = v.i;
+          if (vlen(gas)) { /* the args name a receiver: the impls
+                            * fitted against it, the most specific
+                            * one's member the read -- the (T, T) of an
+                            * is_same landing true where it fits, the
+                            * <A, B> false behind it (05-traits.md) */
+            Type *recv;
+            usize gi, k = vlen(gas);
+
+            if (k != s->ngparams)
+              berr(e, "'%s' takes %lu parameters, %lu given", s->name, (unsigned long) s->ngparams,
+                   (unsigned long) k);
+            tys = tyargs(k);
+            for (gi = 0; gi < k; gi++)
+              tys[gi] = rty(gas[gi], &fe->env); /* the args resolve in
+                                                 * the body's own
+                                                 * scope: a fn's
+                                                 * variables included
+                                                 * (04-generics.md) */
+            for (gi = 0; gi < k; gi++)          /* a fn's own variable among the
+                                                 * args: the read is the
+                                                 * instance's, deferred -- the
+                                                 * re-check under the binding
+                                                 * folds it (04-generics.md) */
+              if (tys[gi]->k == Typaram) {
+                evalblackbox++;
+                return want ? want : tybool();
+              }
+            recv = tysym(s, tys, k);
+            { /* the pick: the receiver's own, most specific first */
+              Member *bm = inherentfindt(recv, nm1, &imp, &tys);
+
+              if (!bm)
+                berr(e, "no '%s' of '%s' fits %s", nm1, s->name, btys(recv));
+              m = bm; /* tys: the binding the pick made */
+            }
+          } else if (s->ngparams && m && m->kind == Mconst)
+            berr(e, "cannot infer '%s' for '%s' here", s->gparams[0]->v.gp.name, s->name);
+          if (!m)
+            berr(e, "'%s' has no '%s'", s->name, nm1);
+          if (m->kind == Mfn && m->decl && vlen(m->decl->v.fn.gparams))
+            berr(e,
+                 "'%s' names a family of its own: call it, and the "
+                 "arguments pick one (04-generics.md)",
+                 nm1);
+          if (m->kind == Mfn) {
+            e->v.path.sym = m->sym; /* the fn it names: its address */
+            e->v.path.tys = 0;
+            return m->ty;
+          }
+          if (m->kind == Mconst) {
+            Type *ct =
+                imp && imp->ngparams ? gsubst(m->ty, imp->gparams, tys, imp->ngparams) : m->ty;
+
+            if (m->decl && (ct->k == Tybool || (ct->k == Tyint && ct->num != IN_F32 &&
+                                                ct->num != IN_F64))) { /* the value
+                                                                        * folded in place:
+                                                                        * the const is a
+                                                                        * compile-time
+                                                                        * fact, the read
+                                                                        * its own literal
+                                                                        * (05-traits.md) */
+              Ast  *init = m->decl->v.cst.e;
+              Env   env = envnone();
+              Val   v;
+              usize gi;
+
+              for (gi = 0; imp && gi < imp->ngparams; gi++)
+                env = envpush(&env, imp->gparams[gi]->v.gp.name, tys[gi]);
+              v = ceval(init, env, ct);
+              e->k = ct->k == Tybool ? Nbool : Nint;
+              e->v.i.num = v.i;
+              return ct;
+            }
             return ct;
           }
-          return ct;
+          berr(e, "'%s::%s' is a type, not a value", s->name, nm1);
         }
-        berr(e, "'%s::%s' is a type, not a value", s->name, nm1);
       }
+      berr(e, "a path this long arrives with namespaces (11)");
+      return 0; /* unreachable */
     }
-    berr(e, "a path this long arrives with namespaces (11)");
-    return 0; /* unreachable */
   }
   case Ntuple: {
     Ast  **es = e->v.list.ts;
@@ -2018,6 +2032,15 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
     if (f->k == Npath) {
       Ast **segs = f->v.path.segs;
       usize nsegs = vlen(segs);
+      Ns   *ns;
+      usize k = nshead(segs, nsegs, &ns);
+
+      if (k == nsegs) /* the whole callee a namespace walk
+                       * (11-namespaces.md) */
+        berr(e, "a namespace names no fn; call what is in it (11-namespaces.md)");
+      segs += k; /* the namespaces walked fall away; the callee left
+                  * reads as it stood (11-namespaces.md) */
+      nsegs -= k;
 
       if (nsegs == 1) {
         char  *nm = segs[0]->v.seg.name;

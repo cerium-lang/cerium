@@ -1,0 +1,5 @@
+/* the namespaced read resolves in the namespace it lands in: a
+ * type the namespace holds no table answers (11-namespaces.md) */
+fn f(t: std::meta::Nosuch) -> i32 { 0 }
+
+fn main() -> i32 { 0 }

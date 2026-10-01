@@ -1,0 +1,5 @@
+/* the namespace path ends at its type: a member after it arrives
+ * its own way (11-namespaces.md) */
+fn f(t: std::meta::TypeInfo::X) -> i32 { 0 }
+
+fn main() -> i32 { 0 }

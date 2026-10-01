@@ -80,9 +80,14 @@ preludefile(void) /* from checkinit, after syminit and the hand pair:
                    * declare and resolve, and the impls among the
                    * items leave with their members resolved too --
                    * held for checkfile's pass-3 table, std's is_same
-                   * the first to ride this (05-traits.md) */
+                   * the first to ride this (05-traits.md). The items
+                   * land in std::meta, the tree's first real
+                   * sub-namespace (11-namespaces.md) */
 {
-  checkdecls(metaitems);
+  Ns *meta = nsmk(nsmk(nsroot(), "std"), "meta");
+
+  symsetmeta(meta);
+  checkdecls(metaitems, meta);
   collectstdimpls(metaitems);
   sym_typeinfo = symfind("TypeInfo"); /* @typeinfo's answers are its
                                        * variants (08-reflection.md) */

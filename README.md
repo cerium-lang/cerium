@@ -564,6 +564,24 @@ every checkfile — so the read needs no declaration of its own, and
 an impl the user writes over std's is the conflict the coherence
 check names (`05-traits.md`).
 
+The namespace tree is here, its first real branch the prelude's own
+(`11-namespaces.md`): std::meta, the embedded source declaring into
+a namespace of its name instead of the root's flat table. A path
+reads it — `std::meta::TypeInfo` in type position, the const's
+`std::meta::is_same<i32, i32>::value` through the same `::value`
+walk, the rooted `::std::meta::...` beside — the leading segments
+walking the root's sub-namespaces, what is left reading as it
+stood: the type resolves in the namespace it lands in, the value's
+member walk its own. The bare name still answers too — the root's
+miss falling through to std::meta's table, the prelude-era
+stand-in until `use` lands — and through that stand-in a root
+declaration of one of std::meta's names stays the taken name it
+always was: the fallthrough could not settle the ambiguity, so it
+is refused, the fallthrough's own semantics held honest until the
+step that retires it. What waits: `use` — the four shapes of it,
+the fallthrough retired, and the namespaced `meta::TypeInfo` a use
+brings in (`11-namespaces.md`).
+
 Codegen has begun: `xyz -s file.xyz` prints the `.ssa` text — qbe's
 input — and `xyz -c file.xyz -o out` runs the pipeline, qbe as a
 subprocess and the system `cc` linking. Checking writes each node's

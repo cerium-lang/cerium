@@ -1,0 +1,5 @@
+/* a head that walks nowhere: std holds no nosuch, and the walk
+ * says so where it stopped (11-namespaces.md) */
+fn f(t: std::nosuch::X) -> i32 { 0 }
+
+fn main() -> i32 { 0 }

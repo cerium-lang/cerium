@@ -1,10 +1,13 @@
 /* sym.h -- a declaration, and what checking made of it.
  *
- * One namespace for the whole single-file root (11-namespaces.md);
- * directories-as-namespaces arrive as their own feature. A Sym is
- * what pass 1 declares and pass 2 fills: the fields and variants of
- * a type, the target of an alias, the fn type of a function. Impls
- * carry no name -- they wait for the pass that collects them.
+ * The namespaces the files' directories spell (11-namespaces.md):
+ * one tree from the root, a declaration landing in the namespace of
+ * the directory its file sits in. Each namespace holds its own
+ * table; the bare-name lookup walks the tree the spec's order
+ * spells. A Sym is what pass 1 declares and pass 2 fills: the
+ * fields and variants of a type, the target of an alias, the fn
+ * type of a function. Impls carry no name -- they wait for the pass
+ * that collects them.
  *
  * Field/Variant are flattened out of the Ast on purpose: checking
  * walks them constantly, and the tree stays the parser's contract.
@@ -148,6 +151,35 @@ struct Sym
 void syminit(void);
 Sym *symdecl(const char *name, int kind, Ast *decl, Ast **gparams, usize ngparams);
 Sym *symfind(const char *name);
+
+/* -- the namespace tree -------------------------------------------------
+ * A directory is a namespace (11-namespaces.md); the root is the
+ * project's. Each holds its own declarations and its
+ * sub-namespaces. symfind above reads the root's table, and -- the
+ * prelude-era stand-in until `use` lands -- falls through to
+ * std::meta's, which is what keeps a bare is_same or TypeInfo
+ * resolving while the reads learn their paths. */
+
+typedef struct Ns Ns;
+struct Ns
+{
+  char *name; /* the last segment; the root's is "" */
+  Sym **tbl;  /* this namespace's own declarations */
+  usize cap, n;
+  Ns  **subs; /* the sub-namespaces, a vec */
+  Ns   *parent;
+};
+
+Ns   *nsroot(void);
+Ns   *nsmk(Ns *parent, const char *name); /* a sub-namespace, named */
+Ns   *nschild(Ns *ns, const char *name);  /* a sub-namespace by name, or NULL */
+Sym  *nsitem(Ns *ns, const char *name);   /* a declaration of this one */
+char *nsname(Ns *ns);                     /* its full path, std::meta */
+Sym  *nsdecl(Ns *ns, const char *name, int kind, Ast *decl, Ast **gparams,
+             usize ngparams); /* declare into it -- symdecl's own, one
+                               * namespace over */
+void symsetmeta(Ns *ns);      /* the std::meta symfind falls through to,
+                               * named by the prelude that fills it */
 
 /* -- names in scope while a type resolves ------------------------------
  * Shared by resolve.c's passes and body.c's pass 4: a binding is a

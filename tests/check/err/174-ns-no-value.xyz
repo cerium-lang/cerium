@@ -1,0 +1,3 @@
+/* the namespace itself is no value: the path names what is in it
+ * (11-namespaces.md) */
+fn main() -> i32 { @cast<i32>(std::meta) }
