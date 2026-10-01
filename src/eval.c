@@ -1985,6 +1985,24 @@ ceval(Ast *e, Env env, Type *want)
       v = strcmp(nm, "sizeof") == 0 ? sizeof_(t) : alignof_(t);
       return valint(v, tyint(IN_USIZE));
     }
+    if (strcmp(nm, "count") == 0) { /* the pack's own length, the
+                                     * binding's rows (04-generics.md) */
+      Env   e2 = env;
+      Type *t;
+
+      if (vlen(e->v.blt.args) != 1 || e->v.blt.args[0]->k != Nspread)
+        cerrat(e, "@count takes one pack (...Ts) (04-generics.md)");
+      t = rty(e->v.blt.args[0]->v.un.e, &e2);
+      if (t && t->k == Typaram) { /* the declaration's own walk: the
+                                   * number is the instance's, and
+                                   * what stands on it defers (04) */
+        evalblackbox++;
+        return valint(0, tyint(IN_USIZE));
+      }
+      if (t && (t->k == Tytuple || t->k == Tyunit))
+        return valint(t->k == Tytuple ? t->nargs : 0, tyint(IN_USIZE));
+      cerrat(e, "@count takes a pack (...Ts) (04-generics.md)");
+    }
     if (strcmp(nm, "offset") == 0) { /* a field's own place in the
                                       * whole: the layout query, the
                                       * name spelled in the value's

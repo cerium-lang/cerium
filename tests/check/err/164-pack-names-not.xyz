@@ -1,0 +1,5 @@
+/* the ... in a type names a pack: a generic parameter's own, an
+ * ordinary type is not one (04-generics.md) */
+fn f(v: ...i32) -> i32 { v }
+
+fn main() -> i32 { f(1) }

@@ -122,18 +122,36 @@ locnarrow(Fenv *fe, char *name, Type *t)
 /* -- copy and drop (03-move.md) ------------------------------------------ */
 
 static int hasdrop(Type *t); /* the exclusion's other half, below */
+static int iscopy1(Type *t); /* the walk itself, iscopy's memoized core */
 
 /* is a value of this type duplicated by an assignment rather than
  * moved? Typaram answers no: without its bounds resolved (dispatch),
  * move is the conservative reading, and a T that really is Copy gets
- * its bound checked when that pass arrives. */
+ * its bound checked when that pass arrives. The answer is memoized
+ * on the type: types are interned, and a tuple's rows would ask
+ * again on every read -- a pack's recursion walks them thousands of
+ * times over (04-generics.md). */
 int
 iscopy(Type *t)
 {
-  usize i;
+  int v;
 
   if (!t)
     return 0;
+  if (t->copyknown) /* the interned type asked once; the answer
+                     * holds for every read after */
+    return t->copyval;
+  v = iscopy1(t);
+  t->copyknown = 1;
+  t->copyval = (u8) v;
+  return v;
+}
+
+static int
+iscopy1(Type *t)
+{
+  usize i;
+
   switch (t->k) {
   case Tyunit:
   case Tybool:

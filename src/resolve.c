@@ -509,6 +509,24 @@ rty(Ast *t, Env *env)
   }
   case Ntmut: /* a tuple row's writable slot (01-types.md) */
     return tymut(rty(t->v.un.e, env));
+  case Ntpack: { /* ...Ts: the pack's rows. The declaration's walk
+                  * reads the parameter itself, a Typaram whose gp
+                  * carries the pack; a re-check's env holds the
+                  * binding, the tuple the instance feeds it -- both
+                  * spell the same value, the tuple (04-generics.md) */
+    Type *p = rty(t->v.un.e, env);
+
+    if (p && p->k == Typaram) {
+      if (!p->gp->v.gp.pack)
+        cerrat(t, "'%s' is not a pack; the ... wants one (04-generics.md)", p->gp->v.gp.name);
+      return p;
+    }
+    if (p && (p->k == Tytuple || p->k == Tyunit)) /* the binding, the
+                                                   * rows it stands for */
+      return p;
+    cerrat(t, "the ... names a pack: a generic parameter's (04-generics.md)");
+    return 0; /* unreachable */
+  }
   case Ntarray: {
     Type *elem = rty(t->v.arrlit.t, env);
     Ast  *len = t->v.arrlit.len;

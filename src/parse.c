@@ -290,6 +290,15 @@ prefixtype(void)
     n->v.arrlit.t = prefixtype();
     return n;
   }
+  case Tdotdotdot: { /* ...Ts: the pack parameter's own rows
+                      * (04-generics.md) */
+    Ast *n;
+
+    next();
+    n = mk(Ntpack);
+    n->v.un.e = prefixtype();
+    return n;
+  }
   default:
     break;
   }
@@ -1181,6 +1190,10 @@ parameters(void)
     p->v.param.name = wantident("a parameter name");
     want(Tcolon, ":");
     p->v.param.t = type_();
+    if (p->v.param.t->k == Ntpack && peek() == Tcomma) /* the pack
+                                                        * parameter swallows what is left; nothing
+                                                        * follows it (04-generics.md) */
+      perr("a pack parameter comes last");
     npush(&v, p);
     if (peek() == Tcomma) {
       next();
@@ -1597,6 +1610,10 @@ genericparams(void) /* the "<" is peeked */
     }
     if (accept(Teq))
       g->v.gp.dflt = type_();
+    if (g->v.gp.pack && peek() == Tcomma) /* a pack stands for zero or
+                                           * more types and must come
+                                           * last (04-generics.md) */
+      perr("a pack parameter comes last");
     npush(&v, g);
     if (peek() == Tcomma) {
       next();

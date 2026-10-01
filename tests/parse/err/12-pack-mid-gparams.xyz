@@ -1,0 +1,1 @@
+fn bad<T, ...Ts, U>(v: T, w: U) -> T { v }

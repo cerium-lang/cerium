@@ -490,6 +490,31 @@ operand's own value, the arity and the wants widened before the
 overloads answer. What waits: the packs themselves — the angle
 brackets' `...Ts`, `@count` among them (`04-generics.md`).
 
+The packs are here, the angle brackets growing their own syntax:
+`fn sum<...Ts>(ts: ...Ts)` declares one, last in both lists — the
+generic parameters' and the parameters' — the `...Ts` of the
+parameter saying its type is the tuple the binding stands for ("ts
+is a tuple of type (...Ts)"), so an instance's `ts` is an ordinary
+tuple parameter and every row operation the language already has
+applies. Three ways to feed it: a tuple handed over whole
+("unifies the pack with the tuple's elements"), loose arguments
+rolled into the tail, and the spread — a pack's spread stays a
+spread, the arity unknown at the declaration, the signature taking
+the call on faith: the return type only, the instance's re-check
+landing the truth. `@count(...Ts)` reads the binding, folded to a
+literal the moment the binding is known; `ts[0]` and `ts[1..]` are
+the tuple's own index and slice, rewritten in place. A bound
+(`<...Ts: Show>`) holds every row, an empty pack failing none. The
+peel — `<First, ...Rest>` beside an overload for the empty case —
+needs no count at all; both spellings of the recursive sum run
+(`04-generics.md`). The recursion is capped — 256 unfoldings, each
+instance one, the chain the emitter walks — a cap the walk taught
+us to want: a slice of the pack once re-indexed through the whole
+of it, every argument rebuilding the sub-tuple, the emitted lines
+growing with the cube of the pack until the rows learned to stand
+as the arguments they are. What waits: pack impls, and a slice's
+spread.
+
 Codegen has begun: `xyz -s file.xyz` prints the `.ssa` text — qbe's
 input — and `xyz -c file.xyz -o out` runs the pipeline, qbe as a
 subprocess and the system `cc` linking. Checking writes each node's

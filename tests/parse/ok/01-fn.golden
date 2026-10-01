@@ -41,14 +41,14 @@
   (block
     (path v)))
 
-(fn packmid
+(fn packend
   (gparam T)
   (gparam ... Ts)
-  (gparam U)
   (param v
     (path T))
-  (param w
-    (path U))
+  (param ts
+    (tpack ...
+      (path Ts)))
   (path T)
   (block
     (path v)))
