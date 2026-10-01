@@ -1,0 +1,6 @@
+/* net -- the directory is the namespace (12-projects.md) */
+pub enum State { Down, Up, }
+
+pub fn connect() -> i32 {
+  80
+}

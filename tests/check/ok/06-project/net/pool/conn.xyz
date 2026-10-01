@@ -1,0 +1,17 @@
+/* net::pool -- a file inside the directory: its name spells no
+ * segment, the directory's namespace is its own. The uses are this
+ * file's alone; the beside file's items read bare, one table */
+use std::meta::{Field, Attr};
+
+pub struct Conn {
+  port: u16,
+}
+
+impl Conn {
+  fn raw(self: Conn) -> i32 { @cast<i32>(self.port) }
+}
+
+pub fn port(c: Conn) -> i32 {
+  let d = dial(1);   /* the beside file's fn, bare: same namespace */
+  c.raw() + d - d
+}

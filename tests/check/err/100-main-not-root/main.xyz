@@ -1,0 +1,2 @@
+/* main is the project's own: the root's, nowhere else */
+fn main() -> i32 { 0 }

@@ -1,12 +1,13 @@
 /* resolve.c -- pass 1 declares every name, pass 2 resolves every type.
  *
- * The file is one namespace (11-namespaces.md): pass 1 walks the
- * items and declares each name -- a function may be overloaded
+ * A project is files, each its own namespace (11-namespaces.md,
+ * 12-projects.md): pass 1 walks every file's items and declares each
+ * name into its file's namespace -- a function may be overloaded
  * (04-generics.md), so same-name fn Syms chain instead of colliding
  * -- and pass 2 resolves every type a declaration carries: fields,
  * params, returns, alias targets, enum payloads, impl heads. The
  * split is what lets a field name a type declared further down the
- * file.
+ * file, or in another one.
  *
  * Alias resolution is demand-driven: reaching an alias that has not
  * resolved yet resolves it first, which is where the cycle check
@@ -342,23 +343,25 @@ memberfind(Sym *s, const char *name)
   return 0;
 }
 
-/* the namespace head of a path: how many leading segments walk the
- * root's sub-namespaces (std::meta::...), and the namespace they
- * land in. The first segment may name a namespace a `use` brought
- * in -- meta::TypeInfo reads the std::meta a `use std::meta` holds
- * (11-namespaces.md). 0 when the first segment names no
- * sub-namespace -- the path is not a namespaced one, and the
- * caller's own reading stands. The whole path a namespace walk
- * leaves nothing behind: the caller decides what that must mean. */
+/* the namespace head of a path: how many leading segments walk
+ * namespaces, and the one they land in. The first segment names a
+ * sub-namespace the way a bare name is looked up -- the file's own
+ * first, the root's, then one a `use` brought in: meta::TypeInfo
+ * reads the std::meta a `use std::meta` holds, and repr::Foo inside
+ * net reads net's own repr (11-namespaces.md). :: is absolute: the
+ * root's tree only, nothing nearer. 0 when the first segment names
+ * no namespace -- the path is not a namespaced one, and the caller's
+ * own reading stands. The whole path a namespace walk leaves nothing
+ * behind: the caller decides what that must mean. */
 usize
-nshead(Ast **segs, usize nsegs, Ns **nsp)
+nshead(Ast **segs, usize nsegs, Ns **nsp, int rooted)
 {
   Ns   *ns = nsroot();
   usize k = 0;
 
   while (k < nsegs) {
-    Use *u = k == 0 ? usefindns(segs[k]->v.seg.name) : 0;
-    Ns  *sub = u ? u->ns : nschild(ns, segs[k]->v.seg.name);
+    Ns *sub =
+        (k == 0 && !rooted) ? nssubfind(segs[k]->v.seg.name) : nschild(ns, segs[k]->v.seg.name);
 
     if (!sub)
       break;
@@ -382,11 +385,11 @@ rpath(Ast *p, Env *env)
   usize  nargs;
 
   s = 0;
-  { /* the namespace head: std::meta::... walking the root's
-     * sub-namespaces to the type's own segment, the one segment
-     * left (11-namespaces.md) */
+  { /* the namespace head: std::meta::... walking the namespaces to
+     * the type's own segment, the one segment left
+     * (11-namespaces.md) */
     Ns   *ns;
-    usize k = nshead(segs, nsegs, &ns);
+    usize k = nshead(segs, nsegs, &ns, p->v.path.root);
 
     if (k) {
       if (k == nsegs)
@@ -1053,6 +1056,8 @@ resolveimplmembers(Sym *s)
           memset(fs, 0, sizeof *fs);
           fs->name = dm->name;
           fs->kind = Sfn;
+          fs->ownns = s->ownns; /* the impl's file's namespace: the
+                                 * method's mangle carries it (11) */
           fs->decl = m;
           fs->fnty = dm->ty;
           fs->impl = s;
@@ -1493,16 +1498,15 @@ checkoverlap(Sym *a, Sym *b)
 
 /* -- pass 1 ------------------------------------------------------------- */
 
-/* the Syms, parallel to the items; NULL for use and trait items,
- * which declare nothing pass 2 resolves */
-static Sym **syms;
-
-void
+/* every item's Sym, parallel to the items; NULL for use and trait
+ * items, which declare nothing pass 2 resolves. Per file now: a
+ * project holds one each (12-projects.md) */
+Sym **
 declare(Ast **items, Ns *ns)
 {
   usize i, n = vlen(items);
+  Sym **syms = vnew(Sym *, n ? n : 1);
 
-  syms = vnew(Sym *, n ? n : 1);
   for (i = 0; i < n; i++) {
     Ast        *it = items[i];
     const char *name = 0;
@@ -1550,6 +1554,7 @@ declare(Ast **items, Ns *ns)
       s = arenaalloc(sizeof *s);
       memset(s, 0, sizeof *s);
       s->kind = Simpl;
+      s->ownns = ns; /* the file's own: a method's mangle carries it */
       s->decl = it;
       s->gparams = it->v.impl.gparams; /* the head's own: the method
                                         * gate reads them (04) */
@@ -1576,6 +1581,7 @@ declare(Ast **items, Ns *ns)
     }
     vappend(&syms, &s);
   }
+  return syms;
 }
 
 /* -- the driver ---------------------------------------------------------- */
@@ -1634,28 +1640,12 @@ checkdefaults(Sym *s)
   }
 }
 
-/* pass 1 + 2: every name declared, then every declaration resolved.
- * The user's file walks this inside checkfile; std's embedded source
- * walks it alone first, under a clean symbol table -- its items are
- * self-contained, and nothing of it reaches the user's dumps or
- * output. The namespace the declarations land in is the caller's:
- * the root's for the user's items, std::meta for the embedded
- * source's (11-namespaces.md). */
+/* pass 2: what each declaration is. Runs after the file's uses bind
+ * in checkproject -- a const's own type may read one
+ * (11-namespaces.md); preludefile runs it back-to-back for the
+ * embedded source, whose items use nothing */
 void
-checkdecls(Ast **items, Ns *ns)
-{
-  nscur(ns); /* the declarations and every pass below read their own
-              * namespace first (11-namespaces.md) */
-  declare(items, ns);
-  resolveitems(items);
-}
-
-/* pass 2: what each declaration is. Runs after the uses bind in
- * checkfile -- a const's own type may read one (11-namespaces.md);
- * checkdecls runs it back-to-back for the embedded source, whose
- * items use nothing */
-void
-resolveitems(Ast **items)
+resolveitems(Ast **items, Sym **syms)
 {
   usize i, n = vlen(items);
 
@@ -1700,12 +1690,13 @@ resolveitems(Ast **items)
 }
 
 void
-collectstdimpls(Ast **items) /* preludefile's tail, with syms still the
-                              * embedded source's parallel table: the
-                              * impls among std's items leave here with
-                              * their members resolved, held for
-                              * checkfile's pass-3 table -- std's
-                              * is_same rides this (05-traits.md) */
+collectstdimpls(Ast **items, Sym **syms) /* preludefile's tail, with
+                                          * syms the embedded source's parallel
+                                          * table: the impls among std's items
+                                          * leave here with their members
+                                          * resolved, held for checkproject's
+                                          * pass-3 table -- std's is_same rides
+                                          * this (05-traits.md) */
 {
   usize i, n = vlen(items);
 
@@ -1834,43 +1825,95 @@ resolveuse1(Ast *it, Ast **head, usize nhead) /* one use tree, its
   }
 }
 
+/* the project's four passes, a file at a time where a file's own
+ * matters (12-projects.md): every name declared across the whole
+ * project first -- cross-file reads are the point -- then each
+ * file's uses bound and its declarations resolved in its own
+ * context, the impl table built for all, and the bodies checked
+ * back in their files. A single-file compilation is the degenerate
+ * shape: one Srcfile, the root's. */
 void
-checkfile(Ast **items)
+checkproject(Srcfile **files, usize nfiles)
 {
-  usize i, n = vlen(items);
-  Sym **impls;
-  usize nimpls;
+  usize        i, f, nimpls;
+  Sym        **impls;
+  const char **implp; /* each impl's file, its coherence errors named
+                       * there: the diagnostics follow the table, not
+                       * whichever file the lexer served last */
 
-  nscur(nsroot()); /* the user's file sits in the root: every bare
-                    * name below reads it first (11-namespaces.md) */
-  declare(items, nsroot());
-  { /* the uses, every name declared: the bindings a bare name's miss
-     * reads (11-namespaces.md) -- ahead of pass 2, whose types read
-     * them too */
-    for (i = 0; i < n; i++)
-      if (items[i]->k == Nuse)
-        resolveuse1(items[i], 0, 0);
+  /* pass 1: every file's every name, each into its own namespace --
+   * a file may read a name another declared before any use binds or
+   * any type resolves (12-projects.md). A file's uses are its own
+   * from here on: usenew'd beside the Syms, switched to below. */
+  for (f = 0; f < nfiles; f++) {
+    Srcfile *sf = files[f];
+
+    lexsetpath(sf->path);
+    sf->uses = usenew();
+    sf->syms = declare(sf->items, sf->ns);
+    { /* main is the project's own fn: the root's, nowhere else
+       * (12-projects.md). Two in one namespace declare-errored
+       * already; this is the one namespace it may live in. */
+      usize j, m = vlen(sf->items);
+
+      for (j = 0; j < m; j++)
+        if (sf->items[j]->k == Nfn && strcmp(sf->items[j]->v.fn.name, "main") == 0 &&
+            sf->ns != nsroot())
+          cerrat(sf->items[j], "main lives in the project's root (12-projects.md)");
+    }
   }
-  resolveitems(items);
+
+  /* the uses bind file by file -- A's bindings are its own, B reads
+   * none of them (11-namespaces.md) -- then pass 2 in the same
+   * per-file context: a const's own type may read one */
+  for (f = 0; f < nfiles; f++) {
+    Srcfile *sf = files[f];
+    usize    j, m = vlen(sf->items);
+
+    nscur(sf->ns);
+    usecur(sf->uses);
+    lexsetpath(sf->path);
+    for (j = 0; j < m; j++)
+      if (sf->items[j]->k == Nuse)
+        resolveuse1(sf->items[j], 0, 0);
+    resolveitems(sf->items, sf->syms);
+  }
 
   /* pass 3: traits and impls, then coherence. The bounds check runs
    * first so a bound nobody overlaps against still gets diagnosed.
-   * std's own enter the table ahead of the user's: the reads pick
+   * std's own enter the table ahead of the project's: the reads pick
    * through them, and the coherence below orders both kinds. */
   impls = vnew(Sym *, 8);
-  for (i = 0; i < nstd_impls; i++)
-    vappend(&impls, &std_impls[i]);
-  for (i = 0; i < n; i++) {
-    Ast *it = items[i];
-    Sym *s = syms[i];
+  implp = vnew(const char *, 8);
+  {
+    const char *stdp = "<std>";
 
-    if (!s)
-      continue;
-    if (it->k == Ntrait)
-      resolvetrait(s);
-    if (it->k == Nimpl) {
-      resolveimplmembers(s);
-      vappend(&impls, &s);
+    for (i = 0; i < nstd_impls; i++) {
+      vappend(&impls, &std_impls[i]);
+      vappend(&implp, &stdp);
+    }
+  }
+  for (f = 0; f < nfiles; f++) {
+    Srcfile *sf = files[f];
+    usize    j, m = vlen(sf->items);
+
+    nscur(sf->ns); /* members resolve in the impl's own context: a
+                    * signature's types read its file's uses too */
+    usecur(sf->uses);
+    lexsetpath(sf->path);
+    for (j = 0; j < m; j++) {
+      Ast *it = sf->items[j];
+      Sym *s = sf->syms[j];
+
+      if (!s)
+        continue;
+      if (it->k == Ntrait)
+        resolvetrait(s);
+      if (it->k == Nimpl) {
+        resolveimplmembers(s);
+        vappend(&impls, &s);
+        vappend(&implp, &sf->path);
+      }
     }
   }
   chk_impls = impls; /* pass 4 reads this (body.c) */
@@ -1879,26 +1922,39 @@ checkfile(Ast **items)
   for (i = 0; i < nimpls; i++) {
     Sym *bs[16];
 
+    lexsetpath(implp[i]);
     collectbounds(impls[i], bs); /* the diagnostic is the point */
   }
-  for (i = 0; i < nimpls; i++)
+  for (i = 0; i < nimpls; i++) {
+    lexsetpath(implp[i]);
     if (impls[i]->ifort)
       checkimplcomplete(impls[i]);
+  }
   for (i = 0; i < nimpls; i++) {
     usize j;
 
+    lexsetpath(implp[i]);
     for (j = 0; j < i; j++)
       checkoverlap(impls[i], impls[j]);
   }
 
-  /* pass 4: fn bodies, against the impl table pass 3 just built */
-  for (i = 0; i < n; i++) {
-    if (!syms[i])
-      continue;
-    if (items[i]->k == Nfn && items[i]->v.fn.body)
-      checkbodyfn(syms[i], items[i]);
-    if (items[i]->k == Nimpl)
-      checkbodyimpl(syms[i], items[i]);
+  /* pass 4: fn bodies, against the impl table pass 3 just built --
+   * each file in its own context again, the same switch */
+  for (f = 0; f < nfiles; f++) {
+    Srcfile *sf = files[f];
+    usize    j, m = vlen(sf->items);
+
+    nscur(sf->ns);
+    usecur(sf->uses);
+    lexsetpath(sf->path);
+    for (j = 0; j < m; j++) {
+      if (!sf->syms[j])
+        continue;
+      if (sf->items[j]->k == Nfn && sf->items[j]->v.fn.body)
+        checkbodyfn(sf->syms[j], sf->items[j]);
+      if (sf->items[j]->k == Nimpl)
+        checkbodyimpl(sf->syms[j], sf->items[j]);
+    }
   }
 }
 
@@ -2061,15 +2117,21 @@ dumpitem(Ast *it, Sym *s, int i)
   }
 }
 
+/* one (file ...) block per file, the -T shape: a project's blocks
+ * follow the walk's order -- the same order every pass reads them
+ * in, so what a golden says is what the checker saw */
 void
-checkdump(Ast **items)
+checkdump(Srcfile **files, usize nfiles)
 {
-  usize i, n = vlen(items);
+  usize f, i, n;
 
-  printf("(file");
-  for (i = 0; i < n; i++) {
-    putchar('\n');
-    dumpitem(items[i], syms[i], 2);
+  for (f = 0; f < nfiles; f++) {
+    n = vlen(files[f]->items);
+    printf("(file");
+    for (i = 0; i < n; i++) {
+      putchar('\n');
+      dumpitem(files[f]->items[i], files[f]->syms[i], 2);
+    }
+    printf(")\n");
   }
-  printf(")\n");
 }

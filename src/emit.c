@@ -372,6 +372,21 @@ locbind(Em *em, char *name, char *slot, Type *ty)
 static char *tymangle(Type *t, char *buf, usize n);
 static void  ovlspell(Sym *s, char *buf, usize n);
 static int   fsymsame(Sym *p, char *buf);
+static usize symns(Sym *s, char *buf, usize n);
+static void  memspell(Sym *m, char *mt, char *buf, usize n);
+
+/* a method's whole spelling: its impl's namespace folded on, the
+ * type's own mangle, the member's name (11-namespaces.md) */
+static void
+memspell(Sym *m, char *mt, char *buf, usize n)
+{
+  char  nb[512];
+  usize o = symns(m, nb, sizeof nb);
+
+  if (o + strlen(mt) + strlen(m->name) + 2 >= n)
+    die("a method too wide for the emitter's names");
+  sprintf(buf, "%s%s_%s", nb, mt, m->name);
+}
 
 /* a method's symbol: the impl's type spelled, then the member's own
  * name. Overloading is no method's trouble -- one type, one name --
@@ -387,7 +402,7 @@ memname(Sym *s)
   usize same, i, j;
 
   tymangle(s->impl->ifort ? s->impl->ifort : s->impl->ipath, mt, sizeof mt);
-  sprintf(buf, "xyz_%s_%s", mt, s->name);
+  memspell(s, mt, buf, sizeof buf);
   same = 0;
   for (i = 0; i < chk_nimpls; i++) { /* every impl's methods, in
                                       * declaration order -- a trait
@@ -401,7 +416,7 @@ memname(Sym *s)
       if (ms[j].kind != Mfn || !ms[j].sym)
         continue;
       tymangle(iv->ifort ? iv->ifort : iv->ipath, mt, sizeof mt);
-      sprintf(b2, "xyz_%s_%s", mt, ms[j].name);
+      memspell(ms[j].sym, mt, b2, sizeof b2);
       if (strcmp(b2, buf) != 0)
         continue;
       if (ms[j].sym == s)
@@ -438,13 +453,18 @@ fsymname(Sym *s, Ast *it)
     return memname(s); /* a method: its impl's type, its own name */
   if (strcmp(s->name, "main") == 0)
     return s->name;
-  multi = s->next != 0 || symfind(s->name) != s; /* a name's chain
-                                                  * holds more than this */
-  if (!multi) {                                  /* the common case: one fn, one name */
+  multi = s->next != 0 || nsitem(s->ownns, s->name) != s; /* its own
+                                                           * namespace's
+                                                           * chain holds
+                                                           * more than
+                                                           * this (11) */
+  if (!multi) {                                           /* the common case: one fn, one name */
+    char  nb[512];
     char *n;
+    usize o = symns(s, nb, sizeof nb);
 
-    n = arenaalloc(strlen(s->name) + 8);
-    sprintf(n, "xyz_%s", s->name);
+    n = arenaalloc(o + strlen(s->name) + 1);
+    sprintf(n, "%s%s", nb, s->name);
     return n;
   }
   /* an overload: this signature, and an index among the chain's
@@ -452,8 +472,8 @@ fsymname(Sym *s, Ast *it)
    * mangling cannot see */
   ovlspell(s, buf, sizeof buf);
   same = 0;
-  for (p = symfind(s->name); p && p != s; p = p->next) /* the earlier
-                                                        * same-spelled ones */
+  for (p = nsitem(s->ownns, s->name); p && p != s; p = p->next) /* the
+                                                                 * earlier same-spelled ones */
     if (fsymsame(p, buf))
       same++;
   if (same) { /* a twin: spell them apart */
@@ -523,6 +543,48 @@ tymangle(Type *t, char *buf, usize n)
   return buf;
 }
 
+/* a symbol's mangle head: xyz_, its namespace folded on -- each ::
+ * a __, so a namespace named net_pool and a net holding a pool
+ * never fold the same (11-namespaces.md). The root's own spells the
+ * single-file era's bare xyz_. Returns the chars written */
+static usize
+symns(Sym *s, char *buf, usize n)
+{
+  Ns   *ns = s->ownns;
+  usize o = 4;
+  char *p;
+
+  if (o >= n)
+    die("a name too wide for the emitter's names");
+  strcpy(buf, "xyz_");
+  if (ns && ns->parent) { /* the root's own name is "": nothing folds */
+    char path[512];
+
+    if (strlen(nsname(ns)) >= sizeof path)
+      die("a namespace too wide for the emitter's names");
+    strcpy(path, nsname(ns));
+    for (p = path; *p; p++) {
+      if (*p == ':') { /* the pair one __ -- skip the second */
+        if (p[1] == ':')
+          p++;
+        if (o + 2 >= n)
+          die("a name too wide for the emitter's names");
+        buf[o++] = '_';
+      } else {
+        if (o + 1 >= n)
+          die("a name too wide for the emitter's names");
+        buf[o++] = *p;
+      }
+    }
+    if (o + 2 >= n)
+      die("a name too wide for the emitter's names");
+    buf[o++] = '_'; /* the namespace from the name that follows it */
+    buf[o++] = '_';
+  }
+  buf[o] = 0;
+  return o;
+}
+
 /* an overload's spelling: the name, then the argument types, then
  * the return, folded onto qbe's alphabet */
 static void
@@ -531,7 +593,8 @@ ovlspell(Sym *s, char *buf, usize n)
   char  tb[256];
   usize o, i;
 
-  o = sprintf(buf, "xyz_%s__", s->name);
+  o = symns(s, buf, n);
+  o += sprintf(buf + o, "%s__", s->name);
   for (i = 0; i < s->fnty->nargs; i++) {
     tymangle(s->fnty->args[i], tb, sizeof tb);
     o += sprintf(buf + o, "%s%s", i ? "_" : "", tb);
@@ -565,7 +628,8 @@ instname(Sym *s, Type **tys, Val **cvals, Val **gcvals)
   char  tb[256];
   usize o, i;
 
-  o = sprintf(buf, "xyz_%s__g", s->name);
+  o = symns(s, buf, sizeof buf);
+  o += sprintf(buf + o, "%s__g", s->name);
   for (i = 0; i < s->ngparams; i++) {
     tymangle(tys[i], tb, sizeof tb);
     o += sprintf(buf + o, "_%s", tb);
@@ -2100,7 +2164,7 @@ emaexpr(Em *em, Ast *e)
     Ast **psegs = e->v.path.segs;
     usize pnsegs = vlen(psegs);
     Ns   *pns;
-    usize pk = nshead(psegs, pnsegs, &pns);
+    usize pk = nshead(psegs, pnsegs, &pns, e->v.path.root);
     char *nm;
     ELoc *l;
     Sym  *s;
@@ -2436,7 +2500,7 @@ emaexpr(Em *em, Ast *e)
       Ast **segs = f->v.path.segs;
       usize nsegs = vlen(segs);
       Ns   *ns;
-      usize k = nshead(segs, nsegs, &ns);
+      usize k = nshead(segs, nsegs, &ns, f->v.path.root);
 
       if (k == nsegs) /* a namespace names no call (11-namespaces.md) */
         cerrat(f, "a namespace names no call; name what is in it (11-namespaces.md)");
@@ -3276,64 +3340,77 @@ draininsts(FILE *o)
 }
 
 static void
-emitall(FILE *out, Ast **items)
+emitall(FILE *out, Srcfile **files, usize nfiles)
 {
-  usize i;
+  usize f, i;
 
-  for (i = 0; i < vlen(items); i++) {
-    Ast *it = items[i];
-    Sym *s;
+  for (f = 0; f < nfiles; f++) { /* a file's fns read from its own
+                                  * namespace, its own uses beside:
+                                  * symfind walks the current ones
+                                  * first, so each file's walk
+                                  * switches to them
+                                  * (12-projects.md) */
+    Srcfile *sf = files[f];
+    usize    n = vlen(sf->items);
 
-    if (it->k == Nimpl) {
-      /* an impl's methods emit as the fns they are (05-traits.md) --
-       * inherent or trait alike, when the impl is not a pattern. A
-       * generic impl's wait for the calls that instantiate them
-       * (04-generics.md): the drain below emits those. */
-      usize j;
+    nscur(sf->ns);
+    usecur(sf->uses);
+    lexsetpath(sf->path);
+    for (i = 0; i < n; i++) {
+      Ast *it = sf->items[i];
+      Sym *s;
 
-      for (j = 0; j < chk_nimpls; j++)
-        if (chk_impls[j]->decl == it)
-          break;
-      if (j == chk_nimpls)
-        continue; /* unreachable: the resolver collected it */
-      s = chk_impls[j];
-      if (s->ngparams)
-        continue; /* a generic impl's methods arrive with
-                   * specialization (04-generics.md) */
-      for (j = 0; j < s->nmembers; j++) {
-        Member *dm = &s->members[j];
+      if (it->k == Nimpl) {
+        /* an impl's methods emit as the fns they are (05-traits.md) --
+         * inherent or trait alike, when the impl is not a pattern. A
+         * generic impl's wait for the calls that instantiate them
+         * (04-generics.md): the drain below emits those. */
+        usize j;
 
-        if (dm->kind != Mfn || !dm->decl || dm->decl->v.fn.body == 0)
-          continue; /* a declaration: an import */
-        if (vlen(dm->decl->v.fn.gparams))
-          continue; /* a generic method arrives with
+        for (j = 0; j < chk_nimpls; j++)
+          if (chk_impls[j]->decl == it)
+            break;
+        if (j == chk_nimpls)
+          continue; /* unreachable: the resolver collected it */
+        s = chk_impls[j];
+        if (s->ngparams)
+          continue; /* a generic impl's methods arrive with
                      * specialization (04-generics.md) */
-        emitfn(out, dm->sym, dm->decl, fsymname(dm->sym, dm->decl), 0, 0);
+        for (j = 0; j < s->nmembers; j++) {
+          Member *dm = &s->members[j];
+
+          if (dm->kind != Mfn || !dm->decl || dm->decl->v.fn.body == 0)
+            continue; /* a declaration: an import */
+          if (vlen(dm->decl->v.fn.gparams))
+            continue; /* a generic method arrives with
+                       * specialization (04-generics.md) */
+          emitfn(out, dm->sym, dm->decl, fsymname(dm->sym, dm->decl), 0, 0);
+        }
+        continue;
       }
-      continue;
+      if (it->k != Nfn || it->v.fn.body == 0)
+        continue; /* a declaration: an import, or a fn type's use */
+      s = symfind(it->v.fn.name);
+      while (s && s->decl != it) /* its own Sym: a name's chain holds
+                                  * every overload of it */
+        s = s->next;
+      if (!s)
+        continue; /* unreachable: the resolver made one */
+      if (s->ngparams)
+        continue; /* a generic fn emits per instance, from its call
+                   * sites (04-generics.md) */
+      if (fnconstparams(s))
+        continue; /* a const fn's body is the instance's own copy: the
+                   * baked values differ per call, and the shared
+                   * declaration emits none of them -- the calls queue
+                   * every instance (08-reflection.md) */
+      emitfn(out, s, it, fsymname(s, it), 0, 0);
     }
-    if (it->k != Nfn || it->v.fn.body == 0)
-      continue; /* a declaration: an import, or a fn type's use */
-    s = symfind(it->v.fn.name);
-    while (s && s->decl != it) /* its own Sym: a name's chain holds
-                                * every overload of it */
-      s = s->next;
-    if (!s)
-      continue; /* unreachable: the resolver made one */
-    if (s->ngparams)
-      continue; /* a generic fn emits per instance, from its call
-                 * sites (04-generics.md) */
-    if (fnconstparams(s))
-      continue; /* a const fn's body is the instance's own copy: the
-                 * baked values differ per call, and the shared
-                 * declaration emits none of them -- the calls queue
-                 * every instance (08-reflection.md) */
-    emitfn(out, s, it, fsymname(s, it), 0, 0);
   }
 }
 
 void
-emitfile(FILE *out, Ast **items)
+emitfile(FILE *out, Srcfile **files, usize nfiles)
 {
   FILE *scratch = tmpfile(); /* pass one names the aggregates and
                               * finds every instantiation; its text
@@ -3345,7 +3422,7 @@ emitfile(FILE *out, Ast **items)
     exit(1);
   }
   ipass = 1;
-  emitall(scratch, items);
+  emitall(scratch, files, nfiles);
   draininsts(scratch);
   for (;;) { /* the tables the handles named: their entries name
               * instances no static call found, so the print is
@@ -3360,7 +3437,7 @@ emitfile(FILE *out, Ast **items)
   vtprinted = 0; /* the text restarts with it */
   abidecls(out); /* the :type declarations, the order qbe reads */
   ipass = 2;
-  emitall(out, items); /* pass two: the text */
+  emitall(out, files, nfiles); /* pass two: the text */
   draininsts(out);
   for (;;) {
     draininsts(out);

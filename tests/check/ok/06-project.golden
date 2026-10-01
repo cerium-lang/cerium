@@ -1,0 +1,18 @@
+(file
+  (use net::pool)
+  (use std::meta::TypeInfo)
+  (fn main fn() -> i32))
+(file
+  (fn dial fn(i32) -> i32))
+(file
+  (enum State
+    (variant Down = 0)
+    (variant Up = 1))
+  (fn connect fn() -> i32))
+(file
+  (use std::meta)
+  (struct Conn
+    (field port u16))
+  (impl Conn
+    (fn raw fn(Conn) -> i32))
+  (fn port fn(Conn) -> i32))

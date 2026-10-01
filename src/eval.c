@@ -1552,7 +1552,7 @@ ceval(Ast *e, Env env, Type *want)
     Sym  *s;
     Type *t;
 
-    k = nshead(segs, nsegs, &ns);
+    k = nshead(segs, nsegs, &ns, e->v.slit.path->v.path.root);
     if (k == nsegs) /* a namespace names no literal (11-namespaces.md) */
       cerrat(e, "a namespace names no literal; name what is in it (11-namespaces.md)");
     segs += k; /* the namespaces walked fall away (11-namespaces.md) */
@@ -1728,7 +1728,7 @@ ceval(Ast *e, Env env, Type *want)
     char *nm;
     Sym  *s;
 
-    k = nshead(segs, nsegs, &ns);
+    k = nshead(segs, nsegs, &ns, e->v.path.root);
     if (k == nsegs) /* the whole path a namespace walk: a namespace
                      * names no value (11-namespaces.md) */
       cerrat(e, "a namespace names no value; name what is in it (11-namespaces.md)");
@@ -1878,7 +1878,7 @@ ceval(Ast *e, Env env, Type *want)
       Ast **segs = f->v.path.segs;
       usize nsegs = vlen(segs);
       Ns   *ns;
-      usize k = nshead(segs, nsegs, &ns);
+      usize k = nshead(segs, nsegs, &ns, f->v.path.root);
 
       if (k == nsegs) /* a namespace names no call (11-namespaces.md) */
         cerrat(f, "a namespace names no call; name what is in it (11-namespaces.md)");

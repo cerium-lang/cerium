@@ -1166,6 +1166,15 @@ lexpath(void)
   return inpath;
 }
 
+void
+lexsetpath(const char *path) /* the checker's switch, a file at a
+                              * time: a project's passes walk file by
+                              * file, and a diagnostic printed for one
+                              * names it, not whichever parsed last */
+{
+  inpath = path;
+}
+
 /* -- names ----------------------------------------------------------- */
 
 const char *

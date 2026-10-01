@@ -80,15 +80,21 @@ void
 preludefile(void) /* from checkinit, after syminit and the hand pair:
                    * declare and resolve, and the impls among the
                    * items leave with their members resolved too --
-                   * held for checkfile's pass-3 table, std's is_same
-                   * the first to ride this (05-traits.md). The items
-                   * land in std::meta, the tree's first real
-                   * sub-namespace (11-namespaces.md) */
+                   * held for checkproject's pass-3 table, std's
+                   * is_same the first to ride this (05-traits.md). The
+                   * items land in std::meta, the tree's first real
+                   * sub-namespace, in their own context the way every
+                   * file's resolve below runs (11-namespaces.md) */
 {
-  Ns *meta = nsmk(nsmk(nsroot(), "std"), "meta");
+  Ns   *meta = nsmk(nsmk(nsroot(), "std"), "meta");
+  Sym **msyms;
 
-  checkdecls(metaitems, meta);
-  collectstdimpls(metaitems);
+  nscur(meta);
+  usecur(usenew()); /* its own, empty: the embedded source uses
+                     * nothing, and nothing leaks either way */
+  msyms = declare(metaitems, meta);
+  resolveitems(metaitems, msyms);
+  collectstdimpls(metaitems, msyms);
   sym_typeinfo = nsitem(meta, "TypeInfo"); /* @typeinfo's answers are
                                             * its variants; the name
                                             * lives in std::meta now,

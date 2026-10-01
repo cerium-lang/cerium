@@ -1,0 +1,4 @@
+/* net::pool -- the file beside the directory: the two one namespace */
+pub fn dial(n: i32) -> i32 {
+  n * 21
+}

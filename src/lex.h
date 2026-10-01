@@ -100,6 +100,9 @@ struct Token
 void        lexinit(const char *path); /* NULL reads stdin */
 void        lexsrc(const char *text);  /* NUL-terminated memory text */
 const char *lexpath(void);
+void        lexsetpath(const char *path); /* re-point the diagnostics,
+                                           * the checker's per-file
+                                           * switch: nothing reads */
 
 Tok    peek(void);   /* look at the next token without consuming */
 Tok    next(void);   /* consume it; the token lands in lexcur() */
