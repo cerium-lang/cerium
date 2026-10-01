@@ -1,0 +1,23 @@
+/* a pack of mixed rows: the count reads the binding whatever the
+ * rows hold, ts[0] keeps the first row's own type, the empty pack
+ * its own answer (04-generics.md) */
+fn lead<...Ts>(ts: ...Ts) -> i32 {
+  const if @count(...Ts) == 0 {
+    -1
+  } else {
+    @cast<i32>(ts[0]) * 10 + @cast<i32>(@count(...Ts))
+  }
+}
+
+fn sum<...Ts>(ts: ...Ts) -> i64 {
+  const if @count(...Ts) == 0 {
+    0
+  } else {
+    @cast<i64>(ts[0]) + sum(...ts[1..])
+  }
+}
+
+fn main() -> i32 {
+  lead(7, 1.5, true) + lead() + lead(9) +
+    @cast<i32>(sum(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12))
+}   /* 73 + -1 + 91 + 78 = 241 */

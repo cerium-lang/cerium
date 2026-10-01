@@ -492,11 +492,16 @@ struct Inst
                  * apart from another the types alone cannot (08) */
   char *name;
   int   mark; /* the drain this entry is queued for */
+  Inst *from; /* the instance whose re-check found this call: the
+               * chain a pack's recursion unfolds down, the depth
+               * the cap reads (04-generics.md) */
 };
 
 static Inst **insts;  /* every one made, in first-seen order */
 static Inst **iqueue; /* the current drain's worklist */
 static int    ipass;  /* scratch is 1, the text is 2 */
+static Inst  *icur;   /* the instance being re-checked, its calls'
+                       * children (04-generics.md) */
 
 /* qbe's alphabet only: what tysprint says, everything else folded
  * onto '_' -- i32 stays i32, *mut i32 becomes _mut_i32 */
@@ -558,7 +563,7 @@ instname(Sym *s, Type **tys, Val **cvals, Val **gcvals)
 {
   char  buf[1024];
   char  tb[256];
-  usize o, i, same;
+  usize o, i;
 
   o = sprintf(buf, "xyz_%s__g", s->name);
   for (i = 0; i < s->ngparams; i++) {
@@ -598,15 +603,20 @@ instname(Sym *s, Type **tys, Val **cvals, Val **gcvals)
           die("an instantiation too wide for the emitter's line");
       }
   }
-  same = 0;
-  for (i = 0; i < vlen(insts); i++)
-    if (strcmp(insts[i]->name, buf) == 0)
-      same++;
-  if (same) { /* a twin: spell them apart */
+  { /* a twin: spell them apart -- numbered past every spelling
+     * taken, for a fold or a truncation can make three where the
+     * alphabet saw two */
     char *n;
+    usize try = 0;
 
-    n = arenaalloc(strlen(buf) + 12);
-    sprintf(n, "%s_%lu", buf, (unsigned long) same);
+    do {
+      try++;
+      n = arenaalloc(strlen(buf) + 14);
+      sprintf(n, "%s_%lu", buf, (unsigned long) try);
+      for (i = 0; i < vlen(insts); i++)
+        if (strcmp(insts[i]->name, n) == 0)
+          break;
+    } while (i != vlen(insts));
     return n;
   }
   { /* stable: the arena keeps the spelling one name */
@@ -683,11 +693,25 @@ instensure(Sym *s, Type **tys, Val **cvals, Val **gcvals)
     insts = vnew(Inst *, 16);
     iqueue = vnew(Inst *, 16);
   }
+  { /* the chain a pack's recursion unfolds down: each instance one
+     * unfolding, the empty pack's own the last -- 256 allowed, the
+     * 257th the error (04-generics.md) */
+    Inst *f = icur;
+    usize d = 0;
+
+    while (f) {
+      d++;
+      f = f->from;
+    }
+    if (d > 256)
+      die("'%s' unfolds past 256 levels (04-generics.md)", s->name);
+  }
   in = arenaalloc(sizeof *in);
   in->s = s;
   in->tys = tys;
   in->cvals = cvals;
   in->gcvals = gcvals;
+  in->from = icur;
   in->name = instname(s, tys, cvals, gcvals);
   vappend(&insts, &in);
 found:
@@ -3208,8 +3232,13 @@ emitinst(FILE *o, Inst *in)
   ats = vlen(it->v.fn.params) ? tyargs(vlen(it->v.fn.params)) : 0;
   for (i = 0; i < vlen(it->v.fn.params); i++)
     ats[i] = gsubstv(s->fnty->args[i], s->gparams, in->tys, in->gcvals, ng);
+  icur = in; /* the calls the re-check and the emit that follows find
+              * are the chain's next level -- the instances the
+              * emitter names arrive here, after the body's own
+              * walk, both under this instance (04-generics.md) */
   recheckfn(s, it, in->tys, in->cvals, in->gcvals);
   emitfn(o, s, it, in->name, ats, gsubstv(s->fnty->t, s->gparams, in->tys, in->gcvals, ng));
+  icur = 0;
 }
 
 /* the worklist until it empties: emitting a body finds more calls,

@@ -1,0 +1,14 @@
+/* the empty pack: no rows to read, ts[0] an error the instance
+ * reports -- the binding is (), a row number out of range
+ * (04-generics.md) */
+fn first<...Ts>(ts: ...Ts) -> i32 {
+  const if @count(...Ts) == 0 {
+    ts[0] /* the taken branch says no -- this one is checked anyway:
+           * the count is the instance's own truth, not the
+           * declaration's */
+  } else {
+    @cast<i32>(ts[0])
+  }
+}
+
+fn main() -> i32 { first() }

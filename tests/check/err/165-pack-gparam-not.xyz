@@ -1,0 +1,5 @@
+/* the ... wants the pack itself: a generic parameter declared
+ * without one carries no rows (04-generics.md) */
+fn f<T>(v: ...T) -> i32 { v }
+
+fn main() -> i32 { f(1) }

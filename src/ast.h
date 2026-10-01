@@ -44,6 +44,7 @@
   X(Ntopt, "topt") X(Ntresult, "tresult") X(Ntptr, "tptr")                     \
   X(Ntmut, "tmut") X(Ntarray, "tarray") X(Nttuple, "ttuple") X(Ntfn, "tfn")    \
   X(Ntdyn, "tdyn") X(Nttype, "ttype") /* mut: dyn mut A */                      \
+  X(Ntpack, "tpack") /* ...Ts: a pack parameter's rows (04-generics.md) */      \
   /* items */                                                                  \
   X(Nfn, "fn") X(Nstruct, "struct") X(Nunion, "union") X(Nenum, "enum")        \
   X(Ntrait, "trait") X(Nimpl, "impl") X(Ntypedef, "typedef")                   \

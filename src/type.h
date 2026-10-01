@@ -76,18 +76,21 @@ enum
 
 struct Type
 {
-  u8    k;     /* one of Ty* above */
-  u8    num;   /* Tyint: IN_* */
-  u8    mut;   /* Tydyn: dyn mut A */
-  u64   n;     /* Tyarray: the length, when it is a number */
-  usize nargs; /* the args count below */
-  Sym  *sym;   /* Tystruct/Tyunion/Tyenum/Tytrait/Tydyn/Typroj: the declaration */
-  Ast  *gp;    /* Typaram: the Ngparam; Tyarray: the length, when it is a
-                * const-parameter reference */
-  Type **args; /* nargs slots, or NULL when none */
-  Type  *t;    /* Typtr/Tyslice/Tyarray/Tymut: the child; Tyfn/Typroj: the
-                * return / the Self */
-  char *name;  /* Typroj: the associated type's name */
+  u8 k;          /* one of Ty* above */
+  u8 num;        /* Tyint: IN_* */
+  u8 mut;        /* Tydyn: dyn mut A */
+  u8 copyknown;  /* iscopy's answer, memoized: types are interned,
+                  * a tuple's rows ask once however often read */
+  u8    copyval; /* the answer copyknown holds */
+  u64   n;       /* Tyarray: the length, when it is a number */
+  usize nargs;   /* the args count below */
+  Sym  *sym;     /* Tystruct/Tyunion/Tyenum/Tytrait/Tydyn/Typroj: the declaration */
+  Ast  *gp;      /* Typaram: the Ngparam; Tyarray: the length, when it is a
+                  * const-parameter reference */
+  Type **args;   /* nargs slots, or NULL when none */
+  Type  *t;      /* Typtr/Tyslice/Tyarray/Tymut: the child; Tyfn/Typroj: the
+                  * return / the Self */
+  char *name;    /* Typroj: the associated type's name */
 };
 
 /* an args array of n slots, zeroed, on the arena */

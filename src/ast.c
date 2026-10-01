@@ -431,6 +431,10 @@ dumpnode(Ast *n, int i)
   case Ntopt:
     child(n->v.n1.e, i);
     break;
+  case Ntpack:
+    printf(" ...");
+    child(n->v.un.e, i);
+    break;
   case Nif:
   case Ncif:
     child(n->v.ifx.cond, i);
@@ -791,6 +795,7 @@ clonen(Ast *n)
   case Ntopt:
   case Ntmut:
   case Ntptr:
+  case Ntpack:
     c->v.un = n->v.un;
     c->v.un.e = clonen(n->v.un.e);
     return c;

@@ -630,10 +630,14 @@ cargval(Ast *a, Fenv *fe, Val *out)
  * binding it spells picked and written back when it takes them. The
  * answer is the call's type, or 0 when it does not. cvals holds the
  * const parameters' own test -- a runtime argument there fails the
- * signature and notes it, the black box defers with the pick (08) */
+ * signature and notes it, the black box defers with the pick (08).
+ * packslot: this trial feeds the pack's own parameter slot one
+ * argument on its own -- the binding must be the tuple its rows
+ * came in (04-generics.md); nfreeze is the caller's argument count,
+ * the freezes to unwind -- the rolled trial walks a folded view */
 static Type *
-trysig(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, Val **cvals,
-       int *runtime)
+tryonesig(Sym *s, Ast *a, Ast **args, usize n, usize nfreeze, Fenv *fe, Ast *seg, Frzsave *svs,
+          Val **cvals, int *runtime, int packslot)
 {
   Type  *fnty = s->fnty;
   Type **tys = s->ngparams ? tyargs(s->ngparams) : 0;
@@ -649,7 +653,7 @@ trysig(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, Va
   int    ok = n == fnty->nargs;
 
   if (!ok) {
-    thawargs(svs, n);
+    thawargs(svs, nfreeze);
     return 0;
   }
   if (gcvals)
@@ -659,7 +663,7 @@ trysig(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, Va
   if (seg && seg->v.seg.args) { /* f<i32>(...): the binding is the
                                  * call's own words, not inference */
     if (vlen(seg->v.seg.args) != s->ngparams) {
-      thawargs(svs, n);
+      thawargs(svs, nfreeze);
       return 0; /* an overload this spelling does not fit */
     }
     for (i = 0; i < s->ngparams; i++) {
@@ -724,6 +728,15 @@ trysig(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, Va
         } /* CV_BOX: the slot stays NULL, the re-check's to fill */
       }
   }
+  if (ok && packslot) { /* the pack's parameter took the last
+                         * argument on its own: a tuple, its rows the
+                         * binding -- anything else is not this
+                         * spelling (04-generics.md) */
+    Type *pb = tys ? tys[s->ngparams - 1] : 0;
+
+    if (!pb || (pb->k != Tytuple && pb->k != Tyunit))
+      ok = 0;
+  }
   if (ok) {
     for (i = 0; i < s->ngparams; i++) /* a const generic's slot fills
                                        * when the unifier meets its
@@ -741,7 +754,13 @@ trysig(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, Va
 
       for (gi = 0; gi < vlen(gps); gi++) {
         Ast **bs = gps[gi]->v.gp.bounds;
+        int   pk = gps[gi]->v.gp.pack;
+        usize ri, rn = 0;
 
+        if (pk && tys[gi]) /* a pack's bound is every row's own
+                            * (04-generics.md): the binding holds the
+                            * tuple the rows came in */
+          rn = tys[gi]->k == Tytuple ? tys[gi]->nargs : 0;
         for (bi = 0; bi < vlen(bs); bi++) {
           Ast **bsegs = bs[bi]->v.path.segs;
           Sym  *tr;
@@ -751,6 +770,13 @@ trysig(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, Va
           tr = symfind(bsegs[0]->v.seg.name);
           if (!tr || tr->kind != Strait)
             continue; /* ditto */
+          if (pk) {
+            for (ri = 0; ri < rn; ri++)
+              if (!implsatisfies(tr, tys[gi]->args[ri]))
+                berr(a, "'%s' does not implement '%s'; '%s' cannot take it",
+                     btys(tys[gi]->args[ri]), tr->name, s->name);
+            continue; /* the empty pack: no row, no bound to fail */
+          }
           if (!implsatisfies(tr, tys[gi]))
             berr(a, "'%s' does not implement '%s'; '%s' cannot take it", btys(tys[gi]), tr->name,
                  s->name);
@@ -764,11 +790,101 @@ trysig(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, Va
     a->v.call.tys = s->ngparams ? tys : 0;
     a->v.call.cvals = cvals;
     a->v.call.gcvals = s->ngparams ? gcvals : 0;
-    thawargs(svs, n); /* the call is done; its borrows ended with it */
+    thawargs(svs, nfreeze); /* the call is done; its borrows ended with it */
     return gsubstv(fnty->t, s->gparams, tys, gcvals, s->ngparams);
   }
-  thawargs(svs, n); /* this signature did not take: its freezes unwound */
+  thawargs(svs, nfreeze); /* this signature did not take: its freezes unwound */
   return 0;
+}
+
+/* one signature's trial against a call: the plain signature, or --
+ * when the fn's last parameter takes the pack -- the pack's own two
+ * spellings. A tuple landing in the pack's slot on its own binds the
+ * pack to its rows; any other shape folds the tail arguments into
+ * one tuple argument, the empty tail the unit (04-generics.md) */
+static Type *
+trysig(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, Val **cvals,
+       int *runtime)
+{
+  Ast **ps = s->decl->v.fn.params;
+  usize np = vlen(ps);
+  Type *r;
+
+  if (np && ps[np - 1]->v.param.t->k == Ntpack) { /* the pack is
+                                                   * last (the parser
+                                                   * saw to it) */
+    { /* the pack's own spread in the arguments: the rows the
+       * binding holds, the arity with them. This declaration's
+       * walk cannot count them -- the signature takes the call on
+       * faith, and the re-check under the binding walks it for
+       * real (04-generics.md). The spread's operand was walked
+       * above, where the tuple spreads folded: what stands here is
+       * the pack's own, the only one left */
+      usize i;
+      int   faith = 0;
+
+      for (i = 0; i < n; i++)
+        if (args[i]->k == Nspread)
+          faith = 1;
+      if (faith) {
+        Type **tys = s->ngparams ? tyargs(s->ngparams) : 0;
+        Type  *ret;
+
+        for (i = 0; i < s->ngparams; i++) /* each parameter, its own
+                                           * placeholder: the return
+                                           * reads what it reads, and
+                                           * the instance's walk binds
+                                           * for real */
+          tys[i] = typaram(s->gparams[i]);
+        a->v.call.sym = s;
+        a->v.call.tys = tys;
+        a->v.call.cvals = 0;
+        a->v.call.gcvals = 0;
+        thawargs(svs, n);
+        ret = gsubstv(s->fnty->t, s->gparams, tys, 0, s->ngparams);
+        return ret;
+      }
+    }
+    if (n == s->fnty->nargs) { /* the direct spelling: the last
+                                * argument lands in the slot alone,
+                                * a tuple -- its rows the binding */
+      r = tryonesig(s, a, args, n, n, fe, seg, svs, cvals, runtime, 1);
+      if (r)
+        return r;
+    }
+    if (n + 1 >= s->fnty->nargs) { /* the folded spelling: the
+                                    * parameters before the pack keep
+                                    * their arguments, the rest fold
+                                    * into one tuple argument */
+      Ast **rargs = vnew(Ast *, np);
+      usize head = np - 1, i;
+
+      for (i = 0; i < head; i++)
+        vappend(&rargs, &args[i]);
+      if (n > head) {
+        Ast *t = mknear(Ntuple, a);
+
+        t->v.list.ts = vnew(Ast *, n - head);
+        for (i = head; i < n; i++)
+          vappend(&t->v.list.ts, &args[i]);
+        vappend(&rargs, &t);
+      } else { /* the empty pack: its tuple is () (04-generics.md) */
+        Ast *u = mknear(Nunit, a);
+
+        vappend(&rargs, &u);
+      }
+      r = tryonesig(s, a, rargs, np, n, fe, seg, svs, cvals, runtime, 0);
+      if (r) { /* the fold stands: matching and emit read the
+                * folded view (the spread's own writeback, 01) */
+        a->v.call.args = rargs;
+        return r;
+      }
+      return 0;
+    }
+    thawargs(svs, n);
+    return 0;
+  }
+  return tryonesig(s, a, args, n, n, fe, seg, svs, cvals, runtime, 0);
 }
 
 /* a call to a named fn, overload chain and all. tys holds the
@@ -973,6 +1089,31 @@ rbuiltin(Ast *e, Fenv *fe, Type *want)
                         * reach here: the branch stands, and emit
                         * gives it no runtime behavior (08) */
     berr(e, "%.*s", (int) args[0]->v.s.len, args[0]->v.s.s);
+  }
+  if (strcmp(nm, "count") == 0) { /* the pack's own length, a
+                                   * compile-time constant against
+                                   * the binding (04-generics.md) */
+    Type *pt;
+
+    if (nt != 0 || na != 1 || args[0]->k != Nspread)
+      berr(e, "@count takes one pack (...Ts) (04-generics.md)");
+    pt = rty(args[0]->v.un.e, &fe->env);
+    if (pt && pt->k == Typaram) { /* the declaration's own walk: the
+                                   * number is the instance's, and
+                                   * what stands on it defers (08) */
+      if (!pt->gp->v.gp.pack)
+        berr(args[0], "'%s' is not a pack; @count wants one (04-generics.md)", pt->gp->v.gp.name);
+      evalblackbox++;
+      return tyint(IN_USIZE);
+    }
+    if (pt && (pt->k == Tytuple || pt->k == Tyunit)) { /* the binding:
+                                                        * fold to the number, every
+                                                        * pass below reads a literal */
+      e->k = Nint;
+      e->v.i.num = pt->k == Tytuple ? pt->nargs : 0;
+      return tyint(IN_USIZE);
+    }
+    berr(args[0], "@count takes a pack (...Ts) (04-generics.md)");
   }
   if (strcmp(nm, "typeof") == 0) { /* the value's own type, as a
                                     * reference: $$ puts it back into
@@ -1744,21 +1885,38 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
           if (t->k == Tyslice)
             berr(a, "a slice's spread needs the pack it feeds -- packs arrive with generics "
                     "(04-generics.md)");
+          if (t->k == Typaram && t->gp->v.gp.pack) { /* the pack's own
+                                                      * rows: the binding holds them, and the
+                                                      * arity with them -- the spread stays, the
+                                                      * signature taking the call on faith
+                                                      * (04-generics.md) */
+            vappend(&as, &a);
+            continue;
+          }
           if (t->k != Tytuple && t->k != Tyunit) /* the empty tuple
                                                   * is the unit type:
                                                   * it spreads
                                                   * nothing
                                                   * (01-types.md) */
             berr(a, "the spread expands a tuple, this is %s (01-types.md)", btys(t));
-          for (k = 0; k < t->nargs; k++) { /* the rows, each its own
-                                            * read standing where the
-                                            * spread stood */
-            Ast *ix = mknear(Ntupidx, a);
+          if (a->v.un.e->k == Ntuple) { /* a slice of the pack rewrote
+                                         * to a tuple literal of row
+                                         * reads -- the rows stand as
+                                         * the arguments they are, no
+                                         * re-index through the whole
+                                         * of it */
+            for (k = 0; k < t->nargs; k++)
+              vappend(&as, &a->v.un.e->v.list.ts[k]);
+          } else
+            for (k = 0; k < t->nargs; k++) { /* the rows, each its own
+                                              * read standing where the
+                                              * spread stood */
+              Ast *ix = mknear(Ntupidx, a);
 
-            ix->v.tup.e = a->v.un.e;
-            ix->v.tup.idx = k;
-            vappend(&as, &ix);
-          }
+              ix->v.tup.e = a->v.un.e;
+              ix->v.tup.idx = k;
+              vappend(&as, &ix);
+            }
         }
         e->v.call.args = as; /* the widened list: every pass below
                               * walks it as the one the words
@@ -2319,6 +2477,32 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
     if (!bt)
       return 0;
     bt = derefthrough(bt);
+    if (bt->k == Typaram && bt->gp->v.gp.pack) { /* the pack's rows:
+                                                  * the binding's own, and this read defers to it
+                                                  * (04-generics.md) */
+      evalblackbox++;
+      if (e->v.n2.b->k != Nint)
+        berr(e->v.n2.b, "a pack's index is a row number the compiler reads (04-generics.md)");
+      return want ? want : tyunit();
+    }
+    if (bt->k == Tytuple || bt->k == Tyunit) { /* a tuple's row by
+                                                * number, the dot's
+                                                * own spelling (04-generics.md) */
+      Ast *base = e->v.n2.a;
+
+      if (bt->k == Tyunit || e->v.n2.b->k != Nint)
+        berr(e, "a tuple's index is a row number the compiler reads (04-generics.md)");
+      { /* the rewrite lands the row read the checker already has */
+        u64 ix = e->v.n2.b->v.i.num;
+
+        if (ix >= bt->nargs)
+          berr(e->v.n2.b, "row %lu out of range for %s", (unsigned long) ix, btys(bt));
+        e->k = Ntupidx;
+        e->v.tup.e = base;
+        e->v.tup.idx = ix;
+        return rexpr(e, fe, want);
+      }
+    }
     if (bt->k != Tyarray && bt->k != Tyslice) {
       berr(e, "%s cannot be indexed", btys(bt));
     }
@@ -2345,7 +2529,9 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
       return t;
     }
   }
-  case Nrangeindex: { /* a[..] or a[lo..hi]: the slice view (01) */
+  case Nrangeindex: { /* a[..] or a[lo..hi]: the slice view (01); a
+                       * tuple's own -- the sub-tuple, its rows spelled
+                       * out, a compile-time fact (04-generics.md) */
     Type *bt = rplace(e->v.ridx.e, fe);
 
     if (!bt)
@@ -2353,6 +2539,64 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
     if (!bt)
       return 0;
     bt = derefthrough(bt);
+    if (bt->k == Typaram && bt->gp->v.gp.pack) { /* the pack's rows:
+                                                  * the binding's own, and this view defers to it
+                                                  * (04-generics.md) */
+      evalblackbox++;
+      if (e->v.ridx.lo)
+        rexpr(e->v.ridx.lo, fe, 0);
+      if (e->v.ridx.hi)
+        rexpr(e->v.ridx.hi, fe, 0);
+      return want ? want : tyunit();
+    }
+    if (bt->k == Tytuple || bt->k == Tyunit) { /* ts[1..]: the
+                                                * sub-tuple the rows hold */
+      usize n = bt->k == Tytuple ? bt->nargs : 0;
+      int   bb = evalblackbox;
+      u64   lo = 0, hi = n;
+
+      if (e->v.ridx.lo) { /* the bounds are compile-time facts -- the
+                           * rows the type holds, a runtime bound names
+                           * none of them */
+        Val v;
+
+        rexpr(e->v.ridx.lo, fe, 0);
+        v = ceval(e->v.ridx.lo, fe->env, tyint(IN_USIZE));
+        lo = v.i;
+      }
+      if (evalblackbox != bb)
+        return want ? want : tyunit(); /* a bound the binding answers:
+                                        * defer (04-generics.md) */
+      if (e->v.ridx.hi) {
+        Val v;
+
+        rexpr(e->v.ridx.hi, fe, 0);
+        v = ceval(e->v.ridx.hi, fe->env, tyint(IN_USIZE));
+        hi = v.i;
+      }
+      if (evalblackbox != bb)
+        return want ? want : tyunit();
+      if (lo > n || hi > n || lo > hi)
+        berr(e, "rows %lu..%lu out of range for %s", (unsigned long) lo, (unsigned long) hi,
+             btys(bt));
+      { /* the rewrite spells the sub-tuple as its rows, and every
+         * pass below reads an ordinary tuple literal */
+        Ast  *base = e->v.ridx.e;
+        Ast **ts = vnew(Ast *, hi - lo ? hi - lo : 1);
+        u64   k;
+
+        for (k = lo; k < hi; k++) {
+          Ast *ix = mknear(Ntupidx, e);
+
+          ix->v.tup.e = base;
+          ix->v.tup.idx = k;
+          vappend(&ts, &ix);
+        }
+        e->k = Ntuple;
+        e->v.list.ts = ts;
+        return rexpr(e, fe, want);
+      }
+    }
     if (bt->k != Tyarray && bt->k != Tyslice)
       berr(e, "%s cannot be sliced", btys(bt));
     if (e->v.ridx.lo) {

@@ -1,0 +1,5 @@
+/* the count wants a pack: an ordinary generic parameter has no
+ * rows to count (04-generics.md) */
+fn f<T>(v: T) -> i32 { @count(...T) }
+
+fn main() -> i32 { f(1) }
