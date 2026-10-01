@@ -1,0 +1,18 @@
+/* the same name in the root and in std::meta: each reads its own.
+ * The root's enum stays bare; std's model, reached by its path --
+ * and @typeinfo's rewrites spell std::meta's own names out, so a
+ * same-name root declaration touches nothing of them
+ * (11-namespaces.md) */
+enum TypeInfo { Mine }
+
+const TI: std::meta::TypeInfo = @typeinfo<i32>(); /* the rewrite's
+                                                   * path is std's */
+
+fn main() -> i32 {
+  let a = match TypeInfo::Mine { TypeInfo::Mine => 1, _ => 0, };
+  let t: std::meta::TypeInfo = std::meta::TypeInfo::Bool;
+  let b = match t { std::meta::TypeInfo::Bool => 1, _ => 0, };
+  let c = @cast<i32>(std::meta::is_same<i32, i32>::value);
+  let d = match TI { std::meta::TypeInfo::Int { .. } => 1, _ => 0, };
+  a + b*2 + c*4 + d*8    /* 0b1111: 15 */
+}

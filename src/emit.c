@@ -2097,10 +2097,20 @@ emaexpr(Em *em, Ast *e)
   case Nunit:
     return 0; /* (): no value, no code */
   case Npath: {
-    char *nm = e->v.path.segs[0]->v.seg.name;
-    ELoc *l = locfind(em, nm);
+    Ast **psegs = e->v.path.segs;
+    usize pnsegs = vlen(psegs);
+    Ns   *pns;
+    usize pk = nshead(psegs, pnsegs, &pns);
+    char *nm;
+    ELoc *l;
     Sym  *s;
 
+    if (pk == pnsegs) /* the whole path a namespace walk (11) */
+      cerrat(e, "a namespace names no value; name what is in it (11-namespaces.md)");
+    psegs += pk; /* the namespaces walked fall away (11-namespaces.md) */
+    pnsegs -= pk;
+    nm = psegs[0]->v.seg.name;
+    l = locfind(em, nm);
     if (l) { /* a local's value: an aggregate is its storage, a ZST
               * -- () or a type's reference -- a word of zero (the
               * registers stay honest), the rest a load */
@@ -2114,11 +2124,11 @@ emaexpr(Em *em, Ast *e)
       }
       return emaload(em, e);
     }
-    if (vlen(e->v.path.segs) == 2) { /* Enum::Variant, the
-                                      * payloadless read (01-types.md) */
-      char *tn = e->v.path.segs[0]->v.seg.name;
-      char *vn = e->v.path.segs[1]->v.seg.name;
-      Sym  *s0 = symfind(tn);
+    if (pnsegs == 2) { /* Enum::Variant, the
+                        * payloadless read (01-types.md) */
+      char *tn = psegs[0]->v.seg.name;
+      char *vn = psegs[1]->v.seg.name;
+      Sym  *s0 = pk ? nsitem(pns, tn) : symfind(tn);
 
       if (s0 && s0->kind == Stype && s0->tykind == TYenum) {
         Variant *v = symvarfind(s0, vn);
@@ -2136,10 +2146,10 @@ emaexpr(Em *em, Ast *e)
       }
       cerrat(e, "this name arrives with a later milestone");
     }
-    if (vlen(e->v.path.segs) != 1)
+    if (pnsegs != 1)
       cerrat(e, "this name arrives with a later milestone");
-    s = symfind(nm);
-    if (!s) { /* None, Ok, Err: bare, the payloadless side */
+    s = pk ? nsitem(pns, nm) : symfind(nm);
+    if (!s && !pk) { /* None, Ok, Err: bare, the payloadless side */
       Sym *owner = symvariantowner(nm);
 
       if (owner && e->ty && e->ty->k == Tyenum && e->ty->sym == owner) {
@@ -2424,19 +2434,26 @@ emaexpr(Em *em, Ast *e)
     if (f->k == Npath) { /* a variant's construction reads as a
                           * call: Some(v), Enum::V(v) (01-types.md) */
       Ast **segs = f->v.path.segs;
+      usize nsegs = vlen(segs);
+      Ns   *ns;
+      usize k = nshead(segs, nsegs, &ns);
 
-      if (vlen(segs) == 1) {
+      if (k == nsegs) /* a namespace names no call (11-namespaces.md) */
+        cerrat(f, "a namespace names no call; name what is in it (11-namespaces.md)");
+      segs += k; /* the namespaces walked fall away (11-namespaces.md) */
+      nsegs -= k;
+      if (nsegs == 1) {
         char *nm = segs[0]->v.seg.name;
 
-        if (!locfind(em, nm) && !symfind(nm)) {
+        if (!k && !locfind(em, nm) && !symfind(nm)) {
           Sym *owner = symvariantowner(nm);
 
           if (!owner || !e->ty || e->ty->k != Tyenum || e->ty->sym != owner)
             cerrat(f, "unknown name '%s'", nm);
           return emavariant(em, e->ty, symvarfind(owner, nm), args, n, e);
         }
-      } else if (vlen(segs) == 2) {
-        s = symfind(segs[0]->v.seg.name);
+      } else if (nsegs == 2) {
+        s = k ? nsitem(ns, segs[0]->v.seg.name) : symfind(segs[0]->v.seg.name);
         if (s && s->kind == Stype && s->tykind == TYenum) {
           Variant *v = symvarfind(s, segs[1]->v.seg.name);
 

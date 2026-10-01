@@ -582,6 +582,32 @@ step that retires it. What waits: `use` — the four shapes of it,
 the fallthrough retired, and the namespaced `meta::TypeInfo` a use
 brings in (`11-namespaces.md`).
 
+The `use` shapes are here, and the stand-in is retired
+(`11-namespaces.md`). A file's `use` binds ahead of pass 2 — a
+const's own type may read one — and the four shapes each land:
+the single item (`use std::meta::is_same`), the brace tree
+(`use std::meta::{TypeInfo, Field}`), the namespace itself (`use
+std::meta`, `meta::TypeInfo` reading through it), and the glob
+(`use std::meta::*`, every pub item, all or nothing: a name it
+would bring in that is held — by a declaration or another use —
+takes the whole use down, the way out the path). The bare name's
+lookup reads the namespace being checked first — the embedded
+source's items reach their own neighbours bare, the user's file
+sitting in the root as it always has — then the root's table,
+then the uses. With that ordering the root fallthrough to
+std::meta is gone, and a same-name root declaration is free at
+last: `@typeinfo`'s rewrites spell their symbols' namespaces out
+(the walk to `std::meta::TypeInfo` its own), so the user's
+`enum TypeInfo` and std's model answer each their own path, a
+match on either finding its variant. A namespaced pattern
+(`std::meta::TypeInfo::Bool` in a match arm) resolves by the same
+walk, the arm rewritten to the variant's short name — the
+scrutinee's own enum picks it out from there, the evaluator and
+the emitter reading the shape they always read. What waits: the
+directory driver — a passed directory a project, its files
+joining the tree — and the emitter's namespaced mangles beside it
+(`11-namespaces.md`).
+
 Codegen has begun: `xyz -s file.xyz` prints the `.ssa` text — qbe's
 input — and `xyz -c file.xyz -o out` runs the pipeline, qbe as a
 subprocess and the system `cc` linking. Checking writes each node's

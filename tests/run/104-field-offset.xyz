@@ -5,6 +5,8 @@
  * and the walk the spec promises -- a const for over @typeinfo's
  * field rows, each round's name its own, each round's rewrite its
  * own (08-reflection.md) */
+use std::meta::{TypeInfo, Field};
+
 
 struct P { x: u32, y: u64, mut z: u32 }
 union U { a: u32, b: u64 }

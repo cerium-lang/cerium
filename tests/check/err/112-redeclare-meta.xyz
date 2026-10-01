@@ -1,6 +1,12 @@
-/* std's embedded source declares its names before this file is
- * read: a redeclaration of one of them is the same answer a std
- * source file on disk would give (08-reflection.md) */
+/* a use and a declaration of the same name: the name is held, and
+ * the use is the one that reports -- the way out is the path, the
+ * whole point of namespaces (11-namespaces.md). The same name
+ * declared in the root alone is fine now: std::meta's own TypeInfo
+ * lives in its namespace, and the rewrites between them spell their
+ * paths out -- a same-name test among the run cases holds the two
+ * apart (11b). */
+use std::meta::TypeInfo;
+
 enum TypeInfo { Mine }
 
 fn main() -> i32 { 0 }

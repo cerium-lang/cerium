@@ -1607,9 +1607,9 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                      * names no value (11-namespaces.md) */
       berr(e, "a namespace names no value; name what is in it (11-namespaces.md)");
     segs += k; /* the namespaces walked fall away; what is left
-                * reads as it stood, the bare name's own path the
-                * prelude's std half still answering through
-                * symfind's fallthrough (11-namespaces.md) */
+                * reads as it stood -- the first segment in the
+                * namespace the walk landed in, when one walked
+                * (11-namespaces.md) */
     nsegs -= k;
     {
       char *nm0 = segs[0]->v.seg.name;
@@ -1618,7 +1618,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
         return rexprpath1(e, fe, nm0, want);
       if (nsegs == 2) {
         char *nm1 = segs[1]->v.seg.name;
-        Sym  *s = symfind(nm0);
+        Sym  *s = k ? nsitem(ns, nm0) : symfind(nm0);
 
         if (!s || s->kind != Stype) {
           if (s && s->kind == Strait) /* a trait method as a value
@@ -2098,7 +2098,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
       if (nsegs == 2) { /* Enum::Variant(...), Type::member(...), or Trait::member(&p) */
         char *nm0 = segs[0]->v.seg.name;
         char *nm1 = segs[1]->v.seg.name;
-        Sym  *s = symfind(nm0);
+        Sym  *s = k ? nsitem(ns, nm0) : symfind(nm0);
 
         if (s && s->kind == Strait) { /* the explicit trait call:
                                        * the receiver -- the first
@@ -2915,12 +2915,25 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
     Ast  **inits = e->v.slit.inits;
     usize  n = vlen(inits), i, j;
     Ast  **segs = e->v.slit.path->v.path.segs;
-    Sym   *s = vlen(segs) == 1 && !e->v.slit.path->v.path.root ? symfind(segs[0]->v.seg.name) : 0;
+    usize  nsegs = vlen(segs);
+    Ns    *ns;
+    usize  k;
+    Sym   *s;
     Type **tys = 0;
     Type  *st;
 
-    if (vlen(segs) == 2 && !e->v.slit.path->v.path.root) {
-      Sym *es = symfind(segs[0]->v.seg.name);
+    k = nshead(segs, nsegs, &ns);
+    if (k == nsegs) /* a namespace names no literal (11-namespaces.md) */
+      berr(e, "a namespace names no literal; name what is in it (11-namespaces.md)");
+    segs += k; /* the namespaces walked fall away: the literal's own
+                * type lands where the walk did (11-namespaces.md) */
+    nsegs -= k;
+    s = nsegs == 1 && !e->v.slit.path->v.path.root
+            ? (k ? nsitem(ns, segs[0]->v.seg.name) : symfind(segs[0]->v.seg.name))
+            : 0;
+
+    if (nsegs == 2 && !e->v.slit.path->v.path.root) {
+      Sym *es = k ? nsitem(ns, segs[0]->v.seg.name) : symfind(segs[0]->v.seg.name);
 
       if (es && es->kind == Stype && es->tykind == TYenum) {
         /* Enum::Variant{..}: a named payload constructed by name,
@@ -3134,8 +3147,18 @@ rpat(Ast *p, Type *t, Fenv *fe, int mut)
     char           *en, *vn;
     Sym            *s;
     struct Variant *v;
+    Ns             *ns;
+    usize           nsegs, k;
 
-    if (vlen(segs) == 1 && !p->v.ppath.payload && !p->v.ppath.named &&
+    nsegs = vlen(segs);
+    k = nshead(segs, nsegs, &ns);
+    if (k == nsegs) /* the whole path a namespace walk: a
+                     * namespace names no pattern (11-namespaces.md) */
+      berr(p, "a namespace names no pattern; name what is in it (11-namespaces.md)");
+    segs += k; /* the namespaces walked fall away (11-namespaces.md) */
+    nsegs -= k;
+
+    if (nsegs == 1 && !p->v.ppath.payload && !p->v.ppath.named &&
         (!t || t->k != Tyenum || !varfind(t->sym, segs[0]->v.seg.name))) {
       /* a bare name that names no variant of the scrutinee's enum:
        * the binding form -- the parser sends every ident-headed
@@ -3144,14 +3167,28 @@ rpat(Ast *p, Type *t, Fenv *fe, int mut)
       locpush(fe, segs[0]->v.seg.name, t, mut);
       return;
     }
-    if (vlen(segs) == 2) { /* Enum::Variant */
+    if (nsegs == 2) { /* Enum::Variant */
       en = segs[0]->v.seg.name;
       vn = segs[1]->v.seg.name;
-      s = symfind(en);
+      s = k ? nsitem(ns, en) : symfind(en); /* the enum lands where
+                                             * the walk did, when one
+                                             * walked (11) */
       if (!s || s->kind != Stype || s->tykind != TYenum)
         berr(p, "'%s' is not an enum", en);
       if (t && (t->k != Tyenum || t->sym != s))
         berr(p, "this pattern fits %s, not %s's values", btys(t), s->name);
+      { /* the resolved form is the short name: the walk rewrote the
+         * pattern so every pass after -- the evaluator, the emitter
+         * -- reads it the way a short-form one reads, the
+         * scrutinee's own enum picking the variant out, no
+         * namespace's help asked twice (11-namespaces.md) */
+        Ast  *last = segs[1];
+        Ast **one = vnew(Ast *, 1);
+
+        vappend(&one, &last);
+        p->v.ppath.path->v.path.segs = one;
+        p->v.ppath.path->v.path.root = 0;
+      }
     } else { /* the short name: the scrutinee picks it out */
       vn = segs[0]->v.seg.name;
       if (!t || t->k != Tyenum)

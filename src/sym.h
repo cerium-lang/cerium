@@ -25,6 +25,7 @@
 typedef struct Field   Field;
 typedef struct Variant Variant;
 typedef struct Member  Member;
+typedef struct Ns      Ns;
 
 enum
 {
@@ -101,7 +102,8 @@ struct Sym
 {
   char    *name;
   int      kind;       /* one of Snone..Simpl above */
-  int      pub;        /* unused until namespaces land */
+  int      pub;        /* visible outside its namespace (11) */
+  Ns      *ownns;      /* the namespace it was declared in */
   Ast     *decl;       /* the declaring item, or NULL for the prelude */
   Ast    **gparams;    /* the Ngparam nodes */
   usize    ngparams;   /* their count */
@@ -151,16 +153,38 @@ struct Sym
 void syminit(void);
 Sym *symdecl(const char *name, int kind, Ast *decl, Ast **gparams, usize ngparams);
 Sym *symfind(const char *name);
+void nscur(Ns *ns); /* the namespace whose file the checker is in:
+                     * symfind reads its table first (11) */
+
+/* -- the use environment -------------------------------------------------
+ * What a `use` brought into scope: an item's Sym, or a namespace
+ * itself (11-namespaces.md). The bare name's lookup reads the
+ * root's table first, then these -- the prelude-era fallthrough
+ * retired, the use's own bindings taking its place. */
+
+typedef struct Use Use;
+struct Use
+{
+  char *name; /* the name in scope: the item's, or the ns's own */
+  Ns   *ns;   /* the namespace the use brought in, or NULL */
+  Sym  *sym;  /* the item the use brought in, or NULL */
+  Ast  *at;   /* the use that wrote it: a collision's position */
+};
+
+void useclear(void);                                       /* per compilation, from syminit */
+Use *usebind(const char *name, Sym *sym, Ns *ns, Ast *at); /* the
+                                                            * binding made, or the one that held
+                                                            * the name first -- the caller
+                                                            * reports the collision */
+Use *usefind(const char *name);                            /* a binding by name, or NULL */
+Use *usefindns(const char *name);                          /* a binding that is a namespace */
 
 /* -- the namespace tree -------------------------------------------------
  * A directory is a namespace (11-namespaces.md); the root is the
  * project's. Each holds its own declarations and its
- * sub-namespaces. symfind above reads the root's table, and -- the
- * prelude-era stand-in until `use` lands -- falls through to
- * std::meta's, which is what keeps a bare is_same or TypeInfo
- * resolving while the reads learn their paths. */
+ * sub-namespaces. The bare name's lookup reads the root's table and
+ * then what `use` brought in; a namespaced path walks the tree. */
 
-typedef struct Ns Ns;
 struct Ns
 {
   char *name; /* the last segment; the root's is "" */
@@ -175,11 +199,11 @@ Ns   *nsmk(Ns *parent, const char *name); /* a sub-namespace, named */
 Ns   *nschild(Ns *ns, const char *name);  /* a sub-namespace by name, or NULL */
 Sym  *nsitem(Ns *ns, const char *name);   /* a declaration of this one */
 char *nsname(Ns *ns);                     /* its full path, std::meta */
-Sym  *nsdecl(Ns *ns, const char *name, int kind, Ast *decl, Ast **gparams,
-             usize ngparams); /* declare into it -- symdecl's own, one
-                               * namespace over */
-void symsetmeta(Ns *ns);      /* the std::meta symfind falls through to,
-                               * named by the prelude that fills it */
+Sym **nstable(Ns *ns, usize *np);         /* every declaration of it,
+                                           * a glob's walk (11) */
+Sym *nsdecl(Ns *ns, const char *name, int kind, Ast *decl, Ast **gparams,
+            usize ngparams); /* declare into it -- symdecl's own, one
+                              * namespace over */
 
 /* -- names in scope while a type resolves ------------------------------
  * Shared by resolve.c's passes and body.c's pass 4: a binding is a

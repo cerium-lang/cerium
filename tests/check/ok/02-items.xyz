@@ -44,4 +44,4 @@ fn id<T>(t: T) -> T;
 fn noret() -> ();
 fn noret2();
 
-use std::io;
+use std::meta;

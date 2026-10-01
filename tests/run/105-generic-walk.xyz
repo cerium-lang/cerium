@@ -5,6 +5,8 @@
  * routing the match on @typeinfo's answer, binding the taken arm's
  * fields, walking them field by field. Each instance its own: what
  * one wrote the next must not read (04-generics.md, 08, 09, 10) */
+use std::meta::TypeInfo;
+
 struct P { x: u32, y: u32, z: u32 }
 struct Q { a: u64, b: u64 }
 const XS: [3]u32 = [3]u32{1, 2, 3};

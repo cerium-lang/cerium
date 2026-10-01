@@ -27,4 +27,4 @@
   (fn id fn(T) -> T)
   (fn noret fn())
   (fn noret2 fn())
-  (use std::io))
+  (use std::meta))

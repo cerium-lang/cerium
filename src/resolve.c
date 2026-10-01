@@ -344,10 +344,12 @@ memberfind(Sym *s, const char *name)
 
 /* the namespace head of a path: how many leading segments walk the
  * root's sub-namespaces (std::meta::...), and the namespace they
- * land in. 0 when the first segment names no sub-namespace -- the
- * path is not a namespaced one, and the caller's own reading
- * stands. The whole path a namespace walk leaves nothing behind:
- * the caller decides what that must mean (11-namespaces.md). */
+ * land in. The first segment may name a namespace a `use` brought
+ * in -- meta::TypeInfo reads the std::meta a `use std::meta` holds
+ * (11-namespaces.md). 0 when the first segment names no
+ * sub-namespace -- the path is not a namespaced one, and the
+ * caller's own reading stands. The whole path a namespace walk
+ * leaves nothing behind: the caller decides what that must mean. */
 usize
 nshead(Ast **segs, usize nsegs, Ns **nsp)
 {
@@ -355,7 +357,8 @@ nshead(Ast **segs, usize nsegs, Ns **nsp)
   usize k = 0;
 
   while (k < nsegs) {
-    Ns *sub = nschild(ns, segs[k]->v.seg.name);
+    Use *u = k == 0 ? usefindns(segs[k]->v.seg.name) : 0;
+    Ns  *sub = u ? u->ns : nschild(ns, segs[k]->v.seg.name);
 
     if (!sub)
       break;
@@ -1494,7 +1497,7 @@ checkoverlap(Sym *a, Sym *b)
  * which declare nothing pass 2 resolves */
 static Sym **syms;
 
-static void
+void
 declare(Ast **items, Ns *ns)
 {
   usize i, n = vlen(items);
@@ -1552,7 +1555,8 @@ declare(Ast **items, Ns *ns)
                                         * gate reads them (04) */
       s->ngparams = vlen(it->v.impl.gparams);
       break;
-    default: /* Nuse: namespaces are their own feature */
+    default: /* Nuse: collected below, its bindings made once every
+              * name is declared (11-namespaces.md) */
       break;
     }
     if (kind != Snone) {
@@ -1562,6 +1566,8 @@ declare(Ast **items, Ns *ns)
       s = nsdecl(ns, name, kind, it, gps, ngps);
       if (!s)
         cerrat(it, "'%s' is declared twice", name);
+      s->pub = it->pub; /* visible outside its namespace, a use's
+                         * question (11-namespaces.md) */
       if (kind == Stype)
         s->tykind = it->k == Nstruct  ? TYstruct
                     : it->k == Nunion ? TYunion
@@ -1638,9 +1644,21 @@ checkdefaults(Sym *s)
 void
 checkdecls(Ast **items, Ns *ns)
 {
+  nscur(ns); /* the declarations and every pass below read their own
+              * namespace first (11-namespaces.md) */
+  declare(items, ns);
+  resolveitems(items);
+}
+
+/* pass 2: what each declaration is. Runs after the uses bind in
+ * checkfile -- a const's own type may read one (11-namespaces.md);
+ * checkdecls runs it back-to-back for the embedded source, whose
+ * items use nothing */
+void
+resolveitems(Ast **items)
+{
   usize i, n = vlen(items);
 
-  declare(items, ns);
   for (i = 0; i < n; i++) {
     Ast *it = items[i];
     Sym *s = syms[i];
@@ -1700,6 +1718,122 @@ collectstdimpls(Ast **items) /* preludefile's tail, with syms still the
   nstd_impls = vlen(std_impls);
 }
 
+/* -- the uses ------------------------------------------------------------
+ * A `use`'s own resolution (11-namespaces.md): the path walked from
+ * the root, its last segment the item or the namespace itself, the
+ * binding made in the use environment. Every name is declared by
+ * now -- a collision reads the whole file, order-free. There is no
+ * renaming: the way out of one is the full path. */
+
+static Ns *
+usewalk(Ast *it, Ast **segs, usize nsegs, char **last) /* the path's
+                                                        * namespaces
+                                                        * walked, the
+                                                        * last segment
+                                                        * left */
+{
+  Ns   *ns = nsroot();
+  usize i;
+
+  for (i = 0; i + 1 < nsegs; i++) {
+    Ns *sub = nschild(ns, segs[i]->v.seg.name);
+
+    if (!sub)
+      cerrat(it, "no namespace '%s' in %s (11-namespaces.md)", segs[i]->v.seg.name,
+             i ? nsname(ns) : "the root");
+    ns = sub;
+  }
+  *last = segs[nsegs - 1]->v.seg.name;
+  return ns;
+}
+
+static void
+resolveuse1(Ast *it, Ast **head, usize nhead) /* one use tree, its
+                                               * parent's path
+                                               * carried in */
+{
+  Ast **segs = it->v.use.path->v.path.segs;
+  usize nsegs = vlen(segs), nfull = nhead + nsegs, i;
+
+  { /* the whole path: the parent's segments, then this tree's own */
+    Ast **full = vnew(Ast *, nfull ? nfull : 1);
+
+    for (i = 0; i < nhead; i++)
+      vappend(&full, &head[i]);
+    for (i = 0; i < nsegs; i++)
+      vappend(&full, &segs[i]);
+    segs = full;
+    nsegs = nfull;
+  }
+  if (it->v.use.star) { /* the glob: every pub item of the namespace,
+                         * all or nothing -- a name colliding takes
+                         * the whole use down (11-namespaces.md) */
+    Ns   *ns = nsroot();
+    Sym **all;
+    usize nall, j;
+
+    if (nsegs < 1)
+      cerrat(it, "a use's path is absolute (11-namespaces.md)");
+    for (j = 0; j < nsegs; j++) { /* the whole path one namespace
+                                   * walk: the star rides the ns
+                                   * itself, no last segment left */
+      Ns *sub = nschild(ns, segs[j]->v.seg.name);
+
+      if (!sub)
+        cerrat(it, "no namespace '%s' in %s (11-namespaces.md)", segs[j]->v.seg.name,
+               j ? nsname(ns) : "the root");
+      ns = sub;
+    }
+    all = nstable(ns, &nall);
+    for (i = 0; i < nall; i++) {
+      Sym *s = all[i];
+
+      if (!s->pub)
+        continue;
+      if (nsitem(nsroot(), s->name))
+        cerrat(it, "'%s' is already declared; the glob cannot bring it in (11-namespaces.md)",
+               s->name);
+      if (usebind(s->name, s, 0, it))
+        cerrat(it, "'%s' is brought in twice (11-namespaces.md)", s->name);
+    }
+    return;
+  }
+  if (vlen(it->v.use.subs)) { /* the brace tree: each sub its own use,
+                               * the parent's path carried in */
+    usize nsub = vlen(it->v.use.subs);
+
+    for (i = 0; i < nsub; i++)
+      resolveuse1(it->v.use.subs[i], segs, nsegs);
+    return;
+  }
+  { /* the one item, or the namespace itself */
+    char *nm;
+    Ns   *ns = usewalk(it, segs, nsegs, &nm);
+    Ns   *asns = nschild(ns, nm); /* the namespace itself: a path's
+                                   * head names it after (below) */
+
+    if (asns) {
+      if (nsitem(nsroot(), nm))
+        cerrat(it, "'%s' is already declared; reach it by its path (11-namespaces.md)", nm);
+      if (usebind(nm, 0, asns, it))
+        cerrat(it, "'%s' is brought in twice (11-namespaces.md)", nm);
+      return;
+    }
+    {
+      Sym *s = nsitem(ns, nm);
+
+      if (!s)
+        cerrat(it, "no '%s' in %s (11-namespaces.md)", nm, nsname(ns));
+      if (!s->pub)
+        cerrat(it, "'%s' is private to %s (11-namespaces.md)", nm, nsname(ns));
+      if (nsitem(nsroot(), nm))
+        cerrat(it, "'%s' is already declared; reach it by its path (11-namespaces.md)", nm);
+      if (usebind(nm, s, 0, it))
+        cerrat(it, "'%s' is brought in twice (11-namespaces.md)", nm);
+    }
+  }
+}
+
 void
 checkfile(Ast **items)
 {
@@ -1707,7 +1841,17 @@ checkfile(Ast **items)
   Sym **impls;
   usize nimpls;
 
-  checkdecls(items, nsroot());
+  nscur(nsroot()); /* the user's file sits in the root: every bare
+                    * name below reads it first (11-namespaces.md) */
+  declare(items, nsroot());
+  { /* the uses, every name declared: the bindings a bare name's miss
+     * reads (11-namespaces.md) -- ahead of pass 2, whose types read
+     * them too */
+    for (i = 0; i < n; i++)
+      if (items[i]->k == Nuse)
+        resolveuse1(items[i], 0, 0);
+  }
+  resolveitems(items);
 
   /* pass 3: traits and impls, then coherence. The bounds check runs
    * first so a bound nobody overlaps against still gets diagnosed.

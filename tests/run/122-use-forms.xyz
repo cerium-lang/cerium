@@ -1,0 +1,31 @@
+/* the shapes of use (11-namespaces.md): the single item, the brace
+ * tree, the namespace itself -- each reading what it brought in,
+ * its scenario's bit the exit carries. The glob is its own case
+ * among the runs: what it brings in meets every name, and a fourth
+ * use here would meet the three below. */
+use std::meta::is_same;
+use std::meta::{TypeInfo, Field};
+use std::meta;
+
+fn main() -> i32 {
+  /* bit 1: the single item, is_same bare */
+  let a = @cast<i32>(is_same<i32, i32>::value);
+  /* bit 2: the brace tree, TypeInfo and Field bare */
+  let t: TypeInfo = TypeInfo::Pointer{child: ^^u8, mutable: false};
+  let b = match t {
+    TypeInfo::Pointer { child, .. } => {
+      let f: Field = Field{name: c"child", type: child, offset: 4, mutable: false,
+                           attrs: []meta::Attr{}};
+      @cast<i32>(f.offset)
+    },
+    _ => 0,
+  };
+  /* bit 4: the namespace itself, meta:: as the head -- the type,
+   * the pattern, and the const read through it */
+  let c: meta::TypeInfo = meta::TypeInfo::Bool;
+  let cc = match c {
+    meta::TypeInfo::Bool => @cast<i32>(meta::is_same<u8, u8>::value),
+    _ => 0,
+  };
+  a + b*2 + cc*4    /* 0b1101: 13 */
+}
