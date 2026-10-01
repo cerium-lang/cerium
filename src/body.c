@@ -2406,6 +2406,54 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
     }
     return tyunit(); /* the statement form: no value */
   }
+  case Ncif: { /* the condition must be compile-time known, and the
+                * branch is picked here: the taken block the
+                * conditional's own, the untaken discarded before
+                * checking -- the code it holds may only compile for
+                * some instantiations (04-generics.md). A condition
+                * that names a generic's own defers the whole
+                * conditional to the re-check under the binding, the
+                * same routing a match on @typeinfo takes
+                * (08-reflection.md) */
+    Type *ct = rexpr(e->v.ifx.cond, fe, 0);
+    int   bb;
+    Val   cv;
+    Ast  *tb, *eb;
+
+    if (!ct || ct->k != Tybool)
+      berr(e->v.ifx.cond, "a const if condition is a bool, this is %s", btys(ct));
+    bb = evalblackbox;
+    cv = ceval(e->v.ifx.cond, fe->env, tybool());
+    if (evalblackbox != bb) {        /* the parameter, the black box: which
+                                      * branch lives is the instance's own */
+      evalblackbox = bb;             /* the flag dies with the walk that raised it */
+      return want ? want : tyunit(); /* the shape the world around it
+                                      * wants, or none when no slot
+                                      * names one: the instance's
+                                      * walk types it for real (04) */
+    }
+    tb = e->v.ifx.then;
+    eb = e->v.ifx.els;
+    if (cv.i) { /* taken: the block is the conditional's own now, the
+                 * walk re-entering it as itself -- the match route's
+                 * own trick (09-match.md) */
+      e->k = Nblock;
+      e->v.blk.stmts = tb->v.blk.stmts;
+      e->v.blk.tail = tb->v.blk.tail;
+      return rblock(e, fe, want);
+    }
+    if (eb) { /* untaken, an else in hand: it stands where the
+               * conditional stood -- a block, an if-chain, another
+               * const if alike */
+      e->k = eb->k;
+      e->v = eb->v;
+      return rexpr(e, fe, want);
+    }
+    e->k = Nblock; /* untaken, no else: nothing runs, nothing checks */
+    e->v.blk.stmts = 0;
+    e->v.blk.tail = 0;
+    return tyunit();
+  }
   case Nmatch:
     return rmatch(e, fe, want);
   case Nblock:
@@ -3519,9 +3567,6 @@ rstmt(Ast *st, Fenv *fe)
     ununroll--;
     return;
   }
-  case Ncif:
-    berr(st, "const control flow arrives with const evaluation");
-    return; /* unreachable */
   case Nexprstmt:
     rexpr(st->v.n1.e, fe, 0);
     return;
@@ -3549,6 +3594,11 @@ runbody(Ast *it, Env env, Type **argtys, Type *ret, Val **cvals, Ast **gparams, 
   Ast **ps = it->v.fn.params;
   usize n = vlen(ps), i;
 
+  cparammark(ps, argtys, n); /* the const parameters, for the
+                              * evaluator to meet by name: a read this
+                              * walk holds no value for is the box, the
+                              * re-check under the binding answering
+                              * (08-reflection.md) */
   memset(&fe, 0, sizeof fe);
   fe.env = env;
   fe.fnret = ret;
@@ -3597,6 +3647,7 @@ runbody(Ast *it, Env env, Type **argtys, Type *ret, Val **cvals, Ast **gparams, 
     berr(it->v.fn.body->v.blk.tail,
          "this slice views the fn's own storage; return the array by value instead (01-types.md)");
   rblock(it->v.fn.body, &fe, ret);
+  cparamclear();
 }
 
 /* one fn's body: the parameters bind, the return is the want, and

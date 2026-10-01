@@ -1375,6 +1375,11 @@ emaif(Em *em, Ast *e, int *reached)
       if (r2)
         jump(em, lend);
       re = r2;
+    } else if (e->v.ifx.els->k == Ncif) { /* the walk routes a const
+                                           * if, the taken block rewritten in its place -- one
+                                           * still standing here skipped its re-check */
+      cerrat(e->v.ifx.els, "the const branch did not land (08-reflection.md)");
+      return 0; /* unreachable */
     } else {
       vt = emablockval(em, e->v.ifx.els, &re);
       if (slot && re)
@@ -2904,6 +2909,11 @@ emaexpr(Em *em, Ast *e)
 
     return emaif(em, e, &reached);
   }
+  case Ncif: /* the walk routes it -- the taken block rewritten in
+              * place, the untaken discarded -- so the emitter never
+              * sees one: a tree that skipped its re-check */
+    cerrat(e, "the const branch did not land (08-reflection.md)");
+    return 0; /* unreachable */
   case Nmatch: {
     int reached;
 

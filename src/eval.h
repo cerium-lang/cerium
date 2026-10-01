@@ -57,30 +57,39 @@ Val ceval(Ast *e, Env env, Type *want); /* an expression's value, where its
                                          * initializer (08-reflection.md) */
 Val valint(u64 v, Type *t);             /* an integer's or a bool's value */
 
-void cevalsym(Sym *s);                       /* a const's value, now or never: the
-                                              * initializer must be compile-time known
-                                              * (01-types.md), and so must a static's --
-                                              * its storage is runtime, its first value is
-                                              * not */
-Type *tysplice(Ast *e, Env *env);            /* a $$ operand's value: the type it
-                                              * holds, for the slot the splice names
-                                              * (08-reflection.md) */
-u64 cevallong(Ast *e, Env env, Type *want);  /* an integer's value,
-                                              * where a type's own parts need one: an
-                                              * array's length, a variant's discriminant
-                                              * (08-reflection.md) */
-Ast **cforunroll(Ast *st, struct Fenv *fe);  /* a const for's statements: the
-                                              * iteration ran, each round's value bound
-                                              * as a let that spells it, the body shared
-                                              * -- what the checker walks and the
-                                              * emitter emits where the loop stood, no
-                                              * loop surviving (10-iteration.md). NULL:
-                                              * the iterable named a generic parameter,
-                                              * and the rounds are the instance's own --
-                                              * the declaration's walk skips the whole
-                                              * loop, and the re-check under the binding
-                                              * walks it (04-generics.md) */
-int patfits(Ast *p, Val v);                  /* does the pattern fit the value? A
+void cevalsym(Sym *s);                             /* a const's value, now or never: the
+                                                    * initializer must be compile-time known
+                                                    * (01-types.md), and so must a static's --
+                                                    * its storage is runtime, its first value is
+                                                    * not */
+Type *tysplice(Ast *e, Env *env);                  /* a $$ operand's value: the type it
+                                                    * holds, for the slot the splice names
+                                                    * (08-reflection.md) */
+u64 cevallong(Ast *e, Env env, Type *want);        /* an integer's value,
+                                                    * where a type's own parts need one: an
+                                                    * array's length, a variant's discriminant
+                                                    * (08-reflection.md) */
+Ast **cforunroll(Ast *st, struct Fenv *fe);        /* a const for's statements: the
+                                                    * iteration ran, each round's value bound
+                                                    * as a let that spells it, the body shared
+                                                    * -- what the checker walks and the
+                                                    * emitter emits where the loop stood, no
+                                                    * loop surviving (10-iteration.md). NULL:
+                                                    * the iterable named a generic parameter,
+                                                    * and the rounds are the instance's own --
+                                                    * the declaration's walk skips the whole
+                                                    * loop, and the re-check under the binding
+                                                    * walks it (04-generics.md) */
+void cparammark(Ast **ps, Type **argtys, usize n); /* the const parameters of the
+                                                    * fn whose body the pass walks: the
+                                                    * declaration's walk holds no values,
+                                                    * and the evaluator, meeting a name no
+                                                    * frame answers, asks here -- the box,
+                                                    * the read deferring to the re-check
+                                                    * under the binding (08-reflection.md).
+                                                    * Set around the walk, cleared after */
+void cparamclear(void);
+int  patfits(Ast *p, Val v);                 /* does the pattern fit the value? A
                                               * match's arms take their turn by it
                                               * (09-match.md) */
 extern int evalblackbox;                     /* a walk met a generic's own parameter

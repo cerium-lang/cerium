@@ -1,0 +1,5 @@
+/* a const if condition is a bool: an integer is not one, the walk
+ * says so where the condition stands (08-reflection.md) */
+fn main() -> u32 {
+  const if 5 { 1 } else { 0 }
+}

@@ -455,6 +455,27 @@ milestone that routes the vtable, a table slot having nowhere to
 hand a baked length either. What waits: the const `if`, and packs
 with it (`08-reflection.md`).
 
+The const `if` is here: `const if @count(...Ts) > 16 { @compileError("too
+many arguments") }`, the condition compile-time known or refused, and
+the branch picked at the walk — the taken block the conditional's
+own, rewritten in place as the block it is, the untaken discarded
+before checking, so it may hold code that only compiles for some
+instantiations: `const if N > 2 { v[9] }` never checks against a
+length of 1 (`04-generics.md`). The condition the declaration
+cannot know defers the whole conditional — a generic's length, a
+const parameter's number — the same routing a match on `@typeinfo`
+takes, the instance's re-check answering; and the const parameter
+rides a table the body pass marks around its walk, the evaluator
+meeting the name no frame answers and asking there, the box again.
+An else chains — `else const if`, or an ordinary `if` the untaken
+side runs as itself — and a compile-time call picks its branch in
+the evaluator, the marker changing nothing there. A typed `let`
+names the shape a deferred branch answers to, the black box
+carrying it as its placeholder; an untyped one meets the
+placeholder's shape at its use, the honest edge the black-box
+match already owns. What waits: packs — the tuple they stand on,
+`@count` among them (`04-generics.md`).
+
 Codegen has begun: `xyz -s file.xyz` prints the `.ssa` text — qbe's
 input — and `xyz -c file.xyz -o out` runs the pipeline, qbe as a
 subprocess and the system `cc` linking. Checking writes each node's
