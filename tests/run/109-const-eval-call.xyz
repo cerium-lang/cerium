@@ -1,0 +1,13 @@
+/* the compile-time call: the evaluator runs the const fn's body
+ * itself, the frame holding the baked argument, and @offset reads
+ * the name off it -- a const spelled from the call, both spellings
+ * their own fold (08-reflection.md) */
+struct P { x: u32, y: u32 }
+fn off(const name: []u8) -> usize {
+  @offset<P>(name)
+}
+const OFFY: usize = off("y");
+const OFFX: usize = off("x");
+fn main() -> u32 {
+  @cast<u32>(OFFY * 10 + OFFX)   /* 4*10 + 0 = 40 */
+}

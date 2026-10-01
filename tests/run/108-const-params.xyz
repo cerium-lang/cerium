@@ -1,0 +1,45 @@
+/* the const parameter: the argument baked into the instance
+ * (08-reflection.md). The declaration's walk holds the name as a
+ * black box and defers -- @offset unwritten, @field untyped -- and
+ * the re-check under the binding, on the clone the emitter hands
+ * it, folds them where the value has landed. Each spelling its own
+ * instance; a pass-through defers twice and the outer binding
+ * answers both; the two spellings of an overload split by whether
+ * the caller's argument is compile-time known. */
+struct P { x: u32, y: u32 }
+struct Q { x: u64, y: u64, z: u64 }
+
+fn field_offset<T>(const name: []u8) -> usize {
+  @offset<T>(name)
+}
+
+fn relay<T>(const name: []u8) -> usize {
+  field_offset<T>(name)   /* the const passed as the const: relay's
+                           * own re-check holds what this walk
+                           * defers, and hands it down */
+}
+
+fn readf(const name: []u8, v: P) -> u32 {
+  let q: *u32 = @field(v, name);   /* the typed slot carries the want
+                                     * the deferral answers under */
+  *q
+}
+
+fn f(x: u32) -> u32 { x + 1 }
+fn f(const x: u32) -> u32 { x + 2 }
+
+static mut CELL: u32 = 7;   /* a runtime source: its read is no
+                             * compile-time value, and the plain
+                             * half of the overload takes it */
+
+fn main() -> u32 {
+  let p = P{x: 1, y: 2};
+  let r = CELL;
+  @cast<u32>(field_offset<P>("y") * 10   /* 40: the "y" instance, y past x */
+    + field_offset<Q>("z") * 5           /* 80: the "z" instance, its own */
+    + relay<P>("y") * 2)                 /* 8: passed through, folded twice */
+  + readf("y", p) * 10                   /* 20: the address the re-check wrote */
+  + readf("x", p)                        /* 1: the "x" instance of it */
+  + f(1) * 2                             /* 6: the const half, 1+2 */
+  + f(r)                                 /* 8: the plain half, 7+1 */
+}

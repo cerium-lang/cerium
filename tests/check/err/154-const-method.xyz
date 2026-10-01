@@ -1,0 +1,12 @@
+/* a const parameter on a method: the calls route through the
+ * vtable half the time, and a table slot has nowhere to hand a
+ * baked argument over -- it arrives with a later milestone
+ * (08-reflection.md) */
+trait T1 {
+  fn f(self: *Self, const x: u32) -> u32;
+}
+struct S { v: u32 }
+impl T1 for S {
+  fn f(self: *Self, const x: u32) -> u32 { x + 1 }
+}
+fn main() -> u32 { 0 }

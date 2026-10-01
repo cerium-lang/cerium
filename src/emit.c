@@ -474,17 +474,21 @@ fsymname(Sym *s, Ast *it)
 
 /* -- monomorphization (04-generics.md) ---------------------------------- */
 
-/* One generic fn, one binding of its parameters. Types are interned,
- * so the key is the Sym with the Type pointers themselves; the same
- * instantiation is emitted once, and its name is what every call
- * site says. */
+/* One generic fn, one binding of its parameters -- the types, and
+ * the const parameters' baked values with them. Types are interned,
+ * so the key is the Sym with the Type pointers themselves; the
+ * values compare by what they hold. The same instantiation is
+ * emitted once, and its name is what every call site says
+ * (08-reflection.md: the const arguments are baked into each). */
 typedef struct Inst Inst;
 struct Inst
 {
   Sym   *s;
-  Type **tys; /* s->ngparams of them, the call sites' binding */
-  char  *name;
-  int    mark; /* the drain this entry is queued for */
+  Type **tys;   /* s->ngparams of them, the call sites' binding */
+  Val  **cvals; /* the const parameters' values, the parameters' own
+                 * order -- NULL when the fn marks none (08) */
+  char *name;
+  int   mark; /* the drain this entry is queued for */
 };
 
 static Inst **insts;  /* every one made, in first-seen order */
@@ -542,11 +546,12 @@ fsymsame(Sym *p, char *buf)
 }
 
 /* the instance's name: the fn's, its binding's -- g marks it apart
- * from an overload's arg spelling -- numbered only if an earlier
- * entry already took the spelling (a pair of twins the key sees
- * apart and the alphabet cannot) */
+ * from an overload's arg spelling -- the const parameters' values
+ * baked in, numbered only if an earlier entry already took the
+ * spelling (a pair of twins the key sees apart and the alphabet
+ * cannot) */
 static char *
-instname(Sym *s, Type **tys)
+instname(Sym *s, Type **tys, Val **cvals)
 {
   char  buf[1024];
   char  tb[256];
@@ -558,6 +563,33 @@ instname(Sym *s, Type **tys)
     o += sprintf(buf + o, "_%s", tb);
     if (o + 256 >= sizeof buf)
       die("an instantiation too wide for the emitter's line");
+  }
+  if (cvals) { /* the baked values, what one instance tells apart
+                * from another the types alone cannot: a number in
+                * its own digits, a string's bytes the alphabet keeps
+                * (08-reflection.md) */
+    Ast **ps = s->decl->v.fn.params;
+    usize n = vlen(ps);
+
+    for (i = 0; i < n; i++)
+      if (ps[i]->v.param.cnst && cvals[i]) {
+        if (cvals[i]->t->k == Tyslice) { /* []u8, a name's own bytes */
+          usize j;
+
+          o += sprintf(buf + o, "_c");
+          for (j = 0; j < cvals[i]->len && o + 2 < sizeof buf; j++) {
+            int c = (int) cvals[i]->elems[j].i;
+
+            o += sprintf(buf + o, "%c",
+                         (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+                             ? c
+                             : '_');
+          }
+        } else
+          o += sprintf(buf + o, "_c%lu", (unsigned long) cvals[i]->i);
+        if (o + 256 >= sizeof buf)
+          die("an instantiation too wide for the emitter's line");
+      }
   }
   same = 0;
   for (i = 0; i < vlen(insts); i++)
@@ -579,14 +611,41 @@ instname(Sym *s, Type **tys)
   }
 }
 
+/* one baked value against another: the same value, or not. The
+ * scalars by their bits, a slice by its elements -- the key the
+ * name's spelling folds onto '_' cannot see through, this does
+ * (08-reflection.md) */
+static int
+cvalsame(Val *a, Val *b)
+{
+  usize i;
+
+  if (!a || !b)
+    return a == b;
+  if (a->t != b->t)
+    return 0;
+  if (a->t->k == Tyslice) { /* the rows, element by element */
+    if (a->len != b->len)
+      return 0;
+    for (i = 0; i < a->len; i++)
+      if (a->elems[i].i != b->elems[i].i)
+        return 0;
+    return 1;
+  }
+  if (a->t->k == Tyint && (a->t->num == IN_F32 || a->t->num == IN_F64))
+    return a->f == b->f; /* a float's bits are not its value */
+  return a->i == b->i && a->tag == b->tag;
+}
+
 /* the instance for this call, made if it is new. Every drain queues
  * each entry once: the mark is the pass, so a body's nested call can
  * re-ensure what a plain fn already found without doubling it */
 static Inst *
-instensure(Sym *s, Type **tys)
+instensure(Sym *s, Type **tys, Val **cvals)
 {
+  Ast **ps = s->decl->v.fn.params;
+  usize np = vlen(ps), i, j;
   Inst *in;
-  usize i, j;
 
   for (i = 0; i < vlen(insts); i++) {
     in = insts[i];
@@ -595,7 +654,14 @@ instensure(Sym *s, Type **tys)
     for (j = 0; j < s->ngparams; j++)
       if (in->tys[j] != tys[j])
         break;
-    if (j == s->ngparams)
+    if (j != s->ngparams)
+      continue;
+    for (j = 0; j < np; j++) /* the baked values beside the types:
+                              * what one instance tells apart from
+                              * another (08-reflection.md) */
+      if (!cvalsame(in->cvals ? in->cvals[j] : 0, cvals ? cvals[j] : 0))
+        break;
+    if (j == np)
       goto found;
   }
   if (!insts) {
@@ -605,7 +671,8 @@ instensure(Sym *s, Type **tys)
   in = arenaalloc(sizeof *in);
   in->s = s;
   in->tys = tys;
-  in->name = instname(s, tys);
+  in->cvals = cvals;
+  in->name = instname(s, tys, cvals);
   vappend(&insts, &in);
 found:
   if (in->mark != ipass) {
@@ -1100,8 +1167,8 @@ printvts(FILE *o)
       if (!fm || fm->kind != Mfn || !fm->sym)
         cerrat(vt->tr->decl, "unreachable: the impl supplies it");
       if (tys)
-        nm = instensure(fm->sym, tys)->name; /* the instance this
-                                              * table names */
+        nm = instensure(fm->sym, tys, 0)->name; /* the instance this
+                                                 * table names */
       else
         nm = fsymname(fm->sym, fm->sym->decl);
       p += sprintf(p, "l $%s, ", nm);
@@ -2047,7 +2114,7 @@ emaexpr(Em *em, Ast *e)
       char *nm;
 
       if (e->v.path.tys)
-        nm = instensure(e->v.path.sym, e->v.path.tys)->name;
+        nm = instensure(e->v.path.sym, e->v.path.tys, 0)->name;
       else if (e->v.path.sym)
         nm = fsymname(e->v.path.sym, e->v.path.sym->decl);
       else
@@ -2380,10 +2447,10 @@ emaexpr(Em *em, Ast *e)
           else
             ra = emaexpr(em, f->v.fld.e); /* as written: the pointer, or the move */
           ra = nicheout(em, selfty, ra);
-          nm = e->v.call.tys ? instensure(ms, e->v.call.tys)->name : fsymname(ms, ms->decl);
+          nm = e->v.call.tys ? instensure(ms, e->v.call.tys, 0)->name : fsymname(ms, ms->decl);
         }
       } else if (f->k == Npath && vlen(f->v.path.segs) == 2 && ms) {
-        nm = e->v.call.tys ? instensure(ms, e->v.call.tys)->name : fsymname(ms, ms->decl);
+        nm = e->v.call.tys ? instensure(ms, e->v.call.tys, 0)->name : fsymname(ms, ms->decl);
       }
     }
     for (i = 0; i < n; i++) {
@@ -2400,10 +2467,23 @@ emaexpr(Em *em, Ast *e)
         cerrat(f, "'%s' is not a fn", f->v.path.segs[0]->v.seg.name);
       if (e->v.call.sym) { /* the checker's pick: which overload, and
                             * which instantiation -- the latter names
-                            * its own copy (04-generics.md) */
+                            * its own copy (04-generics.md). A const
+                            * parameter's baked value rides the pick
+                            * with the types: one instantiation per
+                            * value, the call site's own words
+                            * (08-reflection.md) */
+        Ast **ps;
+        usize np, ci;
+
         s = e->v.call.sym;
-        if (e->v.call.tys)
-          nm = instensure(s, e->v.call.tys)->name;
+        ps = s->decl->v.fn.params;
+        np = vlen(ps);
+        for (ci = 0; ci < np; ci++)
+          if (ps[ci]->v.param.cnst && (!e->v.call.cvals || !e->v.call.cvals[ci]))
+            cerrat(e, "the const argument did not land: the re-check under the binding "
+                      "fills it, and this tree is not the clone it filled");
+        if (e->v.call.tys || e->v.call.cvals)
+          nm = instensure(s, e->v.call.tys, e->v.call.cvals)->name;
         else
           nm = fsymname(s, s->decl);
       } else {
@@ -3079,7 +3159,7 @@ emitinst(FILE *o, Inst *in)
   ats = vlen(it->v.fn.params) ? tyargs(vlen(it->v.fn.params)) : 0;
   for (i = 0; i < vlen(it->v.fn.params); i++)
     ats[i] = gsubst(s->fnty->args[i], s->gparams, in->tys, ng);
-  recheckfn(s, it, in->tys);
+  recheckfn(s, it, in->tys, in->cvals);
   emitfn(o, s, it, in->name, ats, gsubst(s->fnty->t, s->gparams, in->tys, ng));
 }
 
@@ -3148,6 +3228,11 @@ emitall(FILE *out, Ast **items)
     if (s->ngparams)
       continue; /* a generic fn emits per instance, from its call
                  * sites (04-generics.md) */
+    if (fnconstparams(s))
+      continue; /* a const fn's body is the instance's own copy: the
+                 * baked values differ per call, and the shared
+                 * declaration emits none of them -- the calls queue
+                 * every instance (08-reflection.md) */
     emitfn(out, s, it, fsymname(s, it), 0, 0);
   }
 }

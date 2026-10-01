@@ -541,16 +541,228 @@ spentborrow(Ast *operand)
          !vlen(operand->v.blt.targs) && vlen(operand->v.blt.args) == 2;
 }
 
+/* a const parameter's argument, one of three answers: the value, the
+ * black box, or none to have. The question is static -- the
+ * evaluator's refusals are exits, not values -- so the forms that
+ * can answer are named here, and anything else is a runtime thing
+ * honestly said (08-reflection.md) */
+#define CV_NONE 0 /* a runtime value: no answer this side of the call */
+#define CV_VAL  1 /* *out holds the value */
+#define CV_BOX                                                                                     \
+  2 /* a const parameter this frame holds no value for:                                            \
+     * the re-check under the binding has it */
+
+static int
+cargval(Ast *a, Fenv *fe, Val *out)
+{
+  switch (a->k) {
+  case Nstr: /* the literal's bytes, a []u8 (08-reflection.md) */
+  case Nint:
+  case Nflt:
+  case Nbool:
+  case Nbyte:
+    *out = ceval(a, envnone(), 0);
+    return CV_VAL;
+  case Nun: /* the sign rides a literal: -2147483648 is i32's least
+             * (08-reflection.md) */
+    if (a->v.un.op == Tminus && a->v.un.e->k == Nint) {
+      *out = ceval(a, envnone(), 0);
+      return CV_VAL;
+    }
+    return CV_NONE;
+  case Nbin: { /* the operator over known sides, its own answer */
+    Val v;
+    int l = cargval(a->v.bin.l, fe, out);
+
+    if (l == CV_NONE)
+      return CV_NONE;
+    if (l == CV_VAL) {
+      int r = cargval(a->v.bin.r, fe, &v);
+
+      if (r == CV_NONE)
+        return CV_NONE;
+      if (r == CV_BOX)
+        return CV_BOX;
+    } /* l == CV_BOX: the left alone settles it */
+    else
+      cargval(a->v.bin.r, fe, &v); /* walked anyway: the re-check
+                                    * asks the same question, and a
+                                    * runtime side is still none */
+    *out = ceval(a, envnone(), 0);
+    return CV_VAL;
+  }
+  case Npath: {
+    char  *nm;
+    Local *l;
+
+    if (vlen(a->v.path.segs) != 1 || a->v.path.root)
+      return CV_NONE; /* a variant's path: not tried here, the list
+                       * stays honest */
+    nm = a->v.path.segs[0]->v.seg.name;
+    l = locfind(fe, nm);
+    if (l) { /* this frame's own name first: a runtime local is not
+              * the evaluator's to answer for */
+      if (!l->isconst)
+        return CV_NONE;
+      if (l->cv) {
+        *out = *l->cv;
+        return CV_VAL;
+      }
+      return CV_BOX;
+    }
+    { /* a const's own name: the chain answers, and its initializer's
+       * error is its own (08-reflection.md) */
+      Sym *s = symfind(nm);
+
+      if (s && s->kind == Sconst) {
+        *out = ceval(a, envnone(), 0);
+        return CV_VAL;
+      }
+    }
+    return CV_NONE;
+  }
+  default:
+    return CV_NONE;
+  }
+}
+
+/* one signature's trial: the arguments walked against it, the
+ * binding it spells picked and written back when it takes them. The
+ * answer is the call's type, or 0 when it does not. cvals holds the
+ * const parameters' own test -- a runtime argument there fails the
+ * signature and notes it, the black box defers with the pick (08) */
+static Type *
+trysig(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, Val **cvals,
+       int *runtime)
+{
+  Type  *fnty = s->fnty;
+  Type **tys = s->ngparams ? tyargs(s->ngparams) : 0;
+  Type **sigs; /* what the arguments are checked against: the
+                * signature's own, or its substituted form under
+                * a spelled-out binding */
+  Type **ats;
+  usize  i;
+  int    ok = n == fnty->nargs;
+
+  if (!ok) {
+    thawargs(svs, n);
+    return 0;
+  }
+  ats = n ? arenaalloc(n * sizeof *ats) : 0;
+  sigs = fnty->args;
+  if (seg && seg->v.seg.args) { /* f<i32>(...): the binding is the
+                                 * call's own words, not inference */
+    if (vlen(seg->v.seg.args) != s->ngparams) {
+      thawargs(svs, n);
+      return 0; /* an overload this spelling does not fit */
+    }
+    for (i = 0; i < s->ngparams; i++)
+      tys[i] = rty(seg->v.seg.args[i], &fe->env);
+    if (fnty->nargs) {
+      sigs = tyargs(fnty->nargs);
+      for (i = 0; i < fnty->nargs; i++)
+        sigs[i] = gsubst(fnty->args[i], s->gparams, tys, s->ngparams);
+    }
+  }
+  for (i = 0; ok && i < n; i++) {
+    ats[i] = rexpr(args[i], fe, sigs[i]);
+    if (!ats[i] || !sigs[i])
+      continue;
+    if (tysame(ats[i], sigs[i])) {
+      /* a parameter passed through: T stands for itself here,
+       * and an instantiation's re-check binds it for real (a
+       * recursive call inside a generic body) */
+      if (tys)
+        gunify(sigs[i], ats[i], s->gparams, tys, s->ngparams);
+      continue;
+    }
+    {
+      Type *c = recoerce(args[i], sigs[i], fe);
+
+      if (c) {
+        ats[i] = c;
+        continue;
+      }
+    }
+    if (!gunify(sigs[i], ats[i], s->gparams, tys, s->ngparams))
+      ok = 0;
+  }
+  if (ok && cvals) { /* the const parameters' own test: the argument
+                      * names a compile-time value, or the box the
+                      * re-check opens (08-reflection.md) */
+    Ast **ps = s->decl->v.fn.params;
+
+    for (i = 0; ok && i < n; i++)
+      if (ps[i]->v.param.cnst) {
+        Val v;
+        int cv = cargval(args[i], fe, &v);
+
+        if (cv == CV_NONE) { /* a runtime value: the call site's
+                              * refusal, not the body's (08) */
+          ok = 0;
+          if (runtime)
+            *runtime = 1;
+        } else if (cv == CV_VAL) {
+          cvals[i] = arenaalloc(sizeof **cvals);
+          *cvals[i] = v;
+        } /* CV_BOX: the slot stays NULL, the re-check's to fill */
+      }
+  }
+  if (ok) {
+    for (i = 0; i < s->ngparams; i++)
+      if (!tys[i])
+        berr(a, "cannot infer '%s' for '%s' from the call", s->gparams[i]->v.gp.name, s->name);
+    { /* every bound, once the binding is known: does the type the
+       * call landed implement the trait (04-generics.md)? The
+       * impl table answers -- a bound nobody can satisfy was
+       * already diagnosed where the fn was declared */
+      Ast **gps = s->decl->v.fn.gparams;
+      usize gi, bi;
+
+      for (gi = 0; gi < vlen(gps); gi++) {
+        Ast **bs = gps[gi]->v.gp.bounds;
+
+        for (bi = 0; bi < vlen(bs); bi++) {
+          Ast **bsegs = bs[bi]->v.path.segs;
+          Sym  *tr;
+
+          if (vlen(bsegs) != 1)
+            continue; /* collectbounds diagnosed the shape */
+          tr = symfind(bsegs[0]->v.seg.name);
+          if (!tr || tr->kind != Strait)
+            continue; /* ditto */
+          if (!implsatisfies(tr, tys[gi]))
+            berr(a, "'%s' does not implement '%s'; '%s' cannot take it", btys(tys[gi]), tr->name,
+                 s->name);
+        }
+      }
+    }
+    /* the emitter's pick: which overload, which instantiation. The
+     * tys live in the arena, so the writeback outlives the walk
+     * (04-generics.md) */
+    a->v.call.sym = s;
+    a->v.call.tys = s->ngparams ? tys : 0;
+    a->v.call.cvals = cvals;
+    thawargs(svs, n); /* the call is done; its borrows ended with it */
+    return gsubst(fnty->t, s->gparams, tys, s->ngparams);
+  }
+  thawargs(svs, n); /* this signature did not take: its freezes unwound */
+  return 0;
+}
+
 /* a call to a named fn, overload chain and all. tys holds the
  * generic bindings while the arguments are walked. */
 static Type *
 callfn(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe)
 {
   const char *nm = s->name;
-  Type      **ats;
   Ast        *seg; /* the callee's one segment, when the call
                     * spells its generic arguments out (04) */
   Frzsave *svs = n ? arenaalloc(n * sizeof *svs) : 0;
+  Sym     *head = s, *q;
+  Val    **cvals;
+  Type    *r;
+  int      constmode, runtime;
   usize    k;
 
   if (svs) { /* the borrow arguments' freezes go back with the call,
@@ -560,100 +772,49 @@ callfn(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe)
       argborrow(args[k], fe, &svs[k]);
   }
 
-  ats = n ? arenaalloc(n * sizeof *ats) : 0;
   seg = 0;
   if (a->v.call.f->k == Npath && vlen(a->v.call.f->v.path.segs) == 1)
     seg = a->v.call.f->v.path.segs[0];
-  for (; s; s = s->next) {
-    Type  *fnty = s->fnty;
-    Type **tys = s->ngparams ? tyargs(s->ngparams) : 0;
-    Type **sigs; /* what the arguments are checked against: the
-                  * signature's own, or its substituted form under
-                  * a spelled-out binding */
-    usize i;
-    int   ok = n == fnty->nargs;
-
-    if (!ok) {
-      thawargs(svs, n);
-      continue;
-    }
-    sigs = fnty->args;
-    if (seg && seg->v.seg.args) { /* f<i32>(...): the binding is the
-                                   * call's own words, not inference */
-      if (vlen(seg->v.seg.args) != s->ngparams) {
+  constmode = 0; /* a const spelling is the more specific signature:
+                  * the chain's plain ones wait behind it, and a
+                  * compile-time-known argument picks it first
+                  * (08-reflection.md) */
+  for (q = head; q; q = q->next)
+    if (vlen(q->decl->v.fn.params) == n && fnconstparams(q))
+      constmode = 1;
+  cvals = constmode && n ? arenaalloc(n * sizeof *cvals) : 0;
+  if (cvals)
+    memset(cvals, 0, n * sizeof *cvals);
+  runtime = 0;
+  if (constmode) {
+    for (; s; s = s->next) {
+      if (!fnconstparams(s)) {
         thawargs(svs, n);
-        continue; /* an overload this spelling does not fit */
+        continue; /* the plain spellings wait below */
       }
-      for (i = 0; i < s->ngparams; i++)
-        tys[i] = rty(seg->v.seg.args[i], &fe->env);
-      if (fnty->nargs) {
-        sigs = tyargs(fnty->nargs);
-        for (i = 0; i < fnty->nargs; i++)
-          sigs[i] = gsubst(fnty->args[i], s->gparams, tys, s->ngparams);
-      }
+      r = trysig(s, a, args, n, fe, seg, svs, cvals, &runtime);
+      if (r)
+        return r;
     }
-    for (i = 0; ok && i < n; i++) {
-      ats[i] = rexpr(args[i], fe, sigs[i]);
-      if (!ats[i] || !sigs[i])
-        continue;
-      if (tysame(ats[i], sigs[i])) {
-        /* a parameter passed through: T stands for itself here,
-         * and an instantiation's re-check binds it for real (a
-         * recursive call inside a generic body) */
-        if (tys)
-          gunify(sigs[i], ats[i], s->gparams, tys, s->ngparams);
-        continue;
+    for (s = head; s; s = s->next) { /* the plain spellings: the
+                                      * runtime arguments' own
+                                      * (08-reflection.md) */
+      if (fnconstparams(s)) {
+        thawargs(svs, n);
+        continue; /* tried above */
       }
-      {
-        Type *c = recoerce(args[i], sigs[i], fe);
-
-        if (c) {
-          ats[i] = c;
-          continue;
-        }
-      }
-      if (!gunify(sigs[i], ats[i], s->gparams, tys, s->ngparams))
-        ok = 0;
+      r = trysig(s, a, args, n, fe, seg, svs, 0, 0);
+      if (r)
+        return r;
     }
-    if (ok) {
-      for (i = 0; i < s->ngparams; i++)
-        if (!tys[i])
-          berr(a, "cannot infer '%s' for '%s' from the call", s->gparams[i]->v.gp.name, s->name);
-      { /* every bound, once the binding is known: does the type the
-         * call landed implement the trait (04-generics.md)? The
-         * impl table answers -- a bound nobody can satisfy was
-         * already diagnosed where the fn was declared */
-        Ast **gps = s->decl->v.fn.gparams;
-        usize gi, bi;
-
-        for (gi = 0; gi < vlen(gps); gi++) {
-          Ast **bs = gps[gi]->v.gp.bounds;
-
-          for (bi = 0; bi < vlen(bs); bi++) {
-            Ast **bsegs = bs[bi]->v.path.segs;
-            Sym  *tr;
-
-            if (vlen(bsegs) != 1)
-              continue; /* collectbounds diagnosed the shape */
-            tr = symfind(bsegs[0]->v.seg.name);
-            if (!tr || tr->kind != Strait)
-              continue; /* ditto */
-            if (!implsatisfies(tr, tys[gi]))
-              berr(a, "'%s' does not implement '%s'; '%s' cannot take it", btys(tys[gi]), tr->name,
-                   s->name);
-          }
-        }
-      }
-      /* the emitter's pick: which overload, which instantiation. The
-       * tys live in the arena, so the writeback outlives the walk
-       * (04-generics.md) */
-      a->v.call.sym = s;
-      a->v.call.tys = s->ngparams ? tys : 0;
-      thawargs(svs, n); /* the call is done; its borrows ended with it */
-      return gsubst(fnty->t, s->gparams, tys, s->ngparams);
+  } else
+    for (; s; s = s->next) {
+      r = trysig(s, a, args, n, fe, seg, svs, 0, 0);
+      if (r)
+        return r;
     }
-    thawargs(svs, n); /* this overload did not take: its freezes unwound */
-  }
+  if (runtime)
+    berr(a, "the argument is not compile-time known; '%s' takes it const (08-reflection.md)", nm);
   berr(a, "no '%s' takes these argument types", nm);
   return 0; /* unreachable */
 }
@@ -875,9 +1036,16 @@ rbuiltin(Ast *e, Fenv *fe, Type *want)
       return tyint(IN_USIZE);
     targs[0]->ty = t;
     fnm = bltname(args[0], fe); /* the name: a literal's bytes, a
-                                 * const for's round -- whatever the
+                                 * const for's round, a const
+                                 * parameter -- whatever the
                                  * evaluator resolves, and nothing
                                  * else */
+    if (!fnm)                   /* the name named a const parameter this walk holds no
+                                 * value for: the fold is the instance's own, and the
+                                 * node stands for the re-check to fold it there --
+                                 * the same deferral the black-box type took above
+                                 * (08-reflection.md) */
+      return tyint(IN_USIZE);
     if (t->k != Tystruct && t->k != Tyunion)
       berr(e, "%s has no fields to offset (02-layout.md)", btys(t));
     for (i = 0; i < t->sym->nfields; i++)
@@ -916,9 +1084,22 @@ rbuiltin(Ast *e, Fenv *fe, Type *want)
       vt = rexpr(args[0], fe, 0);
     while (vt && vt->k == Tymut) /* the permission, not the shape */
       vt = vt->t;
-    fnm = bltname(args[1], fe);  /* the name: a literal's bytes, a const
-                                  * for's round (10-iteration.md is what
-                                  * makes one compile-time known) */
+    fnm = bltname(args[1], fe); /* the name: a literal's bytes, a const
+                                 * for's round (10-iteration.md is what
+                                 * makes one compile-time known), a
+                                 * const parameter's value (08) */
+    if (!fnm) {                 /* the name named a const parameter this walk holds
+                                 * no value for: the borrow the rewrite spells is the
+                                 * instance's own, and the re-check under the binding
+                                 * writes it -- a typed slot or the tail keeps its
+                                 * shape here, an untyped let meets the answer's at
+                                 * its use (08-reflection.md) */
+      if (!want)
+        berr(e, "the field's name is a const parameter this walk holds no value for: "
+                "the instance's own -- spell the slot's type, or call the fn at compile time "
+                "(08-reflection.md)");
+      return want;
+    }
     if (!vt || vt->k == Typaram) /* a generic's own parameter: the
                                   * fields are the instance's, and
                                   * the borrow this rewrite spells is
@@ -1127,6 +1308,14 @@ rexprpath1(Ast *e, Fenv *fe, char *name, Type *want)
   case Sstatic:
     return s->cty;
   case Sfn:
+    if (fnconstparams(s)) /* a compile-time tool, no value: the baked
+                           * arguments have nowhere to cross a pointer
+                           * call, and the check it would silently
+                           * skip is the whole point (08-reflection.md) */
+      berr(e,
+           "'%s' takes a const argument: it is no value -- a fn pointer has nowhere to hand "
+           "one over; call it, or split the plain half out (08-reflection.md)",
+           name);
     if (s->ngparams || s->next) { /* a stencil as a value: the expected
                                    * type is the whole binding -- id
                                    * against fn(i32) -> i32 is
@@ -3300,13 +3489,16 @@ rstmt(Ast *st, Fenv *fe)
 /* -- the driver ------------------------------------------------------------ */
 
 /* one fn's body against one binding of its world: the environment,
- * the parameter types, the return. The declaration check calls it
- * with T as a black-box Typaram; an instantiation calls it with T
- * bound (below), and the walk overwrites the body's writeback in
- * place -- the emitter reads it right after, before any other
- * instantiation re-checks the same shared tree. */
+ * the parameter types, the return -- and the const parameters'
+ * values, when an instantiation's walk brings them: they ride the
+ * frame's own locals, a compile-time read finding them there. The
+ * declaration check calls it with T as a black-box Typaram and no
+ * values; an instantiation calls it with both bound (below), and the
+ * walk overwrites the body's writeback in place -- the emitter reads
+ * it right after, before any other instantiation re-checks the same
+ * shared tree. */
 static void
-runbody(Ast *it, Env env, Type **argtys, Type *ret)
+runbody(Ast *it, Env env, Type **argtys, Type *ret, Val **cvals)
 {
   Fenv  fe;
   Ast **ps = it->v.fn.params;
@@ -3315,8 +3507,23 @@ runbody(Ast *it, Env env, Type **argtys, Type *ret)
   memset(&fe, 0, sizeof fe);
   fe.env = env;
   fe.fnret = ret;
-  for (i = 0; i < n; i++)
+  for (i = 0; i < n; i++) {
     locpush(&fe, ps[i]->v.param.name, argtys[i], ps[i]->v.param.mut);
+    if (ps[i]->v.param.cnst) { /* the const parameters: the
+                                * declaration's walk holds them
+                                * empty -- every compile-time read
+                                * the box -- and the instance's hands
+                                * the frame their values
+                                * (08-reflection.md) */
+      Local *l = locfind(&fe, ps[i]->v.param.name);
+
+      if (l) {
+        l->isconst = 1;
+        if (cvals && cvals[i])
+          l->cv = cvals[i];
+      }
+    }
+  }
   if (ret->k == Tyslice &&
       localview(it->v.fn.body->v.blk.tail, &fe)) /* the
                                                   * tail returns, and what it views
@@ -3332,16 +3539,18 @@ void
 checkbodyfn(Sym *s, Ast *it)
 {
   bodyfn = s;
-  runbody(it, envgparams(0, it->v.fn.gparams, vlen(it->v.fn.gparams)), s->fnty->args, s->fnty->t);
+  runbody(it, envgparams(0, it->v.fn.gparams, vlen(it->v.fn.gparams)), s->fnty->args, s->fnty->t,
+          0);
 }
 
 /* one generic fn, one concrete binding: the parameters carry the
- * substituted types and the walk re-runs. What the declaration check
- * proved under a black-box T holds under any concrete one -- the
- * black box is the stricter world -- so the re-check's only failures
- * are the compiler's own bugs (04-generics.md) */
+ * substituted types and the walk re-runs, the const parameters'
+ * baked values riding the frame. What the declaration check proved
+ * under a black-box T holds under any concrete one -- the black box
+ * is the stricter world -- so the re-check's only failures are the
+ * compiler's own bugs (04-generics.md) */
 void
-recheckfn(Sym *s, Ast *it, Type **tys)
+recheckfn(Sym *s, Ast *it, Type **tys, Val **cvals)
 {
   Env    env;
   usize  ng, i;
@@ -3368,7 +3577,7 @@ recheckfn(Sym *s, Ast *it, Type **tys)
   for (i = 0; i < vlen(it->v.fn.params); i++)
     ats[i] = gsubst(s->fnty->args[i], s->gparams, tys, ng);
   bodyfn = s;
-  runbody(it, env, ats, gsubst(s->fnty->t, s->gparams, tys, ng));
+  runbody(it, env, ats, gsubst(s->fnty->t, s->gparams, tys, ng), cvals);
 }
 
 /* one impl's member fns: the same env resolveimplmembers built --
@@ -3391,6 +3600,14 @@ checkbodyimpl(Sym *s, Ast *it)
       usize np = vlen(ps), j;
       Type *fnty = s->members[i].ty;
 
+      for (j = 0; j < np; j++)
+        if (ps[j]->v.param.cnst) /* a method's calls route through
+                                  * the table half the time, and a
+                                  * table slot has nowhere to hand a
+                                  * baked argument over
+                                  * (08-reflection.md) */
+          berr(ps[j], "a const parameter on a method arrives with a later milestone "
+                      "(08-reflection.md)");
       memset(&fe, 0, sizeof fe);
       fe.env = e2;
       fe.fnret = fnty->t;

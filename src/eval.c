@@ -697,9 +697,32 @@ bltname(Ast *a, struct Fenv *fe)
         }
         return cstrval(*v, a); /* n itself: the slice the round bound */
       }
+      if (l && l->isconst && !l->cv) /* a const parameter this walk
+                                      * holds no value for: the name
+                                      * is the instance's own, and the
+                                      * re-check under the binding
+                                      * reads it there -- the caller
+                                      * defers what it asked
+                                      * (08-reflection.md) */
+        return 0;
     }
   }
   return cstrval(ceval(a, envnone(), 0), a);
+}
+
+/* does this fn's parameter list mark one const? The answer rides the
+ * declaration's own words, every ask reading them again -- a flag on
+ * the Sym would be one more thing to keep true (08-reflection.md) */
+int
+fnconstparams(Sym *s)
+{
+  Ast **ps = s->decl->v.fn.params;
+  usize i, n = vlen(ps);
+
+  for (i = 0; i < n; i++)
+    if (ps[i]->v.param.cnst)
+      return 1;
+  return 0;
 }
 
 /* a slice of built rows: @typeinfo is the only writer of slice
@@ -1637,6 +1660,17 @@ ceval(Ast *e, Env env, Type *want)
     }
     return b.elems[i];
   }
+  case Nstr: { /* a string literal, the bytes the token itself holds:
+                * a []u8 the const walks carry -- the values ride the
+                * lexer's own spelling, evaluation allocates nothing
+                * (08-reflection.md) */
+    usize i;
+    Val  *els = e->v.s.len ? arenaalloc(e->v.s.len * sizeof *els) : 0;
+
+    for (i = 0; i < e->v.s.len; i++)
+      els[i] = valint((u64) (unsigned char) e->v.s.s[i], tyint(IN_U8));
+    return sliceval(els, e->v.s.len, tyint(IN_U8));
+  }
   case Npath: { /* a local's read, or a const reference: the chain (08) */
     char *nm = e->v.path.segs[0]->v.seg.name;
     Sym  *s;
@@ -1897,10 +1931,14 @@ ceval(Ast *e, Env env, Type *want)
         evalblackbox++;
         return valint(0, tyint(IN_USIZE));
       }
-      fnm = bltname(e->v.blt.args[0], 0); /* no body frame runs here:
-                                           * a round's name reaches
-                                           * through the evaluator's
-                                           * own listing */
+      { /* the name: a literal's own bytes, or the value the frame
+         * holds -- a const parameter's, when a compile-time call
+         * runs the body that names it, a const for's round riding
+         * the listing (08-reflection.md) */
+        Val v = ceval(e->v.blt.args[0], env, 0);
+
+        fnm = cstrval(v, e->v.blt.args[0]);
+      }
       if (t->k != Tystruct && t->k != Tyunion)
         cerrat(e, "%s has no fields to offset (02-layout.md)", tnm(t));
       for (i = 0; i < t->sym->nfields; i++)
