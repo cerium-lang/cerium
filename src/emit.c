@@ -675,6 +675,10 @@ dsvariant(Type *t, u64 disc)
 /* the bytes a value takes, as qbe data items: the offsets the
  * layout tables spell, the evaluator's value folded in, the
  * padding zero. *p is the write cursor; the bytes written return */
+static char **dssubs; /* the child lines the value being spelled
+                       * holds, collected as dswrite meets the
+                       * slices; constsym owns the set */
+static usize dsleaves(Type *t);
 static usize
 dswrite(char **p, Type *t, Val *v)
 {
@@ -775,6 +779,36 @@ dswrite(char **p, Type *t, Val *v)
     }
     return cur;
   }
+  case Tyslice: { /* the two words a slice is: the child symbol its
+                   * rows ride, the count after it. @typeinfo's are
+                   * the only slices a value holds (08-reflection.md)
+                   * -- the user's own literals make arrays, []T
+                   * borrows at runtime -- so the rows here are owned
+                   * data, spelled beside the parent as the child's
+                   * own data line */
+    char *base, *line, *q;
+    usize n = v ? v->len : 0, cur = 0, i;
+
+    if (!n) { /* empty: no rows anywhere, the reads walk none */
+      *p += sprintf(*p, "z %lu, ", (unsigned long) (2 * WORD));
+      return 2 * WORD;
+    }
+    base = arenaalloc(16);
+    sprintf(base, "$s.%lu", (unsigned long) ++dsn);
+    line = arenaalloc(dsleaves(t->t) * n * 32 + 2 * 32 + 64);
+    q = line + sprintf(line, "data %s = { ", base);
+    for (i = 0; i < n; i++) /* the rows packed, the array rule */
+      cur += dswrite(&q, t->t, &v->elems[i]);
+    if (n * sizeof_(t->t) > cur) {
+      q += sprintf(q, "z %lu, ", (unsigned long) (n * sizeof_(t->t) - cur));
+      cur = n * sizeof_(t->t);
+    }
+    q -= 2; /* the last item's ", ": the line's own close */
+    sprintf(q, "}");
+    vappend(&dssubs, &line); /* the parent's set: replayed with it */
+    *p += sprintf(*p, "l %s, l %lu, ", base, (unsigned long) n);
+    return 2 * WORD;
+  }
   case Tyenum: {
     usize sz = sizeof_(t);
 
@@ -858,6 +892,9 @@ dsleaves(Type *t)
     return n;
   case Tyarray:
     return t->n ? dsleaves(t->t) * t->n : 1;
+  case Tyslice: /* the reference's two words: the child symbol's
+                 * spelling, the count */
+    return 2;
   case Tyenum: {
     usize m = 0;
 
@@ -889,11 +926,16 @@ dsleaves(Type *t)
  * are the compilation's own -- a name's line goes out once a pass,
  * with whichever fn first read it, and the naming pass's text goes
  * nowhere, so the real pass takes it again */
-static Sym  **conss;     /* the ones already named, per compilation */
-static char **conssyms;  /* their symbols, parallel */
-static char **conslines; /* their data lines, for the passes after */
-static int   *conspass;  /* the pass each line last went out in */
-static usize  nconss;
+static Sym   **conss;     /* the ones already named, per compilation */
+static char  **conssyms;  /* their symbols, parallel */
+static char  **conslines; /* their data lines, for the passes after */
+static char ***conssubs;  /* their slices' child lines, parallel: the
+                           * rows a slice's words point at, spelled as
+                           * data lines of their own -- replayed beside
+                           * the parent's, or a later pass reads a
+                           * symbol nothing spelled */
+static int  *conspass;    /* the pass each line last went out in */
+static usize nconss;
 
 static char *
 constsym(Em *em, Sym *s)
@@ -906,6 +948,12 @@ constsym(Em *em, Sym *s)
       if (conspass[i] == ipass)
         return conssyms[i]; /* this pass already carries the line */
       vappend(&em->datas, &conslines[i]);
+      {
+        usize j;
+
+        for (j = 0; j < vlen(conssubs[i]); j++)
+          vappend(&em->datas, &conssubs[i][j]);
+      }
       conspass[i] = ipass;
       return conssyms[i];
     }
@@ -914,20 +962,22 @@ constsym(Em *em, Sym *s)
   sz = sizeof_(s->cty);
   line = arenaalloc(dsleaves(s->cty) * 32 + 2 * 32 + 64);
   p = line + sprintf(line, "data %s = { ", base);
+  dssubs = vnew(char *, 8);
   if (sz) {
     Val top; /* the Sym's halves, as the walk's one value: cval the
               * tag half -- an enum's discriminant, a union's active
-              * row -- celems the elements beside it */
+              * row -- celems the elements beside it, clen the length
+              * a slice's own (@typeinfo's are the only slices a
+              * const holds -- 08-reflection.md); tyval the one half
+              * no bytes ride: a type's value carries none */
 
     top.t = s->cty;
     top.i = s->cval;
     top.f = s->cflt;
     top.tag = s->ctag;
-    top.tyval = 0; /* the walk reads none of the two -- a type value
-                    * rides no bytes, and no const holds a slice yet
-                    * -- but every constructor names every half */
+    top.tyval = 0;
     top.elems = s->celems;
-    top.len = 0;
+    top.len = s->clen;
     dswrite(&p, s->cty, &top);
     p -= 2; /* the last item's ", ": the line's own close */
     sprintf(p, "}");
@@ -935,15 +985,23 @@ constsym(Em *em, Sym *s)
           * reads it */
     sprintf(p, "z 1 }");
   vappend(&em->datas, &line);
+  {
+    usize j;
+
+    for (j = 0; j < vlen(dssubs); j++)
+      vappend(&em->datas, &dssubs[j]);
+  }
   if (!conss) {
     conss = vnew(Sym *, 8);
     conssyms = vnew(char *, 8);
     conslines = vnew(char *, 8);
+    conssubs = vnew(char **, 8);
     conspass = vnew(int, 8);
   }
   vappend(&conss, &s);
   vappend(&conssyms, &base);
   vappend(&conslines, &line);
+  vappend(&conssubs, &dssubs);
   {
     int pi = ipass;
 
@@ -2489,6 +2547,25 @@ emaexpr(Em *em, Ast *e)
 
       fprintf(em->o, "\t%s =w copy 0\n", z);
       return z;
+    }
+    if (strcmp(nm, "typeinfo") == 0) { /* the deferred splice, the
+                                        * one form that reaches here:
+                                        * the fn around it ran at
+                                        * compile time already, and
+                                        * this text answers a runtime
+                                        * call nothing can usefully
+                                        * make -- a zeroed TypeInfo,
+                                        * the Bool it reads, is the
+                                        * same no-op @compileError's
+                                        * branch is (08) */
+      char *slot = newtmp(em);
+      char *t = newtmp(em);
+
+      fprintf(em->o, "\t%s =l alloc8 %lu\n", slot,
+              (unsigned long) (sizeof_(typeinfoty()) ? sizeof_(typeinfoty()) : 1));
+      fprintf(em->o, "\tstorew 0, %s\n", slot); /* the tag: Bool's own 0 */
+      fprintf(em->o, "\t%s =l copy %s\n", t, slot);
+      return t;
     }
     cerrat(e, "this builtin arrives with a later milestone");
     return 0; /* unreachable */

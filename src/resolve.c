@@ -671,6 +671,8 @@ resolvefields(Ast **fs, Env *env, usize n, int isunion)
       cerrat(f, "a union field cannot be mut");
     fields[i].name = f->v.variant.name;
     fields[i].mut = f->v.variant.mut;
+    fields[i].attrs = f->attrs; /* flattened out with the rest, for
+                                 * the reflection's walk (08) */
     fields[i].ty = rty(f->v.variant.t, env);
   }
   return fields;
@@ -711,6 +713,7 @@ resolveenum(Sym *s)
       if (strcmp(v->v.variant.name, it->v.en.variants[j]->v.variant.name) == 0)
         cerrat(v, "duplicate variant '%s'", v->v.variant.name);
     dv->name = v->v.variant.name;
+    dv->attrs = v->attrs; /* flattened out, the Field pattern (08) */
     dv->hasdisc = v->v.variant.hasdisc;
     dv->disc = v->v.variant.hasdisc ? cevallong(v->v.variant.discexpr, env, tyint(IN_USIZE)) : next;
     next = dv->disc + 1;

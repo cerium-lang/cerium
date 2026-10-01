@@ -1,0 +1,12 @@
+/* the splice names a value, and a value needs a frame: the body
+ * pass holds none -- a parameter's, a local's alike. Name a const,
+ * or call the fn at compile time, where the evaluator's own frame
+ * answers (08-reflection.md) */
+fn is_ptr(t: type) -> bool {
+  match @typeinfo<$$t>() { TypeInfo::Pointer { .. } => true, _ => false, }
+}
+fn local() -> u32 {
+  let t: type = ^^u32;
+  match @typeinfo<$$t>() { TypeInfo::Bool => 1, _ => 0, }
+}
+fn main() -> bool { is_ptr(^^*u32) }

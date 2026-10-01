@@ -45,9 +45,12 @@ enum
 /* a field of a struct or union, or of a named enum payload */
 struct Field
 {
-  char *name; /* as written in the declaration */
-  Type *ty;   /* its resolved type */
-  int   mut;  /* struct fields; a union rejects it (01-types.md) */
+  char *name;  /* as written in the declaration */
+  Type *ty;    /* its resolved type */
+  int   mut;   /* struct fields; a union rejects it (01-types.md) */
+  Ast **attrs; /* the field's own, flattened out of the tree with
+                * the rest -- the reflection walks them back out
+                * as Attr values (08-reflection.md) */
 };
 
 /* an enum variant */
@@ -58,6 +61,7 @@ struct Variant
                     * ordering rule (01-types.md) */
   int    hasdisc;  /* "= integer" was written */
   int    named;    /* named payload rather than positional */
+  Ast  **attrs;    /* the variant's own, for the same walk (08) */
   Field *fields;   /* named payload, or NULL */
   usize  nfields;  /* the named payload's count */
   Type **payload;  /* positional payload types, or NULL */
@@ -125,6 +129,10 @@ struct Sym
   void *celems;        /* an aggregate's elements, when cty is an
                         * array: eval.c's Val vector, memoized beside
                         * cval the way it is (08-reflection.md) */
+  usize clen;          /* a slice's own length, when cty is one: the
+                        * elements a slice holds are the value's, not
+                        * the type's -- @typeinfo's are the only
+                        * slices a const can hold (08-reflection.md) */
   int cvaldone;        /* the value is in: the chain may land here
                         * again, and read it (08-reflection.md) */
   Member *members;     /* Strait, Simpl: in declaration order */
@@ -181,6 +189,11 @@ extern Ast *sym_selfgp;
 void prelude(void);
 void preludeparse(void);
 void preludefile(void);
+
+/* std::meta's TypeInfo, from the embedded source: the type every
+ * @typeinfo answers with (prelude.c, 08-reflection.md) */
+extern Sym *sym_typeinfo;
+Type       *typeinfoty(void);
 
 /* the prelude enums the sugar builds on, and the exclusion pair
  * (prelude.c). The operator traits (07-operators.md) join them as

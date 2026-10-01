@@ -1,0 +1,148 @@
+/* @typeinfo, every face it shows: the fourteen variants built from
+ * the types themselves, the sugar answering first (?T Optional,
+ * E?T Result), the value slot describing a value's static type, the
+ * body pass's rewrite (a runtime let reading what the checker built,
+ * its fields walked by a runtime for), the const-extracted slices a
+ * const for unrolls over -- fields with their offsets, variants with
+ * their ?type, the attrs with the argument rows they carry -- and
+ * the deferred splice, a fn called at compile time answering through
+ * its own frame (08-reflection.md) */
+
+struct P { x: u32, y: u64 }
+union U { a: u32, b: u64 }
+enum E(u8) { A, B(u32), C { z: u16, w: u16 }, }
+
+const TI: TypeInfo = @typeinfo<i64>();      /* Int: 64, signed */
+const TP: TypeInfo = @typeinfo<*mut u8>();  /* Pointer: u8, mut */
+const TS: TypeInfo = @typeinfo<[]u32>();    /* Slice: u32, imm */
+const TA: TypeInfo = @typeinfo<[3]u16>();   /* Array: 3 of u16 */
+const TU: TypeInfo = @typeinfo<()>();       /* the unit: a Tuple, none */
+const TT: TypeInfo = @typeinfo<(u8, u32)>();/* a Tuple: two rows */
+const TF: TypeInfo = @typeinfo<fn(u32) -> u64>(); /* Fn, not Pointer */
+const TO: TypeInfo = @typeinfo<?u32>();     /* Optional, the sugar */
+const TR: TypeInfo = @typeinfo<u32?u8>();   /* Result, the sugar */
+const TV: TypeInfo = @typeinfo<voidptr>();  /* Voidptr, its own */
+
+const TVC: u32 = match @typeinfo(42) { /* the value slot: i32 */
+  TypeInfo::Int { bits, .. } => { if bits == 32 { 1 } else { 2 } },
+  _ => 3,
+};
+
+/* the slices, pulled out where a const for can read them */
+const FS: []Field = match @typeinfo<P>() {
+  TypeInfo::Struct { fields, .. } => fields,
+  _ => @compileError("P is a struct"),
+};
+const VS: []EnumField = match @typeinfo<E>() {
+  TypeInfo::Enum { variants, .. } => variants,
+  _ => @compileError("E is an enum"),
+};
+
+fn is_ptr(t: type) -> bool { /* the deferred splice, answered in
+                              * the frame a compile-time call built */
+  match @typeinfo<$$t>() {
+    TypeInfo::Pointer { .. } => true,
+    _ => false,
+  }
+}
+fn bits_of(t: type) -> u16 {
+  match @typeinfo<$$t>() {
+    TypeInfo::Int { bits, .. } => bits,
+    TypeInfo::Float { bits } => bits,
+    _ => 0,
+  }
+}
+
+fn scalars() -> u32 { /* Int, Pointer, Slice, Array, the sugar pair,
+                       * Voidptr, and the value slot: 1+2+3+4+5+5+6+1 */
+  let mut r: u32 = 0;
+  match TI { TypeInfo::Int { bits, signed } => { if bits == 64 && signed { r += 1; }; }, _ => {}, };
+  match TP { TypeInfo::Pointer { child, mutable } => { if mutable { r += 2; }; }, _ => {}, };
+  match TS { TypeInfo::Slice { mutable, .. } => { if !mutable { r += 3; }; }, _ => {}, };
+  match TA { TypeInfo::Array { len, .. } => { if len == 3 { r += 4; }; }, _ => {}, };
+  match TO { TypeInfo::Optional { child, .. } => { r += 5; }, _ => {}, };
+  match TR { TypeInfo::Result { ok, .. } => { r += 5; }, _ => {}, };
+  match TV { TypeInfo::Voidptr => { r += 6; }, _ => {}, };
+  r + TVC
+}
+
+fn counted() -> u32 { /* the shapes a count tells apart: the unit's
+                       * no rows, the tuple's two, the fn's one arg,
+                       * the union's two fields: 0+2+1+2 */
+  let mut r: u32 = 0;
+  match TU { TypeInfo::Tuple { fields, .. } => { for f in fields { r += 1; } }, _ => {}, };
+  match TT { TypeInfo::Tuple { fields, .. } => { for f in fields { r += 1; } }, _ => {}, };
+  match TF { TypeInfo::Fn { args, .. } => { for a in args { r += 1; } }, _ => {}, };
+  match @typeinfo<U>() { TypeInfo::Union { fields, .. } => { for f in fields { r += 1; } }, _ => {}, };
+  r
+}
+
+fn replaced() -> u32 { /* the body pass's rewrite: a runtime let,
+                        * the struct's two fields walked at runtime */
+  let t: TypeInfo = @typeinfo<P>();
+  match t {
+    TypeInfo::Struct { fields, .. } => {
+      let mut n: u32 = 0;
+      for f in fields { n += 1; }
+      n
+    },
+    _ => 9,
+  }
+}
+
+fn fieldwalk() -> u32 { /* the const for over the extracted fields:
+                         * offsets 0 and 8, both immutable: 21+22 */
+  let mut r: u32 = 0;
+  const for f in FS {
+    if f.offset == 0 && !f.mutable { r += 21; };
+    if f.offset == 8 { r += 22; };
+  }
+  r
+}
+
+fn variantwalk() -> u32 { /* the variants: A none, B some, C none --
+                           * the ?type both ways: 31+32+31 */
+  let mut r: u32 = 0;
+  const for v in VS {
+    match v {
+      { type: Some(t), .. } => { r += 32; },
+      { type: None, .. } => { r += 31; },
+    }
+  }
+  r
+}
+
+#[align(16)] #[build(debug)] /* the marks the declaration carries:
+                              * no argument, then one -- an Int row,
+                              * an Ident row */
+struct PB { a: u8, b: u32 }
+
+const ABS: []Attr = match @typeinfo<PB>() { /* the attrs out where a
+                                             * const for reads them */
+  TypeInfo::Struct { attrs, .. } => attrs,
+  _ => @compileError("PB is a struct"),
+};
+
+fn attrwalk() -> u32 { /* both marks, the 16 the align's own arg, the
+                        * debug the build's: 2+20+21 */
+  let mut r: u32 = 0;
+  const for a in ABS {
+    r += 1;
+    for g in a.args {
+      match *g { AttrArg::Int(n) => { if n == 16 { r += 20; }; }, AttrArg::Ident(s) => { r += 21; }, _ => {}, }
+    }
+  }
+  r
+}
+
+const IP: bool = is_ptr(^^*u32); /* the calls a const spells run at
+                                  * compile time, the frame built */
+const IB: u16 = bits_of(^^i64);
+
+fn deferred() -> u32 { /* true for *u32, 64 bits for i64: 8+8 */
+  @cast<u32>(IP) * 8 + @cast<u32>(IB) / 8
+}
+
+fn main() -> u32 {
+  scalars() + counted() + replaced() + fieldwalk() + variantwalk() + attrwalk() + deferred()
+}

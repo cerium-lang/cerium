@@ -333,6 +333,34 @@ empty slice — evaluation allocates nothing, and the values that
 carry them arrive with `@typeinfo`, built inside the compiler rather
 than spelt (`08-reflection.md`).
 
+`@typeinfo` answers now, every row the model spells: the fourteen
+variants built from the type's own halves — an `Int` its width and
+sign, a `Pointer`/`Slice`/`Array` its child and mutability, a
+`Struct`/`Union` its `Field` rows (the name, the bound type, the
+offset the layout settled on, the mutability, the attrs the
+declaration was marked with), an `Enum` its tag and its `EnumField`
+rows (the `?type` a `Some` only where the variant carries exactly
+one positional type — the shapes the spec leaves unspoken hold no
+single type for the slot to name), a `Tuple` the canonical offsets
+replayed, a `Fn` its arg rows and its return — the sugar answering
+first (`?T` an `Optional`, `E?T` a `Result`), and the value slot
+describing a value's static type. The checker builds the value
+right where the call stands, the body pass's rewrite replacing the
+node in place with the tree a literal parses to — a runtime match
+walks it like any data. The deferred splice answers where a frame
+is: a fn called at compile time, the evaluator's own frame
+resolving `$$t` to the argument's type; the body pass holds no
+frame, and a splice that names a parameter or a local is refused
+with the way out named. A const's match pulls the slices out —
+`const FS: []Field` — and the const `for` unrolls over them, the
+runtime read riding the data segment: a slice's two words point at
+a child symbol of its own, the rows spelled beside the parent's
+line and replayed with it every pass, the attrs along (an
+`AttrArg` an `Ident`, an `Int`, or a `Str`). What waits is the
+generic walk — a parameter's `@typeinfo` arrives with
+specialization, and the serialization walk it powers is the next
+layer (`08-reflection.md`).
+
 Codegen has begun: `xyz -s file.xyz` prints the `.ssa` text — qbe's
 input — and `xyz -c file.xyz -o out` runs the pipeline, qbe as a
 subprocess and the system `cc` linking. Checking writes each node's

@@ -730,7 +730,7 @@ recvadapt(Ast *x, Type *selfty, Type *rty, Type *ty, Fenv *fe, Frzsave *sv)
 /* -- the @ builtins (08-reflection.md) ----------------------------------- */
 
 static Type *
-rbuiltin(Ast *e, Fenv *fe)
+rbuiltin(Ast *e, Fenv *fe, Type *want)
 {
   char *nm = e->v.blt.name;
   Ast **targs = e->v.blt.targs;
@@ -788,7 +788,52 @@ rbuiltin(Ast *e, Fenv *fe)
                             * asks */
     return tytype();
   }
-  /* offset, field, count, typeinfo: reflection's own pass */
+  if (strcmp(nm, "typeinfo") == 0) { /* the description, both slots
+                                      * one case: the type named in
+                                      * the argument slot, or the
+                                      * value's static type
+                                      * (08-reflection.md) */
+    Type *t;
+
+    if (nt == 1 && na == 0) {
+      if (targs[0]->k == Nun && targs[0]->v.un.op == Tdollar2) {
+        /* the deferred splice: the operand's value arrives with a
+         * frame a compile-time call builds, and this walk holds no
+         * frame -- the node stands for the evaluator to answer
+         * there (08-reflection.md). The fn that holds it runs at
+         * compile time or not at all: a runtime call would pass
+         * the type's word, and the word holds nothing to describe */
+        if (bodyfn && bodyfn->evaled)
+          return typeinfoty();
+        berr(e, "the splice names a value this walk holds no frame for -- a parameter's, a "
+                "local's: name a const, or call the fn at compile time (08-reflection.md)");
+      }
+      t = rty(targs[0], &fe->env);
+      if (t->k == Typaram) /* a generic's own parameter, met on the
+                            * declaration's walk: the body is shared
+                            * across instances, and a rewrite here
+                            * would hand every one the first's
+                            * answer (04-generics.md) */
+        berr(e, "@typeinfo of a generic parameter arrives with generic specialization "
+                "(04-generics.md)");
+      targs[0]->ty = t;
+    } else if (nt == 0 && na == 1)
+      t = rexpr(args[0], fe, 0); /* the value's own derivation, not
+                                  * the slot's want */
+    else
+      berr(e, "@typeinfo takes one type argument or one value (08-reflection.md)");
+    { /* the answer is data the checker already holds: built here,
+       * the node rewritten as the literal that spells it, and the
+       * walk re-entered reads its own words (08-reflection.md) */
+      Ast *x = valtoexpr(typeinfoval(t, e), e);
+
+      memset(&e->v, 0, sizeof e->v);
+      e->k = x->k;
+      memcpy(&e->v, &x->v, sizeof e->v);
+      return rexpr(e, fe, want);
+    }
+  }
+  /* offset, field, count: reflection's own pass */
   berr(e, "@%s arrives with reflection (08-reflection.md)", nm);
   return 0; /* unreachable */
 }
@@ -2230,7 +2275,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
   case Nclosure:
     return rclosure(e, fe);
   case Nbuiltin:
-    return rbuiltin(e, fe);
+    return rbuiltin(e, fe, want);
   case Nrange:
     berr(e, "ranges arrive with iteration (10-iteration.md)");
     return 0; /* unreachable */
@@ -2295,40 +2340,45 @@ rpat(Ast *p, Type *t, Fenv *fe, int mut)
     v = varfind(s, vn);
     if (!v)
       berr(p, "'%s' has no variant '%s'", en, vn);
+    if (p->v.ppath.named) { /* by field name, mirroring the decl --
+                             * an all-rest pattern binds none, the
+                             * variant still named (09-match.md) */
+      Ast **ps = p->v.ppath.payload;
+      usize n = vlen(ps), i;
+
+      if (!v->named)
+        berr(p, "'%s' is destructured by position", vn);
+      for (i = 0; i < n; i++) {
+        Ast   *pf = ps[i];
+        Field *f = 0;
+        usize  k;
+
+        for (k = 0; k < v->nfields; k++)
+          if (strcmp(v->fields[k].name, pf->v.init.name) == 0) {
+            f = &v->fields[k];
+            break;
+          }
+        if (!f)
+          berr(pf, "'%s' has no field '%s'", vn, pf->v.init.name);
+        {
+          Type *ft = f->ty;
+
+          if (t && t->nargs == (usize) s->ngparams)
+            ft = gsubst(ft, s->gparams, t->args, t->nargs);
+          if (pf->v.init.e)
+            rpat(pf->v.init.e, ft, fe, mut || f->mut);
+          else { /* the field name is the binding name (09-match.md) */
+            pf->ty = ft;
+            locpush(fe, pf->v.init.name, ft, mut || f->mut);
+          }
+        }
+      }
+      return;
+    }
     if (p->v.ppath.payload) {
       Ast **ps = p->v.ppath.payload;
       usize n = vlen(ps), i;
 
-      if (p->v.ppath.named) { /* by field name, mirroring the decl */
-        if (!v->named)
-          berr(p, "'%s' is destructured by position", vn);
-        for (i = 0; i < n; i++) {
-          Ast   *pf = ps[i];
-          Field *f = 0;
-          usize  k;
-
-          for (k = 0; k < v->nfields; k++)
-            if (strcmp(v->fields[k].name, pf->v.init.name) == 0) {
-              f = &v->fields[k];
-              break;
-            }
-          if (!f)
-            berr(pf, "'%s' has no field '%s'", vn, pf->v.init.name);
-          {
-            Type *ft = f->ty;
-
-            if (t && t->nargs == (usize) s->ngparams)
-              ft = gsubst(ft, s->gparams, t->args, t->nargs);
-            if (pf->v.init.e)
-              rpat(pf->v.init.e, ft, fe, mut || f->mut);
-            else { /* the field name is the binding name (09-match.md) */
-              pf->ty = ft;
-              locpush(fe, pf->v.init.name, ft, mut || f->mut);
-            }
-          }
-        }
-        return;
-      }
       if (v->named)
         berr(p, "'%s' is destructured by field name", vn);
       if (n != (v->payload ? v->npayload : 0))
