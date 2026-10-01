@@ -1,0 +1,9 @@
+/* a slice's length is a runtime thing: its spread wants an array,
+ * or a value the compiler knows (04-generics.md) */
+fn add3(a: i32, b: i32, c: i32) -> i32 { a + b + c }
+
+fn main() -> i32 {
+  let a: [3]i32 = [3]i32{7, 8, 9};
+  let s: []i32 = a[..];
+  add3(...s)
+}

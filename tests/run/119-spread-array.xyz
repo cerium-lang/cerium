@@ -1,0 +1,20 @@
+/* the array's spread: the length the type names, every element an
+ * argument of its own -- plain calls fed, consts, and the pack
+ * itself taking the rows as its binding (04-generics.md) */
+fn add3(a: i32, b: i32, c: i32) -> i32 { a + b + c }
+
+fn sum<...Ts>(ts: ...Ts) -> i64 {
+  const if @count(...Ts) == 0 {
+    0
+  } else {
+    @cast<i64>(ts[0]) + sum(...ts[1..])
+  }
+}
+
+const C: [3]i32 = [3]i32{4, 5, 6};
+const W: [4]i32 = [4]i32{1, 2, 3, 4};
+
+fn main() -> i32 {
+  let a: [3]i32 = [3]i32{1, 2, 3};
+  add3(...a) + add3(...C) + @cast<i32>(sum(...W))
+}   /* 6 + 15 + 10 = 31 */

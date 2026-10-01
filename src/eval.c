@@ -3209,19 +3209,31 @@ callval(Ast *e, Env env)
         if (!spv)
           spv = arenaalloc((nraw ? nraw : 1) * sizeof *spv);
         spv[k] = ceval(args[k]->v.un.e, env, 0);
-        if (spv[k].t->k == Tyslice)
-          cerrat(args[k], "a slice's spread needs the pack it feeds -- packs arrive with "
-                          "generics (04-generics.md)");
-        if (spv[k].t->k != Tytuple && spv[k].t->k != Tyunit) /* the
-                                                              * empty tuple is the unit type: it
-                                                              * spreads nothing (01-types.md) */
-          cerrat(args[k], "the spread expands a tuple, this is %s (01-types.md)", tnm(spv[k].t));
+        if (spv[k].t->k == Tytuple) /* the rows the type names; a
+                                     * slice's own ride the value,
+                                     * a tuple's its type -- the
+                                     * spread reads one count
+                                     * either way (01) */
+          spv[k].len = spv[k].t->nargs;
+        if (spv[k].t->k == Tyarray) /* the length the type names, the
+                                     * value the rows: the count the
+                                     * spread reads is the type's
+                                     * own (04-generics.md) */
+          spv[k].len = spv[k].t->n;
+        if (spv[k].t->k != Tytuple && spv[k].t->k != Tyunit && spv[k].t->k != Tyslice &&
+            spv[k].t->k != Tyarray) /* the
+                                     * empty tuple is the unit type: it spreads
+                                     * nothing; a slice's rows ride the value
+                                     * itself, its length a fact this frame
+                                     * knows (01-types.md) */
+          cerrat(args[k], "the spread expands a tuple or a slice, this is %s (01-types.md)",
+                 tnm(spv[k].t));
       }
     if (spv) {
       usize nn = 0;
 
       for (k = 0; k < nraw; k++)
-        nn += args[k]->k == Nspread ? spv[k].t->nargs : 1;
+        nn += args[k]->k == Nspread ? spv[k].len : 1;
       na = nn; /* the widened list: the chain below answers to it */
     }
     /* the arguments' wants, when the chain holds exactly one plain
@@ -3246,8 +3258,10 @@ callval(Ast *e, Env env)
       if (args[i]->k == Nspread) {
         usize j;
 
-        for (j = 0; j < spv[i].t->nargs; j++)
-          avs[k++] = spv[i].elems[j];
+        for (j = 0; j < spv[i].len; j++)
+          avs[k++] = spv[i].elems[j]; /* the rows in their places, a
+                                       * slice's own riding the value
+                                       * as a tuple's do (01) */
       } else {
         Type *w = wsig ? wsig->args[k] : 0;
 

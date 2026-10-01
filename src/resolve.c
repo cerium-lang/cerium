@@ -509,6 +509,9 @@ rty(Ast *t, Env *env)
   }
   case Ntmut: /* a tuple row's writable slot (01-types.md) */
     return tymut(rty(t->v.un.e, env));
+  case Nspread:  /* (...Ts): the grouping of the spread -- the same
+                  * pack, spelled the impl target's way
+                  * (04-generics.md) */
   case Ntpack: { /* ...Ts: the pack's rows. The declaration's walk
                   * reads the parameter itself, a Typaram whose gp
                   * carries the pack; a re-check's env holds the
@@ -559,6 +562,22 @@ rty(Ast *t, Env *env)
     Type **ts = n ? tyargs(n) : 0;
     usize  i;
 
+    if (n == 1 && t->v.list.ts[0]->k == Ntpack) /* (...Ts): the
+                                                 * impl target's
+                                                 * spelling -- the
+                                                 * pack itself, the
+                                                 * rows standing as
+                                                 * the tuple's own
+                                                 * (04-generics.md) */
+      return rty(t->v.list.ts[0], env);
+    if (n > 1 && t->v.list.ts[0]->k == Ntpack) /* (...Ts, U): the
+                                                * pack among rows is
+                                                * no type -- it
+                                                * stands for the
+                                                * whole tuple or
+                                                * nothing
+                                                * (04-generics.md) */
+      cerrat(t, "the pack stands for the whole tuple: (...Ts) alone (04-generics.md)");
     for (i = 0; i < n; i++)
       ts[i] = rty(t->v.list.ts[i], env);
     return tytuple(ts, n);

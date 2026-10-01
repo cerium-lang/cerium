@@ -515,6 +515,31 @@ growing with the cube of the pack until the rows learned to stand
 as the arguments they are. What waits: pack impls, and a slice's
 spread.
 
+Both waited, and both are here. `impl<...Ts: Show> Show for
+(...Ts)` holds a trait for tuples of every arity: the `(...Ts)` is
+the pack's own grouping — resolve reading it as the Typaram
+itself, the rows standing as the tuple's own — and a receiver's
+tuple binds Ts whole, the same unification a handed-over argument
+makes. The bound holds every row (`<...Ts: Show>` asks each one,
+the empty pack asking none — the whole tuple asked as one would
+find this impl answering itself, so the row-by-row question is the
+only honest one), and the specialization order needs nothing new:
+an exact tuple is a shape above a variable, so `impl Show for
+(i32, i32)` wins wherever it matches — mid-recursion included, the
+sub-tuple the peel lands on found by the exact table before the
+pack pattern sees it. The method's recursion is the sum's own
+writ small — the count's const if, `v[0]` and `v[1..]` — with one
+twist the fn never had: the peel is the receiver itself,
+`Show::show(v[1..])` handing the sub-tuple over whole rather than
+spreading its rows as arguments the method's one parameter cannot
+take. The spread grew its other half too: an array's length is
+the type's own, so `f(...arr)` spells every element an argument
+of its own; a slice's is a runtime thing, refused at the call —
+but a value the evaluator knows (a const's) rides its own rows,
+the compile-time call's spread feeding them as a tuple's
+(`04-generics.md`). A pack among rows is no type — `(...Ts, i32)`
+refused, the pack standing for the whole tuple or nothing.
+
 Codegen has begun: `xyz -s file.xyz` prints the `.ssa` text — qbe's
 input — and `xyz -c file.xyz -o out` runs the pipeline, qbe as a
 subprocess and the system `cc` linking. Checking writes each node's
