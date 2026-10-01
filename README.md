@@ -476,6 +476,20 @@ placeholder's shape at its use, the honest edge the black-box
 match already owns. What waits: packs — the tuple they stand on,
 `@count` among them (`04-generics.md`).
 
+The tuple, it turns out, was already here — the type, the rows, the
+pattern, the element-wise `mut` — walked in with the milestones that
+needed it and never got the tests that pin it. What was missing was
+the spread: `f(...t)` spells every row of a tuple as an argument of
+its own (`01-types.md`), the walk rewriting the spread to the row
+reads in place, so every pass below walks the list as the one the
+words spelled — the emitter included. The empty tuple is the unit
+type, and it spreads nothing; a slice's length is a runtime thing,
+its spread waiting for the pack it feeds (`04-generics.md`). A
+compile-time call answers the same way, the rows riding the
+operand's own value, the arity and the wants widened before the
+overloads answer. What waits: the packs themselves — the angle
+brackets' `...Ts`, `@count` among them (`04-generics.md`).
+
 Codegen has begun: `xyz -s file.xyz` prints the `.ssa` text — qbe's
 input — and `xyz -c file.xyz -o out` runs the pipeline, qbe as a
 subprocess and the system `cc` linking. Checking writes each node's
