@@ -1,0 +1,7 @@
+/* a generic shape's member read without its instance: the arguments
+ * alone pick the impl, and none arrive (05-traits.md) */
+struct S<T> { }
+
+impl<T> S<T> { const value: bool = true; }
+
+fn main() -> i32 { @cast<i32>(S::value) }

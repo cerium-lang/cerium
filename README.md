@@ -540,6 +540,30 @@ the compile-time call's spread feeding them as a tuple's
 (`04-generics.md`). A pack among rows is no type — `(...Ts, i32)`
 refused, the pack standing for the whole tuple or nothing.
 
+The type predicate is here, std::meta's `is_same` the first: a struct
+of no fields, two impls for it — `impl<A, B> is_same<A, B>` carrying
+`const value: bool = false`, `impl<T> is_same<T, T>` carrying true —
+and the read, `is_same<i32, i32>::value`, naming the instance its
+angle brackets spell. The spec's second declaration — `struct
+is_same<T, T> {}`, the specialized struct — turned out idle: the
+repeated variable of `(T, T)` must land both arguments on one type,
+a strictness the specialization order already reads, so the two
+impls order themselves with no declaration above them
+(`04-generics.md`). The read walks its arguments to the receiver
+they name, the impls fitted against it, the most specific one's
+member the answer — folded where it stands, the expression rewritten
+as the literal it is, so the instance takes no space and the emitter
+never sees it. Inside a generic fn the read defers —
+`is_same<T, U>::value` a black box until the instance lands its
+types, the re-check folding it there — and a splice names an
+argument too: `is_same<$$I, i32>::value` with `I: type = ^^i32`
+answering true (`08-reflection.md`). What the predicate needed of
+the language was the std table: the embedded source's impls now
+enter pass 3 with the user's — held from the prelude's walk to
+every checkfile — so the read needs no declaration of its own, and
+an impl the user writes over std's is the conflict the coherence
+check names (`05-traits.md`).
+
 Codegen has begun: `xyz -s file.xyz` prints the `.ssa` text — qbe's
 input — and `xyz -c file.xyz -o out` runs the pipeline, qbe as a
 subprocess and the system `cc` linking. Checking writes each node's

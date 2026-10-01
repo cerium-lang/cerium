@@ -1631,7 +1631,47 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
       { /* an inherent impl's member: a fn value or a const */
         Sym    *imp;
         Member *m = inherentfind(s, nm1, &imp);
+        Ast   **gas = segs[0]->v.seg.args; /* the path's own <...>:
+                                            * the instance it names */
+        Type **tys = 0;
 
+        if (vlen(gas)) { /* the args name a receiver: the impls
+                          * fitted against it, the most specific
+                          * one's member the read -- the (T, T) of an
+                          * is_same landing true where it fits, the
+                          * <A, B> false behind it (05-traits.md) */
+          Type *recv;
+          usize gi, k = vlen(gas);
+
+          if (k != s->ngparams)
+            berr(e, "'%s' takes %lu parameters, %lu given", s->name, (unsigned long) s->ngparams,
+                 (unsigned long) k);
+          tys = tyargs(k);
+          for (gi = 0; gi < k; gi++)
+            tys[gi] = rty(gas[gi], &fe->env); /* the args resolve in
+                                               * the body's own
+                                               * scope: a fn's
+                                               * variables included
+                                               * (04-generics.md) */
+          for (gi = 0; gi < k; gi++)          /* a fn's own variable among the
+                                               * args: the read is the
+                                               * instance's, deferred -- the
+                                               * re-check under the binding
+                                               * folds it (04-generics.md) */
+            if (tys[gi]->k == Typaram) {
+              evalblackbox++;
+              return want ? want : tybool();
+            }
+          recv = tysym(s, tys, k);
+          { /* the pick: the receiver's own, most specific first */
+            Member *bm = inherentfindt(recv, nm1, &imp, &tys);
+
+            if (!bm)
+              berr(e, "no '%s' of '%s' fits %s", nm1, s->name, btys(recv));
+            m = bm; /* tys: the binding the pick made */
+          }
+        } else if (s->ngparams && m && m->kind == Mconst)
+          berr(e, "cannot infer '%s' for '%s' here", s->gparams[0]->v.gp.name, s->name);
         if (!m)
           berr(e, "'%s' has no '%s'", s->name, nm1);
         if (m->kind == Mfn && m->decl && vlen(m->decl->v.fn.gparams))
@@ -1644,8 +1684,31 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
           e->v.path.tys = 0;
           return m->ty;
         }
-        if (m->kind == Mconst)
-          return m->ty;
+        if (m->kind == Mconst) {
+          Type *ct = imp && imp->ngparams ? gsubst(m->ty, imp->gparams, tys, imp->ngparams) : m->ty;
+
+          if (m->decl && (ct->k == Tybool || (ct->k == Tyint && ct->num != IN_F32 &&
+                                              ct->num != IN_F64))) { /* the value
+                                                                      * folded in place:
+                                                                      * the const is a
+                                                                      * compile-time
+                                                                      * fact, the read
+                                                                      * its own literal
+                                                                      * (05-traits.md) */
+            Ast  *init = m->decl->v.cst.e;
+            Env   env = envnone();
+            Val   v;
+            usize gi;
+
+            for (gi = 0; imp && gi < imp->ngparams; gi++)
+              env = envpush(&env, imp->gparams[gi]->v.gp.name, tys[gi]);
+            v = ceval(init, env, ct);
+            e->k = ct->k == Tybool ? Nbool : Nint;
+            e->v.i.num = v.i;
+            return ct;
+          }
+          return ct;
+        }
         berr(e, "'%s::%s' is a type, not a value", s->name, nm1);
       }
     }

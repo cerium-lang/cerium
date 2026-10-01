@@ -13,9 +13,12 @@
 
 void checkinit(void);
 void checkfile(Ast **items);
-void checkdecls(Ast **items); /* pass 1 + 2 alone -- std's embedded
-                               * source walks this without the user's
-                               * passes 3 and 4 */
+void checkdecls(Ast **items);      /* pass 1 + 2 alone -- std's embedded
+                                    * source walks this without the user's
+                                    * passes 3 and 4 */
+void collectstdimpls(Ast **items); /* preludefile's tail: the embedded
+                                    * source's impls, members resolved
+                                    * and held for checkfile's table */
 void checkdump(Ast **items);
 void checkbodyfn(Sym *s, Ast *it);   /* pass 4, one fn (body.c) */
 void checkbodyimpl(Sym *s, Ast *it); /* pass 4, one impl's member fns */

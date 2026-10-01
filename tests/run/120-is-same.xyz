@@ -1,0 +1,28 @@
+/* std::meta's is_same, the type-equality predicate, read through the
+ * ::value path its impls carry: the (T, T) impl landing true where
+ * both arguments are one type, the (A, B) blanket behind it false
+ * (05-traits.md). The read needs no declaration of its own -- the
+ * embedded source's impls enter pass 3's table ahead of the user's
+ * -- and it folds where it stands: directly, inside a generic fn
+ * (the read deferring to the instance, the re-check folding it
+ * under the binding, 04-generics.md), through the splice of a type
+ * value naming an argument (08-reflection.md). The instance takes
+ * no space. Each scenario its own bit -- the exit lands 0b1111,
+ * every read the one it says. */
+fn eq<T, U>() -> i32 { @cast<i32>(is_same<T, U>::value) }
+
+const I: type = ^^i32;
+const F: type = ^^f32;
+
+fn main() -> i32 {
+  let a = @cast<i32>(is_same<i32, i32>::value);   /* 1: the pair */
+  let b = @cast<i32>(is_same<i32, u32>::value);   /* 0: the blanket */
+  let c = eq<i32, i32>();                         /* 2: deferred, folded
+                                                   * at the instance */
+  let d = eq<i32, u32>();                         /* 0 */
+  let e = @cast<i32>(is_same<$$I, i32>::value);   /* 4: the splice names
+                                                   * i32 */
+  let f = @cast<i32>(is_same<$$F, i32>::value);   /* 0 */
+  let z = @cast<i32>(@sizeof<is_same<i32, i32>>()); /* 0: no space */
+  a + c*2 + e*4 + @cast<i32>(z == 0)*8 + b + d + f /* 0b1111: 15 */
+}
