@@ -13,10 +13,18 @@
 
 void checkinit(void);
 void checkfile(Ast **items);
-void checkdecls(Ast **items, Ns *ns);            /* pass 1 + 2 alone -- std's embedded
-                                                  * source walks this without the user's
-                                                  * passes 3 and 4, into its own
-                                                  * namespace */
+void declare(Ast **items, Ns *ns);               /* pass 1: every name
+                                                  * in the table */
+void resolveitems(Ast **items);                  /* pass 2: what each
+                                                  * declaration is --
+                                                  * after the uses
+                                                  * bind in checkfile */
+void checkdecls(Ast **items, Ns *ns);            /* both passes back to
+                                                  * back -- std's embedded
+                                                  * source walks this
+                                                  * without the user's
+                                                  * passes 3 and 4, into
+                                                  * its own namespace */
 usize nshead(Ast **segs, usize nsegs, Ns **nsp); /* resolve.c's
                                                   * namespace-head
                                                   * strip, shared by

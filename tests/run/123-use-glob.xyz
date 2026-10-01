@@ -1,0 +1,14 @@
+/* the glob: every pub item of the namespace, bare -- all or
+ * nothing, a collision's question among the err cases
+ * (11-namespaces.md) */
+use std::meta::*;
+
+fn main() -> i32 {
+  let t: TypeInfo = TypeInfo::Int{bits: 16, signed: true};
+  let f: Field = Field{name: c"x", type: ^^i32, offset: 3, mutable: false, attrs: []Attr{}};
+  let a = match t {
+    TypeInfo::Int { bits, .. } => @cast<i32>(bits),
+    _ => 0,
+  };
+  a + @cast<i32>(f.offset) + @cast<i32>(is_same<u8, u8>::value)  /* 16+3+1: 20 */
+}

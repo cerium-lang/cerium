@@ -1,0 +1,8 @@
+/* the glob is all or nothing: a name it would bring in is held by
+ * a declaration, and the whole use goes down -- the way out is the
+ * path (11-namespaces.md) */
+use std::meta::*;
+
+enum Field { NotTheOne }
+
+fn main() -> i32 { 0 }

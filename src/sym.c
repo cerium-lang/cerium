@@ -66,14 +66,79 @@ probe(Sym **tbl, usize cap, const char *name) /* the slot: occupied by
   return i;
 }
 
+/* -- the use environment --------------------------------------------------
+ * What a `use` brought into scope: an item, or a namespace itself.
+ * The bare name's lookup reads the root's table first, then these
+ * (11-namespaces.md) -- the names few and read hot through a body,
+ * but a vec keeps the walk simple and the pass that fills it cold. */
+
+static Use **uenv;
+
+void
+useclear(void)
+{
+  uenv = vnew(Use *, 16);
+}
+
+Use *
+usebind(const char *name, Sym *sym, Ns *ns, Ast *at)
+{
+  usize i, n = vlen(uenv);
+  Use  *u;
+
+  for (i = 0; i < n; i++)
+    if (strcmp(uenv[i]->name, name) == 0)
+      return uenv[i]; /* the name held: the caller reports, for it
+                       * holds the position of its own */
+  u = arenaalloc(sizeof *u);
+  memset(u, 0, sizeof *u);
+  u->name = (char *) name;
+  u->sym = sym;
+  u->ns = ns;
+  u->at = at;
+  vappend(&uenv, &u);
+  return 0;
+}
+
+Use *
+usefind(const char *name)
+{
+  usize i, n = vlen(uenv);
+
+  for (i = 0; i < n; i++)
+    if (strcmp(uenv[i]->name, name) == 0)
+      return uenv[i];
+  return 0;
+}
+
+Use *
+usefindns(const char *name) /* the binding a path's head names: a
+                             * namespace, or nothing */
+{
+  Use *u = usefind(name);
+
+  return u && u->ns ? u : 0;
+}
+
 /* -- the namespace tree --------------------------------------------------
  * The root is the project's own (11-namespaces.md); std::meta is
  * the one the embedded prelude fills. The tree is small and read
  * cold -- the sub-namespaces a plain vec, the walk a strcmp each. */
 
-static Ns  nstroot; /* the root itself, not arena'd: it is the tree */
-static Ns *stdmeta; /* the embedded std::meta, for symfind's
-                     * fallthrough */
+static Ns nstroot; /* the root itself, not arena'd: it is the tree */
+
+/* the namespace whose file the checker is in: a bare name reads its
+ * table first (11-namespaces.md) -- the embedded source's items
+ * reach their own neighbours this way, the user's file sitting in
+ * the root and reading it. checkdecls/checkfile set it; the root
+ * reads as itself, the way a single-file program always has */
+static Ns *curns;
+
+void
+nscur(Ns *ns)
+{
+  curns = ns;
+}
 
 Ns *
 nsroot(void)
@@ -114,6 +179,20 @@ nsitem(Ns *ns, const char *name)
   return ns->tbl[probe(ns->tbl, ns->cap, name)];
 }
 
+Sym **
+nstable(Ns *ns, usize *np) /* every slot filled, for a glob's walk:
+                            * the table's own order, whatever it is */
+{
+  Sym **out = vnew(Sym *, ns->n ? ns->n : 1);
+  usize i;
+
+  for (i = 0; i < ns->cap; i++)
+    if (ns->tbl[i])
+      vappend(&out, &ns->tbl[i]);
+  *np = vlen(out);
+  return out;
+}
+
 /* the namespace's full path, std::meta spelled out -- an error's
  * naming, built in the arena */
 char *
@@ -135,6 +214,7 @@ syminit(void)
   nstroot.tbl = arenaalloc(nstroot.cap * sizeof *nstroot.tbl);
   memset(nstroot.tbl, 0, nstroot.cap * sizeof *nstroot.tbl);
   nstroot.subs = vnew(Ns *, 4);
+  useclear();
 
   sym_selfgp = arenaalloc(sizeof *sym_selfgp);
   memset(sym_selfgp, 0, sizeof *sym_selfgp);
@@ -143,14 +223,23 @@ syminit(void)
 }
 
 Sym *
-symfind(const char *name) /* the root's own; the miss falls through
-                           * to std::meta -- the prelude-era
-                           * stand-in until `use` lands, a bare
-                           * is_same still resolving (11) */
+symfind(const char *name) /* the namespace being checked first, then
+                           * the root's own, then what a `use` brought
+                           * in (11-namespaces.md) */
 {
-  Sym *s = nstroot.tbl[probe(nstroot.tbl, nstroot.cap, name)];
+  Sym *s;
+  Use *u;
 
-  return s ? s : (stdmeta ? nsitem(stdmeta, name) : 0);
+  if (curns && curns != &nstroot) {
+    s = nsitem(curns, name);
+    if (s)
+      return s;
+  }
+  s = nstroot.tbl[probe(nstroot.tbl, nstroot.cap, name)];
+  if (s)
+    return s;
+  u = usefind(name);
+  return u ? u->sym : 0;
 }
 
 /* declare into a namespace: NULL when the name is taken -- the
@@ -165,12 +254,6 @@ nsdecl(Ns *ns, const char *name, int kind, Ast *decl, Ast **gparams, usize ngpar
   Sym  *s;
   usize i;
 
-  if (ns == &nstroot && stdmeta && nsitem(stdmeta, name))
-    /* the prelude-era stand-in: the bare name's fallthrough reads
-     * std::meta's table, so a root declaration of one of its names
-     * is the ambiguity that fallthrough cannot settle -- taken,
-     * until `use` lands and the fallthrough goes (11) */
-    return 0;
   if (ns->n * 4u >= ns->cap * 3u)
     grow(&ns->tbl, &ns->cap);
   i = probe(ns->tbl, ns->cap, name);
@@ -184,6 +267,7 @@ nsdecl(Ns *ns, const char *name, int kind, Ast *decl, Ast **gparams, usize ngpar
       memset(s, 0, sizeof *s);
       s->name = (char *) name;
       s->kind = kind;
+      s->ownns = ns;
       s->decl = decl;
       s->gparams = gparams;
       s->ngparams = ngparams;
@@ -198,6 +282,7 @@ nsdecl(Ns *ns, const char *name, int kind, Ast *decl, Ast **gparams, usize ngpar
                             * from the tree or from literals, and
                             * neither is ever freed */
   s->kind = kind;
+  s->ownns = ns;
   s->decl = decl;
   s->gparams = gparams;
   s->ngparams = ngparams;
@@ -212,15 +297,6 @@ Sym *
 symdecl(const char *name, int kind, Ast *decl, Ast **gparams, usize ngparams)
 {
   return nsdecl(&nstroot, name, kind, decl, gparams, ngparams);
-}
-
-/* std::meta, the namespace the embedded source declares in: named
- * here once, held for symfind's fallthrough above (prelude.c, the
- * one that fills it) */
-void
-symsetmeta(Ns *ns)
-{
-  stdmeta = ns;
 }
 
 /* a variant by name, declaration order. Shared by the checker's

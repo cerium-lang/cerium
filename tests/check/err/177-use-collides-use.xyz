@@ -1,0 +1,6 @@
+/* two uses holding the same name: the second is the one that
+ * reports, the first's position its blame (11-namespaces.md) */
+use std::meta::Field;
+use std::meta::{TypeInfo, Field};
+
+fn main() -> i32 { 0 }

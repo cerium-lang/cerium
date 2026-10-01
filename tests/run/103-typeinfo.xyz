@@ -7,6 +7,8 @@
  * their ?type, the attrs with the argument rows they carry -- and
  * the deferred splice, a fn called at compile time answering through
  * its own frame (08-reflection.md) */
+use std::meta::{TypeInfo, Field, EnumField, Attr, AttrArg};
+
 
 struct P { x: u32, y: u64 }
 union U { a: u32, b: u64 }

@@ -1,0 +1,5 @@
+/* a use's path is absolute, from the root: a namespace that is not
+ * there says so (11-namespaces.md) */
+use std::nosuch;
+
+fn main() -> i32 { 0 }

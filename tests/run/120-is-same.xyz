@@ -9,6 +9,8 @@
  * value naming an argument (08-reflection.md). The instance takes
  * no space. Each scenario its own bit -- the exit lands 0b1111,
  * every read the one it says. */
+use std::meta::is_same;
+
 fn eq<T, U>() -> i32 { @cast<i32>(is_same<T, U>::value) }
 
 const I: type = ^^i32;

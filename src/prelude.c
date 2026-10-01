@@ -8,8 +8,9 @@
  * arrives from tools/embed.sh as src/prelude_text.h) before the
  * user's file does, and its items resolve under the clean symbol
  * table. What M5h loads this way is std::meta's reflection model
- * (08-reflection.md); the flat names are global for now --
- * namespaces (11-namespaces.md) are a later stage.
+ * (08-reflection.md): the names live in std::meta, reached by path
+ * or by use, the bare name retired with the shim it rode
+ * (11-namespaces.md).
  */
 
 #include <string.h>
@@ -86,11 +87,13 @@ preludefile(void) /* from checkinit, after syminit and the hand pair:
 {
   Ns *meta = nsmk(nsmk(nsroot(), "std"), "meta");
 
-  symsetmeta(meta);
   checkdecls(metaitems, meta);
   collectstdimpls(metaitems);
-  sym_typeinfo = symfind("TypeInfo"); /* @typeinfo's answers are its
-                                       * variants (08-reflection.md) */
+  sym_typeinfo = nsitem(meta, "TypeInfo"); /* @typeinfo's answers are
+                                            * its variants; the name
+                                            * lives in std::meta now,
+                                            * no shim below the bare
+                                            * one (11-namespaces.md) */
 }
 
 /* an Ngparam without a lexer behind it: the prelude's type

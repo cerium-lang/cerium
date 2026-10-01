@@ -628,19 +628,23 @@ variantval(Sym *s, Variant *v, Type **targs, usize ntargs, Ast **args, usize na,
 
 static Sym *sym_field, *sym_enumfield, *sym_fnarg, *sym_attr, *sym_attrarg;
 
-/* the model's names, found once: the prelude resolves before the
- * user's file binds anything, so the syms stand when the first
- * answer asks */
+/* the model's names, found once: std::meta's own table, the
+ * namespace the embedded source's items landed in (11-namespaces.md)
+ * -- the syms stand from the prelude on, whenever the first answer
+ * asks */
 static void
 metainit(void)
 {
+  Ns *meta;
+
   if (sym_field)
     return;
-  sym_field = symfind("Field");
-  sym_enumfield = symfind("EnumField");
-  sym_fnarg = symfind("FnArg");
-  sym_attr = symfind("Attr");
-  sym_attrarg = symfind("AttrArg");
+  meta = nschild(nschild(nsroot(), "std"), "meta");
+  sym_field = nsitem(meta, "Field");
+  sym_enumfield = nsitem(meta, "EnumField");
+  sym_fnarg = nsitem(meta, "FnArg");
+  sym_attr = nsitem(meta, "Attr");
+  sym_attrarg = nsitem(meta, "AttrArg");
 }
 
 /* a name as the model spells it: []u8, one byte a value -- the
@@ -1542,15 +1546,24 @@ ceval(Ast *e, Env env, Type *want)
                       * (01-types.md); a generic's rows arrive bound
                       * or not at all here */
     Ast **segs = e->v.slit.path->v.path.segs;
+    usize nsegs = vlen(segs);
+    Ns   *ns;
+    usize k;
     Sym  *s;
     Type *t;
 
-    if (vlen(segs) == 2 && !e->v.slit.path->v.path.root) { /* Enum::V{x:
-                                                            * y}: a
-                                                            * named
-                                                            * payload,
-                                                            * by name */
-      Sym     *es = symfind(segs[0]->v.seg.name);
+    k = nshead(segs, nsegs, &ns);
+    if (k == nsegs) /* a namespace names no literal (11-namespaces.md) */
+      cerrat(e, "a namespace names no literal; name what is in it (11-namespaces.md)");
+    segs += k; /* the namespaces walked fall away (11-namespaces.md) */
+    nsegs -= k;
+
+    if (nsegs == 2 && !e->v.slit.path->v.path.root) { /* Enum::V{x:
+                                                       * y}: a
+                                                       * named
+                                                       * payload,
+                                                       * by name */
+      Sym     *es = k ? nsitem(ns, segs[0]->v.seg.name) : symfind(segs[0]->v.seg.name);
       Variant *v;
 
       if (!es || es->kind != Stype || es->tykind != TYenum)
@@ -1587,9 +1600,9 @@ ceval(Ast *e, Env env, Type *want)
         return variantval(es, v, 0, 0, args, nf, env, e);
       }
     }
-    if (vlen(segs) != 1 || e->v.slit.path->v.path.root)
+    if (nsegs != 1 || e->v.slit.path->v.path.root)
       cerrat(e, "this literal is not compile-time known (08-reflection.md)");
-    s = symfind(segs[0]->v.seg.name);
+    s = k ? nsitem(ns, segs[0]->v.seg.name) : symfind(segs[0]->v.seg.name);
     if (!s || s->kind != Stype || (s->tykind != TYstruct && s->tykind != TYunion))
       cerrat(e, "'%s' is not a struct or union here (01-types.md)", segs[0]->v.seg.name);
     if (s->ngparams)
@@ -1708,27 +1721,38 @@ ceval(Ast *e, Env env, Type *want)
     return sliceval(els, e->v.s.len, tyint(IN_U8));
   }
   case Npath: { /* a local's read, or a const reference: the chain (08) */
-    char *nm = e->v.path.segs[0]->v.seg.name;
+    Ast **segs = e->v.path.segs;
+    usize nsegs = vlen(segs);
+    Ns   *ns;
+    usize k;
+    char *nm;
     Sym  *s;
 
-    if (vlen(e->v.path.segs) == 2 && !e->v.path.root) { /* Enum::V:
-                                                         * the payloadless
-                                                         * constructor */
-      Sym     *es = symfind(e->v.path.segs[0]->v.seg.name);
+    k = nshead(segs, nsegs, &ns);
+    if (k == nsegs) /* the whole path a namespace walk: a namespace
+                     * names no value (11-namespaces.md) */
+      cerrat(e, "a namespace names no value; name what is in it (11-namespaces.md)");
+    segs += k; /* the namespaces walked fall away; what is left
+                * reads in the namespace the walk landed in (11) */
+    nsegs -= k;
+
+    if (nsegs == 2 && !e->v.path.root) { /* Enum::V: the payloadless
+                                          * constructor */
+      Sym     *es = k ? nsitem(ns, segs[0]->v.seg.name) : symfind(segs[0]->v.seg.name);
       Variant *v;
 
       if (!es || es->kind != Stype || es->tykind != TYenum)
         cerrat(e, "this path is not compile-time known (08-reflection.md)");
-      v = symvarfind(es, e->v.path.segs[1]->v.seg.name);
+      v = symvarfind(es, segs[1]->v.seg.name);
       if (!v)
-        cerrat(e, "'%s' has no variant '%s' (01-types.md)", es->name,
-               e->v.path.segs[1]->v.seg.name);
+        cerrat(e, "'%s' has no variant '%s' (01-types.md)", es->name, segs[1]->v.seg.name);
       if (v->named || v->payload)
         cerrat(e, "'%s' carries a payload; construct it (01-types.md)", v->name);
       return variantval(es, v, 0, 0, 0, 0, env, e);
     }
-    if (vlen(e->v.path.segs) != 1 || e->v.path.root)
+    if (nsegs != 1 || e->v.path.root)
       cerrat(e, "this path is not compile-time known (08-reflection.md)");
+    nm = segs[0]->v.seg.name;
     if (nlocs > locbase) { /* a frame is running: its bindings are
                             * the innermost names, shadowing the
                             * consts below them */
@@ -1780,9 +1804,9 @@ ceval(Ast *e, Env env, Type *want)
           return valint(0, cparams[ci].ty);
         }
     }
-    s = symfind(nm);
-    if (!s) { /* Some, None, Ok: a bare constructor, the want naming
-               * the enum (01-types.md) */
+    s = k ? nsitem(ns, nm) : symfind(nm);
+    if (!s && !k) { /* Some, None, Ok: a bare constructor, the want naming
+                     * the enum (01-types.md) */
       Sym     *owner = symvariantowner(nm);
       Variant *v;
 
@@ -1848,22 +1872,29 @@ ceval(Ast *e, Env env, Type *want)
   }
   case Ncall: { /* a constructor first -- Enum::V(...), Some(v) --
                  * then a fn, its arguments known (08-reflection.md) */
-    Ast **segs;
-    Ast  *f = e->v.call.f;
+    Ast *f = e->v.call.f;
 
     if (f->k == Npath && !f->v.path.root && !f->v.path.segs[0]->v.seg.args) {
-      segs = f->v.path.segs;
-      if (vlen(segs) == 1) { /* Some(3), Ok(v): the prelude's bare
-                              * constructors, the want naming the
-                              * enum (01-types.md) */
+      Ast **segs = f->v.path.segs;
+      usize nsegs = vlen(segs);
+      Ns   *ns;
+      usize k = nshead(segs, nsegs, &ns);
+
+      if (k == nsegs) /* a namespace names no call (11-namespaces.md) */
+        cerrat(f, "a namespace names no call; name what is in it (11-namespaces.md)");
+      segs += k; /* the namespaces walked fall away (11-namespaces.md) */
+      nsegs -= k;
+      if (nsegs == 1) { /* Some(3), Ok(v): the prelude's bare
+                         * constructors, the want naming the
+                         * enum (01-types.md) */
         char *nm = segs[0]->v.seg.name;
-        Sym  *owner = symfind(nm) ? 0 : symvariantowner(nm);
+        Sym  *owner = !k && symfind(nm) ? 0 : symvariantowner(nm);
 
         if (owner && want && want->k == Tyenum && want->sym == owner)
           return variantval(owner, symvarfind(owner, nm), want->args, want->nargs, e->v.call.args,
                             vlen(e->v.call.args), env, e);
-      } else if (vlen(segs) == 2) { /* Enum::V(...): the enum's own */
-        Sym *es = symfind(segs[0]->v.seg.name);
+      } else if (nsegs == 2) { /* Enum::V(...): the enum's own */
+        Sym *es = k ? nsitem(ns, segs[0]->v.seg.name) : symfind(segs[0]->v.seg.name);
 
         if (es && es->kind == Stype && es->tykind == TYenum) {
           Variant *v = symvarfind(es, segs[1]->v.seg.name);
@@ -2568,6 +2599,49 @@ pathsegs(char *a, char *b, Ast *at)
   return p;
 }
 
+/* a Sym's own path: its namespace's segments in front, the name, the
+ * child the read spells -- std::meta::TypeInfo::Int, the tree the
+ * checker reads back the way it reads the program's own
+ * (11-namespaces.md). A Sym of the root's spells the way it always
+ * did, the segments it never had. */
+static Ast *
+sympaths(Sym *s, char *child, Ast *at)
+{
+  Ns   *ns = s->ownns;
+  usize depth = 0, i;
+  Ast  *p = mknear(Npath, at), *sg;
+
+  while (ns && ns->parent) {
+    depth++;
+    ns = ns->parent;
+  }
+  p->v.path.segs = vnew(Ast *, depth + 1 + (child ? 1 : 0));
+  if (depth) {
+    Ns  **walk = arenaalloc(depth * sizeof *walk);
+    usize j = 0;
+
+    ns = s->ownns;
+    while (ns && ns->parent) {
+      walk[j++] = ns;
+      ns = ns->parent;
+    }
+    for (i = 0; i < depth; i++) { /* front to back, deepest last */
+      sg = mknear(Nseg, at);
+      sg->v.seg.name = walk[depth - 1 - i]->name;
+      vappend(&p->v.path.segs, &sg);
+    }
+  }
+  sg = mknear(Nseg, at);
+  sg->v.seg.name = s->name;
+  vappend(&p->v.path.segs, &sg);
+  if (child) {
+    sg = mknear(Nseg, at);
+    sg->v.seg.name = child;
+    vappend(&p->v.path.segs, &sg);
+  }
+  return p;
+}
+
 /* the checker's type, back to the tree that spells it: a let's
  * annotation and an array literal's element type are tree slots, so
  * a materialized value's parts walk back through here. The sugar is
@@ -2641,7 +2715,7 @@ tytoexpr(Type *t, Ast *at)
              "'%s' is generic here: a generic's materialization arrives with a later milestone "
              "(04-generics.md)",
              t->sym->name);
-    return pathsegs(t->sym->name, 0, at);
+    return sympaths(t->sym, 0, at);
   default: /* pointers and the rest are runtime things (08) */
     cerrat(at, "%s does not materialize: it is not compile-time known here (08-reflection.md)",
            tnm(t));
@@ -2722,12 +2796,14 @@ valtoexpr(Val v, Ast *at)
       }
     }
     if (!np)
-      return pathsegs(s->name, var->name, at); /* payloadless: E::B */
+      return sympaths(s, var->name, at); /* payloadless: E::B, the
+                                          * ns's own segments in
+                                          * front where it has them */
     { /* E::V(args...): a call the checker and the emitter read the
        * way they read the program's own */
       Ast *c = mknear(Ncall, at);
 
-      c->v.call.f = pathsegs(s->name, var->name, at);
+      c->v.call.f = sympaths(s, var->name, at);
       c->v.call.args = vnew(Ast *, np);
       for (i = 0; i < np; i++) {
         Ast *a = valtoexpr(v.elems[i], at);
@@ -2743,7 +2819,7 @@ valtoexpr(Val v, Ast *at)
     usize nf = s->nfields;
 
     n = mknear(Nstructlit, at);
-    n->v.slit.path = pathsegs(s->name, 0, at);
+    n->v.slit.path = sympaths(s, 0, at);
     n->v.slit.inits = vnew(Ast *, nf ? nf : 1);
     for (i = 0; i < nf; i++) {
       Ast *in = mknear(Ninit, at);
@@ -2760,7 +2836,7 @@ valtoexpr(Val v, Ast *at)
     Sym *s = v.t->sym;
 
     n = mknear(Nstructlit, at);
-    n->v.slit.path = pathsegs(s->name, 0, at);
+    n->v.slit.path = sympaths(s, 0, at);
     n->v.slit.inits = vnew(Ast *, 1);
     if (v.tag != VNONROW) {
       Ast *in = mknear(Ninit, at);

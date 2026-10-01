@@ -2,6 +2,8 @@
  * the prime scrutinee, and the re-check under the binding walks only
  * the arm that fits -- the declaration's black box holds the whole
  * match for the instance (04-generics.md, 09-match.md) */
+use std::meta::TypeInfo;
+
 fn width<T>() -> u32 {
   match @typeinfo<T>() {
     TypeInfo::Bool => 1,
