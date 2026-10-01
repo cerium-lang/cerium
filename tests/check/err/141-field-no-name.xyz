@@ -1,0 +1,5 @@
+struct P { x: u32 }
+fn main() -> u32 {
+  let p = P { x: 1 };
+  *@field(p, "w")
+}

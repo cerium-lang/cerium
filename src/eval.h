@@ -14,6 +14,9 @@
 #include "sym.h"
 #include "type.h"
 
+struct Fenv; /* the body's frame (body.h): a name argument reads a
+              * const for round's value against it (bltname) */
+
 /* a value the walk carries: a scalar in its own two words, an
  * aggregate as its elements, a type as a reference -- one Val each,
  * the nesting recursive. The aggregate half carries a tag beside the
@@ -21,8 +24,9 @@
  * own bits never sit in the tag, so no consumer has to ask which
  * kind of bits it is holding -- i is a value, tag is an aggregate's
  * own metadata (08-reflection.md) */
-typedef struct Val Val;
-struct Val
+struct Val /* the typedef sits in ast.h's forward set, beside the tree
+            * whose let member spells it bare -- one typedef is all
+            * C89 allows, and this is not its home */
 {
   Type  *t;    /* what the checker would say; the derivation's answer */
   u64    i;    /* an integer's or a bool's bits, two's complement */
@@ -45,6 +49,13 @@ struct Val
  * (01-types.md). A row number is always below the field count, so
  * this one is never a row's */
 #define VNONROW ((u64) ~(u64) 0)
+
+Val ceval(Ast *e, Env env, Type *want); /* an expression's value, where its
+                                         * inputs are compile-time known: the
+                                         * const for's iterand, a builtin's
+                                         * name argument, a const's own
+                                         * initializer (08-reflection.md) */
+Val valint(u64 v, Type *t);             /* an integer's or a bool's value */
 
 void cevalsym(Sym *s);                      /* a const's value, now or never: the
                                              * initializer must be compile-time known
@@ -74,5 +85,19 @@ Ast *valtoexpr(Val v, Ast *at);             /* a value the walk holds, back to
                                              * the expression that spells it: the
                                              * body pass's rewrites read it
                                              * (08-reflection.md) */
+Ast *mknear(Nk k, Ast *at);                 /* a node with another's position:
+                                             * the materialized tree reports
+                                             * where it stands, not wherever
+                                             * the lexer happens to sit */
+char *cstrval(Val v, Ast *at);              /* a name the model spells ([]u8,
+                                             * one byte a value) as the
+                                             * compiler's own C string: the
+                                             * field a walk looks up is named
+                                             * in the value's bytes
+                                             * (08-reflection.md) */
+char *bltname(Ast *a, struct Fenv *fe);     /* the name a builtin's argument
+                                             * holds: a literal's own bytes,
+                                             * or the value the evaluator
+                                             * resolves (08-reflection.md) */
 
 #endif

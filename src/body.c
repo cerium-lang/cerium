@@ -41,6 +41,7 @@
 #include "check.h"
 #include "die.h"
 #include "eval.h"
+#include "layout.h"
 #include "lex.h"
 #include "sym.h"
 #include "type.h"
@@ -526,6 +527,20 @@ thawargs(Frzsave *svs, usize n)
     frzrestore(&svs[i - 1]);
 }
 
+/* the operand of a deref that is -- or by its own rewrite will have
+ * become -- an inline borrow: &mut p.x, or @field(p, "x"), the same
+ * borrow spelled by name (08-reflection.md). The deref spends the
+ * borrow whole: it dies the moment it is made, so the walk around
+ * it tells freeze to hold its hand (01-types.md) */
+static int
+spentborrow(Ast *operand)
+{
+  if (operand->k == Nun && operand->v.un.op == Tamp)
+    return 1;
+  return operand->k == Nbuiltin && strcmp(operand->v.blt.name, "field") == 0 &&
+         !vlen(operand->v.blt.targs) && vlen(operand->v.blt.args) == 2;
+}
+
 /* a call to a named fn, overload chain and all. tys holds the
  * generic bindings while the arguments are walked. */
 static Type *
@@ -833,7 +848,100 @@ rbuiltin(Ast *e, Fenv *fe, Type *want)
       return rexpr(e, fe, want);
     }
   }
-  /* offset, field, count: reflection's own pass */
+  if (strcmp(nm, "offset") == 0) { /* a field's own place in the type's
+                                    * whole: the layout query, folded
+                                    * where it stands (02-layout.md) */
+    Type *t;
+    char *fnm;
+    usize i;
+
+    if (nt != 1 || na != 1)
+      berr(e, "@offset takes one type argument and the field's name (02-layout.md)");
+    if (targs[0]->k == Nun && targs[0]->v.un.op == Tdollar2) {
+      /* the deferred splice, @typeinfo's own shape: the answer typed
+       * and zeroed where no runtime read reaches it (08) */
+      if (bodyfn && bodyfn->evaled)
+        return tyint(IN_USIZE);
+      berr(e, "the splice names a value this walk holds no frame for -- a parameter's, a "
+              "local's: name a const, or call the fn at compile time (08-reflection.md)");
+    }
+    t = rty(targs[0], &fe->env);
+    if (t->k == Typaram)
+      berr(e, "@offset of a generic parameter arrives with generic specialization "
+              "(04-generics.md)");
+    targs[0]->ty = t;
+    fnm = bltname(args[0], fe); /* the name: a literal's bytes, a
+                                 * const for's round -- whatever the
+                                 * evaluator resolves, and nothing
+                                 * else */
+    if (t->k != Tystruct && t->k != Tyunion)
+      berr(e, "%s has no fields to offset (02-layout.md)", btys(t));
+    for (i = 0; i < t->sym->nfields; i++)
+      if (strcmp(t->sym->fields[i].name, fnm) == 0)
+        break;
+    if (i == t->sym->nfields)
+      berr(args[0], "'%s' has no field '%s' (02-layout.md)", t->sym->name, fnm);
+    { /* the layout's own answer, a constant the walks read as one */
+      Ast *x = valtoexpr(valint(fieldoffof(t, i), tyint(IN_USIZE)), e);
+
+      memset(&e->v, 0, sizeof e->v);
+      e->k = x->k;
+      memcpy(&e->v, &x->v, sizeof e->v);
+      return rexpr(e, fe, want);
+    }
+  }
+  if (strcmp(nm, "field") == 0) { /* the field's address, the name
+                                   * spelled in the value's bytes:
+                                   * rewritten the hand's own borrow,
+                                   * every rule the access has the
+                                   * rewrite's (08-reflection.md) */
+    Type  *vt;
+    char  *fnm;
+    Field *f;
+    usize  i;
+    Ast   *acc;
+
+    if (nt != 0 || na != 2)
+      berr(e, "@field takes the value and the field's name (08-reflection.md)");
+    vt = rplace(args[0], fe); /* a place, read: the borrow this rewrite
+                               * spells is of the place's own field,
+                               * and borrowing reads, never moves --
+                               * a global or a computed base falls to
+                               * the value walk (03-move.md) */
+    if (!vt)
+      vt = rexpr(args[0], fe, 0);
+    while (vt && vt->k == Tymut) /* the permission, not the shape */
+      vt = vt->t;
+    fnm = bltname(args[1], fe); /* the name: a literal's bytes, a const
+                                 * for's round (10-iteration.md is what
+                                 * makes one compile-time known) */
+    if (!vt || (vt->k != Tystruct && vt->k != Tyunion))
+      berr(args[0],
+           "@field reads a struct's or a union's field: %s is neither "
+           "(08-reflection.md)",
+           btys(vt));
+    for (i = 0; i < vt->sym->nfields; i++)
+      if (strcmp(vt->sym->fields[i].name, fnm) == 0)
+        break;
+    if (i == vt->sym->nfields)
+      berr(args[1], "'%s' has no field '%s' (08-reflection.md)", vt->sym->name, fnm);
+    f = &vt->sym->fields[i];
+    { /* &v.name -- &mut where the field is mut, so a write through
+       * the address is governed by the field's own mut, exactly as
+       * v.name's is. The borrow checks, the packed rule, the place
+       * itself: the access's own, unchanged */
+      acc = mknear(Naccess, e);
+      acc->v.fld.e = args[0];
+      acc->v.fld.name = f->name;
+      memset(&e->v, 0, sizeof e->v);
+      e->k = Nun;
+      e->v.un.op = Tamp;
+      e->v.un.mut = f->mut;
+      e->v.un.e = acc;
+      return rexpr(e, fe, want);
+    }
+  }
+  /* count: packs' own (04-generics.md) */
   berr(e, "@%s arrives with reflection (08-reflection.md)", nm);
   return 0; /* unreachable */
 }
@@ -1314,8 +1422,15 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                          * value's (08-reflection.md) */
       berr(e, "a splice names a type slot (08-reflection.md)");
     {
-      Type *t = rexpr(e->v.un.e, fe, 0);
+      Type *t;
+      int   spent = op == Tstar && spentborrow(e->v.un.e);
 
+      if (spent) /* the deref spends the borrow whole: it freezes
+                  * nothing past the expression (01-types.md) */
+        fe->nofreeze++;
+      t = rexpr(e->v.un.e, fe, 0);
+      if (spent)
+        fe->nofreeze--;
       switch (op) {
       case Tminus:
         if (t && isnumty(t))
@@ -2889,8 +3004,15 @@ placewritable(Ast *p, Fenv *fe)
   }
   case Nun:
     if (p->v.un.op == Tstar) { /* *p = v: p must be a *mut */
-      Type *pt = rexpr(p->v.un.e, fe, 0);
+      Type *pt;
+      int   spent = spentborrow(p->v.un.e);
 
+      if (spent) /* the same spend: asking the type again freezes
+                  * nothing either (01-types.md) */
+        fe->nofreeze++;
+      pt = rexpr(p->v.un.e, fe, 0);
+      if (spent)
+        fe->nofreeze--;
       return pt && pt->k == Typtr && pt->t->k == Tymut;
     }
     return 0;
@@ -2920,6 +3042,16 @@ rstmt(Ast *st, Fenv *fe)
     }
     st->ty = t ? t : et; /* what the pattern binds, for the emitter */
     rpat(st->v.let.pat, t ? t : et, fe, st->v.let.mut);
+    if (st->v.let.cv && st->v.let.pat->k == Npath && vlen(st->v.let.pat->v.path.segs) == 1 &&
+        !st->v.let.pat->v.path.root) {
+      /* the unroll's own round value, riding the binding it spelled:
+       * a name argument read against this frame finds its bytes on
+       * the local (08-reflection.md) */
+      Local *l = locfind(fe, st->v.let.pat->v.path.segs[0]->v.seg.name);
+
+      if (l)
+        l->cv = st->v.let.cv;
+    }
     return;
   }
   case Nassign: {

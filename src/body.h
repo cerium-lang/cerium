@@ -20,6 +20,9 @@ struct Local
   int   frzby;   /* the borrowing binding's index, to thaw when it dies */
   char *frzpath; /* the borrowed field chain, ".a.b"; NULL is the root */
   Type *cur;     /* the narrowed type, ty until a check narrows it */
+  Val  *cv;      /* a const for round's value, when the unroll spelled
+                  * the binding: a name's bytes are read from it
+                  * (08-reflection.md) */
 };
 
 typedef struct Fenv Fenv;
@@ -32,6 +35,9 @@ struct Fenv
   usize  loopbase; /* bindings alive when the outermost loop began: a
                     * move of one of those repeats every round (03) */
   Type *fnret;     /* the enclosing fn's return, for return and ? */
+  int   nofreeze;  /* an inline borrow the deref below is spending
+                    * whole: it reserves nothing past the expression,
+                    * so freeze holds its hand (01-types.md) */
 };
 
 /* what a call's receiver borrow displaced, and its way back */

@@ -67,6 +67,7 @@ locpush(Fenv *fe, char *name, Type *ty, int mut)
   ls[fe->n].frzby = -1;
   ls[fe->n].frzpath = 0;
   ls[fe->n].cur = ty;
+  ls[fe->n].cv = 0;
   fe->ls = ls;
   fe->n++;
 }
@@ -367,8 +368,12 @@ void
 freeze(Ast *place, Fenv *fe, int mut, int by)
 {
   char   buf[256];
-  Local *root = placeroot(place, fe, buf, sizeof buf);
+  Local *root;
 
+  if (fe->nofreeze)
+    return; /* a borrow being spent by the deref around it: it dies
+             * the moment it is made, so it holds nothing (01) */
+  root = placeroot(place, fe, buf, sizeof buf);
   if (!root)
     return; /* *p: across the pointer is a promise, not a proof (01) */
   if (mut)

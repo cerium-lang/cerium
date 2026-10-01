@@ -73,6 +73,8 @@ const char *nkname(Nk k);
 typedef struct Ast  Ast;
 typedef struct Sym  Sym;  /* sym.h, one step later in the includes */
 typedef struct Type Type; /* type.h, one step later in the includes */
+typedef struct Val  Val;  /* eval.h, later in the includes: a let
+                           * carries one beside it, spelled bare */
 
 struct Ast
 {
@@ -288,8 +290,12 @@ struct Ast
     {
       int  mut;
       Ast *pat;
-      Ast *t; /* : T, or NULL */
-      Ast *e; /* = e */
+      Ast *t;  /* : T, or NULL */
+      Ast *e;  /* = e */
+      Val *cv; /* the round's own value, when a const for's
+                * unroll spelled this let: the walks that read
+                * a name's bytes take them from it
+                * (08-reflection.md); NULL: the program's own */
     } let;
     struct
     {
@@ -298,9 +304,11 @@ struct Ast
                       source; the iterable */
       Ast  *body;
       Ast **unroll; /* Ncfor only: the statements the iteration
-                     * spelled, each round's let and the body --
-                     * shared between the rounds, for the passes read
-                     * it without writing it (10-iteration.md) */
+                     * spelled, each round's let and the body -- a
+                     * round's own copy of the body's statements, for
+                     * the passes write what they walk (the builtins'
+                     * rewrites answer per round), and what one round
+                     * wrote the next must not read (10-iteration.md) */
     } forx;
     struct
     {
@@ -349,6 +357,12 @@ enum
  * the caller fills the union. Anything set to NULL where a vector is
  * wanted means "empty". */
 Ast *mk(Nk k);
+
+/* a deep copy of a node, children and vectors whole -- names, bytes,
+ * types and symbols ride along shared. A const for's rounds each
+ * walk their own copy, for the passes write what they walk
+ * (10-iteration.md) */
+Ast *astclone(Ast *n);
 
 /* raw arena bytes for the passes after the tree: types and symbols
  * outlive it, and nothing is freed either */

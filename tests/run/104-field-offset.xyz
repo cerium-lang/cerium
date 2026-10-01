@@ -1,0 +1,58 @@
+/* @field and @offset, every face they show: the layout query folded
+ * where it stands (padding counted, a union's every row at zero),
+ * the address under the borrow's own rules (a read, a write through
+ * a mut field, the hand's own spelling of the same inline borrow),
+ * and the walk the spec promises -- a const for over @typeinfo's
+ * field rows, each round's name its own, each round's rewrite its
+ * own (08-reflection.md) */
+
+struct P { x: u32, y: u64, mut z: u32 }
+union U { a: u32, b: u64 }
+
+const FS: []Field = match @typeinfo<P>() {
+  TypeInfo::Struct { fields, .. } => fields,
+  _ => @compileError("P is a struct"),
+};
+
+fn offsets() -> u32 { /* x at 0, y past the pad at 8, z at 16; the
+                       * union's rows all at 0: 0+8+16+0+0 */
+  @cast<u32>(@offset<P>("x")) + @cast<u32>(@offset<P>("y")) +
+    @cast<u32>(@offset<P>("z")) + @cast<u32>(@offset<U>("a")) +
+    @cast<u32>(@offset<U>("b"))
+}
+
+fn fieldrw() -> u32 { /* the address read and written: 1 + 40, the
+                       * write lands and the read after it is no
+                       * one's borrow (01-types.md) */
+  let p = P { x: 1, y: 2, z: 3 };
+  let r = *@field(p, "x");
+  *@field(p, "z") = 40;
+  r + p.z
+}
+
+fn handrw() -> u32 { /* the hand's own spelling: the deref spends
+                      * the inline borrow whole: 3 + 40 */
+  let p = P { x: 1, y: 2, z: 3 };
+  let r = *(&mut p.z);
+  *(&mut p.z) = 40;
+  r + p.z
+}
+
+fn unionread() -> u32 { /* the one row the write made active: 7 */
+  let u = U { a: 7 };
+  *@field(u, "a")
+}
+
+fn walk() -> u32 { /* the const for's rounds: each name resolves in
+                    * its own round, the rows summed 1+2+3 */
+  let p = P { x: 1, y: 2, z: 3 };
+  let mut r: u32 = 0;
+  const for f in FS {
+    r += @cast<u32>(*@field(p, f.name));
+  }
+  r
+}
+
+fn main() -> u32 {
+  offsets() + fieldrw() + handrw() + unionread() + walk()
+}

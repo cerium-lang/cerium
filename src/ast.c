@@ -700,3 +700,283 @@ dumpast(Ast *n)
   dumpnode(n, 0);
   putchar('\n');
 }
+
+/* -- the clone (10-iteration.md) ------------------------------------------
+ * A const for's rounds each walk the body's statements, and the
+ * walks WRITE what they walk -- a builtin rewrites itself into the
+ * answer it gives (@field into the borrow it spells, @offset into
+ * the constant it folds), and what one round wrote the next round
+ * must not read. So each round takes its own copy of the body: the
+ * names a round's let spelled resolve through the frame, and the
+ * copy's rewrites are the round's own. The dump's own child table
+ * is the map of what is deep and what rides along: names, literal
+ * bytes, types and symbols are the arena's and shared; every child
+ * node and every vector of them is copied whole. */
+
+static Ast *clonen(Ast *n);
+
+static Ast **
+clonev(Ast **v)
+{
+  Ast **r;
+  usize i, n = vlen(v);
+
+  if (!v)
+    return 0;
+  r = vnew(Ast *, n ? n : 1);
+  for (i = 0; i < n; i++) {
+    Ast *c = clonen(v[i]);
+
+    vappend(&r, &c);
+  }
+  return r;
+}
+
+static Ast *
+clonen(Ast *n)
+{
+  Ast *c;
+
+  if (!n)
+    return 0;
+  c = bump(sizeof *c);
+  memset(c, 0, sizeof *c); /* the calloc semantics the tree relies on */
+  c->k = n->k;
+  c->line = n->line;
+  c->col = n->col;
+  c->pub = n->pub;
+  c->attrs = n->attrs; /* attribute rows are literals: shared */
+  c->ty = n->ty;
+  switch (n->k) {
+  case Nint:
+  case Nbool:
+  case Nflt:
+  case Nbyte:
+  case Nstr:
+  case Nunit:
+  case Nbreak:
+  case Ncontinue:
+  case Npwild:
+  case Nttype:
+  case Ncap:
+    c->v = n->v; /* the scalars and the names: no children */
+    return c;
+  case Ntuple:
+  case Npor:
+  case Nptuple:
+  case Nbarestructlit:
+  case Nttuple:
+    c->v.list.ts = clonev(n->v.list.ts);
+    return c;
+  case Nseg:
+  case Nattr:
+    c->v.seg = n->v.seg;
+    c->v.seg.args = clonev(n->v.seg.args);
+    return c;
+  case Npath:
+    c->v.path = n->v.path; /* sym and tys: what checking wrote --
+                            * NULL before the first walk, shared
+                            * after (the types are the arena's) */
+    c->v.path.segs = clonev(n->v.path.segs);
+    return c;
+  case Nbin:
+  case Nassign:
+  case Nrange:
+    c->v.bin = n->v.bin;
+    c->v.bin.l = clonen(n->v.bin.l);
+    c->v.bin.r = clonen(n->v.bin.r);
+    return c;
+  case Nun:
+  case Nspread:
+  case Ntopt:
+  case Ntmut:
+  case Ntptr:
+    c->v.un = n->v.un;
+    c->v.un.e = clonen(n->v.un.e);
+    return c;
+  case Ncall:
+  case Nmatch:
+    c->v.call = n->v.call;
+    c->v.call.f = clonen(n->v.call.f);
+    c->v.call.args = clonev(n->v.call.args);
+    return c;
+  case Nindex:
+    c->v.n2 = n->v.n2;
+    c->v.n2.a = clonen(n->v.n2.a);
+    c->v.n2.b = clonen(n->v.n2.b);
+    return c;
+  case Nrangeindex:
+    c->v.ridx = n->v.ridx;
+    c->v.ridx.e = clonen(n->v.ridx.e);
+    c->v.ridx.lo = clonen(n->v.ridx.lo);
+    c->v.ridx.hi = clonen(n->v.ridx.hi);
+    return c;
+  case Naccess:
+    c->v.fld = n->v.fld;
+    c->v.fld.e = clonen(n->v.fld.e);
+    return c;
+  case Ntupidx:
+    c->v.tup = n->v.tup;
+    c->v.tup.e = clonen(n->v.tup.e);
+    return c;
+  case Ntry:
+  case Nreturn:
+  case Nexprstmt:
+    c->v.n1 = n->v.n1;
+    c->v.n1.e = clonen(n->v.n1.e);
+    return c;
+  case Nif:
+  case Ncif:
+    c->v.ifx = n->v.ifx;
+    c->v.ifx.cond = clonen(n->v.ifx.cond);
+    c->v.ifx.then = clonen(n->v.ifx.then);
+    c->v.ifx.els = clonen(n->v.ifx.els);
+    return c;
+  case Narm:
+  case Ntresult:
+    c->v.n2 = n->v.n2;
+    c->v.n2.a = clonen(n->v.n2.a);
+    c->v.n2.b = clonen(n->v.n2.b);
+    return c;
+  case Nblock:
+    c->v.blk = n->v.blk;
+    c->v.blk.stmts = clonev(n->v.blk.stmts);
+    c->v.blk.tail = clonen(n->v.blk.tail);
+    return c;
+  case Narraylit:
+  case Ntarray:
+    c->v.arrlit = n->v.arrlit;
+    c->v.arrlit.len = clonen(n->v.arrlit.len);
+    c->v.arrlit.t = clonen(n->v.arrlit.t);
+    c->v.arrlit.es = clonev(n->v.arrlit.es);
+    return c;
+  case Nstructlit:
+    c->v.slit = n->v.slit;
+    c->v.slit.path = clonen(n->v.slit.path);
+    c->v.slit.inits = clonev(n->v.slit.inits);
+    return c;
+  case Ninit:
+  case Npfield:
+    c->v.init = n->v.init;
+    c->v.init.e = clonen(n->v.init.e);
+    return c;
+  case Nclosure:
+    c->v.clos = n->v.clos;
+    c->v.clos.caps = clonev(n->v.clos.caps);
+    c->v.clos.params = clonev(n->v.clos.params);
+    c->v.clos.ret = clonen(n->v.clos.ret);
+    c->v.clos.body = clonen(n->v.clos.body);
+    return c;
+  case Nbuiltin:
+    c->v.blt = n->v.blt;
+    c->v.blt.targs = clonev(n->v.blt.targs);
+    c->v.blt.args = clonev(n->v.blt.args);
+    return c;
+  case Ntfn:
+    c->v.fnty = n->v.fnty;
+    c->v.fnty.args = clonev(n->v.fnty.args);
+    c->v.fnty.ret = clonen(n->v.fnty.ret);
+    return c;
+  case Ntdyn:
+    c->v.tdyn = n->v.tdyn;
+    c->v.tdyn.e = clonen(n->v.tdyn.e);
+    c->v.tdyn.assocs = clonev(n->v.tdyn.assocs);
+    return c;
+  case Nfn:
+    c->v.fn = n->v.fn;
+    c->v.fn.gparams = clonev(n->v.fn.gparams);
+    c->v.fn.params = clonev(n->v.fn.params);
+    c->v.fn.ret = clonen(n->v.fn.ret);
+    c->v.fn.body = clonen(n->v.fn.body);
+    return c;
+  case Nstruct:
+  case Nunion:
+  case Ntrait:
+    c->v.ty = n->v.ty;
+    c->v.ty.gparams = clonev(n->v.ty.gparams);
+    c->v.ty.fields = clonev(n->v.ty.fields);
+    c->v.ty.members = clonev(n->v.ty.members);
+    return c;
+  case Nenum:
+    c->v.en = n->v.en;
+    c->v.en.gparams = clonev(n->v.en.gparams);
+    c->v.en.tag = clonen(n->v.en.tag);
+    c->v.en.variants = clonev(n->v.en.variants);
+    return c;
+  case Nvariant:
+    c->v.variant = n->v.variant;
+    c->v.variant.discexpr = clonen(n->v.variant.discexpr);
+    c->v.variant.payload = clonev(n->v.variant.payload);
+    return c;
+  case Nfield:
+    c->v.variant = n->v.variant;
+    c->v.variant.t = clonen(n->v.variant.t);
+    return c;
+  case Nimpl:
+    c->v.impl = n->v.impl;
+    c->v.impl.gparams = clonev(n->v.impl.gparams);
+    c->v.impl.path = clonen(n->v.impl.path);
+    c->v.impl.fort = clonen(n->v.impl.fort);
+    c->v.impl.members = clonev(n->v.impl.members);
+    return c;
+  case Ntypedef:
+    c->v.td = n->v.td;
+    c->v.td.gparams = clonev(n->v.td.gparams);
+    c->v.td.t = clonen(n->v.td.t);
+    return c;
+  case Nuse:
+    c->v.use = n->v.use;
+    c->v.use.path = clonen(n->v.use.path);
+    c->v.use.subs = clonev(n->v.use.subs);
+    return c;
+  case Nconst:
+  case Nstatic:
+    c->v.cst = n->v.cst;
+    c->v.cst.t = clonen(n->v.cst.t);
+    c->v.cst.e = clonen(n->v.cst.e);
+    return c;
+  case Nparam:
+    c->v.param = n->v.param;
+    c->v.param.t = clonen(n->v.param.t);
+    return c;
+  case Ngparam:
+    c->v.gp = n->v.gp;
+    c->v.gp.bounds = clonev(n->v.gp.bounds);
+    c->v.gp.dflt = clonen(n->v.gp.dflt);
+    c->v.gp.t = clonen(n->v.gp.t);
+    return c;
+  case Nlet:
+    c->v.let = n->v.let;
+    c->v.let.pat = clonen(n->v.let.pat);
+    c->v.let.t = clonen(n->v.let.t);
+    c->v.let.e = clonen(n->v.let.e);
+    return c;
+  case Nfor:
+  case Ncfor:
+    c->v.forx = n->v.forx;
+    c->v.forx.a = clonen(n->v.forx.a);
+    c->v.forx.b = clonen(n->v.forx.b);
+    c->v.forx.body = clonen(n->v.forx.body);
+    c->v.forx.unroll = 0; /* the inner unroll is spelled again, in
+                           * the copy's own round (10-iteration.md) */
+    return c;
+  case Nppath:
+    c->v.ppath = n->v.ppath;
+    c->v.ppath.path = clonen(n->v.ppath.path);
+    c->v.ppath.payload = clonev(n->v.ppath.payload);
+    return c;
+  case Npstruct:
+    c->v.pstruct = n->v.pstruct;
+    c->v.pstruct.fields = clonev(n->v.pstruct.fields);
+    return c;
+  default:
+    die("internal: clone: unhandled kind %s", nkname(n->k));
+    return 0; /* unreachable */
+  }
+}
+
+Ast *
+astclone(Ast *n)
+{
+  return clonen(n);
+}
