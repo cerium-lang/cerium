@@ -1,0 +1,8 @@
+/* a const if condition must be compile-time known: a runtime read
+ * is not, and the refusal lands on the name, where the const was
+ * asked for (08-reflection.md) */
+static mut X: u32 = 1;
+fn main() -> u32 {
+  let x = X;
+  const if x > 0 { 1 } else { 0 }
+}

@@ -542,6 +542,8 @@ mustexit(Ast *st)
     return n ? mustexit(ss[n - 1]) : mustexit(st->v.blk.tail);
   }
   case Nif:
+  case Ncif: /* both branches leaving is leaving, whichever runs -- a
+              * syntax fact the black box cannot blur (03-move.md) */
     return st->v.ifx.els && mustexit(st->v.ifx.then) && mustexit(st->v.ifx.els);
   case Nmatch: {
     Ast **arms = st->v.call.args;

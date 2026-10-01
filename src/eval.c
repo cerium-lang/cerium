@@ -95,6 +95,42 @@ static usize ncforlets;
  * the binding walks them (04-generics.md) */
 int evalblackbox;
 
+/* the const parameters of the fn whose body the pass is walking: the
+ * frame this walk builds holds them empty, and the evaluator, meeting
+ * a name no running frame answers, asks here -- the box again, the
+ * read deferring to the re-check under the binding, whose walk folds
+ * the name before the evaluator ever sees it (08-reflection.md).
+ * Marked around the walk, cleared after: outside it the table is
+ * empty, and a name the frame the evaluator runs holds is answered
+ * before this is ever asked */
+static struct
+{
+  char *name;
+  Type *ty;
+}           *cparams;
+static usize ncparams;
+
+void
+cparammark(Ast **ps, Type **argtys, usize n)
+{
+  usize i;
+
+  cparams = arenaalloc((n ? n : 1) * sizeof *cparams);
+  ncparams = 0;
+  for (i = 0; i < n; i++)
+    if (ps[i]->v.param.cnst) {
+      cparams[ncparams].name = ps[i]->v.param.name;
+      cparams[ncparams].ty = argtys[i];
+      ncparams++;
+    }
+}
+
+void
+cparamclear(void)
+{
+  ncparams = 0;
+}
+
 /* -- the value domain ---------------------------------------------------- */
 
 /* a type's name, for a message: two a line, at the most */
@@ -1730,6 +1766,20 @@ ceval(Ast *e, Env env, Type *want)
                nm);
       }
     }
+    if (nlocs == locbase &&
+        ncparams) { /* a const parameter of the fn
+                     * whose body the pass is walking, no running frame answering:
+                     * the box -- the re-check under the binding folds the name
+                     * before the evaluator ever sees it, and a frame a
+                     * compile-time call runs was answered above (08-reflection.md) */
+      usize ci;
+
+      for (ci = 0; ci < ncparams; ci++)
+        if (strcmp(cparams[ci].name, nm) == 0) {
+          evalblackbox++;
+          return valint(0, cparams[ci].ty);
+        }
+    }
     s = symfind(nm);
     if (!s) { /* Some, None, Ok: a bare constructor, the want naming
                * the enum (01-types.md) */
@@ -1747,7 +1797,12 @@ ceval(Ast *e, Env env, Type *want)
       cerrat(e, "'%s' is not a const here (08-reflection.md)", nm);
     return symval(s, e);
   }
-  case Nif: { /* the condition is known, so the branch is (08) */
+  case Nif:
+  case Ncif: { /* the condition is known, so the branch is (08); the
+                * const marker changes nothing in a fn the evaluator
+                * runs -- every value is compile-time known here or
+                * the fn would not run, and the walk checked the
+                * marker's own requirement (08-reflection.md) */
     Val c = ceval(e->v.ifx.cond, env, tybool());
 
     if (c.t->k != Tybool)
@@ -1755,8 +1810,11 @@ ceval(Ast *e, Env env, Type *want)
     if (c.i)
       return execblk(e->v.ifx.then, env, want);
     if (e->v.ifx.els)
-      return e->v.ifx.els->k == Nif ? ceval(e->v.ifx.els, env, want)
-                                    : execblk(e->v.ifx.els, env, want);
+      return e->v.ifx.els->k == Nif ||
+                     e->v.ifx.els->k == Ncif /* an
+                                              * if-chain, either marker: the chain runs on */
+                 ? ceval(e->v.ifx.els, env, want)
+                 : execblk(e->v.ifx.els, env, want);
     return valint(0, tyunit()); /* no else: the statement form; a
                                  * value wanted of it is the mismatch
                                  * it is */
@@ -2371,6 +2429,11 @@ execstmt(Ast *st, Env env)
   }
   case Nexprstmt:
     ceval(st->v.n1.e, env, 0);
+    return;
+  case Ncif: /* a const if in statement position: the evaluator picks
+              * its branch the way the value walk does, the taken
+              * block run as itself (08-reflection.md) */
+    ceval(st, env, tyunit());
     return;
   case Nfor:
     execfor(st, env);
