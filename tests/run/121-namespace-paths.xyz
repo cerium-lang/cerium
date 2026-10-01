@@ -1,0 +1,14 @@
+/* the namespace tree's first real branch: std::meta, the embedded
+ * source's own (11-namespaces.md). A path reads it -- a type in
+ * type position, a const through the ::value walk, the rooted ::
+ * spelling beside -- the namespaced read resolving in the namespace
+ * it lands in, not the bare name's fallthrough. */
+fn main() -> i32 {
+  let t: std::meta::TypeInfo = @typeinfo<i32>();  /* std's, by its
+                                                   * path */
+  let s = @cast<i32>(std::meta::is_same<i32, i32>::value);   /* 1 */
+  let d = @cast<i32>(std::meta::is_same<i32, u32>::value);   /* 0 */
+  let r = @cast<i32>(::std::meta::is_same<u8, u8>::value);   /* 1: the
+                                                   * rooted spelling */
+  s*2 + r*4 + d        /* 0b110: 6 */
+}

@@ -342,6 +342,30 @@ memberfind(Sym *s, const char *name)
   return 0;
 }
 
+/* the namespace head of a path: how many leading segments walk the
+ * root's sub-namespaces (std::meta::...), and the namespace they
+ * land in. 0 when the first segment names no sub-namespace -- the
+ * path is not a namespaced one, and the caller's own reading
+ * stands. The whole path a namespace walk leaves nothing behind:
+ * the caller decides what that must mean (11-namespaces.md). */
+usize
+nshead(Ast **segs, usize nsegs, Ns **nsp)
+{
+  Ns   *ns = nsroot();
+  usize k = 0;
+
+  while (k < nsegs) {
+    Ns *sub = nschild(ns, segs[k]->v.seg.name);
+
+    if (!sub)
+      break;
+    ns = sub;
+    k++;
+  }
+  *nsp = ns;
+  return k;
+}
+
 /* a path in type position */
 Type *
 rpath(Ast *p, Env *env)
@@ -353,6 +377,28 @@ rpath(Ast *p, Env *env)
   char  *name;
   Type **args;
   usize  nargs;
+
+  s = 0;
+  { /* the namespace head: std::meta::... walking the root's
+     * sub-namespaces to the type's own segment, the one segment
+     * left (11-namespaces.md) */
+    Ns   *ns;
+    usize k = nshead(segs, nsegs, &ns);
+
+    if (k) {
+      if (k == nsegs)
+        cerrat(p, "a namespace names no type; the path ends inside it (11-namespaces.md)");
+      seg = segs[k];
+      name = seg->v.seg.name;
+      s = nsitem(ns, name); /* the type lands where the walk did --
+                             * the bare name's fallthrough below is
+                             * not this path's */
+      if (!s)
+        cerrat(p, "unknown type '%s' in %s", name, nsname(ns));
+      if (nsegs - k != 1)
+        cerrat(p, "a type is the namespace path's end; nothing follows it (11-namespaces.md)");
+    }
+  }
 
   if (nsegs == 2 && !p->v.path.root && strcmp(segs[0]->v.seg.name, "Self") == 0 &&
       (env->strait || env->impl)) {
@@ -406,33 +452,36 @@ rpath(Ast *p, Env *env)
       }
     }
   }
-  if (nsegs != 1)
-    cerrat(p, "a qualified type name needs its namespace (not yet)");
-  seg = segs[0];
-  name = seg->v.seg.name;
-  {
-    Type *t = prim(name);
+  if (!s) { /* the bare name's own path: the whole single-file
+             * namespace, the prelude's std half still answering a
+             * bare name through symfind's fallthrough
+             * (11-namespaces.md) */
+    if (nsegs != 1)
+      cerrat(p, "a qualified type name needs its namespace (not yet)");
+    seg = segs[0];
+    name = seg->v.seg.name;
+    {
+      Type *t = prim(name);
 
-    if (t) {
-      if (seg->v.seg.args)
-        cerrat(p, "'%s' takes no type arguments", name);
-      return t;
+      if (t) {
+        if (seg->v.seg.args)
+          cerrat(p, "'%s' takes no type arguments", name);
+        return t;
+      }
     }
-  }
-  if (!p->v.path.root) {
-    Type *t = envfind(env, name);
+    if (!p->v.path.root) {
+      Type *t = envfind(env, name);
 
-    if (t) {
-      if (t->k == Typaram && t->gp->v.gp.cnst)
-        cerrat(p, "'%s' is a value parameter, not a type", name);
-      return t;
+      if (t) {
+        if (t->k == Typaram && t->gp->v.gp.cnst)
+          cerrat(p, "'%s' is a value parameter, not a type", name);
+        return t;
+      }
     }
+    s = symfind(name);
+    if (!s)
+      cerrat(p, "unknown type '%s'", name);
   }
-  /* ::name reaches the root, which is where the one namespace
-   * already is (11-namespaces.md) */
-  s = symfind(name);
-  if (!s)
-    cerrat(p, "unknown type '%s'", name);
   if (s->kind == Sfn || s->kind == Sconst || s->kind == Sstatic)
     cerrat(p, "'%s' is not a type", name);
   args = rargs(seg, env, &nargs);
@@ -1446,7 +1495,7 @@ checkoverlap(Sym *a, Sym *b)
 static Sym **syms;
 
 static void
-declare(Ast **items)
+declare(Ast **items, Ns *ns)
 {
   usize i, n = vlen(items);
 
@@ -1510,7 +1559,7 @@ declare(Ast **items)
       ngps = vlen(gps);
       if (prim(name))
         cerrat(it, "'%s' names a scalar type and cannot be declared", name);
-      s = symdecl(name, kind, it, gps, ngps);
+      s = nsdecl(ns, name, kind, it, gps, ngps);
       if (!s)
         cerrat(it, "'%s' is declared twice", name);
       if (kind == Stype)
@@ -1582,14 +1631,16 @@ checkdefaults(Sym *s)
 /* pass 1 + 2: every name declared, then every declaration resolved.
  * The user's file walks this inside checkfile; std's embedded source
  * walks it alone first, under a clean symbol table -- its items are
- * self-contained (types only), and nothing of it reaches the user's
- * dumps or output. */
+ * self-contained, and nothing of it reaches the user's dumps or
+ * output. The namespace the declarations land in is the caller's:
+ * the root's for the user's items, std::meta for the embedded
+ * source's (11-namespaces.md). */
 void
-checkdecls(Ast **items)
+checkdecls(Ast **items, Ns *ns)
 {
   usize i, n = vlen(items);
 
-  declare(items);
+  declare(items, ns);
   for (i = 0; i < n; i++) {
     Ast *it = items[i];
     Sym *s = syms[i];
@@ -1656,7 +1707,7 @@ checkfile(Ast **items)
   Sym **impls;
   usize nimpls;
 
-  checkdecls(items);
+  checkdecls(items, nsroot());
 
   /* pass 3: traits and impls, then coherence. The bounds check runs
    * first so a bound nobody overlaps against still gets diagnosed.

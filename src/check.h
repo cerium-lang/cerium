@@ -13,12 +13,21 @@
 
 void checkinit(void);
 void checkfile(Ast **items);
-void checkdecls(Ast **items);      /* pass 1 + 2 alone -- std's embedded
-                                    * source walks this without the user's
-                                    * passes 3 and 4 */
-void collectstdimpls(Ast **items); /* preludefile's tail: the embedded
-                                    * source's impls, members resolved
-                                    * and held for checkfile's table */
+void checkdecls(Ast **items, Ns *ns);            /* pass 1 + 2 alone -- std's embedded
+                                                  * source walks this without the user's
+                                                  * passes 3 and 4, into its own
+                                                  * namespace */
+usize nshead(Ast **segs, usize nsegs, Ns **nsp); /* resolve.c's
+                                                  * namespace-head
+                                                  * strip, shared by
+                                                  * pass 4: how many
+                                                  * leading segments
+                                                  * walk the root's
+                                                  * sub-namespaces
+                                                  * (11-namespaces.md) */
+void collectstdimpls(Ast **items);               /* preludefile's tail: the embedded
+                                                  * source's impls, members resolved
+                                                  * and held for checkfile's table */
 void checkdump(Ast **items);
 void checkbodyfn(Sym *s, Ast *it);   /* pass 4, one fn (body.c) */
 void checkbodyimpl(Sym *s, Ast *it); /* pass 4, one impl's member fns */
