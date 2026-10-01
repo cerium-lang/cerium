@@ -19,6 +19,8 @@
 
 #include "eval.h"
 
+#include "body.h"  /* the frame a name argument reads a round's value
+                   * against (bltname) */
 #include "check.h" /* cerrat, rty */
 #include "layout.h"
 #include "type.h"
@@ -322,7 +324,7 @@ ovshr(u64 a, u64 b, Type *t, Ast *at)
   return a >> b;
 }
 
-static Val
+Val
 valint(u64 v, Type *t)
 {
   Val r;
@@ -379,7 +381,7 @@ valcoerce(Val v, Type *t, Ast *at)
 /* the current frame's binding, innermost last: a later let shadows
  * an earlier one, a local shadows a const of the same name */
 static Loc *
-locfind(char *name)
+evlocfind(char *name)
 {
   usize i;
 
@@ -528,7 +530,7 @@ assignop(Tok op, Tok *base)
 
 /* -- the walk ------------------------------------------------------------ */
 
-static Val ceval(Ast *e, Env env, Type *want);
+Val        ceval(Ast *e, Env env, Type *want);
 static Val symval(Sym *s, Ast *at);
 static Val callval(Ast *e, Env env);
 static Val execblk(Ast *b, Env env, Type *want);
@@ -616,6 +618,81 @@ strslice(char *s)
   for (i = 0; i < n; i++)
     r.elems[i] = valint((u64) (unsigned char) s[i], tyint(IN_U8));
   return r;
+}
+
+/* a name the model spells ([]u8, one byte a value) as the
+ * compiler's own C string: the field a walk looks up is named in
+ * the value's bytes (08-reflection.md) */
+char *
+cstrval(Val v, Ast *at)
+{
+  char *s;
+  usize i;
+
+  if (v.t->k != Tyslice || !v.t->t || v.t->t->k != Tyint || v.t->t->num != IN_U8)
+    cerrat(at, "the name is not a string (08-reflection.md)");
+  s = arenaalloc(v.len + 1);
+  for (i = 0; i < v.len; i++)
+    s[i] = (char) v.elems[i].i;
+  s[v.len] = 0;
+  return s;
+}
+
+/* the name a builtin's argument holds: a literal's own bytes, the
+ * value the evaluator resolves -- a const, the model's own rows --
+ * or a const for's round read against the body frame that walks it
+ * (the value rides the binding the unroll spelled; the evaluator's
+ * own listing ended with the rounds). A literal builds no value --
+ * evaluation allocates nothing (08-reflection.md) -- the bytes ride
+ * the lexer's token, and the compiler consumes them here */
+char *
+bltname(Ast *a, struct Fenv *fe)
+{
+  if (a->k == Nstr) {
+    char *s = arenaalloc(a->v.s.len + 1);
+
+    memcpy(s, a->v.s.s, a->v.s.len);
+    s[a->v.s.len] = 0;
+    return s;
+  }
+  if (fe) { /* a const for's round, bound by the unroll the body's
+             * walk is inside: the value rides the local, and the
+             * bytes are read from it, not from the world the
+             * evaluator sees -- its listing ended with the rounds
+             * (08-reflection.md, 10-iteration.md) */
+    Ast  *base = a->k == Naccess ? a->v.fld.e : a;
+    char *fld = a->k == Naccess ? a->v.fld.name : 0;
+
+    if (base->k == Npath && vlen(base->v.path.segs) == 1 && !base->v.path.root) {
+      char  *nm = base->v.path.segs[0]->v.seg.name;
+      usize  ci;
+      Local *l = 0;
+
+      for (ci = fe->n; ci > 0; ci--) /* the innermost binding, as the
+                                      * frame's own finder walks it */
+        if (strcmp(fe->ls[ci - 1].name, nm) == 0) {
+          l = &fe->ls[ci - 1];
+          break;
+        }
+      if (l && l->cv) {
+        Val  *v = l->cv;
+        usize i;
+
+        if (fld) { /* f.name: the row's own field */
+          if (v->t->k != Tystruct)
+            cerrat(a, "'%s' is not a row a name reads from (08-reflection.md)", nm);
+          for (i = 0; i < (usize) v->t->sym->nfields; i++)
+            if (strcmp(v->t->sym->fields[i].name, fld) == 0)
+              break;
+          if (i == (usize) v->t->sym->nfields)
+            cerrat(a, "'%s' has no field '%s' (08-reflection.md)", v->t->sym->name, fld);
+          v = &v->elems[i];
+        }
+        return cstrval(*v, a); /* n itself: the slice the round bound */
+      }
+    }
+  }
+  return cstrval(ceval(a, envnone(), 0), a);
 }
 
 /* a slice of built rows: @typeinfo is the only writer of slice
@@ -1054,7 +1131,7 @@ structlitval(Type *t, Ast **inits, Env env, Ast *at)
  * it -- a later binding of the name shadows this one, for the find
  * walks from the top */
 static void
-locpush(char *name, Val v, int mut, Ast *at)
+evlocpush(char *name, Val v, int mut, Ast *at)
 {
   if (nlocs >= MAXLOCALS)
     cerrat(at, "too many bindings in flight (08-reflection.md)");
@@ -1198,7 +1275,7 @@ bindpat(Ast *p, Val v, int mut)
     usize    i;
 
     if (!var) { /* the binding form */
-      locpush(segs[0]->v.seg.name, v, mut, p);
+      evlocpush(segs[0]->v.seg.name, v, mut, p);
       return;
     }
     if (!p->v.ppath.payload)
@@ -1219,7 +1296,7 @@ bindpat(Ast *p, Val v, int mut)
         if (pf->v.init.e)
           bindpat(pf->v.init.e, v.elems[k], mut || var->fields[k].mut);
         else /* the field name is the binding name (09) */
-          locpush(pf->v.init.name, v.elems[k], mut || var->fields[k].mut, pf);
+          evlocpush(pf->v.init.name, v.elems[k], mut || var->fields[k].mut, pf);
       }
       return;
     }
@@ -1256,7 +1333,7 @@ bindpat(Ast *p, Val v, int mut)
       if (pf->v.init.e)
         bindpat(pf->v.init.e, v.elems[k], mut || v.t->sym->fields[k].mut);
       else /* the field name is the binding name (09) */
-        locpush(pf->v.init.name, v.elems[k], mut || v.t->sym->fields[k].mut, pf);
+        evlocpush(pf->v.init.name, v.elems[k], mut || v.t->sym->fields[k].mut, pf);
     }
     return;
   }
@@ -1305,7 +1382,7 @@ tick(Ast *e)
     cerrat(e, "evaluation did not end: the step limit (08-reflection.md)");
 }
 
-static Val
+Val
 ceval(Ast *e, Env env, Type *want)
 {
   tick(e);
@@ -1579,7 +1656,7 @@ ceval(Ast *e, Env env, Type *want)
     if (nlocs > locbase) { /* a frame is running: its bindings are
                             * the innermost names, shadowing the
                             * consts below them */
-      Loc *l = locfind(nm);
+      Loc *l = evlocfind(nm);
 
       if (l)
         return l->v;
@@ -1794,6 +1871,37 @@ ceval(Ast *e, Env env, Type *want)
       v = strcmp(nm, "sizeof") == 0 ? sizeof_(t) : alignof_(t);
       return valint(v, tyint(IN_USIZE));
     }
+    if (strcmp(nm, "offset") == 0) { /* a field's own place in the
+                                      * whole: the layout query, the
+                                      * name spelled in the value's
+                                      * bytes (02-layout.md) */
+      Env   e2 = env;
+      Type *t;
+      char *fnm;
+      usize i;
+
+      if (vlen(e->v.blt.targs) != 1 || vlen(e->v.blt.args) != 1)
+        cerrat(e, "@offset takes one type argument and the field's name (02-layout.md)");
+      t = rty(e->v.blt.targs[0], &e2);
+      fnm = bltname(e->v.blt.args[0], 0); /* no body frame runs here:
+                                           * a round's name reaches
+                                           * through the evaluator's
+                                           * own listing */
+      if (t->k != Tystruct && t->k != Tyunion)
+        cerrat(e, "%s has no fields to offset (02-layout.md)", tnm(t));
+      for (i = 0; i < t->sym->nfields; i++)
+        if (strcmp(t->sym->fields[i].name, fnm) == 0)
+          break;
+      if (i == t->sym->nfields)
+        cerrat(e->v.blt.args[0], "'%s' has no field '%s' (02-layout.md)", t->sym->name, fnm);
+      return valint(fieldoffof(t, i), tyint(IN_USIZE));
+    }
+    if (strcmp(nm, "field") == 0) /* an address is a runtime thing:
+                                   * evaluation allocates none, and
+                                   * the name beside it borrows the
+                                   * same (08-reflection.md) */
+      cerrat(e, "@field yields an address: a runtime place, not a compile-time value "
+                "(08-reflection.md)");
     if (strcmp(nm, "cast") == 0) { /* the well-defined conversions
                                     * (01-types.md) */
       Env   e2 = env;
@@ -2217,7 +2325,7 @@ execstmt(Ast *st, Env env)
     if (l->k != Npath || vlen(l->v.path.segs) != 1 || l->v.path.root)
       cerrat(l, "this place is not a binding: a field or an element arrives with a later milestone "
                 "(08-reflection.md)");
-    loc = locfind(l->v.path.segs[0]->v.seg.name);
+    loc = evlocfind(l->v.path.segs[0]->v.seg.name);
     if (!loc)
       cerrat(l, "'%s' is not a binding of this frame (08-reflection.md)",
              l->v.path.segs[0]->v.seg.name);
@@ -2264,7 +2372,7 @@ execstmt(Ast *st, Env env)
 
 /* mk with another node's position: the materialized tree reports
  * where the loop stood, not wherever the lexer happens to sit */
-static Ast *
+Ast *
 mknear(Nk k, Ast *at)
 {
   Ast *n = mk(k);
@@ -2717,8 +2825,17 @@ cforbody(Ast *body, Ast ***un)
 
       for (k = 0; k < vlen(inner); k++)
         vappend(un, &inner[k]);
-    } else
-      vappend(un, &ss[i]);
+    } else {
+      /* the round's own copy: the passes write what they walk -- a
+       * builtin rewrites itself into the answer it gives, @field
+       * into the borrow it spells, @offset into the constant it
+       * folds -- and what one round wrote the next round must not
+       * read. The names a round's let spelled still resolve through
+       * the frame, so the copy checks and spells the same (10) */
+      Ast *c = astclone(ss[i]);
+
+      vappend(un, &c);
+    }
   }
   if (body->v.blk.tail) { /* the body's last expression, an
                            * expression's statement now -- the loop
@@ -2726,7 +2843,7 @@ cforbody(Ast *body, Ast ***un)
                            * no tail (15-grammar.md) */
     Ast *x = mknear(Nexprstmt, body);
 
-    x->v.n1.e = body->v.blk.tail;
+    x->v.n1.e = astclone(body->v.blk.tail);
     vappend(un, &x);
   }
 }
@@ -2795,11 +2912,19 @@ cforunroll(Ast *st)
     for (k = 0; k < nb; k++) { /* a binding a let, each flat: the
                                 * value the compiler holds, spelled */
       Ast *let = mknear(Nlet, st);
+      Val *cv = arenaalloc(sizeof *cv);
 
       let->v.let.pat = pathsegs(bs[k].name, 0, st);
       let->v.let.t = tytoexpr(bs[k].v.t, st);
       let->v.let.e = valtoexpr(bs[k].v, st);
       let->v.let.mut = bs[k].mut;
+      *cv = bs[k].v; /* the value itself, kept beside its spelled
+                      * tree: the body's walk binds the local, and a
+                      * name argument read against the frame finds
+                      * the bytes here, long after the rounds have
+                      * ended and their listing has gone back
+                      * (08-reflection.md) */
+      let->v.let.cv = cv;
       es[k] = let;
       vappend(&un, &let);
     }

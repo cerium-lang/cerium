@@ -358,8 +358,28 @@ a child symbol of its own, the rows spelled beside the parent's
 line and replayed with it every pass, the attrs along (an
 `AttrArg` an `Ident`, an `Int`, or a `Str`). What waits is the
 generic walk — a parameter's `@typeinfo` arrives with
-specialization, and the serialization walk it powers is the next
-layer (`08-reflection.md`).
+specialization (`08-reflection.md`).
+
+The field-address walk is here: `@field(v, "name")` yields the
+field's address, and `@offset<T>("f")` folds to the layout's own
+constant — the two sides of `08-reflection.md`'s field access. The
+name must be compile-time known, and two sources spell one: a
+literal's bytes read straight off the lexer's token — evaluation
+allocates nothing, still — and a const `for`'s round, the unroll's
+own value riding the binding it spelled, so the body's walk reads
+the name off the frame the evaluator's listing no longer holds. The
+address rewrites into the hand's own borrow — `@field(p, "z")`
+becomes `&p.z`, `&mut` where the field is `mut`, so writing is
+governed by the field's own `mut` exactly as `p.z`'s is, the packed
+rule and the place checks the access's own. The deref spends that
+inline borrow whole — `*(&mut p.z) = 40` never freezes `p` past the
+statement, a promise the language's own hand-written spelling broke
+before: the borrow died with no binding to thaw it, and the next
+statement read `'p' is borrowed`. And the walk the spec promises —
+`const for f in fields { *@field(p, f.name) }` — each round takes
+its own copy of the body's statements, for the passes write what
+they walk: a round's rewrite is its own, and what one round wrote
+the next must not read.
 
 Codegen has begun: `xyz -s file.xyz` prints the `.ssa` text — qbe's
 input — and `xyz -c file.xyz -o out` runs the pipeline, qbe as a

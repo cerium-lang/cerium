@@ -1,0 +1,3 @@
+struct P { x: u32 }
+fn off(t: type) -> usize { @offset<$$t>("x") }
+fn main() -> usize { off(^^P) }
