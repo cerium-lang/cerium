@@ -1,42 +1,60 @@
 /* check.h -- the type checker's entry points.
  *
- * checkinit once, then checkfile per compilation (the whole project
- * is one unit, 12-projects.md). checkdump prints what resolving
- * made of each item -- the -T contract, like -t and -a before it.
+ * checkinit once, then checkproject per compilation: the files one
+ * project, each walking all four passes in its own context -- the
+ * namespace it sits in, the uses it bound, the file its diagnostics
+ * name (12-projects.md). checkdump prints what resolving made of each
+ * item, one (file ...) block each -- the -T contract, like -t and -a
+ * before it.
  */
 
 #ifndef CHECK_H
 #define CHECK_H
 
 #include "ast.h"
-#include "sym.h" /* Sym, Env: the entries below speak both */
+#include "sym.h" /* Sym, Ns, Use: the entries below speak all three */
 
-void checkinit(void);
-void checkfile(Ast **items);
-void declare(Ast **items, Ns *ns);               /* pass 1: every name
-                                                  * in the table */
-void resolveitems(Ast **items);                  /* pass 2: what each
-                                                  * declaration is --
-                                                  * after the uses
-                                                  * bind in checkfile */
-void checkdecls(Ast **items, Ns *ns);            /* both passes back to
-                                                  * back -- std's embedded
-                                                  * source walks this
-                                                  * without the user's
-                                                  * passes 3 and 4, into
-                                                  * its own namespace */
-usize nshead(Ast **segs, usize nsegs, Ns **nsp); /* resolve.c's
-                                                  * namespace-head
-                                                  * strip, shared by
-                                                  * pass 4: how many
-                                                  * leading segments
-                                                  * walk the root's
-                                                  * sub-namespaces
-                                                  * (11-namespaces.md) */
-void collectstdimpls(Ast **items);               /* preludefile's tail: the embedded
-                                                  * source's impls, members resolved
-                                                  * and held for checkfile's table */
-void checkdump(Ast **items);
+/* one file of a project: the items it parsed, the namespace its path
+ * spells, its own use bindings, and pass 1's Syms parallel to the
+ * items (12-projects.md). A single-file compilation is the same
+ * shape: one Srcfile, the root's */
+typedef struct Srcfile Srcfile;
+struct Srcfile
+{
+  Ast       **items;
+  Ns         *ns;
+  Use       **uses; /* the checker fills it, before the bindings */
+  Sym       **syms; /* pass 1's, the checker fills it */
+  const char *path; /* its diagnostics' name */
+};
+
+void  checkinit(void);
+void  checkproject(Srcfile **files, usize nfiles);
+Sym **declare(Ast **items, Ns *ns);                          /* pass 1: every name
+                                                              * in the table, the
+                                                              * Syms back, parallel
+                                                              * to the items */
+void resolveitems(Ast **items, Sym **syms);                  /* pass 2: what each
+                                                              * declaration is --
+                                                              * after the file's
+                                                              * uses bind in
+                                                              * checkproject */
+usize nshead(Ast **segs, usize nsegs, Ns **nsp, int rooted); /* resolve.c's
+                                                              * namespace-head
+                                                              * strip, shared by
+                                                              * pass 4: how many
+                                                              * leading segments
+                                                              * walk a namespace --
+                                                              * the file's own
+                                                              * first, the root's,
+                                                              * then what a use
+                                                              * brought in; ::
+                                                              * reads the root
+                                                              * only (11-namespaces.md) */
+void collectstdimpls(Ast **items, Sym **syms);               /* preludefile's tail: the embedded
+                                                              * source's impls, members resolved
+                                                              * and held for checkproject's table */
+void checkdump(Srcfile **files, usize nfiles);
 void checkbodyfn(Sym *s, Ast *it);   /* pass 4, one fn (body.c) */
 void checkbodyimpl(Sym *s, Ast *it); /* pass 4, one impl's member fns */
 void recheckfn(Sym *s, Ast *it, Type **tys, Val **cvals,

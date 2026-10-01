@@ -13,6 +13,11 @@
  *                  with the system cc (QBE_BIN and CC override the
  *                  binaries, both by environment)
  *
+ * The last three read a project: one file, or a directory -- every
+ * .xyz under it a file of it, each in the namespace its path spells
+ * (12-projects.md). -T prints one (file ...) block per file; -t and
+ * -a stay single-file, a directory's tokens and AST its files' own.
+ *
  * The first four formats are contracts -- changing one rewrites
  * goldens. The escapes in all are the lexer's own closed set (\n \t
  * \r \0 \' \" \\ \xNN), so what a literal spelled and what it holds
@@ -20,11 +25,14 @@
  */
 
 #define _POSIX_C_SOURCE                                                                            \
-  200809L /* getopt, popen, mkstemp, snprintf;                                                     \
+  200809L /* getopt, popen, mkstemp, snprintf, dirent, stat;                                       \
            * c89 hides them all */
 
+#include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include "ast.h"
@@ -32,6 +40,7 @@
 #include "emit.h"
 #include "lex.h"
 #include "parse.h"
+#include "sym.h" /* the namespace tree the walk builds into */
 #include "vec.h"
 
 static void
@@ -111,32 +120,178 @@ dumpast_file(const char *path)
   return 0;
 }
 
-/* one file's way to checked items: lexed, parsed, all four passes */
+/* one file's items: the lexer is one global, so the file binds it,
+ * parses out, and the next takes over */
 static Ast **
-checked(const char *path)
+parsefile(const char *path)
 {
   Ast **items = vnew(Ast *, 16);
 
-  preludeparse(); /* std's embedded source first: the lexer is one
-                   * global, so its text reads out before the user's
-                   * file binds it. Its items resolve in checkinit. */
   lexinit(path);
   while (peek() != Teof) {
     Ast *it = parseitem();
 
     vappend(&items, &it);
   }
-  checkinit();
-  checkfile(items); /* a rejection dies before any output, like -a */
   return items;
 }
 
 static int
-dumpcheck_file(const char *path)
+isdir(const char *path)
 {
-  Ast **items = checked(path);
+  struct stat st;
 
-  checkdump(items);
+  return stat(path, &st) == 0 && S_ISDIR(st.st_mode);
+}
+
+static int
+cmpname(const void *a, const void *b) /* the walk's order: the names
+                                       * themselves, whatever the
+                                       * file system hands over */
+{
+  return strcmp(*(char *const *) a, *(char *const *) b);
+}
+
+static char *
+dirjoin(const char *dir, const char *name) /* "dir/name", the
+                                            * arena's: a project's
+                                            * paths live as long */
+{
+  char *p = arenaalloc(strlen(dir) + 1 + strlen(name) + 1);
+
+  sprintf(p, "%s/%s", dir, name);
+  return p;
+}
+
+/* a directory walked: every .xyz under it a file of the project,
+ * each in the namespace its path spells -- a subdirectory a
+ * sub-namespace, X.xyz beside an X/ the two halves of one
+ * (12-projects.md). The entries sort, so the walk is the same
+ * whatever readdir hands over; the .xyz files of a directory come
+ * ahead of its subdirectories, a paired file's declarations the
+ * first into the namespace it shares with its directory */
+static void
+walkdir(const char *dir, Ns *ns, Srcfile ***filesp)
+{
+  DIR           *d = opendir(dir);
+  struct dirent *e;
+  char         **files = vnew(char *, 8); /* the .xyz's */
+  char         **dirs = vnew(char *, 8);  /* the subdirectories */
+  usize          i, n;
+
+  if (!d) {
+    fprintf(stderr, "xyz: cannot read %s\n", dir);
+    exit(1);
+  }
+  while ((e = readdir(d))) {
+    char *nm;
+    usize len;
+
+    if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0)
+      continue;
+    len = strlen(e->d_name);
+    if (!isdir(dirjoin(dir, e->d_name))) {
+      if (len < 5 || strcmp(e->d_name + len - 4, ".xyz") != 0)
+        continue; /* not source: the directory's own, goldens,
+                   * whatever else lives beside the code */
+      nm = arenaalloc(len + 1);
+      strcpy(nm, e->d_name);
+      vappend(&files, &nm);
+    } else {
+      nm = arenaalloc(len + 1);
+      strcpy(nm, e->d_name);
+      vappend(&dirs, &nm);
+    }
+  }
+  closedir(d);
+  qsort(files, vlen(files), sizeof *files, cmpname);
+  qsort(dirs, vlen(dirs), sizeof *dirs, cmpname);
+
+  n = vlen(files);
+  for (i = 0; i < n; i++) {
+    usize    blen = strlen(files[i]) - 4; /* past the .xyz */
+    char    *base = arenaalloc(blen + 1);
+    Ns      *fns = ns;
+    Srcfile *sf;
+    usize    j;
+
+    memcpy(base, files[i], blen);
+    base[blen] = 0;
+    for (j = 0; j < vlen(dirs); j++) /* the beside pair: X.xyz and
+                                      * X/ are one namespace, X's
+                                      * own (12-projects.md) */
+      if (strcmp(dirs[j], base) == 0) {
+        fns = nschild(ns, base);
+        if (!fns)
+          fns = nsmk(ns, base);
+        break;
+      }
+    sf = arenaalloc(sizeof *sf);
+    memset(sf, 0, sizeof *sf);
+    sf->path = dirjoin(dir, files[i]);
+    sf->ns = fns;
+    sf->items = parsefile(sf->path);
+    vappend(filesp, &sf);
+  }
+  n = vlen(dirs);
+  for (i = 0; i < n; i++) {
+    Ns *sub = nschild(ns, dirs[i]);
+
+    if (!sub)
+      sub = nsmk(ns, dirs[i]);
+    walkdir(dirjoin(dir, dirs[i]), sub, filesp);
+  }
+}
+
+/* the project: one file -- the root's own single file -- or a
+ * directory, every .xyz under it (12-projects.md). The table stands
+ * already: the walk builds the project's tree into it, std::meta
+ * among the branches */
+static Srcfile **
+loadproject(const char *path, usize *nfilesp)
+{
+  Srcfile **files = vnew(Srcfile *, 8);
+
+  if (isdir(path))
+    walkdir(path, nsroot(), &files);
+  else {
+    Srcfile *sf = arenaalloc(sizeof *sf);
+
+    memset(sf, 0, sizeof *sf);
+    sf->path = path;
+    sf->ns = nsroot();
+    sf->items = parsefile(path);
+    vappend(&files, &sf);
+  }
+  *nfilesp = vlen(files);
+  return files;
+}
+
+/* the project's way to checked files: lexed, parsed, all four
+ * passes -- a rejection dies before any output, like -a. The table
+ * and std::meta stand before the walk: the project's own tree grows
+ * into a live one (12-projects.md) */
+static Srcfile **
+checked(const char *path, usize *np)
+{
+  Srcfile **files;
+
+  preludeparse(); /* the embedded source first: the lexer is one
+                   * global, so its text reads out before any file
+                   * binds it */
+  checkinit();
+  files = loadproject(path, np);
+  checkproject(files, *np);
+  return files;
+}
+
+static int
+dumpcheck_project(const char *path)
+{
+  usize     n;
+  Srcfile **files = checked(path, &n);
+
+  checkdump(files, n);
   return 0;
 }
 
@@ -144,14 +299,18 @@ static int
 usage(void)
 {
   fprintf(stderr, "usage: xyz -t file | xyz -a file | xyz -T file | xyz -s file"
-                  " | xyz -c file -o out\n");
+                  " | xyz -c file -o out\n"
+                  "       the last three read a directory as a project\n");
   return 1;
 }
 
 static int
-emitssa_file(const char *path)
+emitssa_project(const char *path)
 {
-  emitfile(stdout, checked(path));
+  usize     n;
+  Srcfile **files = checked(path, &n);
+
+  emitfile(stdout, files, n);
   return 0;
 }
 
@@ -164,7 +323,6 @@ compile(const char *path, const char *out)
   const char *qbebin = getenv("QBE_BIN");
   const char *cc = getenv("CC");
   char        cmd[512], base[] = "/tmp/xyzXXXXXX", ssa[64];
-  Ast       **items;
   FILE       *p;
   int         fd;
 
@@ -189,8 +347,12 @@ compile(const char *path, const char *out)
     unlink(ssa);
     return 1;
   }
-  items = checked(path);
-  emitfile(p, items);
+  {
+    usize     n;
+    Srcfile **files = checked(path, &n);
+
+    emitfile(p, files, n);
+  }
   if (pclose(p) != 0) {
     fprintf(stderr, "xyz: %s rejected the .ssa\n", qbebin);
     unlink(ssa);
@@ -237,16 +399,21 @@ main(int argc, char **argv)
     return usage();
   if ((mode == 'c') != (out != 0)) /* -c wants -o, nothing else does */
     return usage();
+  if ((mode == 't' || mode == 'a') && isdir(file)) {
+    fprintf(stderr, "xyz: -t and -a read one file; a directory is a"
+                    " project (-T, -s, -c)\n");
+    return 1;
+  }
   switch (mode) {
   case 't':
     return dumptoks(file);
   case 'a':
     return dumpast_file(file);
   case 's':
-    return emitssa_file(file);
+    return emitssa_project(file);
   case 'c':
     return compile(file, out);
   default:
-    return dumpcheck_file(file);
+    return dumpcheck_project(file);
   }
 }

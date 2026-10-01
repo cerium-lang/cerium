@@ -67,47 +67,62 @@ probe(Sym **tbl, usize cap, const char *name) /* the slot: occupied by
 }
 
 /* -- the use environment --------------------------------------------------
- * What a `use` brought into scope: an item, or a namespace itself.
- * The bare name's lookup reads the root's table first, then these
- * (11-namespaces.md) -- the names few and read hot through a body,
- * but a vec keeps the walk simple and the pass that fills it cold. */
+ * What a `use` brought into scope: an item, or a namespace itself
+ * (11-namespaces.md). The uses are a file's own -- one environment
+ * a file, the checker switching to each file's as it walks the
+ * project (checkproject) -- and a bare name's lookup reads the
+ * root's table first, then the file's own: the names few and read
+ * hot through a body, but a vec keeps the walk simple and the pass
+ * that fills it cold. */
 
-static Use **uenv;
+static Use **curuenv; /* the file being checked: its bindings its own */
 
 void
 useclear(void)
 {
-  uenv = vnew(Use *, 16);
+  curuenv = vnew(Use *, 16);
+}
+
+Use **
+usenew(void) /* a fresh file's own, empty */
+{
+  return vnew(Use *, 16);
+}
+
+void
+usecur(Use **uses) /* the checker's switch, a file at a time */
+{
+  curuenv = uses;
 }
 
 Use *
 usebind(const char *name, Sym *sym, Ns *ns, Ast *at)
 {
-  usize i, n = vlen(uenv);
+  usize i, n = vlen(curuenv);
   Use  *u;
 
   for (i = 0; i < n; i++)
-    if (strcmp(uenv[i]->name, name) == 0)
-      return uenv[i]; /* the name held: the caller reports, for it
-                       * holds the position of its own */
+    if (strcmp(curuenv[i]->name, name) == 0)
+      return curuenv[i]; /* the name held: the caller reports, for it
+                          * holds the position of its own */
   u = arenaalloc(sizeof *u);
   memset(u, 0, sizeof *u);
   u->name = (char *) name;
   u->sym = sym;
   u->ns = ns;
   u->at = at;
-  vappend(&uenv, &u);
+  vappend(&curuenv, &u);
   return 0;
 }
 
 Use *
 usefind(const char *name)
 {
-  usize i, n = vlen(uenv);
+  usize i, n = vlen(curuenv);
 
   for (i = 0; i < n; i++)
-    if (strcmp(uenv[i]->name, name) == 0)
-      return uenv[i];
+    if (strcmp(curuenv[i]->name, name) == 0)
+      return curuenv[i];
   return 0;
 }
 
@@ -171,6 +186,26 @@ nschild(Ns *ns, const char *name)
     if (strcmp(ns->subs[i]->name, name) == 0)
       return ns->subs[i];
   return 0;
+}
+
+Ns *
+nssubfind(const char *name) /* a sub-namespace by name, the chain the
+                             * bare name's own lookup walks: the file's
+                             * own first -- curns is the root's for a
+                             * root file, the same table -- then the
+                             * root's before a use's, a root
+                             * declaration winning (11-namespaces.md) */
+{
+  Ns *sub = nschild(curns ? curns : nsroot(), name);
+
+  if (!sub)
+    sub = nschild(nsroot(), name);
+  if (!sub) {
+    Use *u = usefindns(name);
+
+    sub = u ? u->ns : 0;
+  }
+  return sub;
 }
 
 Sym *

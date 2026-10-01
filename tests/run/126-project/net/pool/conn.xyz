@@ -1,0 +1,8 @@
+/* net::pool -- the file inside: the directory's namespace its own */
+pub struct Conn {
+  port: u16,
+}
+
+pub fn port(c: Conn) -> i32 {
+  @cast<i32>(c.port)
+}

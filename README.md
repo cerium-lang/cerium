@@ -91,7 +91,10 @@ The lexer and the parser are in: `xyz -t file.xyz` dumps the token
 stream — position, kind, value — and `xyz -a file.xyz` dumps the parse
 tree as S-expressions, one node a line, children indented. The type
 checker is in through the bodies: `xyz -T file.xyz` declares every
-name in the file, resolves every type a declaration carries — aliases
+name in the file, resolves every type a declaration carries — the
+same flags read a directory as a project, every `.xyz` under it a
+file of it, each in the namespace its path spells
+(`12-projects.md`) — aliases
 expand to their targets, `?T`/`E?T` build on the prelude's
 `Option`/`Result`, `dyn A` names its trait and gives its
 associated types — `dyn Iterator<Item = u32>`, the slots aligned to
@@ -603,10 +606,60 @@ match on either finding its variant. A namespaced pattern
 (`std::meta::TypeInfo::Bool` in a match arm) resolves by the same
 walk, the arm rewritten to the variant's short name — the
 scrutinee's own enum picks it out from there, the evaluator and
-the emitter reading the shape they always read. What waits: the
-directory driver — a passed directory a project, its files
-joining the tree — and the emitter's namespaced mangles beside it
-(`11-namespaces.md`).
+the emitter reading the shape they always read.
+
+`11-namespaces.md` closed with `11c`, the project milestone's own
+half. A directory passed to `-T`, `-s` or `-c` is a project: every
+`.xyz` under it a file of it, each in the namespace its path
+spells — a subdirectory a sub-namespace, and `X.xyz` beside an `X/`
+directory the two halves of one, the pair's namespace `X`'s own
+(the spec's own example table said otherwise for a file inside a
+directory; the reading that survives is the directory chain's, and
+the example's fifth row now agrees: `pool/conn.xyz` sits in
+`net::pool`, its own name spelling no segment). The walk sorts
+every directory's entries, so a project compiles the same whatever
+the file system hands over; a directory's files come ahead of its
+subdirectories, a paired file's declarations the first into the
+namespace it shares. `main` is the project's own fn — the root's,
+and nowhere else, a diagnostic naming the file that tried. `-t`
+and `-a` stay single-file: a project's tokens and AST are its
+files' own.
+
+The checker walks a project as the four passes it always had, a
+file at a time where a file's own matters (`checkproject`): pass 1
+declares every file's names into its own namespace — the whole
+project first, so a type may read a name another file declared —
+then each file's uses bind and its declarations resolve in its own
+context, the impl table builds for all (std's impls ahead, the
+walk's order after), and the bodies check back in their files. The
+uses are a file's own all the way through — one use environment a
+file, switched per pass (`11b`'s semantics made real: A's `use`
+binds nothing for B), and a diagnostic names the file it belongs
+to, not whichever parsed last. The namespace head of a path walks
+the same chain a bare name does now — the file's own
+sub-namespaces first, the root's, then what a `use` brought in —
+so `repr::Foo` inside `net` reads `net`'s own `repr`, and `::`
+stays absolute, the root's tree only.
+
+The emitter spells a namespaced symbol out: `xyz_`, then the
+namespace's path folded on — each `::` a `__`, so a namespace
+named `net_pool` and a `net` holding a `pool` never fold the same
+(`xyz_net_pool` against `xyz_net__pool`). The root's own spells
+the single-file era's bare `xyz_foo`, so every name a golden or a
+linker ever saw stays its own. An impl's members carry their
+file's namespace (`ownns`, filled at declare for the impl and at
+member resolution for its methods), and the emitter's walk
+switches to each file's namespace and uses as it goes — a
+non-root file's fns read from its own table, its glob's bindings
+its own.
+
+The project tests live the way the single-file ones do
+(`tools/run-tests.sh`): `check/ok/06-project/` diffs its `-T`
+against the `.golden` beside it — one `(file ...)` block per file,
+the walk's order — `run/126-project/` compiles to one binary whose
+exit the `.expect` names, and `check/err/100-102` reject: `main`
+outside the root, a use not shared, a name declared twice in one
+namespace from two files.
 
 Codegen has begun: `xyz -s file.xyz` prints the `.ssa` text — qbe's
 input — and `xyz -c file.xyz -o out` runs the pipeline, qbe as a

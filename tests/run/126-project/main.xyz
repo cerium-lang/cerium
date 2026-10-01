@@ -1,0 +1,15 @@
+/* the project as one program (12-projects.md): every file's fns in
+ * one binary, the glob's bare names, the enum matched across files */
+use net::pool::*;
+
+fn main() -> i32 {
+  let c = net::connect();              /* bit 1: the directory's ns, by path */
+  let p = dial(2);                     /* bit 2: the glob brought it bare */
+  let cn = Conn{ port: 80 };           /* the glob's type, the literal */
+  let q = port(cn);                    /* bit 4: the glob's fn, the call */
+  let m = match net::state() {         /* bit 8: an enum across files */
+    net::State::Up => 1,
+    _ => 0,
+  };
+  (c - 79) + (p - 41)*2 + (q - 79)*4 + m*8    /* 0b1111: 15 */
+}

@@ -1,0 +1,5 @@
+/* the other file's use is its own: this file reads no TypeInfo */
+fn main() -> i32 {
+  let t: TypeInfo = TypeInfo::Bool;
+  0
+}

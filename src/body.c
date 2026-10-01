@@ -1441,12 +1441,15 @@ variantowner(char *name)
  * a fn (its own type), or an enum variant's short name -- which the
  * scrutinee's type picks out in a pattern, but must be spelled out
  * here, so only a payloadless variant reads as a value. A generic
- * enum's None takes its parameters from the context, p != None */
+ * enum's None takes its parameters from the context, p != None.
+ * ns is the namespace a path's walk landed in, when one walked: the
+ * name reads there and only there (11-namespaces.md) */
 static Type *
-rexprpath1(Ast *e, Fenv *fe, char *name, Type *want)
+rexprpath1(Ast *e, Fenv *fe, char *name, Type *want, Ns *ns)
 {
-  Local *l = locfind(fe, name);
-  Sym   *s;
+  Local *l = ns ? 0 : locfind(fe, name); /* a namespaced name is no
+                                          * local's */
+  Sym *s;
 
   if (l) {
     if (l->dead)
@@ -1474,8 +1477,8 @@ rexprpath1(Ast *e, Fenv *fe, char *name, Type *want)
     }
     return l->cur;
   }
-  s = symfind(name);
-  if (!s)
+  s = ns ? nsitem(ns, name) : symfind(name);
+  if (!s && !ns)
     s = variantowner(name); /* Some, None, Ok, Err: bare (01-types.md) */
   if (!s)
     berr(e, "unknown name '%s'", name);
@@ -1601,7 +1604,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
     Ast **segs = e->v.path.segs;
     usize nsegs = vlen(segs);
     Ns   *ns;
-    usize k = nshead(segs, nsegs, &ns);
+    usize k = nshead(segs, nsegs, &ns, e->v.path.root);
 
     if (k == nsegs) /* the whole path a namespace walk: a namespace
                      * names no value (11-namespaces.md) */
@@ -1615,7 +1618,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
       char *nm0 = segs[0]->v.seg.name;
 
       if (nsegs == 1)
-        return rexprpath1(e, fe, nm0, want);
+        return rexprpath1(e, fe, nm0, want, k ? ns : 0);
       if (nsegs == 2) {
         char *nm1 = segs[1]->v.seg.name;
         Sym  *s = k ? nsitem(ns, nm0) : symfind(nm0);
@@ -2033,7 +2036,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
       Ast **segs = f->v.path.segs;
       usize nsegs = vlen(segs);
       Ns   *ns;
-      usize k = nshead(segs, nsegs, &ns);
+      usize k = nshead(segs, nsegs, &ns, f->v.path.root);
 
       if (k == nsegs) /* the whole callee a namespace walk
                        * (11-namespaces.md) */
@@ -2082,8 +2085,8 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
           thawargs(svs, n); /* the call is done; its borrows ended with it */
           return t->t;
         }
-        s = symfind(nm);
-        if (!s) { /* Some(3), Ok(v): the prelude's bare constructors */
+        s = k ? nsitem(ns, nm) : symfind(nm);
+        if (!s && !k) { /* Some(3), Ok(v): the prelude's bare constructors */
           Sym *owner = variantowner(nm);
 
           if (owner)
@@ -2922,7 +2925,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
     Type **tys = 0;
     Type  *st;
 
-    k = nshead(segs, nsegs, &ns);
+    k = nshead(segs, nsegs, &ns, e->v.slit.path->v.path.root);
     if (k == nsegs) /* a namespace names no literal (11-namespaces.md) */
       berr(e, "a namespace names no literal; name what is in it (11-namespaces.md)");
     segs += k; /* the namespaces walked fall away: the literal's own
@@ -3151,7 +3154,7 @@ rpat(Ast *p, Type *t, Fenv *fe, int mut)
     usize           nsegs, k;
 
     nsegs = vlen(segs);
-    k = nshead(segs, nsegs, &ns);
+    k = nshead(segs, nsegs, &ns, p->v.ppath.path->v.path.root);
     if (k == nsegs) /* the whole path a namespace walk: a
                      * namespace names no pattern (11-namespaces.md) */
       berr(p, "a namespace names no pattern; name what is in it (11-namespaces.md)");

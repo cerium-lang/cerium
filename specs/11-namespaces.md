@@ -15,13 +15,16 @@ src/
     tls.xyz           → net — another file, the same namespace
     pool.xyz          → net::pool
     pool/
-      conn.xyz        → net::pool::conn
+      conn.xyz        → net::pool — the file inside the directory
 ```
 
-A declaration lands in the namespace of the directory its file sits in. A
-subdirectory is a sub-namespace: `net/pool/conn.xyz` holds `net::pool::conn`,
-while `net/pool.xyz` — the file beside the directory — holds items of
-`net::pool` itself.
+A declaration lands in the namespace of the directory its file sits in — a
+file's own name spells no segment, which is what "a file is not a namespace"
+above says. A subdirectory is a sub-namespace, and a file named `X.xyz` beside
+a directory `X/` is the two halves of one: both hold items of `X`'s own
+namespace, the file the natural place for the namespace's own declarations
+and the directory for its depth. `net/pool.xyz` and every file under
+`net/pool/` — `conn.xyz` among them — all declare into `net::pool`.
 
 Paths are absolute — they start at the root of the project. `std` is the
 standard library: it lives outside the project tree and appears as a name at the

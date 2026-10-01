@@ -1,0 +1,13 @@
+/* the project's root (12-projects.md): main lives here, the uses are
+ * its file's own, and the paths reach every other file's items */
+use net::pool;
+use std::meta::TypeInfo;
+
+fn main() -> i32 {
+  let c = net::connect();   /* the directory's own namespace, by path */
+  let p = pool::dial(2);    /* the use's binding: another file's fn */
+  let cn = net::pool::Conn{ port: 80 };  /* the file inside the directory */
+  let q = net::pool::port(cn);
+  let t: TypeInfo = TypeInfo::Bool;      /* this file's use, no other's */
+  0
+}

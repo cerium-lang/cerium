@@ -9,6 +9,14 @@
 # (ditto with -T), and every err/*.xyz under any of them must be
 # rejected with a diagnostic on stderr and a nonzero exit.
 #
+# A directory in place of the .xyz is a project (12-projects.md):
+# every .xyz under it, each in the namespace its path spells. The
+# project tests live the same way -- check/ok/NN-name/ diffs against
+# the NN-name.golden beside it (one (file ...) block per file, -T
+# only), check/err/NN-name/ must reject, and tests/run/NN-name/
+# compiles to a binary whose exit code the NN-name.expect names. -t
+# and -a read one file; a project tests through -T, -s and -c.
+#
 # tests/run is codegen's: every *.xyz compiles to a binary whose
 # exit code the matching .expect names; an optional .stdout holds
 # the bytes it must print (#[extern(C)] write is how the language
@@ -18,7 +26,6 @@ set -u
 cd "$(dirname "$0")/.."
 
 fail=0
-
 golden() { # $1: the directory, $2: the dump flag
   for f in "$1"/*.xyz; do
     [ -e "$f" ] || continue
@@ -36,6 +43,22 @@ golden() { # $1: the directory, $2: the dump flag
       fail=1
     fi
   done
+  for d in "$1"/*/; do # a project: the .golden beside the directory
+    [ -d "$d" ] || continue
+    g="${d%/}.golden"
+    if [ ! -f "$g" ]; then
+      echo "FAIL $d (no .golden)"
+      fail=1
+      continue
+    fi
+    if ./xyz "$2" "$d" 2>/dev/null | diff -u "$g" - >/dev/null; then
+      echo "ok   $d"
+    else
+      echo "FAIL $d"
+      ./xyz "$2" "$d" 2>/dev/null | diff -u "$g" - | sed 's/^/     /'
+      fail=1
+    fi
+  done
 }
 
 rejected() { # $1: the directory, $2: the dump flag (-a or -T)
@@ -46,6 +69,15 @@ rejected() { # $1: the directory, $2: the dump flag (-a or -T)
       fail=1
     else
       echo "ok   $f"
+    fi
+  done
+  for d in "$1"/*/; do # a project: -T reads the whole thing
+    [ -d "$d" ] || continue
+    if ./xyz "${2:--T}" "$d" >/dev/null 2>&1; then
+      echo "FAIL $d (accepted; an error was expected)"
+      fail=1
+    else
+      echo "ok   $d"
     fi
   done
 }
@@ -90,6 +122,44 @@ runthem() { # $1: the directory; an .expect of "!" wants rejection,
       continue
     fi
     echo "ok   $f"
+  done
+  for d in "$1"/*/; do # a project: one binary, the walk's every file
+    [ -d "$d" ] || continue
+    g="${d%/}.expect"
+    if [ ! -f "$g" ]; then
+      echo "FAIL $d (no .expect)"
+      fail=1
+      continue
+    fi
+    exp=$(cat "$g")
+    if [ "$exp" = "!" ]; then
+      if ./xyz -c "$d" -o "$tmp/out" 2>/dev/null; then
+        echo "FAIL $d (compiled; a rejection was expected)"
+        fail=1
+      else
+        echo "ok   $d"
+      fi
+      continue
+    fi
+    if ! ./xyz -c "$d" -o "$tmp/out" 2>"$tmp/err"; then
+      echo "FAIL $d (rejected: $(head -1 "$tmp/err"))"
+      fail=1
+      continue
+    fi
+    "$tmp/out" >"$tmp/stdout"
+    got=$?
+    if [ "$got" != "$exp" ]; then
+      echo "FAIL $d (exit $got, want $exp)"
+      fail=1
+      continue
+    fi
+    s="${d%/}.stdout"
+    if [ -f "$s" ] && ! cmp -s "$s" "$tmp/stdout"; then
+      echo "FAIL $d (stdout $(head -c 40 "$tmp/stdout" | tr '\n' ' ')...)"
+      fail=1
+      continue
+    fi
+    echo "ok   $d"
   done
   rm -rf "$tmp"
 }

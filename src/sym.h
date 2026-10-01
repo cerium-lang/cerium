@@ -171,7 +171,10 @@ struct Use
   Ast  *at;   /* the use that wrote it: a collision's position */
 };
 
-void useclear(void);                                       /* per compilation, from syminit */
+void  useclear(void);     /* per compilation, from syminit */
+Use **usenew(void);       /* a fresh file's own, empty */
+void  usecur(Use **uses); /* the checker's switch, a file at a time --
+                           * the uses are a file's own (11) */
 Use *usebind(const char *name, Sym *sym, Ns *ns, Ast *at); /* the
                                                             * binding made, or the one that held
                                                             * the name first -- the caller
@@ -194,13 +197,16 @@ struct Ns
   Ns   *parent;
 };
 
-Ns   *nsroot(void);
-Ns   *nsmk(Ns *parent, const char *name); /* a sub-namespace, named */
-Ns   *nschild(Ns *ns, const char *name);  /* a sub-namespace by name, or NULL */
-Sym  *nsitem(Ns *ns, const char *name);   /* a declaration of this one */
-char *nsname(Ns *ns);                     /* its full path, std::meta */
-Sym **nstable(Ns *ns, usize *np);         /* every declaration of it,
-                                           * a glob's walk (11) */
+Ns *nsroot(void);
+Ns *nsmk(Ns *parent, const char *name); /* a sub-namespace, named */
+Ns *nschild(Ns *ns, const char *name);  /* a sub-namespace by name, or NULL */
+Ns *nssubfind(const char *name);        /* one by name, the lookup chain the
+                                         * bare name's own walks: the file's,
+                                         * the root's, a use's (11) */
+Sym  *nsitem(Ns *ns, const char *name); /* a declaration of this one */
+char *nsname(Ns *ns);                   /* its full path, std::meta */
+Sym **nstable(Ns *ns, usize *np);       /* every declaration of it,
+                                         * a glob's walk (11) */
 Sym *nsdecl(Ns *ns, const char *name, int kind, Ast *decl, Ast **gparams,
             usize ngparams); /* declare into it -- symdecl's own, one
                               * namespace over */
