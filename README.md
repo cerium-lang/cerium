@@ -430,6 +430,31 @@ parameters arrive with the milestone that routes them. What waits:
 the const in the type position — `[N]T`, `const N: usize` in the
 angle brackets — and the const `if` (`08-reflection.md`).
 
+The const generic parameter is here: `fn first<T: Copy, const
+N: usize>(v: [N]T) -> T { v[0] }`, the length a value parameter of
+the angle brackets — what an array length is (`08-reflection.md`).
+There is no way to spell its argument: generic arguments cannot be
+spelled in expression position (`04-generics.md`), so the call's
+expected type is the only spelling — `first(a)` with `a` a
+`[3]u32`, and the unifier meeting `[N]T` with `[3]u32` binds N to
+3, the instance's key widened again, `_g3` beside the types. The
+binding rides the environment's own entry — `Bind` carrying `cv`
+beside its type — and the re-check reads a length spelled off the
+name there; inside the declaration's walk the name is the black box
+again, the frame materializing a const slot the evaluator reads as
+zero, the generic's deferral a third time over. A read of N in the
+body folds to its number — a const generic parameter has no runtime
+slot to read — so `v[N-1]` and `@sizeof<[N]T>()` fold per instance,
+and a nested call under a still-open N defers its own binding, the
+outer instance's re-check landing both. The unifier can leave a slot
+empty when nothing ever met the length, and an empty slot cannot
+bake an instance: `cannot infer 'M' from the call`. A const generic
+parameter names a length: usize is the type it takes — the spec's
+only spelling — and on an impl or a method it arrives with the
+milestone that routes the vtable, a table slot having nowhere to
+hand a baked length either. What waits: the const `if`, and packs
+with it (`08-reflection.md`).
+
 Codegen has begun: `xyz -s file.xyz` prints the `.ssa` text — qbe's
 input — and `xyz -c file.xyz -o out` runs the pipeline, qbe as a
 subprocess and the system `cc` linking. Checking writes each node's

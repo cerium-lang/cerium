@@ -1,0 +1,8 @@
+/* a const generic parameter on an impl: the vtable routes half the
+ * calls, and a table slot has nowhere to hand a baked length over
+ * -- it arrives with a later milestone (08-reflection.md) */
+trait T1 { fn f(self: *Self) -> u32; }
+impl<const N: usize> T1 for u32 {
+  fn f(self: *Self) -> u32 { N }
+}
+fn main() -> u32 { 0 }

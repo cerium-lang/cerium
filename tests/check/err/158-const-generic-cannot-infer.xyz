@@ -1,0 +1,8 @@
+/* a const generic parameter the call's words never bind: M meets
+ * no length -- the unifier only ever saw N -- and an empty slot
+ * cannot bake an instance (08-reflection.md) */
+fn f<const M: usize, const N: usize>(v: [N]u32) -> u32 { v[0] }
+fn main() -> u32 {
+  let a = [3]u32{7, 8, 9};
+  f(a)
+}

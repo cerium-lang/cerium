@@ -159,6 +159,10 @@ struct Bind
 {
   char *name; /* the bound name */
   Type *t;    /* what it is bound to */
+  Val  *cv;   /* the value, when the binding is a const generic
+               * parameter's: the re-check's env carries it, and a
+               * length spelled off the name reads it there
+               * (08-reflection.md) */
 };
 
 typedef struct Env Env;
@@ -174,6 +178,8 @@ Env   envnone(void);
 Env   envpush(Env *e, char *name, Type *t);
 Env   envgparams(Env *outer, Ast **gps, usize n); /* outer may be NULL */
 Type *envfind(Env *env, char *name);
+Bind *envbind(Env *env, char *name); /* the binding whole: a const generic
+                                      * parameter's value rides it (08) */
 
 /* pass 3's impl table, built by checkfile: pass 4 reads it for
  * inherent methods and Drop checks */

@@ -19,6 +19,7 @@
 
 #include "ast.h"
 #include "die.h"
+#include "eval.h"
 #include "sym.h"
 #include "type.h"
 
@@ -362,7 +363,7 @@ derefthrough(Type *t)
 }
 
 Type *
-gsubst(Type *t, Ast **gps, Type **tys, usize n)
+gsubstv(Type *t, Ast **gps, Type **tys, Val **gcvals, usize n)
 {
   Type **as;
   usize  i;
@@ -376,13 +377,26 @@ gsubst(Type *t, Ast **gps, Type **tys, usize n)
         return tys[i];
     return t;
   case Typtr:
-    return typtr(gsubst(t->t, gps, tys, n));
+    return typtr(gsubstv(t->t, gps, tys, gcvals, n));
   case Tyslice:
-    return tyslice(gsubst(t->t, gps, tys, n));
+    return tyslice(gsubstv(t->t, gps, tys, gcvals, n));
   case Tymut:
-    return tymut(gsubst(t->t, gps, tys, n));
+    return tymut(gsubstv(t->t, gps, tys, gcvals, n));
   case Tyarray:
-    return tyarray(t->n, gsubst(t->t, gps, tys, n));
+    if (t->gp) { /* [N]T, the length a const parameter's: the
+                  * binding's number stands in, and a black box one
+                  * -- a length another generic names -- stays the
+                  * box, the outer instance's re-check answering
+                  * (08-reflection.md) */
+      for (i = 0; i < n; i++)
+        if (t->gp == gps[i]) {
+          if (gcvals && gcvals[i])
+            return tyarray(gcvals[i]->i, gsubstv(t->t, gps, tys, gcvals, n));
+          return tyarrayp(t->gp, gsubstv(t->t, gps, tys, gcvals, n));
+        }
+      return tyarrayp(t->gp, gsubstv(t->t, gps, tys, gcvals, n));
+    }
+    return tyarray(t->n, gsubstv(t->t, gps, tys, gcvals, n));
   case Tytuple:
   case Tyfn:
   case Tyenum:
@@ -392,12 +406,12 @@ gsubst(Type *t, Ast **gps, Type **tys, usize n)
   case Tydyn: /* the composite shapes: the arguments in step */
     as = t->nargs ? tyargs(t->nargs) : 0;
     for (i = 0; i < t->nargs; i++)
-      as[i] = gsubst(t->args[i], gps, tys, n);
+      as[i] = gsubstv(t->args[i], gps, tys, gcvals, n);
     switch (t->k) {
     case Tytuple:
       return tytuple(as, t->nargs);
     case Tyfn:
-      return tyfn(as, t->nargs, gsubst(t->t, gps, tys, n));
+      return tyfn(as, t->nargs, gsubstv(t->t, gps, tys, gcvals, n));
     case Tydyn:
       return tydyn(t->sym, as, t->nargs, t->mut);
     default:
@@ -408,6 +422,16 @@ gsubst(Type *t, Ast **gps, Type **tys, usize n)
   default:
     return t;
   }
+}
+
+Type *
+gsubst(Type *t, Ast **gps, Type **tys, usize n) /* the types alone: a
+                                                 * struct's or an impl's
+                                                 * own generics, no
+                                                 * const length among
+                                                 * them (04-generics.md) */
+{
+  return gsubstv(t, gps, tys, 0, n);
 }
 
 /* -- the printable form ------------------------------------------------- */

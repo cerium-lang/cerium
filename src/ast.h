@@ -115,10 +115,13 @@ struct Ast
     } nm;
     struct
     {
-      Ast  **segs; /* Npath: Nseg vector */
-      int    root; /* leading "::" */
-      Sym   *sym;  /* Npath: the fn it names as a value, when it does */
-      Type **tys;  /* Npath: the instantiation the want picked (04) */
+      Ast  **segs;   /* Npath: Nseg vector */
+      int    root;   /* leading "::" */
+      Sym   *sym;    /* Npath: the fn it names as a value, when it does */
+      Type **tys;    /* Npath: the instantiation the want picked (04) */
+      Val  **gcvals; /* Npath: the const generic parameters' numbers in
+                      * it -- the expected type's own lengths bound
+                      * them (08-reflection.md) */
     } path;
     struct
     {
@@ -144,17 +147,23 @@ struct Ast
     } tdyn;         /* Ntdyn */
     struct
     {
-      Ast  *f;     /* Ncall, Nbuiltin: the callee */
-      Ast **args;  /* Ncall, Nbuiltin, Nmatch: args or arms */
-      Sym  *sym;   /* Ncall: the overload the checker picked, so the
-                    * emitter need not guess by name */
-      Type **tys;  /* Ncall: the generic bindings it picked -- NULL
-                    * when the fn is not generic */
-      Val **cvals; /* Ncall: the const parameters' argument values,
-                    * a slot a parameter -- NULL when the parameter is
-                    * plain, or the argument a black box this walk
-                    * defers: the re-check under the binding has the
-                    * value and redoes the pick (08-reflection.md) */
+      Ast  *f;      /* Ncall, Nbuiltin: the callee */
+      Ast **args;   /* Ncall, Nbuiltin, Nmatch: args or arms */
+      Sym  *sym;    /* Ncall: the overload the checker picked, so the
+                     * emitter need not guess by name */
+      Type **tys;   /* Ncall: the generic bindings it picked -- NULL
+                     * when the fn is not generic */
+      Val **cvals;  /* Ncall: the const parameters' argument values,
+                     * a slot a parameter -- NULL when the parameter is
+                     * plain, or the argument a black box this walk
+                     * defers: the re-check under the binding has the
+                     * value and redoes the pick (08-reflection.md) */
+      Val **gcvals; /* Ncall: the const generic parameters' numbers, a
+                     * slot a parameter of the angle brackets -- the
+                     * unifier's own binding, [N]T meeting [3]u32;
+                     * NULL when the generic is a type or its length a
+                     * black box, the outer instance's re-check binding
+                     * it (08-reflection.md) */
     } call;
     struct
     {
