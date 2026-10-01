@@ -1,0 +1,6 @@
+/* std's impls enter pass 3's table with the user's: the blanket
+ * already answers every pair, and a second impl for one of them is
+ * the conflict the coherence check names (05-traits.md) */
+impl is_same<i32, u32> { }
+
+fn main() -> i32 { 0 }

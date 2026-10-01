@@ -58,3 +58,19 @@ enum AttrArg {   /* an argument is an identifier, a number, or a string */
   Int(i64),      /* #[align(16)] -- 16 */
   Str([]u8),     /* a string literal */
 }
+
+/* is_same -- the type-equality predicate, a predicate struct: an
+ * empty shape instantiated only by the types it compares, its
+ * value an associated constant the impls carry -- the (T, T)
+ * repeated-variable impl matching where both args land one type,
+ * the (A, B) blanket behind it answering false (05-traits.md).
+ * The instance takes no space; the read folds at compile time. */
+struct is_same<A, B> {}
+
+impl<A, B> is_same<A, B> {
+  const value: bool = false;
+}
+
+impl<T> is_same<T, T> {
+  const value: bool = true;
+}

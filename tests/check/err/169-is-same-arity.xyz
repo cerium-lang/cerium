@@ -1,0 +1,3 @@
+/* the instance's arguments are its shape: one missing names no
+ * receiver an impl fits (05-traits.md) */
+fn main() -> i32 { @cast<i32>(is_same<i32>::value) }

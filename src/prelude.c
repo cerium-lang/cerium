@@ -77,11 +77,13 @@ preludeparse(void) /* first: the lexer is one global, so the embedded
 
 void
 preludefile(void) /* from checkinit, after syminit and the hand pair:
-                   * declare and resolve, nothing more. The items are
-                   * types only today -- a std fn would want pass 4
-                   * here too, and that day the call grows. */
+                   * declare and resolve, and the impls among the
+                   * items leave with their members resolved too --
+                   * held for checkfile's pass-3 table, std's is_same
+                   * the first to ride this (05-traits.md) */
 {
   checkdecls(metaitems);
+  collectstdimpls(metaitems);
   sym_typeinfo = symfind("TypeInfo"); /* @typeinfo's answers are its
                                        * variants (08-reflection.md) */
 }

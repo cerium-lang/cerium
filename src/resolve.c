@@ -1529,6 +1529,11 @@ declare(Ast **items)
 Sym **chk_impls;
 usize chk_nimpls;
 
+/* std's own impls, collected by preludefile's tail and held here for
+ * every checkfile: the user's reads pick through them too */
+static Sym **std_impls;
+static usize nstd_impls;
+
 void
 checkinit(void)
 {
@@ -1626,6 +1631,25 @@ checkdecls(Ast **items)
 }
 
 void
+collectstdimpls(Ast **items) /* preludefile's tail, with syms still the
+                              * embedded source's parallel table: the
+                              * impls among std's items leave here with
+                              * their members resolved, held for
+                              * checkfile's pass-3 table -- std's
+                              * is_same rides this (05-traits.md) */
+{
+  usize i, n = vlen(items);
+
+  std_impls = vnew(Sym *, 4);
+  for (i = 0; i < n; i++)
+    if (items[i]->k == Nimpl) {
+      resolveimplmembers(syms[i]);
+      vappend(&std_impls, &syms[i]);
+    }
+  nstd_impls = vlen(std_impls);
+}
+
+void
 checkfile(Ast **items)
 {
   usize i, n = vlen(items);
@@ -1635,8 +1659,12 @@ checkfile(Ast **items)
   checkdecls(items);
 
   /* pass 3: traits and impls, then coherence. The bounds check runs
-   * first so a bound nobody overlaps against still gets diagnosed. */
+   * first so a bound nobody overlaps against still gets diagnosed.
+   * std's own enter the table ahead of the user's: the reads pick
+   * through them, and the coherence below orders both kinds. */
   impls = vnew(Sym *, 8);
+  for (i = 0; i < nstd_impls; i++)
+    vappend(&impls, &std_impls[i]);
   for (i = 0; i < n; i++) {
     Ast *it = items[i];
     Sym *s = syms[i];

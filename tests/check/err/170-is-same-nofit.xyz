@@ -1,0 +1,7 @@
+/* the arguments name the receiver: the impls fitted against it, and
+ * none fitting is the read's own fault (05-traits.md) */
+struct S<T> { }
+
+impl S<i32> { const value: bool = true; }
+
+fn main() -> i32 { @cast<i32>(S<u32>::value) }
