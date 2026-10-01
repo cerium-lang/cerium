@@ -1713,6 +1713,60 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
     Ast **args = e->v.call.args;
     usize n = vlen(args);
 
+    { /* the spread: f(...t) spells every element of a tuple as an
+       * argument of its own (01-types.md) -- the operand's type
+       * known here, the spread rewritten to the row reads, and the
+       * call walking on as though the rows were spelled by hand. A
+       * slice's length is a runtime thing: its spread needs the
+       * pack it feeds, and packs arrive with generics
+       * (04-generics.md) */
+      usize i;
+      int   sp = 0;
+
+      for (i = 0; i < n; i++)
+        if (args[i]->k == Nspread)
+          sp = 1;
+      if (sp) {
+        Ast **as = vnew(Ast *, n + 1);
+        usize k;
+
+        for (i = 0; i < n; i++) {
+          Ast  *a = args[i];
+          Type *t;
+
+          if (a->k != Nspread) {
+            vappend(&as, &a);
+            continue;
+          }
+          t = rexpr(a->v.un.e, fe, 0);
+          if (!t)
+            berr(a->v.un.e, "the spread operand is not known here (01-types.md)");
+          if (t->k == Tyslice)
+            berr(a, "a slice's spread needs the pack it feeds -- packs arrive with generics "
+                    "(04-generics.md)");
+          if (t->k != Tytuple && t->k != Tyunit) /* the empty tuple
+                                                  * is the unit type:
+                                                  * it spreads
+                                                  * nothing
+                                                  * (01-types.md) */
+            berr(a, "the spread expands a tuple, this is %s (01-types.md)", btys(t));
+          for (k = 0; k < t->nargs; k++) { /* the rows, each its own
+                                            * read standing where the
+                                            * spread stood */
+            Ast *ix = mknear(Ntupidx, a);
+
+            ix->v.tup.e = a->v.un.e;
+            ix->v.tup.idx = k;
+            vappend(&as, &ix);
+          }
+        }
+        e->v.call.args = as; /* the widened list: every pass below
+                              * walks it as the one the words
+                              * spelled, the emitter included */
+        args = as;
+        n = vlen(as);
+      }
+    }
     if (f->k == Npath) {
       Ast **segs = f->v.path.segs;
       usize nsegs = vlen(segs);

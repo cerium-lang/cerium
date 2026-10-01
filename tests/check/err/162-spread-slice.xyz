@@ -1,0 +1,8 @@
+/* a slice's spread needs the pack it feeds: its length is a runtime
+ * thing, and the pack's angle brackets arrive with generics
+ * (04-generics.md) */
+fn f(a: u32, b: u32) -> u32 { a + b }
+fn g(s: []u32) -> u32 {
+  f(...s)
+}
+fn main() -> u32 { 0 }

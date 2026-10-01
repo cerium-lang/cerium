@@ -1,0 +1,7 @@
+/* the spread expands a tuple: a scalar is not one, its rows
+ * nothing to spell (01-types.md) */
+fn f(a: u32) -> u32 { a }
+fn main() -> u32 {
+  let x = 5;
+  f(...x)
+}

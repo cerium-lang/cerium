@@ -3174,15 +3174,43 @@ callval(Ast *e, Env env)
   if (!c || c->kind != Sfn)
     cerrat(f, "'%s' is not a fn here (08-reflection.md)", f->v.path.segs[0]->v.seg.name);
 
-  { /* the arguments' wants, when the chain holds exactly one plain
+  { /* the spread first: f(...t) spells every element of a tuple as
+     * an argument of its own (01-types.md). The operand's value is
+     * known here, its rows riding it -- the call answering to the
+     * widened list, the arity and the wants alike. A slice's spread
+     * needs the pack it feeds, and packs arrive with generics
+     * (04-generics.md) */
+    Sym  *c2, *one = 0;
+    Type *wsig = 0;
+    int   nplain = 0;
+    Val  *spv = 0;
+    usize nraw = vlen(args), k;
+
+    for (k = 0; k < nraw; k++)
+      if (args[k]->k == Nspread) {
+        if (!spv)
+          spv = arenaalloc((nraw ? nraw : 1) * sizeof *spv);
+        spv[k] = ceval(args[k]->v.un.e, env, 0);
+        if (spv[k].t->k == Tyslice)
+          cerrat(args[k], "a slice's spread needs the pack it feeds -- packs arrive with "
+                          "generics (04-generics.md)");
+        if (spv[k].t->k != Tytuple && spv[k].t->k != Tyunit) /* the
+                                                              * empty tuple is the unit type: it
+                                                              * spreads nothing (01-types.md) */
+          cerrat(args[k], "the spread expands a tuple, this is %s (01-types.md)", tnm(spv[k].t));
+      }
+    if (spv) {
+      usize nn = 0;
+
+      for (k = 0; k < nraw; k++)
+        nn += args[k]->k == Nspread ? spv[k].t->nargs : 1;
+      na = nn; /* the widened list: the chain below answers to it */
+    }
+    /* the arguments' wants, when the chain holds exactly one plain
      * fn that takes this many: its parameters are the types the
      * checker gave them, and a bare constructor -- Some(3) in an
      * argument's place -- needs its enum named by one (01-types.md).
      * Two candidates or none: no want to give, as before. */
-    Sym  *c2, *one = 0;
-    Type *wsig = 0;
-    int   nplain = 0;
-
     for (c2 = c; c2; c2 = c2->next) {
       if (vlen(c2->decl->v.fn.params) != na || c2->ngparams || c2->impl)
         continue;
@@ -3194,8 +3222,21 @@ callval(Ast *e, Env env)
     if (nplain == 1)
       wsig = fnsigof(one);
     avs = na ? arenaalloc(na * sizeof *avs) : 0;
-    for (i = 0; i < na; i++)
-      avs[i] = ceval(args[i], env, wsig ? wsig->args[i] : 0);
+    k = 0;
+    for (i = 0; i < nraw; i++) { /* the rows in their places, the
+                                  * plain arguments as they were */
+      if (args[i]->k == Nspread) {
+        usize j;
+
+        for (j = 0; j < spv[i].t->nargs; j++)
+          avs[k++] = spv[i].elems[j];
+      } else {
+        Type *w = wsig ? wsig->args[k] : 0;
+
+        avs[k] = ceval(args[i], env, w);
+        k++;
+      }
+    }
   }
 
   for (; c; c = c->next) { /* the overload chain: the one whose
