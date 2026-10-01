@@ -12,17 +12,17 @@
 typedef struct Local Local;
 struct Local
 {
-  char       *name;    /* the binding's name */
-  Type       *ty;      /* its declared type, never narrowed away */
-  int         mut;     /* let mut */
-  int         dead;    /* moved from: unusable until its scope ends */
-  int         frz;     /* FZ_*: what a live borrow forbids */
-  int         frzby;   /* the borrowing binding's index, to thaw when it dies */
-  char       *frzpath; /* the borrowed field chain, ".a.b"; NULL is the root */
-  Type       *cur;     /* the narrowed type, ty until a check narrows it */
-  struct Val *cv;      /* a const for round's value, when the unroll spelled
-                        * the binding: a name's bytes are read from it
-                        * (08-reflection.md) */
+  char *name;    /* the binding's name */
+  Type *ty;      /* its declared type, never narrowed away */
+  int   mut;     /* let mut */
+  int   dead;    /* moved from: unusable until its scope ends */
+  int   frz;     /* FZ_*: what a live borrow forbids */
+  int   frzby;   /* the borrowing binding's index, to thaw when it dies */
+  char *frzpath; /* the borrowed field chain, ".a.b"; NULL is the root */
+  Type *cur;     /* the narrowed type, ty until a check narrows it */
+  Val  *cv;      /* a const for round's value, when the unroll spelled
+                  * the binding: a name's bytes are read from it
+                  * (08-reflection.md) */
 };
 
 typedef struct Fenv Fenv;

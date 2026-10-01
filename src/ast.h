@@ -73,6 +73,8 @@ const char *nkname(Nk k);
 typedef struct Ast  Ast;
 typedef struct Sym  Sym;  /* sym.h, one step later in the includes */
 typedef struct Type Type; /* type.h, one step later in the includes */
+typedef struct Val  Val;  /* eval.h, later in the includes: a let
+                           * carries one beside it, spelled bare */
 
 struct Ast
 {
@@ -286,14 +288,14 @@ struct Ast
     } gp;
     struct
     {
-      int         mut;
-      Ast        *pat;
-      Ast        *t;  /* : T, or NULL */
-      Ast        *e;  /* = e */
-      struct Val *cv; /* the round's own value, when a const for's
-                       * unroll spelled this let: the walks that read
-                       * a name's bytes take them from it
-                       * (08-reflection.md); NULL: the program's own */
+      int  mut;
+      Ast *pat;
+      Ast *t;  /* : T, or NULL */
+      Ast *e;  /* = e */
+      Val *cv; /* the round's own value, when a const for's
+                * unroll spelled this let: the walks that read
+                * a name's bytes take them from it
+                * (08-reflection.md); NULL: the program's own */
     } let;
     struct
     {

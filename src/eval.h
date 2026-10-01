@@ -24,8 +24,9 @@ struct Fenv; /* the body's frame (body.h): a name argument reads a
  * own bits never sit in the tag, so no consumer has to ask which
  * kind of bits it is holding -- i is a value, tag is an aggregate's
  * own metadata (08-reflection.md) */
-typedef struct Val Val;
-struct Val
+struct Val /* the typedef sits in ast.h's forward set, beside the tree
+            * whose let member spells it bare -- one typedef is all
+            * C89 allows, and this is not its home */
 {
   Type  *t;    /* what the checker would say; the derivation's answer */
   u64    i;    /* an integer's or a bool's bits, two's complement */
