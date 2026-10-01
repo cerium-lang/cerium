@@ -17,13 +17,14 @@ void checkdecls(Ast **items); /* pass 1 + 2 alone -- std's embedded
                                * source walks this without the user's
                                * passes 3 and 4 */
 void checkdump(Ast **items);
-void checkbodyfn(Sym *s, Ast *it);                        /* pass 4, one fn (body.c) */
-void checkbodyimpl(Sym *s, Ast *it);                      /* pass 4, one impl's member fns */
-void recheckfn(Sym *s, Ast *it, Type **tys, Val **cvals); /* one instantiation,
-                                                           * for the emitter --
-                                                           * the const parameters'
-                                                           * baked values with the
-                                                           * types (04, 08) */
+void checkbodyfn(Sym *s, Ast *it);   /* pass 4, one fn (body.c) */
+void checkbodyimpl(Sym *s, Ast *it); /* pass 4, one impl's member fns */
+void recheckfn(Sym *s, Ast *it, Type **tys, Val **cvals,
+               Val **gcvals); /* one instantiation, for the emitter --
+                               * the const parameters' baked values
+                               * with the types, the const generic
+                               * parameters' numbers beside them
+                               * (04, 08) */
 
 /* resolve.c's type resolver, shared by pass 4: one type node, one
  * path in type position, against the names in scope */

@@ -1,0 +1,9 @@
+/* a const generic parameter on a method: the calls route through
+ * the vtable half the time, and a table slot has nowhere to hand a
+ * baked length over -- it arrives with a later milestone
+ * (08-reflection.md) */
+struct S { v: u32 }
+impl S {
+  fn f<const N: usize>(self: *Self) -> u32 { N }
+}
+fn main() -> u32 { 0 }

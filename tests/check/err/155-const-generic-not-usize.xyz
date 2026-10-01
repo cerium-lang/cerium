@@ -1,0 +1,5 @@
+/* a const generic parameter names a length -- usize is the type it
+ * takes, the only spelling the array length has.  A u32 one is a
+ * type the length cannot wear (08-reflection.md) */
+fn f<const X: u32>(v: u32) -> u32 { v }
+fn main() -> u32 { 0 }

@@ -71,6 +71,20 @@ envfind(Env *env, char *name)
   return 0;
 }
 
+Bind *
+envbind(Env *env, char *name) /* the binding whole, its value with it:
+                               * a const generic parameter's carries
+                               * the number the re-check answers with
+                               * (08-reflection.md) */
+{
+  usize i;
+
+  for (i = env->n; i > 0; i--) /* innermost binding first */
+    if (strcmp(env->b[i - 1].name, name) == 0)
+      return &env->b[i - 1];
+  return 0;
+}
+
 Env
 envnone(void)
 {
@@ -97,6 +111,7 @@ envpush(Env *e, char *name, Type *t)
     memcpy(r.b, e->b, e->n * sizeof *r.b);
   r.b[e->n].name = name;
   r.b[e->n].t = t;
+  r.b[e->n].cv = 0;
   return r;
 }
 
@@ -130,6 +145,7 @@ envgparams(Env *outer, Ast **gps, usize n)
   for (i = 0; i < n; i++) {
     r.b[outer->n + i].name = gps[i]->v.gp.name;
     r.b[outer->n + i].t = typaram(gps[i]);
+    r.b[outer->n + i].cv = 0;
   }
   return r;
 }
@@ -508,11 +524,14 @@ rty(Ast *t, Env *env)
         char *nm = len->v.path.segs[0]->v.seg.name;
         Type *p = envfind(env, nm);
 
-        if (p) {
-          if (p->k != Typaram || !p->gp->v.gp.cnst)
+        if (p && p->k == Typaram) { /* the declaration's own walk: N
+                                     * the parameter, the length the
+                                     * instance's binding answers */
+          if (!p->gp->v.gp.cnst)
             cerrat(len, "'%s' is not a const parameter", nm);
           return tyarrayp(p->gp, elem);
-        }
+        } /* a re-check's env binds N to its number: the walk below
+           * reads it off the binding (08-reflection.md) */
       }
       return tyarray(cevallong(len, *env, tyint(IN_USIZE)), elem);
     }
@@ -624,6 +643,21 @@ resolvefnsig(Ast *it, Env *env)
   Type **ps = n ? tyargs(n) : 0;
   usize  i, j;
 
+  { /* a const generic parameter names a length, and usize is the one
+     * shape a length takes -- the numbers the binding rides are
+     * usize's own (08-reflection.md) */
+    Ast **gps = it->v.fn.gparams;
+    usize ng = vlen(gps), g;
+
+    for (g = 0; g < ng; g++)
+      if (gps[g]->v.gp.cnst) {
+        Type *t = rty(gps[g]->v.gp.t, &e);
+
+        if (!t || t->k != Tyint || t->num != IN_USIZE)
+          cerrat(gps[g], "a const generic parameter names a length: usize is the type it takes "
+                         "(08-reflection.md)");
+      }
+  }
   for (i = 0; i < n; i++) {
     Ast *p = it->v.fn.params[i];
 
@@ -777,6 +811,17 @@ resolveimpl(Sym *s)
 {
   Ast *it = s->decl;
   Env  env = envgparams(0, it->v.impl.gparams, vlen(it->v.impl.gparams));
+  { /* the impl's own angle brackets: a const length among them wants
+     * its [N]T routed through the table, and that routing arrives
+     * with a later milestone (08-reflection.md) */
+    Ast **gps = it->v.impl.gparams;
+    usize ng = vlen(gps), g;
+
+    for (g = 0; g < ng; g++)
+      if (gps[g]->v.gp.cnst)
+        cerrat(gps[g], "a const generic parameter on an impl arrives with a later milestone "
+                       "(08-reflection.md)");
+  }
 
   if (it->v.impl.fort) {                   /* a trait impl: the path names the trait */
     s->ifort = rty(it->v.impl.fort, &env); /* Self, for the defaults */

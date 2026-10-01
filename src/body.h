@@ -92,6 +92,9 @@ void     unreach(Fenv *fe);
 int      mustexit(Ast *st);
 Variant *varfind(Sym *s, const char *name);
 int      gunify(Type *sig, Type *arg, Ast **gps, Type **tys, usize n);
+int      gunifyv(Type *sig, Type *arg, Ast **gps, Type **tys, Val **gcvals,
+                 usize n); /* the const generic parameters bind their
+                            * numbers beside the types (08) */
 
 /* inherent impl members: *imp receives the supplying impl, for the
  * caller's genericity gate */

@@ -487,6 +487,9 @@ struct Inst
   Type **tys;   /* s->ngparams of them, the call sites' binding */
   Val  **cvals; /* the const parameters' values, the parameters' own
                  * order -- NULL when the fn marks none (08) */
+  Val **gcvals; /* the const generic parameters' numbers, the angle
+                 * brackets' own order -- what a [N]T binding tells
+                 * apart from another the types alone cannot (08) */
   char *name;
   int   mark; /* the drain this entry is queued for */
 };
@@ -551,7 +554,7 @@ fsymsame(Sym *p, char *buf)
  * spelling (a pair of twins the key sees apart and the alphabet
  * cannot) */
 static char *
-instname(Sym *s, Type **tys, Val **cvals)
+instname(Sym *s, Type **tys, Val **cvals, Val **gcvals)
 {
   char  buf[1024];
   char  tb[256];
@@ -561,6 +564,10 @@ instname(Sym *s, Type **tys, Val **cvals)
   for (i = 0; i < s->ngparams; i++) {
     tymangle(tys[i], tb, sizeof tb);
     o += sprintf(buf + o, "_%s", tb);
+    if (gcvals && gcvals[i]) /* a const generic's own number beside
+                              * its slot's shape -- usize spells
+                              * every binding the same (08) */
+      o += sprintf(buf + o, "_g%lu", (unsigned long) gcvals[i]->i);
     if (o + 256 >= sizeof buf)
       die("an instantiation too wide for the emitter's line");
   }
@@ -641,7 +648,7 @@ cvalsame(Val *a, Val *b)
  * each entry once: the mark is the pass, so a body's nested call can
  * re-ensure what a plain fn already found without doubling it */
 static Inst *
-instensure(Sym *s, Type **tys, Val **cvals)
+instensure(Sym *s, Type **tys, Val **cvals, Val **gcvals)
 {
   Ast **ps = s->decl->v.fn.params;
   usize np = vlen(ps), i, j;
@@ -661,7 +668,15 @@ instensure(Sym *s, Type **tys, Val **cvals)
                               * another (08-reflection.md) */
       if (!cvalsame(in->cvals ? in->cvals[j] : 0, cvals ? cvals[j] : 0))
         break;
-    if (j == np)
+    if (j != np)
+      continue;
+    for (j = 0; j < s->ngparams; j++) /* the const generic parameters'
+                                       * numbers beside the slots'
+                                       * shapes -- usize spells every
+                                       * binding the same (08) */
+      if (!cvalsame(in->gcvals ? in->gcvals[j] : 0, gcvals ? gcvals[j] : 0))
+        break;
+    if (j == s->ngparams)
       goto found;
   }
   if (!insts) {
@@ -672,7 +687,8 @@ instensure(Sym *s, Type **tys, Val **cvals)
   in->s = s;
   in->tys = tys;
   in->cvals = cvals;
-  in->name = instname(s, tys, cvals);
+  in->gcvals = gcvals;
+  in->name = instname(s, tys, cvals, gcvals);
   vappend(&insts, &in);
 found:
   if (in->mark != ipass) {
@@ -1167,8 +1183,8 @@ printvts(FILE *o)
       if (!fm || fm->kind != Mfn || !fm->sym)
         cerrat(vt->tr->decl, "unreachable: the impl supplies it");
       if (tys)
-        nm = instensure(fm->sym, tys, 0)->name; /* the instance this
-                                                 * table names */
+        nm = instensure(fm->sym, tys, 0, 0)->name; /* the instance this
+                                                    * table names */
       else
         nm = fsymname(fm->sym, fm->sym->decl);
       p += sprintf(p, "l $%s, ", nm);
@@ -2113,9 +2129,21 @@ emaexpr(Em *em, Ast *e)
       char *t = newtmp(em);
       char *nm;
 
-      if (e->v.path.tys)
-        nm = instensure(e->v.path.sym, e->v.path.tys, 0)->name;
-      else if (e->v.path.sym)
+      if (e->v.path.tys) {
+        { /* the const generic parameters' own did-it-land: a
+           * black-box length defers to the re-check, and this tree
+           * is not the clone it filled (08-reflection.md) */
+          Sym  *ps = e->v.path.sym;
+          Ast **gps = ps->decl->v.fn.gparams;
+          usize ng = vlen(gps), ci;
+
+          for (ci = 0; ci < ng; ci++)
+            if (gps[ci]->v.gp.cnst && (!e->v.path.gcvals || !e->v.path.gcvals[ci]))
+              cerrat(e, "the const generic argument did not land: the re-check under the "
+                        "binding fills it, and this tree is not the clone it filled");
+        }
+        nm = instensure(e->v.path.sym, e->v.path.tys, 0, e->v.path.gcvals)->name;
+      } else if (e->v.path.sym)
         nm = fsymname(e->v.path.sym, e->v.path.sym->decl);
       else
         nm = fsymname(s, s->decl);
@@ -2447,10 +2475,10 @@ emaexpr(Em *em, Ast *e)
           else
             ra = emaexpr(em, f->v.fld.e); /* as written: the pointer, or the move */
           ra = nicheout(em, selfty, ra);
-          nm = e->v.call.tys ? instensure(ms, e->v.call.tys, 0)->name : fsymname(ms, ms->decl);
+          nm = e->v.call.tys ? instensure(ms, e->v.call.tys, 0, 0)->name : fsymname(ms, ms->decl);
         }
       } else if (f->k == Npath && vlen(f->v.path.segs) == 2 && ms) {
-        nm = e->v.call.tys ? instensure(ms, e->v.call.tys, 0)->name : fsymname(ms, ms->decl);
+        nm = e->v.call.tys ? instensure(ms, e->v.call.tys, 0, 0)->name : fsymname(ms, ms->decl);
       }
     }
     for (i = 0; i < n; i++) {
@@ -2482,8 +2510,19 @@ emaexpr(Em *em, Ast *e)
           if (ps[ci]->v.param.cnst && (!e->v.call.cvals || !e->v.call.cvals[ci]))
             cerrat(e, "the const argument did not land: the re-check under the binding "
                       "fills it, and this tree is not the clone it filled");
-        if (e->v.call.tys || e->v.call.cvals)
-          nm = instensure(s, e->v.call.tys, e->v.call.cvals)->name;
+        { /* the const generic parameters ride the same pick: a
+           * black-box length means the same thing -- the re-check
+           * under the outer binding binds it (08-reflection.md) */
+          Ast **gps = s->decl->v.fn.gparams;
+          usize ng = vlen(gps);
+
+          for (ci = 0; ci < ng; ci++)
+            if (gps[ci]->v.gp.cnst && (!e->v.call.gcvals || !e->v.call.gcvals[ci]))
+              cerrat(e, "the const generic argument did not land: the re-check under the binding "
+                        "fills it, and this tree is not the clone it filled");
+        }
+        if (e->v.call.tys || e->v.call.cvals || e->v.call.gcvals)
+          nm = instensure(s, e->v.call.tys, e->v.call.cvals, e->v.call.gcvals)->name;
         else
           nm = fsymname(s, s->decl);
       } else {
@@ -3158,9 +3197,9 @@ emitinst(FILE *o, Inst *in)
   ng = s->ngparams;
   ats = vlen(it->v.fn.params) ? tyargs(vlen(it->v.fn.params)) : 0;
   for (i = 0; i < vlen(it->v.fn.params); i++)
-    ats[i] = gsubst(s->fnty->args[i], s->gparams, in->tys, ng);
-  recheckfn(s, it, in->tys, in->cvals);
-  emitfn(o, s, it, in->name, ats, gsubst(s->fnty->t, s->gparams, in->tys, ng));
+    ats[i] = gsubstv(s->fnty->args[i], s->gparams, in->tys, in->gcvals, ng);
+  recheckfn(s, it, in->tys, in->cvals, in->gcvals);
+  emitfn(o, s, it, in->name, ats, gsubstv(s->fnty->t, s->gparams, in->tys, in->gcvals, ng));
 }
 
 /* the worklist until it empties: emitting a body finds more calls,

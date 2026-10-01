@@ -1674,7 +1674,6 @@ ceval(Ast *e, Env env, Type *want)
   case Npath: { /* a local's read, or a const reference: the chain (08) */
     char *nm = e->v.path.segs[0]->v.seg.name;
     Sym  *s;
-    Type *p;
 
     if (vlen(e->v.path.segs) == 2 && !e->v.path.root) { /* Enum::V:
                                                          * the payloadless
@@ -1711,10 +1710,26 @@ ceval(Ast *e, Env env, Type *want)
         if (strcmp(cforlets[ci - 1].name, nm) == 0)
           return cforlets[ci - 1].v;
     }
-    p = envfind(&env, nm);
-    if (p) /* a generic's const parameter: it has a value only at a
-            * call, and the evaluator runs before any */
-      cerrat(e, "'%s' is a const parameter: it has no value until the call (08-reflection.md)", nm);
+    { /* the generic's own binding: a const parameter's value rides
+       * the env a re-check built, and the declaration's own walk
+       * holds none -- the box, the caller's black-box question
+       * deferring to the instance (08-reflection.md). A type
+       * parameter read as a value is the error it always was */
+      Bind *b = envbind(&env, nm);
+
+      if (b) {
+        if (b->cv)
+          return *b->cv; /* a const parameter, its number in hand */
+        if (b->t && b->t->k == Typaram && b->t->gp->v.gp.cnst) {
+          evalblackbox++;
+          return valint(0, tyint(IN_USIZE));
+        }
+        cerrat(e,
+               "'%s' is a parameter, not a value: it has no value until the call "
+               "(08-reflection.md)",
+               nm);
+      }
+    }
     s = symfind(nm);
     if (!s) { /* Some, None, Ok: a bare constructor, the want naming
                * the enum (01-types.md) */

@@ -637,9 +637,13 @@ trysig(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, Va
 {
   Type  *fnty = s->fnty;
   Type **tys = s->ngparams ? tyargs(s->ngparams) : 0;
-  Type **sigs; /* what the arguments are checked against: the
-                * signature's own, or its substituted form under
-                * a spelled-out binding */
+  Val  **gcvals = s->ngparams ? arenaalloc(s->ngparams * sizeof *gcvals)
+                              : 0; /* the
+                                    * const generic parameters' numbers, the
+                                    * unifier's binding (08-reflection.md) */
+  Type **sigs;                     /* what the arguments are checked against: the
+                                    * signature's own, or its substituted form under
+                                    * a spelled-out binding */
   Type **ats;
   usize  i;
   int    ok = n == fnty->nargs;
@@ -648,6 +652,8 @@ trysig(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, Va
     thawargs(svs, n);
     return 0;
   }
+  if (gcvals)
+    memset(gcvals, 0, s->ngparams * sizeof *gcvals);
   ats = n ? arenaalloc(n * sizeof *ats) : 0;
   sigs = fnty->args;
   if (seg && seg->v.seg.args) { /* f<i32>(...): the binding is the
@@ -656,8 +662,18 @@ trysig(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, Va
       thawargs(svs, n);
       return 0; /* an overload this spelling does not fit */
     }
-    for (i = 0; i < s->ngparams; i++)
+    for (i = 0; i < s->ngparams; i++) {
+      if (s->gparams[i]->v.gp.cnst) /* a const generic's argument is a
+                                     * number, not a type -- the
+                                     * words cannot spell it; the
+                                     * argument's own type binds it
+                                     * (04-generics.md, 08) */
+        berr(a,
+             "'%s' is a const generic parameter: its argument is a value, and the call's "
+             "arguments bind it -- a length in a type cannot be spelled here (08-reflection.md)",
+             s->gparams[i]->v.gp.name);
       tys[i] = rty(seg->v.seg.args[i], &fe->env);
+    }
     if (fnty->nargs) {
       sigs = tyargs(fnty->nargs);
       for (i = 0; i < fnty->nargs; i++)
@@ -673,7 +689,7 @@ trysig(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, Va
        * and an instantiation's re-check binds it for real (a
        * recursive call inside a generic body) */
       if (tys)
-        gunify(sigs[i], ats[i], s->gparams, tys, s->ngparams);
+        gunifyv(sigs[i], ats[i], s->gparams, tys, gcvals, s->ngparams);
       continue;
     }
     {
@@ -684,7 +700,7 @@ trysig(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, Va
         continue;
       }
     }
-    if (!gunify(sigs[i], ats[i], s->gparams, tys, s->ngparams))
+    if (!gunifyv(sigs[i], ats[i], s->gparams, tys, gcvals, s->ngparams))
       ok = 0;
   }
   if (ok && cvals) { /* the const parameters' own test: the argument
@@ -709,7 +725,11 @@ trysig(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, Va
       }
   }
   if (ok) {
-    for (i = 0; i < s->ngparams; i++)
+    for (i = 0; i < s->ngparams; i++) /* a const generic's slot fills
+                                       * when the unifier meets its
+                                       * length -- a number or a black
+                                       * box; an empty one was never
+                                       * met at all */
       if (!tys[i])
         berr(a, "cannot infer '%s' for '%s' from the call", s->gparams[i]->v.gp.name, s->name);
     { /* every bound, once the binding is known: does the type the
@@ -743,8 +763,9 @@ trysig(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, Va
     a->v.call.sym = s;
     a->v.call.tys = s->ngparams ? tys : 0;
     a->v.call.cvals = cvals;
+    a->v.call.gcvals = s->ngparams ? gcvals : 0;
     thawargs(svs, n); /* the call is done; its borrows ended with it */
-    return gsubst(fnty->t, s->gparams, tys, s->ngparams);
+    return gsubstv(fnty->t, s->gparams, tys, gcvals, s->ngparams);
   }
   thawargs(svs, n); /* this signature did not take: its freezes unwound */
   return 0;
@@ -1291,6 +1312,20 @@ rexprpath1(Ast *e, Fenv *fe, char *name, Type *want)
       berr(e, "'%s' has been moved", name);
     if (touchconflict(e, fe, 1)) /* reading it out moves what it holds */
       berr(e, "'%s' is borrowed (01-types.md)", name);
+    if (l->isconst && l->cv && l->cv->t->k == Tyint && l->cv->t->num != IN_F32 &&
+        l->cv->t->num != IN_F64) { /* a const
+                                    * parameter this walk holds an integer
+                                    * for: the read folds where it stands --
+                                    * a const generic parameter has no
+                                    * runtime slot of its own, and the
+                                    * number is the instance's. A slice's
+                                    * bytes ride their parameter's own
+                                    * slot, as ever (08-reflection.md) */
+      memset(&e->v, 0, sizeof e->v);
+      e->k = Nint;
+      e->v.i.num = l->cv->i;
+      return l->cur;
+    }
     if (!iscopy(l->cur)) { /* assignment moves by default (03-move.md) */
       if (fe->loopd > 0 && locfindi(fe, name) < fe->loopbase)
         berr(e, "'%s' began before the for and would be moved every round", name);
@@ -1327,6 +1362,7 @@ rexprpath1(Ast *e, Fenv *fe, char *name, Type *want)
         berr(e, "'%s' needs an expected fn type here", name);
       for (c = s; c; c = c->next) {
         Type **tys = c->ngparams ? tyargs(c->ngparams) : 0;
+        Val  **gcvals = c->ngparams ? arenaalloc(c->ngparams * sizeof *gcvals) : 0;
         usize  i;
 
         if (!tys) { /* an ungeneric member: it fits or it does not */
@@ -1336,18 +1372,21 @@ rexprpath1(Ast *e, Fenv *fe, char *name, Type *want)
           }
           continue;
         }
-        if (c->fnty->nargs != want->nargs)
+        memset(gcvals, 0, c->ngparams * sizeof *gcvals);
+        if (!gunifyv(c->fnty, want, c->gparams, tys, gcvals, c->ngparams))
           continue;
-        if (!gunify(c->fnty, want, c->gparams, tys, c->ngparams))
-          continue;
-        for (i = 0; i < c->ngparams; i++)
+        for (i = 0; i < c->ngparams; i++) /* a const generic's slot
+                                           * fills when the unifier
+                                           * meets its length; an
+                                           * empty one was never met */
           if (!tys[i])
             berr(e, "cannot infer '%s' for '%s' from the expected type", c->gparams[i]->v.gp.name,
                  c->name);
         /* the emitter's pick, as a call's writeback (04) */
         e->v.path.sym = c;
         e->v.path.tys = tys;
-        return gsubst(c->fnty, c->gparams, tys, c->ngparams);
+        e->v.path.gcvals = gcvals;
+        return gsubstv(c->fnty, c->gparams, tys, gcvals, c->ngparams);
       }
       berr(e, "no '%s' fits %s", name, btys(want));
     }
@@ -2231,7 +2270,11 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
     }
     if (!it || !isintty(it))
       berr(e->v.n2.b, "an index is an integer, this is %s", btys(it));
-    if (e->v.n2.b->k == Nint && bt->k == Tyarray && e->v.n2.b->v.i.num >= bt->n)
+    if (e->v.n2.b->k == Nint && bt->k == Tyarray && !bt->gp /* the
+                                                             * length a const parameter names has
+                                                             * no number here: the re-check under
+                                                             * the binding checks it (08) */
+        && e->v.n2.b->v.i.num >= bt->n)
       berr(e->v.n2.b, "index %lu out of range for %s", (unsigned long) e->v.n2.b->v.i.num,
            btys(bt));
     { /* an element read yields the value; the element's mut layer is
@@ -2271,8 +2314,10 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
         berr(e->v.ridx.hi, "a slice bound is an integer, this is %s", btys(ht));
     }
     if (e->v.ridx.lo && e->v.ridx.hi && e->v.ridx.lo->k == Nint && e->v.ridx.hi->k == Nint &&
-        bt->k == Tyarray &&
-        (e->v.ridx.lo->v.i.num > e->v.ridx.hi->v.i.num || e->v.ridx.hi->v.i.num > bt->n))
+        bt->k == Tyarray && !bt->gp /* the length a const parameter
+                                     * names: the re-check checks it
+                                     * (08-reflection.md) */
+        && (e->v.ridx.lo->v.i.num > e->v.ridx.hi->v.i.num || e->v.ridx.hi->v.i.num > bt->n))
       berr(e, "slice bounds out of range for %s", btys(bt));
     return tyslice(bt->t);
   }
@@ -3498,7 +3543,7 @@ rstmt(Ast *st, Fenv *fe)
  * it right after, before any other instantiation re-checks the same
  * shared tree. */
 static void
-runbody(Ast *it, Env env, Type **argtys, Type *ret, Val **cvals)
+runbody(Ast *it, Env env, Type **argtys, Type *ret, Val **cvals, Ast **gparams, Val **gcvals)
 {
   Fenv  fe;
   Ast **ps = it->v.fn.params;
@@ -3524,6 +3569,27 @@ runbody(Ast *it, Env env, Type **argtys, Type *ret, Val **cvals)
       }
     }
   }
+  if (gparams) { /* the const generic parameters: values the angle
+                  * brackets spell and a length names ([N]T), but the
+                  * frame serves the places a value is asked of them
+                  * -- the declaration's walk holds them empty, and
+                  * the instance's hands them their numbers
+                  * (08-reflection.md) */
+    usize ng = vlen(gparams);
+
+    for (i = 0; i < ng; i++)
+      if (gparams[i]->v.gp.cnst) {
+        Local *l;
+
+        locpush(&fe, gparams[i]->v.gp.name, tyint(IN_USIZE), 0);
+        l = locfind(&fe, gparams[i]->v.gp.name);
+        if (l) {
+          l->isconst = 1;
+          if (gcvals && gcvals[i])
+            l->cv = gcvals[i];
+        }
+      }
+  }
   if (ret->k == Tyslice &&
       localview(it->v.fn.body->v.blk.tail, &fe)) /* the
                                                   * tail returns, and what it views
@@ -3539,8 +3605,8 @@ void
 checkbodyfn(Sym *s, Ast *it)
 {
   bodyfn = s;
-  runbody(it, envgparams(0, it->v.fn.gparams, vlen(it->v.fn.gparams)), s->fnty->args, s->fnty->t,
-          0);
+  runbody(it, envgparams(0, it->v.fn.gparams, vlen(it->v.fn.gparams)), s->fnty->args, s->fnty->t, 0,
+          it->v.fn.gparams, 0);
 }
 
 /* one generic fn, one concrete binding: the parameters carry the
@@ -3550,7 +3616,7 @@ checkbodyfn(Sym *s, Ast *it)
  * is the stricter world -- so the re-check's only failures are the
  * compiler's own bugs (04-generics.md) */
 void
-recheckfn(Sym *s, Ast *it, Type **tys, Val **cvals)
+recheckfn(Sym *s, Ast *it, Type **tys, Val **cvals, Val **gcvals)
 {
   Env    env;
   usize  ng, i;
@@ -3561,9 +3627,12 @@ recheckfn(Sym *s, Ast *it, Type **tys, Val **cvals)
   env = envnone();
   env.n = ng;
   env.b = ng ? arenaalloc(ng * sizeof *env.b) : 0;
-  for (i = 0; i < ng; i++) { /* T is this binding, not a parameter */
+  for (i = 0; i < ng; i++) { /* T is this binding, not a parameter;
+                              * a const generic's slot carries its
+                              * number too, the lengths read off it */
     env.b[i].name = s->gparams[i]->v.gp.name;
     env.b[i].t = tys[i];
+    env.b[i].cv = gcvals ? gcvals[i] : 0;
   }
   if (s->impl) { /* a method's re-check: Self is the impl's target
                   * under this binding, the impl in scope for its
@@ -3575,9 +3644,10 @@ recheckfn(Sym *s, Ast *it, Type **tys, Val **cvals)
     env = envpush(&env, "Self", ng ? gsubst(st, s->gparams, tys, ng) : st);
   }
   for (i = 0; i < vlen(it->v.fn.params); i++)
-    ats[i] = gsubst(s->fnty->args[i], s->gparams, tys, ng);
+    ats[i] = gsubstv(s->fnty->args[i], s->gparams, tys, gcvals, ng);
   bodyfn = s;
-  runbody(it, env, ats, gsubst(s->fnty->t, s->gparams, tys, ng), cvals);
+  runbody(it, env, ats, gsubstv(s->fnty->t, s->gparams, tys, gcvals, ng), cvals, s->gparams,
+          gcvals);
 }
 
 /* one impl's member fns: the same env resolveimplmembers built --
@@ -3608,6 +3678,17 @@ checkbodyimpl(Sym *s, Ast *it)
                                   * (08-reflection.md) */
           berr(ps[j], "a const parameter on a method arrives with a later milestone "
                       "(08-reflection.md)");
+      { /* the method's own angle brackets: a const length among them
+         * rides the same table, and the routing it asks for arrives
+         * with the same milestone (08-reflection.md) */
+        Ast **gps = ms[i]->v.fn.gparams;
+        usize ng = vlen(gps), g;
+
+        for (g = 0; g < ng; g++)
+          if (gps[g]->v.gp.cnst)
+            berr(gps[g], "a const generic parameter on a method arrives with a later milestone "
+                         "(08-reflection.md)");
+      }
       memset(&fe, 0, sizeof fe);
       fe.env = e2;
       fe.fnret = fnty->t;

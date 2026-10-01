@@ -13,6 +13,7 @@
 #include "body.h"
 #include "check.h" /* the pattern order the finders share with the
                     * declaration's overlap check (04-generics.md) */
+#include "eval.h"
 #include "lex.h"
 #include "sym.h"
 #include "type.h"
@@ -572,9 +573,13 @@ varfind(Sym *s, const char *name)
  * Lives in type.c now -- the emitter's layouts need it too. */
 
 /* bind a signature's generic parameters from one argument's type:
- * walking both in step, a Typaram on the left records the right */
+ * walking both in step, a Typaram on the left records the right.
+ * The const generic parameters bind their numbers beside the types
+ * -- [N]T meeting [3]u32 records N = 3 -- and a length the argument
+ * itself holds as a parameter stays the box, the outer instance's
+ * re-check answering it (08-reflection.md) */
 int
-gunify(Type *sig, Type *arg, Ast **gps, Type **tys, usize n)
+gunifyv(Type *sig, Type *arg, Ast **gps, Type **tys, Val **gcvals, usize n)
 {
   usize i;
 
@@ -595,19 +600,38 @@ gunify(Type *sig, Type *arg, Ast **gps, Type **tys, usize n)
   case Typtr:
   case Tyslice:
   case Tymut:
-    return gunify(sig->t, arg->t, gps, tys, n);
+    return gunifyv(sig->t, arg->t, gps, tys, gcvals, n);
   case Tyarray:
+    if (sig->gp) { /* [N]T: the length is the binding's own number */
+      for (i = 0; i < n; i++)
+        if (sig->gp == gps[i]) {
+          if (!tys[i])
+            tys[i] = tyint(IN_USIZE); /* the slot's shape, and the
+                                       * infer check's non-empty */
+          if (arg->gp)
+            return gunifyv(sig->t, arg->t, gps, tys, gcvals,
+                           n); /* a length another generic names: the
+                                * box, the re-check's to bind */
+          if (!gcvals[i]) {
+            gcvals[i] = arenaalloc(sizeof **gcvals);
+            *gcvals[i] = valint(arg->n, tyint(IN_USIZE));
+          } else if (gcvals[i]->i != arg->n)
+            return 0; /* the same length twice, two numbers: no fit */
+          return gunifyv(sig->t, arg->t, gps, tys, gcvals, n);
+        }
+      return gunifyv(sig->t, arg->t, gps, tys, gcvals, n); /* someone else's */
+    }
     if (sig->n != arg->n)
       return 0;
-    return gunify(sig->t, arg->t, gps, tys, n);
+    return gunifyv(sig->t, arg->t, gps, tys, gcvals, n);
   case Tytuple:
   case Tyfn:
     if (sig->nargs != arg->nargs)
       return 0;
     for (i = 0; i < sig->nargs; i++)
-      if (!gunify(sig->args[i], arg->args[i], gps, tys, n))
+      if (!gunifyv(sig->args[i], arg->args[i], gps, tys, gcvals, n))
         return 0;
-    return sig->k == Tyfn ? gunify(sig->t, arg->t, gps, tys, n) : 1;
+    return sig->k == Tyfn ? gunifyv(sig->t, arg->t, gps, tys, gcvals, n) : 1;
   case Tystruct:
   case Tyenum:
   case Tyunion:
@@ -616,12 +640,23 @@ gunify(Type *sig, Type *arg, Ast **gps, Type **tys, usize n)
     if (sig->sym != arg->sym || sig->nargs != arg->nargs)
       return 0;
     for (i = 0; i < sig->nargs; i++)
-      if (!gunify(sig->args[i], arg->args[i], gps, tys, n))
+      if (!gunifyv(sig->args[i], arg->args[i], gps, tys, gcvals, n))
         return 0;
     return 1;
   default:
     return tysame(sig, arg); /* interned: equal or not, nothing to bind inside */
   }
+}
+
+int
+gunify(Type *sig, Type *arg, Ast **gps, Type **tys, usize n) /* no
+                                                              * const
+                                                              * length
+                                                              * among
+                                                              * these
+                                                              * (04) */
+{
+  return gunifyv(sig, arg, gps, tys, 0, n);
 }
 
 /* -- inherent impl members ------------------------------------------------ */

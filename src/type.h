@@ -124,6 +124,12 @@ int tysame(Type *a, Type *b);
  * bound them to: every Typaram that names one of gps reads as the
  * tys slot in step with it */
 Type *gsubst(Type *t, Ast **gps, Type **tys, usize n);
+Type *gsubstv(Type *t, Ast **gps, Type **tys, Val **gcvals,
+              usize n); /* the
+                         * const generic parameters' baked
+                         * numbers ride along: [N]T's N
+                         * answers with them, and a black-box
+                         * one stays the box (08) */
 
 /* a pointer dereferenced as far as it needs to reach a member:
  * sp.b is (*sp).b, and a *mut T's pointee is the mut slot mut T */
