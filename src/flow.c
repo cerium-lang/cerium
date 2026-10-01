@@ -731,6 +731,14 @@ implatch(Type *pat, Type *ty, Ast **gps, Type **tys, usize n)
   if (pat->k == Typaram) {
     for (i = 0; i < n; i++)
       if (pat->gp == gps[i]) {
+        if (pat->gp->v.gp.pack) { /* the pack: the whole tuple the
+                                   * receiver's rows make, the
+                                   * binding Ts = (i32, u8) the same
+                                   * unification a handed-over
+                                   * tuple makes (04-generics.md) */
+          if (ty->k != Tytuple && ty->k != Tyunit)
+            return 0; /* the pack stands for tuples, this is not one */
+        }
         if (!tys[i]) {
           tys[i] = ty;
           return 1;
@@ -829,7 +837,20 @@ boundsok(Sym *im, Type **tys)
       Sym  *t = vlen(segs) == 1 ? symfind(segs[0]->v.seg.name) : 0;
 
       if (!t || t->kind != Strait)
-        continue; /* collectbounds said it, at declaration */
+        continue;              /* collectbounds said it, at declaration */
+      if (gps[i]->v.gp.pack) { /* the bound holds every row: the
+                                * whole tuple asked as one would
+                                * find this impl itself answering --
+                                * the row-by-row question is the
+                                * honest one (04-generics.md) */
+        usize rn = tys[i]->k == Tytuple ? tys[i]->nargs : 0;
+        usize ri;
+
+        for (ri = 0; ri < rn; ri++)
+          if (!implsatisfies(t, tys[i]->args[ri]))
+            return 0; /* a row the bound does not answer */
+        continue;     /* the empty pack: every row it has answers */
+      }
       if (!implsatisfies(t, tys[i]))
         return 0; /* the receiver does not answer this bound */
     }

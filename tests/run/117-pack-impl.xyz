@@ -1,0 +1,21 @@
+/* the pack impl: a trait held by tuples of every arity, the method
+ * recursing the sum's own way -- the count's const if, the row and
+ * the rest, the empty tuple stopping it; the receiver spelled
+ * through, the sugar included (04-generics.md) */
+trait Show { fn show(v: Self) -> i32; }
+
+impl Show for i32 { fn show(v: Self) -> i32 { v } }
+
+impl<...Ts: Show> Show for (...Ts) {
+  fn show(v: Self) -> i32 {
+    const if @count(...Ts) == 0 {
+      0
+    } else {
+      Show::show(v[0]) + Show::show(v[1..])
+    }
+  }
+}
+
+fn main() -> i32 {
+  Show::show((1, 2, 3)) + Show::show(()) + Show::show((4, 5)) + (7,).show()
+}   /* 6 + 0 + 9 + 7 = 22 */

@@ -1131,7 +1131,17 @@ primary(void)
       return mk(Nunit);
     }
     {
-      Ast *e1 = expr();
+      Ast *e1;
+
+      if (peek() == Tdotdotdot) { /* (...Ts): the pack's rows, a
+                                   * grouping of the spread -- the
+                                   * impl target's own spelling
+                                   * (04-generics.md) */
+        next();
+        e1 = mk(Nspread);
+        e1->v.un.e = expr();
+      } else
+        e1 = expr();
 
       if (peek() == Tcomma) { /* a tuple */
         n = mk(Ntuple);

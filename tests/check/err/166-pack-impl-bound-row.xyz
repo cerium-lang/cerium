@@ -1,0 +1,14 @@
+/* a bound on a pack impl holds every row: one the trait does not
+ * answer keeps the receiver out (04-generics.md) */
+trait Show { fn show(v: Self) -> i32; }
+
+impl Show for i32 { fn show(v: Self) -> i32 { v } }
+
+impl<...Ts: Show> Show for (...Ts) {
+  fn show(v: Self) -> i32 {
+    const if @count(...Ts) == 0 { 0 }
+    else { Show::show(v[0]) + Show::show(v[1..]) }
+  }
+}
+
+fn main() -> i32 { Show::show((1, 2.5)) }

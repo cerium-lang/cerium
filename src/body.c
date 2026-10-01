@@ -1882,9 +1882,36 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
           t = rexpr(a->v.un.e, fe, 0);
           if (!t)
             berr(a->v.un.e, "the spread operand is not known here (01-types.md)");
-          if (t->k == Tyslice)
-            berr(a, "a slice's spread needs the pack it feeds -- packs arrive with generics "
-                    "(04-generics.md)");
+          if (t->k == Tyslice) /* the length is a runtime thing: the
+                                * spread wants a length the compiler
+                                * reads -- an array's type names one,
+                                * a value the evaluator knows does
+                                * (04-generics.md) */
+            berr(a, "a slice's length is a runtime thing: its spread wants an array, or a "
+                    "value the compiler knows (04-generics.md)");
+          if (t->k == Tyarray && t->gp) { /* the length a const
+                                           * parameter names: the
+                                           * binding's own answer,
+                                           * this defers (08) */
+            evalblackbox++;
+            vappend(&as, &a);
+            continue;
+          }
+          if (t->k == Tyarray) { /* [N]T: the length the type names,
+                                  * every element an argument of its
+                                  * own, the reads the index's own
+                                  * checks hold (04-generics.md) */
+            for (k = 0; k < t->n; k++) {
+              Ast *ix = mknear(Nindex, a);
+              Ast *num = mknear(Nint, a);
+
+              num->v.i.num = k;
+              ix->v.n2.a = a->v.un.e;
+              ix->v.n2.b = num;
+              vappend(&as, &ix);
+            }
+            continue;
+          }
           if (t->k == Typaram && t->gp->v.gp.pack) { /* the pack's own
                                                       * rows: the binding holds them, and the
                                                       * arity with them -- the spread stays, the

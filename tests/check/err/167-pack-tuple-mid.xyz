@@ -1,0 +1,5 @@
+/* the pack stands for the whole tuple: (...Ts) alone, never among
+ * rows (04-generics.md) */
+trait Show { fn show(v: Self) -> i32; }
+
+impl<...Ts: Show> Show for (...Ts, i32) { fn show(v: Self) -> i32 { 0 } }
