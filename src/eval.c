@@ -88,6 +88,13 @@ static struct
 } cforlets[256];
 static usize ncforlets;
 
+/* a walk met a generic's own parameter where it asked for an answer:
+ * the black box the declaration's walk holds T under. The flag rises
+ * in the evaluator, and the unroll that caused it reads it back and
+ * stops -- its rounds are the instance's own, and the re-check under
+ * the binding walks them (04-generics.md) */
+int evalblackbox;
+
 /* -- the value domain ---------------------------------------------------- */
 
 /* a type's name, for a message: two a line, at the most */
@@ -1170,7 +1177,7 @@ patvariant(Ast *p, Type *vt)
 
 /* does the pattern fit the value? The arms take their turn by it,
  * and a for let runs its rounds while it holds (09, 10) */
-static int
+int
 patfits(Ast *p, Val v)
 {
   switch (p->k) {
@@ -1883,6 +1890,13 @@ ceval(Ast *e, Env env, Type *want)
       if (vlen(e->v.blt.targs) != 1 || vlen(e->v.blt.args) != 1)
         cerrat(e, "@offset takes one type argument and the field's name (02-layout.md)");
       t = rty(e->v.blt.targs[0], &e2);
+      if (t->k == Typaram) { /* a generic's own parameter, the black
+                              * box: the fold is the instance's, and
+                              * the unroll that reached here defers
+                              * to the re-check (04-generics.md) */
+        evalblackbox++;
+        return valint(0, tyint(IN_USIZE));
+      }
       fnm = bltname(e->v.blt.args[0], 0); /* no body frame runs here:
                                            * a round's name reaches
                                            * through the evaluator's
@@ -1988,6 +2002,14 @@ ceval(Ast *e, Env env, Type *want)
         t = ceval(e->v.blt.args[0], env, 0).t;
       else
         cerrat(e, "@typeinfo takes one type argument or one value (08-reflection.md)");
+      if (t && t->k == Typaram) { /* a generic's own parameter, the
+                                   * black box: the description is the
+                                   * instance's, and the unroll that
+                                   * reached here defers to the
+                                   * re-check (04-generics.md) */
+        evalblackbox++;
+        return valint(0, typeinfoty());
+      }
       return typeinfoval(t, e);
     }
     cerrat(e, "@%s is not compile-time known here (08-reflection.md)", nm);
@@ -2787,6 +2809,36 @@ bindround(Ast *p, Val v, int mut, Rbind **out)
   }
 }
 
+/* the bindings a match's taken arm makes over its scrutinee's
+ * value: the round's own spelling, a flat let each -- the value
+ * kept beside its tree (a let's cv), for the walks that read a
+ * name's bytes take them from it (09-match.md, 08-reflection.md) */
+Ast **
+cmatchlets(Ast *pat, Val sv, Ast *at)
+{
+  Rbind *bs = vnew(Rbind, 4);
+  Ast  **lets;
+  usize  nb, k;
+
+  bindround(pat, sv, 0, &bs);
+  nb = vlen(bs);
+  lets = vnew(Ast *, nb ? nb : 1);
+  for (k = 0; k < nb; k++) { /* the const for's own spelling, the
+                              * same trick (10-iteration.md) */
+    Ast *let = mknear(Nlet, at);
+    Val *cv = arenaalloc(sizeof *cv);
+
+    let->v.let.pat = pathsegs(bs[k].name, 0, at);
+    let->v.let.t = tytoexpr(bs[k].v.t, at);
+    let->v.let.e = valtoexpr(bs[k].v, at);
+    let->v.let.mut = bs[k].mut;
+    *cv = bs[k].v;
+    let->v.let.cv = cv;
+    vappend(&lets, &let);
+  }
+  return lets;
+}
+
 /* a round's binding, listed for the inner const for that iterates
  * its name: the unroll builds the rounds in order, so the listing
  * shadows the way bindings do -- each round's names over the ones
@@ -2811,9 +2863,12 @@ cforlet(Ast *st, Rbind *bs, usize nb)
  * round it lands in is the round being spelled -- so it expands
  * here, inside the round, not later as a node the passes would
  * reach once per round with only one unroll slot to share. A
- * runtime for stays itself: it is a statement like any other */
-static void
-cforbody(Ast *body, Ast ***un)
+ * runtime for stays itself: it is a statement like any other.
+ * Returns 1 when a nested loop named a generic parameter: the
+ * rounds this one was spelling are the instance's own too, and the
+ * caller defers the whole loop to the re-check (04-generics.md) */
+static int
+cforbody(Ast *body, Ast ***un, Fenv *fe)
 {
   Ast **ss = body->v.blk.stmts;
   usize n = vlen(ss), i, k;
@@ -2821,8 +2876,13 @@ cforbody(Ast *body, Ast ***un)
   for (i = 0; i < n; i++) {
     if (ss[i]->k == Ncfor) { /* the recursion, flattened in where
                               * it stood */
-      Ast **inner = cforunroll(ss[i]);
+      Ast **inner = cforunroll(ss[i], fe);
 
+      if (!inner) /* the black box reached into another's rounds:
+                   * one instance per round is the unfolding of
+                   * generic recursion, and that walk is the
+                   * re-check's own (04-generics.md) */
+        return 1;
       for (k = 0; k < vlen(inner); k++)
         vappend(un, &inner[k]);
     } else {
@@ -2846,6 +2906,7 @@ cforbody(Ast *body, Ast ***un)
     x->v.n1.e = astclone(body->v.blk.tail);
     vappend(un, &x);
   }
+  return 0;
 }
 
 /* the const for's statements: the iteration already ran, and each
@@ -2858,18 +2919,43 @@ cforbody(Ast *body, Ast ***un)
  * (10-iteration.md). What is not compile-time known stops where it
  * stands, for the marker is a promise, not a hope (08-reflection.md) */
 Ast **
-cforunroll(Ast *st)
+cforunroll(Ast *st, Fenv *fe)
 {
   Ast **un;
   Val   src;
   Type *et;
   Val  *rounds = 0;
   usize n = 0, i, save = ncforlets;
+  int   bb = evalblackbox;
 
   if (st->v.forx.shape != FIN)
     cerrat(st, "a const for iterates: the condition and the let forms are runtime shapes "
                "(10-iteration.md)");
-  src = ceval(st->v.forx.b, envnone(), 0);
+  if (st->v.forx.b->k == Npath && !st->v.forx.b->v.path.root &&
+      vlen(st->v.forx.b->v.path.segs) == 1) { /* a bare name: the
+                                               * frame may hold it as
+                                               * a compile-time
+                                               * binding -- a match's
+                                               * taken arm spelled it
+                                               * (09-match.md) */
+    Local *l = locfind(fe, st->v.forx.b->v.path.segs[0]->v.seg.name);
+
+    if (l && l->cv)
+      src = *l->cv;
+    else
+      src = ceval(st->v.forx.b, fe->env, 0);
+  } else /* the frame's own bindings ride along either way: a
+          * generic's T resolves against them, and the walk that
+          * called this holds the instance's (04-generics.md) */
+    src = ceval(st->v.forx.b, fe->env, 0);
+  if (evalblackbox != bb) { /* the iterable named a generic
+                             * parameter, the black box: the rounds
+                             * are the instance's own, this walk
+                             * skips the whole loop, and the re-check
+                             * under the binding walks it (04) */
+    evalblackbox = bb;      /* the flag dies with the walk that raised it */
+    return 0;
+  }
   et = src.t;
   while (et && et->k == Tymut)
     et = et->t;
@@ -2928,8 +3014,18 @@ cforunroll(Ast *st)
       es[k] = let;
       vappend(&un, &let);
     }
-    cforlet(st, bs, nb); /* the inner loops iterate this round's names */
-    cforbody(st->v.forx.body, &un);
+    cforlet(st, bs, nb);                      /* the inner loops iterate this round's names */
+    if (cforbody(st->v.forx.body, &un, fe)) { /* a nested loop's
+                                               * black box: this
+                                               * loop's rounds would
+                                               * carry it, and the
+                                               * whole loop defers
+                                               * to the re-check
+                                               * (04-generics.md) */
+      ncforlets = save;                       /* the listing goes back, the rounds unspent */
+      st->v.forx.unroll = 0;
+      return 0;
+    }
   }
   ncforlets = save; /* the loop's rounds end; the listing goes back */
   st->v.forx.unroll = un;

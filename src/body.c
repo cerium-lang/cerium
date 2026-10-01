@@ -824,13 +824,15 @@ rbuiltin(Ast *e, Fenv *fe, Type *want)
                 "local's: name a const, or call the fn at compile time (08-reflection.md)");
       }
       t = rty(targs[0], &fe->env);
-      if (t->k == Typaram) /* a generic's own parameter, met on the
-                            * declaration's walk: the body is shared
-                            * across instances, and a rewrite here
-                            * would hand every one the first's
-                            * answer (04-generics.md) */
-        berr(e, "@typeinfo of a generic parameter arrives with generic specialization "
-                "(04-generics.md)");
+      if (t->k == Typaram)   /* a generic's own parameter, met on the
+                              * declaration's walk: the description is
+                              * the instance's, and the node stands for
+                              * the re-check under the binding to
+                              * rewrite, on the clone the emitter hands
+                              * that walk (04-generics.md) */
+        return typeinfoty(); /* the shape alone: this walk checks the
+                              * world around it, the instance's fills
+                              * the answer in */
       targs[0]->ty = t;
     } else if (nt == 0 && na == 1)
       t = rexpr(args[0], fe, 0); /* the value's own derivation, not
@@ -866,9 +868,11 @@ rbuiltin(Ast *e, Fenv *fe, Type *want)
               "local's: name a const, or call the fn at compile time (08-reflection.md)");
     }
     t = rty(targs[0], &fe->env);
-    if (t->k == Typaram)
-      berr(e, "@offset of a generic parameter arrives with generic specialization "
-              "(04-generics.md)");
+    if (t->k == Typaram) /* the black box again: the fold is the
+                          * instance's, and the node stands for the
+                          * re-check to fold it there
+                          * (04-generics.md) */
+      return tyint(IN_USIZE);
     targs[0]->ty = t;
     fnm = bltname(args[0], fe); /* the name: a literal's bytes, a
                                  * const for's round -- whatever the
@@ -912,10 +916,20 @@ rbuiltin(Ast *e, Fenv *fe, Type *want)
       vt = rexpr(args[0], fe, 0);
     while (vt && vt->k == Tymut) /* the permission, not the shape */
       vt = vt->t;
-    fnm = bltname(args[1], fe); /* the name: a literal's bytes, a const
-                                 * for's round (10-iteration.md is what
-                                 * makes one compile-time known) */
-    if (!vt || (vt->k != Tystruct && vt->k != Tyunion))
+    fnm = bltname(args[1], fe);  /* the name: a literal's bytes, a const
+                                  * for's round (10-iteration.md is what
+                                  * makes one compile-time known) */
+    if (!vt || vt->k == Typaram) /* a generic's own parameter: the
+                                  * fields are the instance's, and
+                                  * the borrow this rewrite spells is
+                                  * theirs to spell -- outside a walk
+                                  * over the type's fields there is
+                                  * no name to read, and inside one
+                                  * the re-check does the rewrite
+                                  * (04-generics.md) */
+      berr(args[0], "@field of a generic parameter is the instance's: walk its type's "
+                    "fields with a const for, inside the instance (04-generics.md)");
+    if (vt->k != Tystruct && vt->k != Tyunion)
       berr(args[0],
            "@field reads a struct's or a union's field: %s is neither "
            "(08-reflection.md)",
@@ -2690,6 +2704,41 @@ patcovers(Ast *p, Sym *scr, struct Variant **vs, usize *nv, int *whatever)
   }
 }
 
+/* a match whose scrutinee @typeinfo built, routed on the value the
+ * evaluator holds: the taken arm's bindings as the lets that spell
+ * them, its body the block's own value, the node rewritten as that
+ * block -- and the walk re-enters its own words, the @typeinfo
+ * rewrite's own trick (09-match.md, 08-reflection.md) */
+static Type *
+cmatchroute(Ast *e, Val sv, Fenv *fe, Type *want)
+{
+  Ast **arms = e->v.call.args;
+  usize n = vlen(arms), i;
+
+  for (i = 0; i < n; i++) {
+    Ast  *arm = arms[i];
+    Ast **lets;
+    usize nb, k;
+
+    if (!patfits(arm->v.n2.a, sv))
+      continue; /* another variant's round: discarded before
+                 * checking (09-match.md) */
+    lets = cmatchlets(arm->v.n2.a, sv, e);
+    nb = vlen(lets);
+    e->k = Nblock; /* the taken arm's body is the match's own now,
+                    * the bindings the lets before it -- the match's
+                    * node becomes the block that holds them */
+    e->v.blk.stmts = vnew(Ast *, nb ? nb : 1);
+    for (k = 0; k < nb; k++)
+      vappend(&e->v.blk.stmts, &lets[k]);
+    e->v.blk.tail = arm->v.n2.b; /* the block's value: the arm's
+                                  * own, block or expression */
+    return rblock(e, fe, want);
+  }
+  berr(e, "the match misses the value it holds (09-match.md)");
+  return 0; /* unreachable */
+}
+
 static Type *
 rmatch(Ast *e, Fenv *fe, Type *want)
 {
@@ -2704,6 +2753,34 @@ rmatch(Ast *e, Fenv *fe, Type *want)
   int             joined = 0;
   Fenv            acc;
 
+  if (e->v.call.f->k == Nbuiltin && strcmp(e->v.call.f->v.blt.name, "typeinfo") == 0 &&
+      !(vlen(e->v.call.f->v.blt.targs) == 1 && e->v.call.f->v.blt.targs[0]->k == Nun &&
+        e->v.call.f->v.blt.targs[0]->v.un.op == Tdollar2)) {
+    /* the prime scrutinee (09-match.md): the description is
+     * compile-time, and the match only routes -- the taken arm's
+     * bindings spelled as the lets that hold them, its body the
+     * match's own, the untaken arms discarded before checking. The
+     * declaration's black box defers the routing to the re-check
+     * under the binding (04-generics.md). A $$ splice stays out: its
+     * answer lives in the frame a compile-time call builds, and the
+     * evaluator's own match reads it there (08-reflection.md) */
+    int bb = evalblackbox;
+    Val sv = ceval(e->v.call.f, fe->env, 0);
+
+    if (evalblackbox != bb) {            /* the parameter, the black box: the
+                                          * arms' shape is the instance's own */
+      evalblackbox = bb;                 /* the flag dies with the walk that raised it */
+      return want ? want : typeinfoty(); /* the shape the world
+                                          * around it wants, or the
+                                          * shape alone when no slot
+                                          * names one -- a discarded
+                                          * statement's own, a
+                                          * binding's placeholder:
+                                          * the instance's walk types
+                                          * it for real (04) */
+    }
+    return cmatchroute(e, sv, fe, want);
+  }
   if (!st)
     st = rexpr(e->v.call.f, fe, 0); /* a computed scrutinee: f() */
   if (!st)
@@ -3185,12 +3262,23 @@ rstmt(Ast *st, Fenv *fe)
     Ast **un;
     usize i;
 
-    if (ununroll) /* a const for below the body's top level: the
-                   * body is shared between the rounds, and this
-                   * node would carry one unroll across them all */
-      berr(st, "a const for nested below a const for's top level arrives with a later milestone "
-               "(10-iteration.md)");
-    un = cforunroll(st);
+    un = cforunroll(st, fe); /* the frame's own bindings ride along:
+                              * a generic's T resolves against them
+                              * here, and the instance's walk holds
+                              * the instance's (04-generics.md). A
+                              * loop a rewrite spelled inside another
+                              * round walks here too: the round is
+                              * the clone the unroll handed it, so
+                              * this node's unroll is its own -- the
+                              * shared-tree rule that once forbade
+                              * this is the clone's now
+                              * (10-iteration.md) */
+    if (!un)                 /* the iterable named a generic parameter, the black
+                              * box: the rounds are the instance's own, this walk
+                              * skips the whole loop, and the re-check under the
+                              * binding walks it -- on the clone the emitter hands
+                              * that walk (04-generics.md) */
+      return;
     ununroll++;
     for (i = 0; i < vlen(un); i++)
       rstmt(un[i], fe);

@@ -57,47 +57,68 @@ Val ceval(Ast *e, Env env, Type *want); /* an expression's value, where its
                                          * initializer (08-reflection.md) */
 Val valint(u64 v, Type *t);             /* an integer's or a bool's value */
 
-void cevalsym(Sym *s);                      /* a const's value, now or never: the
-                                             * initializer must be compile-time known
-                                             * (01-types.md), and so must a static's --
-                                             * its storage is runtime, its first value is
-                                             * not */
-Type *tysplice(Ast *e, Env *env);           /* a $$ operand's value: the type it
-                                             * holds, for the slot the splice names
-                                             * (08-reflection.md) */
-u64 cevallong(Ast *e, Env env, Type *want); /* an integer's value,
-                                             * where a type's own parts need one: an
-                                             * array's length, a variant's discriminant
-                                             * (08-reflection.md) */
-Ast **cforunroll(Ast *st);                  /* a const for's statements: the
-                                             * iteration ran, each round's value bound
-                                             * as a let that spells it, the body shared
-                                             * -- what the checker walks and the
-                                             * emitter emits where the loop stood, no
-                                             * loop surviving (10-iteration.md) */
-Val typeinfoval(Type *t, Ast *at);          /* a type's own description, as
-                                             * std::meta's model holds it: the
-                                             * checker's body pass builds it too,
-                                             * where a runtime fn asks at a place
-                                             * the answer is already known
-                                             * (08-reflection.md) */
-Ast *valtoexpr(Val v, Ast *at);             /* a value the walk holds, back to
-                                             * the expression that spells it: the
-                                             * body pass's rewrites read it
-                                             * (08-reflection.md) */
-Ast *mknear(Nk k, Ast *at);                 /* a node with another's position:
-                                             * the materialized tree reports
-                                             * where it stands, not wherever
-                                             * the lexer happens to sit */
-char *cstrval(Val v, Ast *at);              /* a name the model spells ([]u8,
-                                             * one byte a value) as the
-                                             * compiler's own C string: the
-                                             * field a walk looks up is named
-                                             * in the value's bytes
-                                             * (08-reflection.md) */
-char *bltname(Ast *a, struct Fenv *fe);     /* the name a builtin's argument
-                                             * holds: a literal's own bytes,
-                                             * or the value the evaluator
-                                             * resolves (08-reflection.md) */
+void cevalsym(Sym *s);                       /* a const's value, now or never: the
+                                              * initializer must be compile-time known
+                                              * (01-types.md), and so must a static's --
+                                              * its storage is runtime, its first value is
+                                              * not */
+Type *tysplice(Ast *e, Env *env);            /* a $$ operand's value: the type it
+                                              * holds, for the slot the splice names
+                                              * (08-reflection.md) */
+u64 cevallong(Ast *e, Env env, Type *want);  /* an integer's value,
+                                              * where a type's own parts need one: an
+                                              * array's length, a variant's discriminant
+                                              * (08-reflection.md) */
+Ast **cforunroll(Ast *st, struct Fenv *fe);  /* a const for's statements: the
+                                              * iteration ran, each round's value bound
+                                              * as a let that spells it, the body shared
+                                              * -- what the checker walks and the
+                                              * emitter emits where the loop stood, no
+                                              * loop surviving (10-iteration.md). NULL:
+                                              * the iterable named a generic parameter,
+                                              * and the rounds are the instance's own --
+                                              * the declaration's walk skips the whole
+                                              * loop, and the re-check under the binding
+                                              * walks it (04-generics.md) */
+int patfits(Ast *p, Val v);                  /* does the pattern fit the value? A
+                                              * match's arms take their turn by it
+                                              * (09-match.md) */
+extern int evalblackbox;                     /* a walk met a generic's own parameter
+                                              * where it asked for an answer: the
+                                              * black box the declaration's walk
+                                              * holds T under. It rises in the
+                                              * evaluator, and the walk that caused
+                                              * it reads it back and defers -- the
+                                              * instance's re-check answers
+                                              * (04-generics.md) */
+Ast **cmatchlets(Ast *pat, Val sv, Ast *at); /* the bindings a match's taken arm
+                                              * makes over its scrutinee's value,
+                                              * each a let that spells the value it
+                                              * holds -- the rewrite the routing
+                                              * walks (09-match.md) */
+Val typeinfoval(Type *t, Ast *at);           /* a type's own description, as
+                                              * std::meta's model holds it: the
+                                              * checker's body pass builds it too,
+                                              * where a runtime fn asks at a place
+                                              * the answer is already known
+                                              * (08-reflection.md) */
+Ast *valtoexpr(Val v, Ast *at);              /* a value the walk holds, back to
+                                              * the expression that spells it: the
+                                              * body pass's rewrites read it
+                                              * (08-reflection.md) */
+Ast *mknear(Nk k, Ast *at);                  /* a node with another's position:
+                                              * the materialized tree reports
+                                              * where it stands, not wherever
+                                              * the lexer happens to sit */
+char *cstrval(Val v, Ast *at);               /* a name the model spells ([]u8,
+                                              * one byte a value) as the
+                                              * compiler's own C string: the
+                                              * field a walk looks up is named
+                                              * in the value's bytes
+                                              * (08-reflection.md) */
+char *bltname(Ast *a, struct Fenv *fe);      /* the name a builtin's argument
+                                              * holds: a literal's own bytes,
+                                              * or the value the evaluator
+                                              * resolves (08-reflection.md) */
 
 #endif
