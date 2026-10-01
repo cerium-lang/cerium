@@ -1,0 +1,12 @@
+/* the runtime read at the call: a const parameter wants an
+ * argument the compile time knows, and the static's read is not
+ * one -- the whole point is baking it into the instance
+ * (08-reflection.md) */
+static mut CELL: u32 = 7;
+fn g(const n: u32) -> u32 {
+  n + 1
+}
+fn main() -> u32 {
+  let r = CELL;
+  g(r)
+}

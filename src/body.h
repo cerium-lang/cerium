@@ -23,6 +23,10 @@ struct Local
   Val  *cv;      /* a const for round's value, when the unroll spelled
                   * the binding: a name's bytes are read from it
                   * (08-reflection.md) */
+  int isconst;   /* a const parameter: its value rides cv when the
+                  * instance's walk brings it, and a compile-time read
+                  * before that is the black box -- the re-check under
+                  * the binding answers (08-reflection.md) */
 };
 
 typedef struct Fenv Fenv;

@@ -120,5 +120,10 @@ char *bltname(Ast *a, struct Fenv *fe);      /* the name a builtin's argument
                                               * holds: a literal's own bytes,
                                               * or the value the evaluator
                                               * resolves (08-reflection.md) */
+int fnconstparams(Sym *s);                   /* does the fn's parameter list
+                                              * mark one const? The signature
+                                              * is a distinct overload then,
+                                              * and the fn is no value
+                                              * (08-reflection.md) */
 
 #endif

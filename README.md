@@ -405,6 +405,31 @@ instance's own (`04-generics.md`) — and an untyped `let` under a
 black-box match meets the placeholder's shape at its use, the
 honest edge.
 
+The const parameter is here: `fn field_offset<T>(const name: []u8)
+-> usize { @offset<T>(name) }`, the spec's own spelling — the
+argument baked into each instantiation, a const parameter the
+value's generic. The caller's argument must be compile-time known,
+and the pick is static: a literal, a const's name, arithmetic over
+either, or another const parameter — a runtime read names the
+plain half of an overload pair. The fn itself walks the instance
+pipeline the generic walk built, the instantiation's key widened
+from the types to the values — `Inst` carrying `cvals` beside
+`tys`, each spelling its own clone — and inside the declaration's
+walk the name is a black box again: a read of a const parameter
+the frame holds no value for defers, and the re-check under the
+binding — the clone whose frame carries `cv` — folds `@offset` and
+`@field` where the value has landed, the generic's own deferral,
+twice over when a const passes as the const. A compile-time call
+runs the body in the evaluator instead, the frame holding the
+baked argument, so a const spelled from the call folds too. The
+const spelling is the more specific overload — `f(1)` takes the
+const half, a runtime read the plain — and a fn with a const
+parameter is no value, a fn pointer having nowhere to hand one
+over; a method's table slot has nowhere either, and its const
+parameters arrive with the milestone that routes them. What waits:
+the const in the type position — `[N]T`, `const N: usize` in the
+angle brackets — and the const `if` (`08-reflection.md`).
+
 Codegen has begun: `xyz -s file.xyz` prints the `.ssa` text — qbe's
 input — and `xyz -c file.xyz -o out` runs the pipeline, qbe as a
 subprocess and the system `cc` linking. Checking writes each node's

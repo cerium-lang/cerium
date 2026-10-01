@@ -144,12 +144,17 @@ struct Ast
     } tdyn;         /* Ntdyn */
     struct
     {
-      Ast  *f;    /* Ncall, Nbuiltin: the callee */
-      Ast **args; /* Ncall, Nbuiltin, Nmatch: args or arms */
-      Sym  *sym;  /* Ncall: the overload the checker picked, so the
-                   * emitter need not guess by name */
-      Type **tys; /* Ncall: the generic bindings it picked -- NULL
-                   * when the fn is not generic */
+      Ast  *f;     /* Ncall, Nbuiltin: the callee */
+      Ast **args;  /* Ncall, Nbuiltin, Nmatch: args or arms */
+      Sym  *sym;   /* Ncall: the overload the checker picked, so the
+                    * emitter need not guess by name */
+      Type **tys;  /* Ncall: the generic bindings it picked -- NULL
+                    * when the fn is not generic */
+      Val **cvals; /* Ncall: the const parameters' argument values,
+                    * a slot a parameter -- NULL when the parameter is
+                    * plain, or the argument a black box this walk
+                    * defers: the re-check under the binding has the
+                    * value and redoes the pick (08-reflection.md) */
     } call;
     struct
     {

@@ -1,0 +1,10 @@
+/* the const fn as a value: a fn pointer has nowhere to hand the
+ * baked argument over, so a fn with a const parameter is no value
+ * -- call it, or split the plain half out (08-reflection.md) */
+fn g(const n: u32) -> u32 {
+  n + 1
+}
+fn main() -> u32 {
+  let r = g;
+  0
+}
