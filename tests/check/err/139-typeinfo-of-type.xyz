@@ -1,0 +1,6 @@
+/* 'type' is the checker's own: the model describes the language's
+ * types, and 'type' names none of them -- there is no TypeInfo row
+ * for the slot itself (08-reflection.md) */
+fn main() -> u32 {
+  match @typeinfo<type>() { TypeInfo::Bool => 1, _ => 0, }
+}

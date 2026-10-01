@@ -574,6 +574,406 @@ variantval(Sym *s, Variant *v, Type **targs, usize ntargs, Ast **args, usize na,
   return r;
 }
 
+/* -- @typeinfo's model, built (08-reflection.md) -------------------------
+ *
+ * The answer is std::meta's own data, held as the walk's values: a
+ * TypeInfo variant by hand, its payload rows built beside it -- the
+ * same shapes a literal's evaluation holds, one representation for
+ * every consumer to read. */
+
+static Sym *sym_field, *sym_enumfield, *sym_fnarg, *sym_attr, *sym_attrarg;
+
+/* the model's names, found once: the prelude resolves before the
+ * user's file binds anything, so the syms stand when the first
+ * answer asks */
+static void
+metainit(void)
+{
+  if (sym_field)
+    return;
+  sym_field = symfind("Field");
+  sym_enumfield = symfind("EnumField");
+  sym_fnarg = symfind("FnArg");
+  sym_attr = symfind("Attr");
+  sym_attrarg = symfind("AttrArg");
+}
+
+/* a name as the model spells it: []u8, one byte a value -- the
+ * serialization walk reads it the way it reads any slice */
+static Val
+strslice(char *s)
+{
+  Val   r;
+  usize n = strlen(s), i;
+
+  r.t = tyslice(tyint(IN_U8));
+  r.i = 0;
+  r.f = 0;
+  r.tag = 0;
+  r.tyval = 0;
+  r.elems = n ? arenaalloc(n * sizeof *r.elems) : 0;
+  r.len = n;
+  for (i = 0; i < n; i++)
+    r.elems[i] = valint((u64) (unsigned char) s[i], tyint(IN_U8));
+  return r;
+}
+
+/* a slice of built rows: @typeinfo is the only writer of slice
+ * values -- the user's own literals make arrays, and []T borrows at
+ * runtime -- so what lands here is owned data, the count on it */
+static Val
+sliceval(Val *els, usize n, Type *elty)
+{
+  Val r;
+
+  r.t = tyslice(elty);
+  r.i = 0;
+  r.f = 0;
+  r.tag = 0;
+  r.tyval = 0;
+  r.elems = els;
+  r.len = n;
+  return r;
+}
+
+/* a model struct's value, its rows already built in the
+ * declaration's own order */
+static Val
+mkval(Sym *s, Val *els)
+{
+  Val r;
+
+  r.t = tysym(s, 0, 0);
+  r.i = 0;
+  r.f = 0;
+  r.tag = 0;
+  r.tyval = 0;
+  r.elems = els;
+  r.len = 0;
+  return r;
+}
+
+/* a TypeInfo variant's value: the discriminant, the payload rows
+ * already built in the order the variant declared them */
+static Val
+mkti(char *nm, Val *els, usize n, Ast *at)
+{
+  Type    *et = typeinfoty();
+  Variant *v = symvarfind(et->sym, nm);
+
+  if (!v) /* the embedded source changed under the compiler */
+    cerrat(at, "std::meta's TypeInfo lost its '%s' variant (08-reflection.md)", nm);
+  if (n != v->nfields)
+    cerrat(at, "internal: TypeInfo::%s carries %lu rows, %lu built", nm, (unsigned long) v->nfields,
+           (unsigned long) n);
+  { /* the variantval shape, minus the call: the rows are values
+     * already, built by this file's own hands */
+    Val r;
+
+    r.t = et;
+    r.i = 0;
+    r.f = 0;
+    r.tag = v->disc;
+    r.tyval = 0;
+    r.elems = els;
+    r.len = 0;
+    return r;
+  }
+}
+
+/* an attribute's argument, as the model spells it: a name, an
+ * integer, or a string -- the grammar's three (01-types.md) */
+static Val
+mkattrargval(Ast *g)
+{
+  Val   r;
+  Type *at2 = tysym(sym_attrarg, 0, 0);
+
+  switch (g->k) {
+  case Npath: { /* #[build(debug)] -- debug, an identifier */
+    Variant *v = symvarfind(at2->sym, "Ident");
+
+    r.t = at2;
+    r.i = 0;
+    r.f = 0;
+    r.tag = v->disc;
+    r.tyval = 0;
+    r.elems = arenaalloc(sizeof *r.elems);
+    r.elems[0] = strslice(g->v.path.segs[0]->v.seg.name);
+    r.len = 0;
+    return r;
+  }
+  case Nint: {
+    Variant *v = symvarfind(at2->sym, "Int");
+
+    r.t = at2;
+    r.i = 0;
+    r.f = 0;
+    r.tag = v->disc;
+    r.tyval = 0;
+    r.elems = arenaalloc(sizeof *r.elems);
+    r.elems[0] = valint(g->v.i.num, tyint(IN_I64));
+    r.len = 0;
+    return r;
+  }
+  case Nstr: {
+    Variant *v = symvarfind(at2->sym, "Str");
+    Val     *els = arenaalloc(g->v.s.len * sizeof *els);
+    usize    i;
+
+    for (i = 0; i < g->v.s.len; i++)
+      els[i] = valint((u64) (unsigned char) g->v.s.s[i], tyint(IN_U8));
+    r.t = at2;
+    r.i = 0;
+    r.f = 0;
+    r.tag = v->disc;
+    r.tyval = 0;
+    r.elems = arenaalloc(sizeof *r.elems);
+    r.elems[0] = sliceval(els, g->v.s.len, tyint(IN_U8));
+    r.len = 0;
+    return r;
+  }
+  default: /* the grammar parses a float there too; the model
+            * carries no variant for one (08-reflection.md) */
+    cerrat(g, "an attribute's argument is a name, an integer, or a string: "
+              "the model carries no float (08-reflection.md)");
+  }
+  return valint(0, tyint(IN_I32)); /* unreachable */
+}
+
+/* the attrs a declaration was marked with, one Attr a mark */
+static Val
+mkattrs(Ast **attrs)
+{
+  usize n = vlen(attrs), i;
+  Val  *els = n ? arenaalloc(n * sizeof *els) : 0;
+
+  for (i = 0; i < n; i++) {
+    Ast  *a = attrs[i];
+    Val  *rows = arenaalloc(2 * sizeof *rows);
+    usize na = vlen(a->v.seg.args), k;
+    Val  *aes = na ? arenaalloc(na * sizeof *aes) : 0;
+
+    rows[0] = strslice(a->v.seg.name);
+    for (k = 0; k < na; k++)
+      aes[k] = mkattrargval(a->v.seg.args[k]);
+    rows[1] = sliceval(aes, na, tysym(sym_attrarg, 0, 0));
+    els[i] = mkval(sym_attr, rows);
+  }
+  return sliceval(els, n, tysym(sym_attr, 0, 0));
+}
+
+/* a struct's field as a Field row: the offset from the layout the
+ * struct settled on, the type bound to this instance's arguments */
+static Val
+mkfieldval(Type *t, usize i)
+{
+  Sym   *s = t->sym;
+  Field *f = &s->fields[i];
+  Type  *ft = s->ngparams ? gsubst(f->ty, s->gparams, t->args, t->nargs) : f->ty;
+  Val   *els = arenaalloc(5 * sizeof *els);
+
+  els[0] = strslice(f->name);                         /* name */
+  els[1] = valtype(ft);                               /* type */
+  els[2] = valint(fieldoffof(t, i), tyint(IN_USIZE)); /* offset */
+  els[3] = valint(f->mut, tybool());                  /* mutable */
+  els[4] = mkattrs(f->attrs);                         /* attrs */
+  return mkval(sym_field, els);
+}
+
+/* an enum's variant as an EnumField row: value the discriminant,
+ * type the one payload the model's slot holds -- Some when the
+ * variant carries exactly one positional type, None otherwise: the
+ * spec says the None half only, and the shapes it leaves unspoken
+ * (a named payload, several positional ones) hold no single type
+ * for the slot to name (08-reflection.md) */
+static Val
+mkenumfieldval(Type *t, usize i)
+{
+  Sym     *s = t->sym;
+  Variant *v = &s->variants[i];
+  Val     *els = arenaalloc(4 * sizeof *els);
+  Variant *some = symvarfind(sym_option, "Some");
+  Variant *none = symvarfind(sym_option, "None");
+  Val      tv;
+
+  tv.t = tyopt(tytype());
+  tv.i = 0;
+  tv.f = 0;
+  tv.tyval = 0;
+  tv.len = 0;
+  if (!v->named && v->payload && v->npayload == 1) { /* Some(the one) */
+    Type *pt = s->ngparams ? gsubst(v->payload[0], s->gparams, t->args, t->nargs) : v->payload[0];
+
+    tv.tag = some->disc;
+    tv.elems = arenaalloc(sizeof *tv.elems);
+    tv.elems[0] = valtype(pt);
+  } else { /* None: no payload, or none the slot can name */
+    tv.tag = none->disc;
+    tv.elems = 0;
+  }
+  els[0] = strslice(v->name);              /* name */
+  els[1] = valint(v->disc, tyint(IN_I64)); /* value */
+  els[2] = tv;                             /* type */
+  els[3] = mkattrs(v->attrs);              /* attrs */
+  return mkval(sym_enumfield, els);
+}
+
+/* a type's own description: the sugar answers first -- ?T is
+ * Optional whatever T is, E?T is Result (08-reflection.md) -- then
+ * the shape itself, the declaration's fields and attrs along */
+Val
+typeinfoval(Type *t, Ast *at)
+{
+  metainit();
+  switch (t->k) {
+  case Tybool:
+    return mkti("Bool", 0, 0, at);
+  case Tyint: {
+    Val *els;
+
+    if (t->num == IN_F32 || t->num == IN_F64) {
+      els = arenaalloc(sizeof *els);
+      els[0] = valint(intwidth(t) * 8, tyint(IN_U16));
+      return mkti("Float", els, 1, at);
+    }
+    els = arenaalloc(2 * sizeof *els);
+    els[0] = valint(intwidth(t) * 8, tyint(IN_U16));
+    els[1] = valint(t->num < IN_U8 || t->num == IN_ISIZE, tybool());
+    return mkti("Int", els, 2, at);
+  }
+  case Typtr:
+  case Tyslice:
+  case Tyarray: { /* the child with its mutability, the wrapper's
+                   * own variant above it */
+    Val  *els = arenaalloc(3 * sizeof *els);
+    Type *c = t->t;
+    int   mut = 0;
+    char *nm = t->k == Typtr ? "Pointer" : t->k == Tyslice ? "Slice" : "Array";
+    usize n = t->k == Tyarray ? 3 : 2;
+
+    if (c->k == Tymut) { /* *mut T is the wrapper around the child */
+      mut = 1;
+      c = c->t;
+    }
+    if (t->k == Tyarray) {
+      if (t->gp) /* [N]T with N a const parameter: the length is
+                  * the caller's to bind, not a number here */
+        cerrat(at, "an array whose length is a parameter has no length to tell: "
+                   "bind the parameter first (08-reflection.md)");
+      els[0] = valint(t->n, tyint(IN_USIZE));
+      els[1] = valtype(c);
+      els[2] = valint(mut, tybool());
+    } else {
+      els[0] = valtype(c);
+      els[1] = valint(mut, tybool());
+    }
+    return mkti(nm, els, n, at);
+  }
+  case Tystruct:
+  case Tyunion: {
+    Sym  *s = t->sym;
+    usize n = s->nfields, i;
+    Val  *fs = n ? arenaalloc(n * sizeof *fs) : 0;
+    Val  *els = arenaalloc(2 * sizeof *els);
+
+    for (i = 0; i < n; i++)
+      fs[i] = mkfieldval(t, i);
+    els[0] = sliceval(fs, n, tysym(sym_field, 0, 0));
+    els[1] = mkattrs(s->decl->attrs);
+    return mkti(t->k == Tystruct ? "Struct" : "Union", els, 2, at);
+  }
+  case Tyenum: {
+    if (t->sym == sym_option && t->nargs == 1) { /* ?T: the sugar
+                                                  * says so, whatever
+                                                  * T is (08) */
+      Val *els = arenaalloc(sizeof *els);
+
+      els[0] = valtype(t->args[0]);
+      return mkti("Optional", els, 1, at);
+    }
+    if (t->sym == sym_result && t->nargs == 2) { /* E?T on its side */
+      Val *els = arenaalloc(2 * sizeof *els);
+
+      els[0] = valtype(t->args[0]);
+      els[1] = valtype(t->args[1]);
+      return mkti("Result", els, 2, at);
+    }
+    { /* a declared enum: the tag, the variants */
+      Sym  *s = t->sym;
+      usize n = s->nvariants, i;
+      Val  *vs = n ? arenaalloc(n * sizeof *vs) : 0;
+      Val  *els = arenaalloc(2 * sizeof *els);
+
+      for (i = 0; i < n; i++)
+        vs[i] = mkenumfieldval(t, i);
+      els[0] = valtype(tagtyof(t));
+      els[1] = sliceval(vs, n, tysym(sym_enumfield, 0, 0));
+      return mkti("Enum", els, 2, at);
+    }
+  }
+  case Tytuple: { /* the rows as Fields: names empty, offsets the
+                   * layout's own */
+    usize n = t->nargs, i;
+    Val  *fs = n ? arenaalloc(n * sizeof *fs) : 0;
+    Val  *els = arenaalloc(sizeof *els);
+
+    for (i = 0; i < n; i++) {
+      Val  *rows = arenaalloc(5 * sizeof *rows);
+      usize off = 0, k;
+
+      for (k = 0; k < i; k++) { /* the rows before it, laid out as
+                                 * the size rule lays them (02) */
+        off = alignto(off, alignof_(t->args[k]));
+        off += sizeof_(t->args[k]);
+      }
+      off = alignto(off, alignof_(t->args[i]));
+      rows[0] = strslice("");
+      rows[1] = valtype(t->args[i]);
+      rows[2] = valint(off, tyint(IN_USIZE));
+      rows[3] = valint(0, tybool());
+      rows[4] = mkattrs(0);
+      fs[i] = mkval(sym_field, rows);
+    }
+    els[0] = sliceval(fs, n, tysym(sym_field, 0, 0));
+    return mkti("Tuple", els, 1, at);
+  }
+  case Tyfn: { /* the arguments, the return: a pointer at the
+                * language level, its reflection its own variant */
+    usize n = t->nargs, i;
+    Val  *as = n ? arenaalloc(n * sizeof *as) : 0;
+    Val  *els = arenaalloc(2 * sizeof *els);
+
+    for (i = 0; i < n; i++) {
+      Val *rows = arenaalloc(2 * sizeof *rows);
+
+      rows[0] = strslice(""); /* a name lives in the declaration,
+                               * not the type (08) */
+      rows[1] = valtype(t->args[i]);
+      as[i] = mkval(sym_fnarg, rows);
+    }
+    els[0] = sliceval(as, n, tysym(sym_fnarg, 0, 0));
+    els[1] = valtype(t->t);
+    return mkti("Fn", els, 2, at);
+  }
+  case Tyvoidptr:
+    return mkti("Voidptr", 0, 0, at);
+  case Tyunit: { /* () is the tuple with no rows (08) */
+    Val *els = arenaalloc(sizeof *els);
+
+    els[0] = sliceval(0, 0, tysym(sym_field, 0, 0));
+    return mkti("Tuple", els, 1, at);
+  }
+  default: /* Tytype, Typaram, the projections: the model describes
+            * the language's types; these name checking itself */
+    cerrat(at,
+           "%s has no variant in the model: @typeinfo describes the language's "
+           "types, not checking's own (08-reflection.md)",
+           tnm(t));
+  }
+  return valint(0, tyint(IN_I32)); /* unreachable */
+}
+
 /* a struct or union's literal, against its own declared shape: the
  * rows by name, the ones left out zero. A union keeps one row active
  * -- the last name a literal wrote, or the zeroed whole -- and a read
@@ -1464,6 +1864,24 @@ ceval(Ast *e, Env env, Type *want)
                                                  * the slot's */
       return valtype(held);
     }
+    if (strcmp(nm, "typeinfo") == 0) { /* the description, both slots
+                                        * one case: the type named in
+                                        * the argument slot -- a $$
+                                        * splice resolves through the
+                                        * frame's own bindings -- or
+                                        * the value's static type
+                                        * (08-reflection.md) */
+      Env   e2 = env;                  /* rty may bind the generic names it reads */
+      Type *t;
+
+      if (vlen(e->v.blt.targs) == 1 && !vlen(e->v.blt.args))
+        t = rty(e->v.blt.targs[0], &e2);
+      else if (!vlen(e->v.blt.targs) && vlen(e->v.blt.args) == 1)
+        t = ceval(e->v.blt.args[0], env, 0).t;
+      else
+        cerrat(e, "@typeinfo takes one type argument or one value (08-reflection.md)");
+      return typeinfoval(t, e);
+    }
     cerrat(e, "@%s is not compile-time known here (08-reflection.md)", nm);
     return valint(0, tyint(IN_I32)); /* unreachable */
   }
@@ -1489,8 +1907,9 @@ symval(Sym *s, Ast *at)
     v.tag = s->ctag;
     v.tyval = s->ctyval; /* a type value's half rides the same memo */
     v.elems = s->celems; /* the aggregate half rides the same memo */
-    v.len = 0;           /* a slice's length is the value's own, and
-                          * no const holds one yet: []T borrows
+    v.len = s->clen;     /* a slice's length with them: @typeinfo is
+                          * the one writer of slice values, and a
+                          * const can hold what a match pulled out
                           * (08-reflection.md) */
     return v;
   }
@@ -1538,6 +1957,7 @@ symval(Sym *s, Ast *at)
   s->ctag = v.tag;
   s->ctyval = v.tyval;
   s->celems = v.elems;
+  s->clen = v.len;
   s->cvaldone = 1;
   ninflight--;
   return v;
@@ -1703,12 +2123,20 @@ execfor(Ast *st, Env env)
       }
       return;
     }
-    if (et->k == Tyslice) /* a slice lends each element out: the
-                           * binding would be a pointer, and
-                           * evaluation takes none (10) */
-      cerrat(st->v.forx.b,
-             "iterating a slice lends each element out: the binding is a pointer, and evaluation "
-             "takes none (10-iteration.md)");
+    if (et->k == Tyslice) { /* @typeinfo's slices: the rows owned in
+                             * the value -- a round apiece, nothing
+                             * lent (08-reflection.md) */
+      usize n = src.len, i;
+
+      for (i = 0; i < n; i++) {
+        tick(st);
+        if (!patfits(st->v.forx.a, src.elems[i]))
+          return;
+        if (execround(body, st->v.forx.a, src.elems[i], env))
+          return;
+      }
+      return;
+    }
     if (et->k != Tyarray)
       cerrat(st->v.forx.b,
              "iterating %s is not compile-time known: its iterators arrive with a "
@@ -1962,7 +2390,7 @@ tytoexpr(Type *t, Ast *at)
  * program's own. A variant's payload is spelled positionally -- the
  * body's resolver does not take the braces form yet, and the
  * payload's order is the declaration's own */
-static Ast *
+Ast *
 valtoexpr(Val v, Ast *at)
 {
   Ast  *n;
@@ -2009,6 +2437,26 @@ valtoexpr(Val v, Ast *at)
                * for the evaluator read it to build the value */
       cerrat(at, "'%s' holds a discriminant none of its variants own", s->name);
     np = var->named ? var->nfields : (var->payload ? var->npayload : 0);
+    if (s->ngparams) { /* a generic's variant spells bare -- None,
+                        * Some(x) -- the way a literal writes it: the
+                        * path's own two segments cannot carry the
+                        * arguments, and the want supplies them
+                        * (04-generics.md) */
+      if (!np)
+        return pathsegs(var->name, 0, at);
+      { /* Some(args...): a bare call, the want naming the enum */
+        Ast *c = mknear(Ncall, at);
+
+        c->v.call.f = pathsegs(var->name, 0, at);
+        c->v.call.args = vnew(Ast *, np);
+        for (i = 0; i < np; i++) {
+          Ast *a = valtoexpr(v.elems[i], at);
+
+          vappend(&c->v.call.args, &a);
+        }
+        return c;
+      }
+    }
     if (!np)
       return pathsegs(s->name, var->name, at); /* payloadless: E::B */
     { /* E::V(args...): a call the checker and the emitter read the
@@ -2082,8 +2530,24 @@ valtoexpr(Val v, Ast *at)
     }
     return n;
   }
-  default: /* a slice's elements lend out as pointers, a pointer is a
-            * runtime address: neither is a literal (08) */
+  case Tyslice: { /* @typeinfo's own slices: owned rows, spelled the
+                   * slice literal's way -- no length written, the
+                   * elements listed (08-reflection.md) */
+    usize ne = v.len;
+
+    n = mknear(Narraylit, at);
+    n->v.arrlit.len = 0; /* NULL: []T, the length on the value */
+    n->v.arrlit.mut = 0;
+    n->v.arrlit.t = tytoexpr(v.t->t, at);
+    n->v.arrlit.es = vnew(Ast *, ne ? ne : 1);
+    for (i = 0; i < ne; i++) {
+      Ast *el = valtoexpr(v.elems[i], at);
+
+      vappend(&n->v.arrlit.es, &el);
+    }
+    return n;
+  }
+  default: /* a pointer is a runtime address: not a literal (08) */
     cerrat(at, "%s does not materialize: it is not compile-time known here (08-reflection.md)",
            tnm(v.t));
   }
@@ -2305,12 +2769,12 @@ cforunroll(Ast *st)
       rounds = src.elems;
       n = 1;
     }
-  } else if (et->k == Tyslice) /* a slice lends each element out: the
-                                * binding would be a pointer, and no
-                                * loop is emitted to lend it */
-    cerrat(st->v.forx.b,
-           "iterating a slice lends each element out: the binding is a pointer, and no loop is "
-           "emitted to lend one (10-iteration.md)");
+  } else if (et->k == Tyslice) /* @typeinfo's slices: owned rows in
+                                * the value, nothing lent out -- the
+                                * runtime's borrow is a runtime thing,
+                                * and no compile-time slice is one
+                                * (08-reflection.md) */
+    rounds = src.elems, n = src.len;
   else
     cerrat(st->v.forx.b,
            "iterating %s is not compile-time known: its iterators arrive with a later milestone "

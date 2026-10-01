@@ -64,5 +64,15 @@ Ast **cforunroll(Ast *st);                  /* a const for's statements: the
                                              * -- what the checker walks and the
                                              * emitter emits where the loop stood, no
                                              * loop surviving (10-iteration.md) */
+Val typeinfoval(Type *t, Ast *at);          /* a type's own description, as
+                                             * std::meta's model holds it: the
+                                             * checker's body pass builds it too,
+                                             * where a runtime fn asks at a place
+                                             * the answer is already known
+                                             * (08-reflection.md) */
+Ast *valtoexpr(Val v, Ast *at);             /* a value the walk holds, back to
+                                             * the expression that spells it: the
+                                             * body pass's rewrites read it
+                                             * (08-reflection.md) */
 
 #endif

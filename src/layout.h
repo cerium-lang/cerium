@@ -25,7 +25,9 @@ void  layoutattrs(Ast *decl, int *packed, usize *alignk);
 int   nicheness(Type *t);
 usize alignof_(Type *t);
 usize sizeof_(Type *t);
-usize payloadoff(Type *t); /* where a tagged enum's payloads begin */
-Type *tagtyof(Type *t);    /* a variant's tag width, as a type */
+usize payloadoff(Type *t);          /* where a tagged enum's payloads begin */
+usize fieldoffof(Type *t, usize i); /* a struct's i-th field's offset,
+                                     * a union's every one 0 (08) */
+Type *tagtyof(Type *t);             /* a variant's tag width, as a type */
 
 #endif

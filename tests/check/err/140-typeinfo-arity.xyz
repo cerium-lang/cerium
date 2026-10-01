@@ -1,0 +1,5 @@
+/* one type argument, or one value: not two, not none -- the arity
+ * is the model's own (08-reflection.md) */
+fn main() -> u32 {
+  match @typeinfo<u32, u64>() { TypeInfo::Bool => 1, _ => 0, }
+}

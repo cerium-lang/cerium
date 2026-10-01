@@ -25,6 +25,21 @@
 
 Sym *sym_option, *sym_result;
 Sym *sym_copy, *sym_drop;
+Sym *sym_typeinfo; /* std::meta's reflection model, from the embedded
+                    * source (08-reflection.md) */
+
+/* TypeInfo itself, the type every @typeinfo answers with: one
+ * instance, cached -- the value's own derivation reads it, the
+ * checker's slots ask it again and again */
+Type *
+typeinfoty(void)
+{
+  static Type *t;
+
+  if (!t)
+    t = tysym(sym_typeinfo, 0, 0);
+  return t;
+}
 
 /* std's parsed items, held between preludeparse (the lexer serves
  * them before the user's file binds it) and preludefile (the checker
@@ -67,6 +82,8 @@ preludefile(void) /* from checkinit, after syminit and the hand pair:
                    * here too, and that day the call grows. */
 {
   checkdecls(metaitems);
+  sym_typeinfo = symfind("TypeInfo"); /* @typeinfo's answers are its
+                                       * variants (08-reflection.md) */
 }
 
 /* an Ngparam without a lexer behind it: the prelude's type

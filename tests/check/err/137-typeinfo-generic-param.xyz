@@ -1,0 +1,7 @@
+/* a generic fn's body is every instance's: the parameter has no one
+ * type to describe -- @typeinfo of it waits for specialization, a
+ * later milestone's walk (04-generics.md, 08-reflection.md) */
+fn f<T>() -> u32 {
+  match @typeinfo<T>() { TypeInfo::Bool => 1, _ => 0, }
+}
+fn main() -> u32 { f<u32>() }

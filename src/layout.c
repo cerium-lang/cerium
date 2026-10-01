@@ -385,6 +385,33 @@ sizeof_(Type *t)
  * after the tag, aligned to the payloads. The payload fields
  * themselves are packed (02-layout.md: the payloads are a union,
  * each side laid end to end). */
+/* a struct's i-th field's offset: declaration order, padding
+ * between, #[packed] dropping it (02-layout.md). A union's fields
+ * all sit at 0. The reflection's Field carries it (08-reflection.md). */
+usize
+fieldoffof(Type *t, usize i)
+{
+  int    packed;
+  usize  alignk, off, k;
+  Field *fs;
+
+  if (t->k == Tyunion)
+    return 0;
+  layoutattrs(t->sym->decl, &packed, &alignk);
+  fs = t->sym->fields;
+  off = 0;
+  for (k = 0; k < t->sym->nfields && k <= i; k++) {
+    Type *ft = gsubst(fs[k].ty, t->sym->gparams, t->args, t->nargs);
+
+    if (!packed)
+      off = alignto(off, alignof_(ft));
+    if (k == i)
+      return off;
+    off += sizeof_(ft);
+  }
+  return 0; /* an index past the fields: the caller's own mistake */
+}
+
 usize
 payloadoff(Type *t)
 {
