@@ -3058,10 +3058,12 @@ emitfn(FILE *o, Sym *s, Ast *it, char *name, Type **ats, Type *ret)
     fprintf(o, "%s\n", em.datas[i]);
 }
 
-/* one instantiation: re-check the shared body under this binding --
- * the writeback the emitter reads -- then emit it under its own
- * name. Sequential by construction: nothing else touches the body
- * between the two (04-generics.md). */
+/* one instantiation: re-check the body under this binding -- the
+ * writeback the emitter reads -- then emit it under its own name.
+ * The body is the instance's own copy: the walks write what they
+ * walk -- @typeinfo into the description it builds, @field into the
+ * borrow it spells -- and what one instance wrote the next must not
+ * read (04-generics.md, 10-iteration.md) */
 static void
 emitinst(FILE *o, Inst *in)
 {
@@ -3071,7 +3073,8 @@ emitinst(FILE *o, Inst *in)
   Type **ats;
 
   s = in->s;
-  it = s->decl;
+  it = astclone(s->decl); /* the shared declaration, copied whole:
+                           * every instance rewrites its own */
   ng = s->ngparams;
   ats = vlen(it->v.fn.params) ? tyargs(vlen(it->v.fn.params)) : 0;
   for (i = 0; i < vlen(it->v.fn.params); i++)

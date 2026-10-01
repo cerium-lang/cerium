@@ -1,0 +1,68 @@
+/* the generic walk the spec promises, every face it shows: the
+ * declaration's walk holding T as a black box -- the reflection
+ * nodes standing unwritten, the loops unwalked -- and the
+ * re-check under the binding, on the clone the emitter hands it,
+ * routing the match on @typeinfo's answer, binding the taken arm's
+ * fields, walking them field by field. Each instance its own: what
+ * one wrote the next must not read (04-generics.md, 08, 09, 10) */
+struct P { x: u32, y: u32, z: u32 }
+struct Q { a: u64, b: u64 }
+const XS: [3]u32 = [3]u32{1, 2, 3};
+
+fn sumf<T>(v: T) -> u64 { /* the walk: the fields by their own names */
+  match @typeinfo<T>() {
+    TypeInfo::Struct { fields, .. } => {
+      let mut r: u64 = 0;
+      const for f in fields {
+        r += @cast<u64>(*@field(v, f.name));
+      }
+      r
+    },
+    _ => @compileError("walk wants a struct"),
+  }
+}
+
+fn offs<T>(v: T) -> u64 { /* the layout query, folded inside the
+                           * instance: y sits past x, at 4 */
+  match @typeinfo<T>() {
+    TypeInfo::Struct { fields, .. } => @cast<u64>(@offset<T>("y")),
+    _ => @compileError("walk wants a struct"),
+  }
+}
+
+fn shape<T>(v: T) -> u64 { /* the routing: a scalar takes its own arm,
+                            * the error arm never walked */
+  match @typeinfo<T>() {
+    TypeInfo::Struct { fields, .. } => 99,
+    TypeInfo::Int { bits, .. } => @cast<u64>(bits) / 4 - 1,
+    _ => @compileError("walk wants a struct or an int"),
+  }
+}
+
+fn scaled<T>(v: T) -> u64 { /* a black-box walk inside a concrete
+                             * loop's rounds: the whole thing the
+                             * instance's */
+  let mut r: u64 = 0;
+  const for a in XS {
+    match @typeinfo<T>() {
+      TypeInfo::Struct { fields, .. } => {
+        const for f in fields {
+          r += @cast<u64>(*@field(v, f.name)) * @cast<u64>(a);
+        }
+      },
+      _ => @compileError("walk wants a struct"),
+    }
+  }
+  r
+}
+
+fn walk() -> u64 { /* the two walks 6*100 + 30 = 630; the offset 4;
+                    * the shapes 99*10 + 7 = 997; the scaling
+                    * (1+2+3) * (1+2+3) = 36. 630 + 4 + 997 + 36 = 1667 */
+  let p = P { x: 1, y: 2, z: 3 };
+  let q = Q { a: 10, b: 20 };
+  let n: u32 = 5;
+  sumf(p) * 100 + sumf(q) + offs(p) + shape(p) * 10 + shape(n) + scaled(p)
+}
+
+fn main() -> u64 { walk() }   /* 1667 */

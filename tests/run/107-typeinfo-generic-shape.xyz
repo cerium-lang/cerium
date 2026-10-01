@@ -1,0 +1,12 @@
+/* the generic match, routed inside the instance: @typeinfo<T> is
+ * the prime scrutinee, and the re-check under the binding walks only
+ * the arm that fits -- the declaration's black box holds the whole
+ * match for the instance (04-generics.md, 09-match.md) */
+fn width<T>() -> u32 {
+  match @typeinfo<T>() {
+    TypeInfo::Bool => 1,
+    TypeInfo::Int { bits, .. } => bits / 16,   /* u32: 2 */
+    _ => 0,
+  }
+}
+fn main() -> u32 { width<u32>() * 10 + width<bool>() }   /* 2*10 + 1 = 21 */

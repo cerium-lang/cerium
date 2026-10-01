@@ -272,8 +272,9 @@ so it flattens into one binding a `let` — a `let`'s pattern is
 irrefutable where it is checked — and a misfit ends the loop the way
 a `for let`'s does. A nested const `for` at the body's top level
 expands in the round it stands in, its iterable the outer round's
-own name; below the top level — a branch, an arm — one unroll slot
-cannot serve the rounds, and it waits with a later milestone. A
+own name; below the top level — a branch, an arm — it unrolls where
+it stands now too, the walks writing the copy they walk
+(`10-iteration.md`). A
 `break`, a `continue` have no for to reach; a `return` returns from
 the fn as any return would. In a compile-time fn the loop runs as
 the runtime one does, a round a step against the budget.
@@ -380,6 +381,29 @@ statement read `'p' is borrowed`. And the walk the spec promises —
 its own copy of the body's statements, for the passes write what
 they walk: a round's rewrite is its own, and what one round wrote
 the next must not read.
+
+The generic walk is here: the serialization walk `08-reflection.md`
+promises a parameter runs inside the instance — `match
+@typeinfo<T>() { Struct { fields, .. } => { const for f in fields {
+r += *@field(v, f.name) } } }`, end to end. The declaration's own
+walk holds `T` as a black box and defers: `@typeinfo<T>` and
+`@offset<T>` answer with the shape alone, the node left standing
+(the `$$` splice's deferral again), a `const for` whose iterable
+names the box unrolls nothing, and a match on `@typeinfo` — the
+prime scrutinee (`09-match.md`) — holds the shape the world around
+it wants. The instantiation re-checks the body on a copy of its own
+— the emitter clones the shared declaration per binding, for the
+passes write what they walk and what one instance wrote the next
+must not read — and there the box is a type: the answers rewrite
+in, the match routes at compile time, the taken arm's bindings
+spelled as the lets they are and the match itself rewritten a block
+whose tail is the arm's own body, the arms that miss discarded
+before checking, the rounds unrolling over the fields the answer
+carried and `@field` borrowing each one out. A `@field` spelled
+against the bare parameter still refuses — the walk is the
+instance's own (`04-generics.md`) — and an untyped `let` under a
+black-box match meets the placeholder's shape at its use, the
+honest edge.
 
 Codegen has begun: `xyz -s file.xyz` prints the `.ssa` text — qbe's
 input — and `xyz -c file.xyz -o out` runs the pipeline, qbe as a

@@ -1,0 +1,7 @@
+/* a generic's own parameter, outside a walk: no fields to name
+ * (04-generics.md) */
+struct P { x: u32 }
+fn f<T>(v: T) -> u32 {
+  *@field(v, "x")
+}
+fn main() -> u32 { let p = P { x: 1 }; f(p) }

@@ -1,0 +1,15 @@
+/* the walk bound with no type at the slot: the declaration's black
+ * box holds the match's shape as the description's own, and the use
+ * past it meets the placeholder -- name the type at the slot, and
+ * the instance's walk answers there (04-generics.md) */
+fn f<T>(v: T) -> u32 {
+  let r = match @typeinfo<T>() {
+    TypeInfo::Struct { fields, .. } => @cast<u32>(fields[0].offset),
+    _ => 0,
+  };
+  r + 1
+}
+fn main() -> u32 {
+  let n: u32 = 5;
+  f(n)
+}

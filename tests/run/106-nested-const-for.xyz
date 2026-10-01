@@ -1,0 +1,17 @@
+/* a const for nested inside a runtime if's branch: the loop's rounds
+ * are its own, for the round the branch sits in is the clone the
+ * outer unroll handed it -- the shared-body rule that once deferred
+ * this is the clone's now (10-iteration.md). A=[1,2]: x=1 walks the
+ * inner rounds (s 0->3) then adds itself (4); x=2 walks them again
+ * (7) and adds itself: 9 */
+const A: [2]i32 = [2]i32{1, 2};
+fn main() -> i32 {
+  let mut s = 0;
+  const for x in A {
+    if x > 0 {
+      const for y in A { s = s + y; }
+    };
+    s = s + x;
+  }
+  s
+}
