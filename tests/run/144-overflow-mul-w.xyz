@@ -1,0 +1,4 @@
+/* 2^32 does not fit i32: the mul widens to l and meets the ends */
+fn id(x: i32) -> i32 { x }
+
+fn main() -> i32 { id(65536) * id(65536) }

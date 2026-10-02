@@ -1,0 +1,8 @@
+/* in release the wrap this asserts is the program's own -- the
+ * debug checks would catch it first (01-types.md) */
+fn id(x: i32) -> i32 { x }
+
+fn main() -> i32 {
+  let w = id(2147483647) + 1;      /* wraps to i32's least */
+  if w == -2147483648 { 3 } else { 9 }
+}

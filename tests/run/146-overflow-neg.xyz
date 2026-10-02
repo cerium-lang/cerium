@@ -1,0 +1,4 @@
+/* negating i32's least: the only value its own negation misses */
+fn id(x: i32) -> i32 { x }
+
+fn main() -> i32 { -id(-2147483648) }

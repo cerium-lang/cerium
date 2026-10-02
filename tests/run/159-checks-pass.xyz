@@ -1,0 +1,45 @@
+/* every runtime check passes once, in one program: index on an
+ * array and a slice, a range with both ends runtime, add/sub/mul
+ * in i32, an l-domain mul whose b==0 and b==-1 guards pass first,
+ * a narrow i8 add, a compound +=, a negation, shifts wide and
+ * narrow, and casts from i64 and f64 -- the running sum is 1124,
+ * the exit its low byte, 100 (01-types.md) */
+fn id(x: i32) -> i32 { x }
+fn id64(x: i64) -> i64 { x }
+fn idf(x: f64) -> f64 { x }
+
+fn main() -> i32 {
+  let mut acc = 0;
+  let a = [4]i32{10, 20, 30, 40};
+
+  acc += a[id(3)];                 /* 40: array, runtime index */
+  let s: []i32 = a[1..];
+  acc += s[0];                     /* 20: slice, const index still checked */
+  let r: []i32 = a[id(1)..id(3)];
+  acc += r[1];                     /* 30: range, both ends runtime */
+
+  acc += id(100) + 11;             /* 111: add */
+  acc += id(70) - 10;              /* 60: sub */
+  acc += id(13) * 3;               /* 39: mul, w domain */
+
+  acc += @cast<i32>(id64(6) * id64(4)    /* 24: mul, l domain -- */
+    + id64(6) * id64(0)                  /* b==0 passes, */
+    + id64(6) * id64(-1)                 /* b==-1 passes, */
+    + id64(7));                          /* 25 */
+
+  acc += @cast<i32>(@cast<i8>(id(100)) + @cast<i8>(id(20)));  /* 120: i8's own ends */
+
+  let mut c = 200;
+  c += id(56);                     /* compound += */
+  acc += c / 10;                   /* 25 */
+
+  acc += -id(-50);                 /* 50: neg, nowhere near i32's least */
+
+  acc += id(1) << 5;               /* 32: shift, w */
+  acc += @cast<i32>(@cast<u8>(id(1)) << 7);  /* 128: shift, u8's own width */
+
+  acc += @cast<i32>(id64(300));    /* 300: l to w, fits */
+  acc += @cast<i32>(idf(144.9));   /* 144: f to i, in range, truncated */
+
+  acc & 255                        /* 1124 -> 100 */
+}

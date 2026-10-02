@@ -978,8 +978,16 @@ fn panic(msg: []u8) { /* print the message, then abort */ }
 ```
 
 Every runtime check fails into a panic that names the check — "index out of
-range", "arithmetic overflow", "shift amount out of range" — and `assert`
+range", "arithmetic overflow", "shift amount out of range", "cast out of
+range" — each message a full line, the newline its last byte, and `assert`
 (below) fails the same way: one mechanism, not one per cause.
+
+Two edges sit outside the checks on purpose. An integer division by zero, and
+the one quotient that overflows — a signed least over minus one — raise the
+platform's hardware fault rather than a panic: the machine already carries
+that check, and v0 does not double it. And a negation on an unsigned type
+wraps, the type's own arithmetic: the check a signed negation carries is that
+the least has no positive twin, and an unsigned value always has.
 
 A panic does not unwind. Destructors are inserted statically on the paths the
 compiler can see (`03-move.md`), and the panic path is not one of them — a

@@ -1,0 +1,2 @@
+# the u8 rounds wrap in their own width: release's own -- the
+# debug checks would catch them first (01-types.md)

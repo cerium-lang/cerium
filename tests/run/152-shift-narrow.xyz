@@ -1,0 +1,4 @@
+/* a u8 shifted by 8: the bound is the operand's own width */
+fn id(x: u8) -> u8 { x }
+
+fn main() -> i32 { @cast<i32>(id(1) << id(8)) }

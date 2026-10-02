@@ -1,0 +1,8 @@
+/* a range that asks for one past the array's own length */
+fn five() -> i32 { 5 }
+
+fn main() -> i32 {
+  let a = [4]i32{1, 2, 3, 4};
+  let s: []i32 = a[1..five()];
+  s[0]
+}

@@ -1,0 +1,5 @@
+/* 1e300 is beyond i32 on either side: the two float bounds hold
+ * (2^31 itself is exact) */
+fn idf(x: f64) -> f64 { x }
+
+fn main() -> i32 { @cast<i32>(idf(1.0e300)) }

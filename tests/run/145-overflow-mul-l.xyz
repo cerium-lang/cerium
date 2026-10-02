@@ -1,0 +1,10 @@
+/* the l-domain mul's two guards -- b==0 and b==-1 -- pass without
+ * a trap; the third product, 2^62 * 2, misses i64's ceiling */
+fn id64(x: i64) -> i64 { x }
+
+fn main() -> i32 {
+  let a = id64(0) * id64(9223372036854775807);   /* b==0: no divide */
+  let b = id64(4611686018427387904) * id64(-1);  /* b==-1: only min traps */
+  let c = id64(4611686018427387904) * id64(2);   /* 2^63 overflows */
+  @cast<i32>(a + b + c)
+}

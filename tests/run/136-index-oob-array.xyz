@@ -1,0 +1,10 @@
+/* the runtime index check, an array's: the bound the type's own
+ * length, the index a runtime thing -- a constant past the end is
+ * the checker's own rejection, not this. The exit is abort's:
+ * 134, the message the .stderr holds (01-types.md). */
+fn three() -> i32 { 3 }
+
+fn main() -> i32 {
+  let a = [3]i32{10, 20, 30};
+  a[three()]
+}

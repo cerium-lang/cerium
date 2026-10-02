@@ -821,6 +821,41 @@ face — a glob is not recursive, the reflection model opted into by
 its own use — and `Some`, `None`, `Ok`, `Err` ride the sugar's owner
 lookup, not a binding.
 
+The runtime checks are here, the four of them: index, arithmetic
+overflow, shift, and cast (`01-types.md`). An index reads its bound
+— an array's own length, a slice's loaded second word — and one
+unsigned compare holds both doors, a negative riding the
+sign-extended word into the far past the bound; a range checks its
+own low against its high before either meets the length; a constant
+index on an array folds at the checker, the compile error it always
+was, while the same constant on a slice still runs — a slice's
+length is a runtime thing. Arithmetic recomputes in the wide domain
+and asks the type's own ends: the types narrower than a register
+widen first, for the register does not wrap where the type would,
+and the register-width pairs carry the xor shape instead — an add
+flipping where its addends agreed, a sub borrowing past the least —
+an l-domain mul taking the divide back, `div` signed and `udiv`
+unsigned, with its two guards walked first, a zero divisor and a
+minus one the only pair the round trip cannot answer on its own. A
+negation asks one question — the least is the only value its own
+negation misses — and an unsigned negation wraps, not checked, the
+type's own arithmetic. A shift asks the operand's own width, at or
+above it out of range (`07-operators.md`); a negative amount
+extends the way an index does, the far past again. A cast narrows
+against the target's ends, int to int in the wide domain, an enum's
+tag checked at its own width; a float to an int meets two bounds —
+the target's least, and one past its most, a power of two the
+format holds exactly — and a NaN fails them both, the one check
+that catches a value which is not a number by asking a question a
+comparison can answer. Every failure is one call — std's panic,
+the abort behind it — and the message rides the data segment once
+a compile, deduplicated beside the floats. `-r` rides `-s` and
+`-c`: release, the checks out, the wraps a release owns
+(`01-types.md`). The runner knows both modes — a `.release` beside
+a test compiles it with `-r`, an optional `.stderr` holds the
+bytes a panic must write there, and abort's own exit, 134, is what
+the `.expect` names.
+
 ## Status
 
 A design in progress. The specification is internally consistent at the moment;

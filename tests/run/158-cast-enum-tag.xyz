@@ -1,0 +1,5 @@
+/* an explicit discriminant past i8's ceiling, carried by a u32
+ * tag: the enum-to-int cast narrows the tag itself */
+enum E(u32) { A = 300 }
+
+fn main() -> i32 { @cast<i8>(E::A) }

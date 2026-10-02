@@ -1,0 +1,4 @@
+/* the same edge, one width up */
+fn id64(x: i64) -> i64 { x }
+
+fn main() -> i32 { @cast<i32>(id64(1) << id64(64)) }

@@ -1,0 +1,8 @@
+/* the compound <<= carries the shift check */
+fn id(x: i32) -> i32 { x }
+
+fn main() -> i32 {
+  let mut a = 1;
+  a <<= id(33);
+  a
+}

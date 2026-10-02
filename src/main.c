@@ -13,6 +13,9 @@
  *                  with the system cc (QBE_BIN and CC override the
  *                  binaries, both by environment)
  *
+ * -r rides the last two: release, the runtime checks left out
+ * (01-types.md) -- debug is the default, the checks with it.
+ *
  * The last three read a project: one file, or a directory -- every
  * .xyz under it a file of it, each in the namespace its path spells
  * (12-projects.md). -T prints one (file ...) block per file; -t and
@@ -385,18 +388,19 @@ usage(void)
 {
   fprintf(stderr, "usage: xyz -t file | xyz -a file | xyz -T file | xyz -s file"
                   " | xyz -c file -o out\n"
-                  "       the last three read a directory as a project\n");
+                  "       the last three read a directory as a project\n"
+                  "       -r rides -s and -c: release, the runtime checks out\n");
   return 1;
 }
 
 static int
-emitssa_project(const char *path)
+emitssa_project(const char *path, int release)
 {
   usize n, nstd; /* nstd ignored: -s prints the whole unit, std's
                   * panic included, like -c's own */
   Srcfile **files = checked(path, &n, &nstd);
 
-  emitfile(stdout, files, n);
+  emitfile(stdout, files, n, release);
   return 0;
 }
 
@@ -404,7 +408,7 @@ emitssa_project(const char *path)
  * into the system cc, the executable named by -o. qbe reads stdin
  * as "-", so nothing touches the disk but the one .s and the out. */
 static int
-compile(const char *path, const char *out)
+compile(const char *path, const char *out, int release)
 {
   const char *qbebin = getenv("QBE_BIN");
   const char *cc = getenv("CC");
@@ -438,7 +442,7 @@ compile(const char *path, const char *out)
                     * panic included */
     Srcfile **files = checked(path, &n, &nstd);
 
-    emitfile(p, files, n);
+    emitfile(p, files, n, release);
   }
   if (pclose(p) != 0) {
     fprintf(stderr, "xyz: %s rejected the .ssa\n", qbebin);
@@ -461,10 +465,11 @@ main(int argc, char **argv)
   const char *file = 0;
   const char *out = 0;
   int         mode = 0;
+  int         release = 0;
   int         c;
 
   argv0 = argv[0]; /* the sysroot's search reads it below */
-  while ((c = getopt(argc, argv, "a:c:o:s:t:T:")) != -1) {
+  while ((c = getopt(argc, argv, "a:c:o:rs:t:T:")) != -1) {
     switch (c) {
     case 'a':
     case 'c':
@@ -479,6 +484,9 @@ main(int argc, char **argv)
     case 'o':
       out = optarg;
       break;
+    case 'r':
+      release = 1;
+      break;
     default: /* '?': getopt already said why */
       return usage();
     }
@@ -486,6 +494,11 @@ main(int argc, char **argv)
   if (!mode || optind != argc) /* a file and nothing after it */
     return usage();
   if ((mode == 'c') != (out != 0)) /* -c wants -o, nothing else does */
+    return usage();
+  if (release && mode != 's' && mode != 'c') /* the checks are
+                                              * codegen's own: the
+                                              * dumps never carried
+                                              * them (01-types.md) */
     return usage();
   if ((mode == 't' || mode == 'a') && isdir(file)) {
     fprintf(stderr, "xyz: -t and -a read one file; a directory is a"
@@ -498,9 +511,9 @@ main(int argc, char **argv)
   case 'a':
     return dumpast_file(file);
   case 's':
-    return emitssa_project(file);
+    return emitssa_project(file, release);
   case 'c':
-    return compile(file, out);
+    return compile(file, out, release);
   default:
     return dumpcheck_project(file);
   }

@@ -1,0 +1,5 @@
+/* 32 shifts an i32 by its own width: at the width is out of range
+ * (07-operators.md) */
+fn id(x: i32) -> i32 { x }
+
+fn main() -> i32 { id(1) << id(32) }

@@ -1916,10 +1916,11 @@ checkproject(Srcfile **files, usize nfiles, usize nstd)
 
   { /* std's own face, taken back from the tree the walks filled: the
      * sugar's four -- Option, Result, Copy, Drop, every ?T and every
-     * exclusion check reading them by pointer (01, 03, 05) -- and
+     * exclusion check reading them by pointer (01, 03, 05) --
      * std::meta's TypeInfo, what every @typeinfo answers with
-     * (08-reflection.md). A sysroot without one of them is a broken
-     * one -- said here, not at the first sugar */
+     * (08-reflection.md), and std's panic, the door every runtime
+     * check fails into (01-types.md). A sysroot without one of them
+     * is a broken one -- said here, not at the first sugar */
     Ns *std = nsopen("std");
 
     sym_option = nsitem(std, "Option");
@@ -1927,9 +1928,11 @@ checkproject(Srcfile **files, usize nfiles, usize nstd)
     sym_copy = nsitem(std, "Copy");
     sym_drop = nsitem(std, "Drop");
     sym_typeinfo = nsitem(nsopen("std::meta"), "TypeInfo");
-    if (!sym_option || !sym_result || !sym_copy || !sym_drop || !sym_typeinfo) {
+    sym_panic = nsitem(std, "panic");
+    if (!sym_option || !sym_result || !sym_copy || !sym_drop || !sym_typeinfo || !sym_panic) {
       fprintf(stderr, "xyz: the standard library is incomplete: Option, Result, Copy, Drop,"
-                      " meta::TypeInfo -- one is missing from the sysroot (12-projects.md)\n");
+                      " meta::TypeInfo, panic -- one is missing from the sysroot"
+                      " (12-projects.md)\n");
       exit(1);
     }
   }

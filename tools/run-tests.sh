@@ -20,8 +20,12 @@
 # tests/run is codegen's: every *.xyz compiles to a binary whose
 # exit code the matching .expect names; an optional .stdout holds
 # the bytes it must print (#[extern(C)] write is how the language
-# prints until M3c). It needs qbe/qbe built -- a checkout without
-# it skips the section rather than failing.
+# prints until M3c). A .release beside the source compiles it with
+# -r -- the runtime checks out, the wrap a release owns
+# (01-types.md) -- and an optional .stderr holds the bytes it must
+# write there, a runtime check's panic among them: abort's own exit
+# is 134. It needs qbe/qbe built -- a checkout without it skips
+# the section rather than failing.
 set -u
 cd "$(dirname "$0")/.."
 
@@ -83,7 +87,9 @@ rejected() { # $1: the directory, $2: the dump flag (-a or -T)
 }
 
 runthem() { # $1: the directory; an .expect of "!" wants rejection,
-  # an optional .stdout holds the bytes the binary must print
+  # an optional .stdout holds the bytes the binary must print, an
+  # optional .stderr the bytes it must write there, and a .release
+  # beside the source compiles it with -r (01-types.md)
   tmp=$(mktemp -d)
   for f in "$1"/*.xyz; do
     [ -e "$f" ] || continue
@@ -94,8 +100,10 @@ runthem() { # $1: the directory; an .expect of "!" wants rejection,
       continue
     fi
     exp=$(cat "$g")
+    r=""
+    [ -f "${f%.xyz}.release" ] && r="-r"
     if [ "$exp" = "!" ]; then
-      if ./xyz -c "$f" -o "$tmp/out" 2>/dev/null; then
+      if ./xyz $r -c "$f" -o "$tmp/out" 2>/dev/null; then
         echo "FAIL $f (compiled; a rejection was expected)"
         fail=1
       else
@@ -103,12 +111,17 @@ runthem() { # $1: the directory; an .expect of "!" wants rejection,
       fi
       continue
     fi
-    if ! ./xyz -c "$f" -o "$tmp/out" 2>"$tmp/err"; then
+    if ! ./xyz $r -c "$f" -o "$tmp/out" 2>"$tmp/err"; then
       echo "FAIL $f (rejected: $(head -1 "$tmp/err"))"
       fail=1
       continue
     fi
-    "$tmp/out" >"$tmp/stdout"
+    # the exec wrapper matters: dash applies a command's redirects
+    # on itself before forking and undoes them only after the wait,
+    # so its own signal report (an abort's "Aborted") would land in
+    # the very file under cmp -- with the exec there is no parent
+    # shell holding the redirects, and the report stays on ours
+    sh -c 'exec "$0" >"$1" 2>"$2"' "$tmp/out" "$tmp/stdout" "$tmp/stderr"
     got=$?
     if [ "$got" != "$exp" ]; then
       echo "FAIL $f (exit $got, want $exp)"
@@ -118,6 +131,12 @@ runthem() { # $1: the directory; an .expect of "!" wants rejection,
     s="${f%.xyz}.stdout"
     if [ -f "$s" ] && ! cmp -s "$s" "$tmp/stdout"; then
       echo "FAIL $f (stdout $(head -c 40 "$tmp/stdout" | tr '\n' ' ')...)"
+      fail=1
+      continue
+    fi
+    s="${f%.xyz}.stderr"
+    if [ -f "$s" ] && ! cmp -s "$s" "$tmp/stderr"; then
+      echo "FAIL $f (stderr $(head -c 40 "$tmp/stderr" | tr '\n' ' ')...)"
       fail=1
       continue
     fi
@@ -132,8 +151,10 @@ runthem() { # $1: the directory; an .expect of "!" wants rejection,
       continue
     fi
     exp=$(cat "$g")
+    r=""
+    [ -f "${d%/}.release" ] && r="-r"
     if [ "$exp" = "!" ]; then
-      if ./xyz -c "$d" -o "$tmp/out" 2>/dev/null; then
+      if ./xyz $r -c "$d" -o "$tmp/out" 2>/dev/null; then
         echo "FAIL $d (compiled; a rejection was expected)"
         fail=1
       else
@@ -141,12 +162,17 @@ runthem() { # $1: the directory; an .expect of "!" wants rejection,
       fi
       continue
     fi
-    if ! ./xyz -c "$d" -o "$tmp/out" 2>"$tmp/err"; then
+    if ! ./xyz $r -c "$d" -o "$tmp/out" 2>"$tmp/err"; then
       echo "FAIL $d (rejected: $(head -1 "$tmp/err"))"
       fail=1
       continue
     fi
-    "$tmp/out" >"$tmp/stdout"
+    # the exec wrapper matters: dash applies a command's redirects
+    # on itself before forking and undoes them only after the wait,
+    # so its own signal report (an abort's "Aborted") would land in
+    # the very file under cmp -- with the exec there is no parent
+    # shell holding the redirects, and the report stays on ours
+    sh -c 'exec "$0" >"$1" 2>"$2"' "$tmp/out" "$tmp/stdout" "$tmp/stderr"
     got=$?
     if [ "$got" != "$exp" ]; then
       echo "FAIL $d (exit $got, want $exp)"
@@ -156,6 +182,12 @@ runthem() { # $1: the directory; an .expect of "!" wants rejection,
     s="${d%/}.stdout"
     if [ -f "$s" ] && ! cmp -s "$s" "$tmp/stdout"; then
       echo "FAIL $d (stdout $(head -c 40 "$tmp/stdout" | tr '\n' ' ')...)"
+      fail=1
+      continue
+    fi
+    s="${d%/}.stderr"
+    if [ -f "$s" ] && ! cmp -s "$s" "$tmp/stderr"; then
+      echo "FAIL $d (stderr $(head -c 40 "$tmp/stderr" | tr '\n' ' ')...)"
       fail=1
       continue
     fi

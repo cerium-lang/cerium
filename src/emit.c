@@ -38,6 +38,17 @@ isuintty(Type *t)
           t->num == IN_USIZE || t->num == IN_U128);
 }
 
+/* an int, the floats out: isuintty's kin, flow.c's isintty the
+ * same read -- the checks want the ints alone */
+static int
+isintty(Type *t)
+{
+  return t && t->k == Tyint && t->num != IN_F32 && t->num != IN_F64;
+}
+
+__extension__ typedef long long i64; /* the signed kin of lex.h's u64,
+                                      * eval.c's own move */
+
 static usize dsn; /* one a data symbol: $flt.N, $str.N. File-wide,
                    * not per fn -- the names are global, so a per-fn
                    * counter would hand two fns the same $flt.1 */
@@ -493,6 +504,328 @@ fsymname(Sym *s, Ast *it)
     strcpy(n, buf);
     return n;
   }
+}
+
+/* -- the runtime checks (01-types.md, Build modes) ---------------------- */
+
+/* debug inserts them, release leaves them out: rel, which -r set
+ * through emitfile, says which. The failure is always the one
+ * door -- a panic that names the check, std's own fn, the slice
+ * built where the failure lands, the same shape a call site
+ * spells (12-projects.md). */
+static int rel;
+
+enum
+{
+  CHK_INDEX,
+  CHK_OVERFLOW,
+  CHK_SHIFT,
+  CHK_CAST,
+  NCHK
+};
+
+/* the words the spec itself names, the cast's among them. A
+ * check's message ends in a newline, the terminal's own kindness;
+ * a user's panic says what it says (01-types.md) */
+static const char *const chkmsgs[NCHK] = {
+    "index out of range\n",
+    "arithmetic overflow\n",
+    "shift amount out of range\n",
+    "cast out of range\n",
+};
+static char *chkbase[NCHK]; /* the data symbol each message landed
+                             * in, one per message the whole pass's:
+                             * reset beside dsn, whose numbering
+                             * restarts with it */
+
+/* an integer type's own ends, the checks' bounds: the least and
+ * the greatest the type holds (01-types.md) */
+static void
+intends(Type *t, i64 *mn, u64 *mx)
+{
+  int bits = intwidth(t) * 8;
+
+  if (isuintty(t)) {
+    *mn = 0;
+    *mx = bits == 64 ? ~(u64) 0 : (((u64) 1 << bits) - 1);
+  } else {
+    *mn = -(i64) ((u64) 1 << (bits - 1));
+    *mx = ((u64) 1 << (bits - 1)) - 1;
+  }
+}
+
+/* the failure door: the message a slice in a slot, the call std's
+ * panic -- the bytes once per message, in the data segment. The
+ * call never returns, and the ret behind it only ends the block,
+ * qbe's own ask (the match's net the same, 09-match.md) */
+static void
+empanic(Em *em, int chk)
+{
+  const char *msg = chkmsgs[chk];
+  usize       len = strlen(msg);
+  char       *slot = stackslot(em, 16);
+  char       *p;
+
+  if (!chkbase[chk]) {
+    char *base = arenaalloc(32);
+    char *d = arenaalloc(64 + 8 * (len + 2));
+    char *q;
+    usize i;
+
+    sprintf(base, "$str.%lu", (unsigned long) ++dsn);
+    q = d + sprintf(d, "data %s = { ", base);
+    for (i = 0; i < len; i++)
+      q += sprintf(q, "b %u, ", (unsigned) (unsigned char) msg[i]);
+    sprintf(q, "b 0 }"); /* the NUL: C interop wants it */
+    vappend(&em->datas, &d);
+    chkbase[chk] = base;
+  }
+  fprintf(em->o, "\tstorel %s, %s\n", chkbase[chk], slot);
+  p = newtmp(em);
+  fprintf(em->o, "\t%s =l add %s, 8\n", p, slot);
+  fprintf(em->o, "\tstorel %lu, %s\n", (unsigned long) len, p);
+  fprintf(em->o, "\tcall $%s(%s %s)\n", fsymname(sym_panic, sym_panic->decl),
+          sigty(sym_panic->fnty->args[0], sym_panic->decl), slot);
+  fprintf(em->o, "\tret 0\n");
+}
+
+/* one check's arm: bad, a w, nonzero fails into the panic; the
+ * label after it is the check passed */
+static void
+emguard(Em *em, char *bad, int chk)
+{
+  char *ok = newlbl(em), *fail = newlbl(em);
+
+  fprintf(em->o, "\tjnz %s, %s, %s\n", bad, fail, ok);
+  fprintf(em->o, "%s\n", fail);
+  empanic(em, chk);
+  fprintf(em->o, "%s\n", ok);
+}
+
+/* a value already emitted, widened to the l domain by its own
+ * signedness: the narrow loads extended on load, so the register
+ * holds the extension already -- idxl's move, for a temp that
+ * exists */
+static char *
+tol(Em *em, char *v, Type *t)
+{
+  char *r;
+
+  if (intwidth(t) > 4)
+    return v;
+  r = newtmp(em);
+  fprintf(em->o, "\t%s =l %s %s\n", r, isuintty(t) ? "extuw" : "extsw", v);
+  return r;
+}
+
+/* an arithmetic's overflow -- add, sub or mul -- read against the
+ * type's own ends (01-types.md). A type narrower than its register
+ * never wraps the register: the widened operands recompute the
+ * result exactly, and the ends answer -- which is every w-domain
+ * mul too, its product always fitting an l. A type that fills its
+ * register wraps it: the add and the sub read the sign flip off
+ * the wrapped result, the classic xor pair; the l-domain mul alone
+ * cannot widen further -- its product is divided back and
+ * compared, the zero and the minus one guarded ahead of the traps
+ * they would raise. */
+static void
+emarithchk(Em *em, Tok op, char *a, char *b, char *t, Type *ty, Ast *at)
+{
+  char  c = qbety(ty, at);
+  int   w = intwidth(ty);
+  int   su = isuintty(ty);
+  char *bad;
+
+  if (w > 8)
+    return; /* the 128-bit ints arrive with a later milestone */
+
+  if (op == Tstar && w == 8) { /* the round trip: the two traps
+                                * guarded, the quotient compared
+                                * back */
+    char *ok = newlbl(em), *lnz = newlbl(em), *ldiv = newlbl(em), *lneg = newlbl(em);
+    char *fail = newlbl(em);
+    char *z = newtmp(em), *m = newtmp(em), *q = newtmp(em);
+
+    fprintf(em->o, "\t%s =w ceql %s, 0\n", z, b);
+    fprintf(em->o, "\tjnz %s, %s, %s\n", z, ok, lnz); /* zero: the product one */
+    fprintf(em->o, "%s\n", lnz);
+    if (!su) {
+      fprintf(em->o, "\t%s =w ceql %s, -1\n", z, b);
+      fprintf(em->o, "\tjnz %s, %s, %s\n", z, lneg, ldiv);
+      fprintf(em->o, "%s\n", ldiv);
+    }
+    fprintf(em->o, "\t%s =l %sdiv %s, %s\n", m, su ? "u" : "", t, b);
+    fprintf(em->o, "\t%s =w cnel %s, %s\n", q, m, a);
+    fprintf(em->o, "\tjnz %s, %s, %s\n", q, fail, ok);
+    if (!su) { /* the product is minus a: it overflows only of the
+                * least, the one value negative on both sides of
+                * its own negation */
+      char *n = newtmp(em), *p1 = newtmp(em), *p2 = newtmp(em), *q2 = newtmp(em);
+
+      fprintf(em->o, "%s\n", lneg);
+      fprintf(em->o, "\t%s =l neg %s\n", n, a);
+      fprintf(em->o, "\t%s =w csltl %s, 0\n", p1, n);
+      fprintf(em->o, "\t%s =w csltl %s, 0\n", p2, a);
+      fprintf(em->o, "\t%s =w and %s, %s\n", q2, p1, p2);
+      fprintf(em->o, "\tjnz %s, %s, %s\n", q2, fail, ok);
+    }
+    fprintf(em->o, "%s\n", fail);
+    empanic(em, CHK_OVERFLOW);
+    fprintf(em->o, "%s\n", ok);
+    return;
+  }
+  if (op == Tstar || (c == 'w' && w < 4)) {
+    /* exact in the l domain: the operands widened, the result
+     * redone there, the ends the judge */
+    char *wa = tol(em, a, ty);
+    char *wb = tol(em, b, ty);
+    char *r = newtmp(em);
+    char *hi = newtmp(em);
+    char *o2 = newtmp(em);
+    i64   mn;
+    u64   mx;
+
+    fprintf(em->o, "\t%s =l %s %s, %s\n", r,
+            op == Tplus    ? "add"
+            : op == Tminus ? "sub"
+                           : "mul",
+            wa, wb);
+    intends(ty, &mn, &mx);
+    bad = newtmp(em);
+    if (su)
+      fprintf(em->o, "\t%s =w cugel %s, %lu\n", bad, r, (unsigned long) mx);
+    else {
+      fprintf(em->o, "\t%s =w csltl %s, %ld\n", bad, r, (long) mn);
+      fprintf(em->o, "\t%s =w csgtl %s, %ld\n", hi, r, (long) mx);
+      fprintf(em->o, "\t%s =w or %s, %s\n", o2, bad, hi);
+      bad = o2;
+    }
+    emguard(em, bad, CHK_OVERFLOW);
+    return;
+  }
+  { /* the add or the sub that fills its register: the sign flip
+     * off the wrapped result -- both operands flipped it, an add;
+     * the left alone, a sub; unsigned, the end it fell off */
+    char *s1 = newtmp(em), *s2 = newtmp(em), *ov = newtmp(em);
+
+    bad = newtmp(em);
+    if (su) {
+      if (op == Tplus)
+        fprintf(em->o, "\t%s =w cult%c %s, %s\n", bad, c, t, a);
+      else
+        fprintf(em->o, "\t%s =w cugt%c %s, %s\n", bad, c, t, a);
+    } else {
+      if (op == Tplus) {
+        fprintf(em->o, "\t%s =%c xor %s, %s\n", s1, c, a, t);
+        fprintf(em->o, "\t%s =%c xor %s, %s\n", s2, c, b, t);
+      } else {
+        fprintf(em->o, "\t%s =%c xor %s, %s\n", s1, c, a, b);
+        fprintf(em->o, "\t%s =%c xor %s, %s\n", s2, c, a, t);
+      }
+      fprintf(em->o, "\t%s =%c and %s, %s\n", ov, c, s1, s2);
+      fprintf(em->o, "\t%s =w cslt%c %s, 0\n", bad, c, ov);
+    }
+    emguard(em, bad, CHK_OVERFLOW);
+  }
+}
+
+/* the shift's amount against the left operand's own width: at or
+ * above it fails (07-operators.md). The one unsigned compare
+ * reads a negative amount huge -- the widening its load already
+ * did -- and a past-the-end one past */
+static void
+emshiftchk(Em *em, char *amt, Type *amtty, Type *lt)
+{
+  char *a;
+  char *bad = newtmp(em);
+
+  if (intwidth(lt) > 8)
+    return; /* the 128-bit ints arrive with a later milestone */
+  a = tol(em, amt, amtty);
+  fprintf(em->o, "\t%s =w cugel %s, %lu\n", bad, a, (unsigned long) (intwidth(lt) * 8));
+  emguard(em, bad, CHK_SHIFT);
+}
+
+/* the negation's own one end: the least, the only value below the
+ * negated greatest -- 0's negation is 0, and passes */
+static void
+emnegchk(Em *em, char *v, Type *ty, Ast *at)
+{
+  char  c = qbety(ty, at);
+  char *bad = newtmp(em);
+  i64   mn;
+  u64   mx;
+
+  intends(ty, &mn, &mx);
+  fprintf(em->o, "\t%s =w cslt%c %s, %ld\n", bad, c, v, -(long) mx);
+  emguard(em, bad, CHK_OVERFLOW);
+}
+
+/* a float constant a compare reads: qbe takes float immediates
+ * only in call and phi arguments, so the bits ride the data
+ * segment and come back with a load -- Nflt's own move */
+static char *
+emflt(Em *em, double v, char c)
+{
+  char *base = arenaalloc(16);
+  char *t = newtmp(em);
+  char *d = arenaalloc(48);
+
+  sprintf(base, "$flt.%lu", (unsigned long) ++dsn);
+  fprintf(em->o, "\t%s =%c load%s %s\n", t, c, c == 's' ? "s" : "d", base);
+  /* 9 and 17 significant digits: the least that round-trips */
+  sprintf(d, "data %s = { %c %c_%.*g }", base, c, c, c == 's' ? 9 : 17, v);
+  vappend(&em->datas, &d);
+  return t;
+}
+
+/* the @cast that narrows, or lands from a float: the value held
+ * against the target's own ends -- the failed conversion the
+ * Panic section names (01-types.md). An int source's register
+ * holds it widened by its own signedness, so the l domain
+ * compares for every int; a float's compares in its own, the ends
+ * read as the least exactly and one past the greatest -- a
+ * truncation never reaches past it -- and a NaN, failing both, is
+ * caught with the rest */
+static void
+emcastchk(Em *em, char *v, Type *from, Type *to, Ast *at)
+{
+  char *bad = newtmp(em);
+
+  if (from->k == Tyint && (from->num == IN_F32 || from->num == IN_F64)) {
+    char  c = qbety(from, at);
+    char *ge = newtmp(em), *lt = newtmp(em), *ok = newtmp(em);
+    char *lo, *hi;
+    i64   mn;
+    u64   mx;
+
+    intends(to, &mn, &mx);
+    lo = emflt(em, (double) mn, c);
+    hi = emflt(em, (double) mx + 1.0, c);
+    fprintf(em->o, "\t%s =w cge%c %s, %s\n", ge, c, v, lo);
+    fprintf(em->o, "\t%s =w clt%c %s, %s\n", lt, c, v, hi);
+    fprintf(em->o, "\t%s =w and %s, %s\n", ok, ge, lt);
+    fprintf(em->o, "\t%s =w ceqw %s, 0\n", bad, ok);
+  } else {
+    char *l = tol(em, v, from);
+    char *lo = newtmp(em), *hi = newtmp(em);
+    i64   mn;
+    u64   mx;
+
+    intends(to, &mn, &mx);
+    if (isuintty(from))
+      fprintf(em->o, "\t%s =w copy 0\n", lo); /* an unsigned never reads below zero */
+    else if (isuintty(to))
+      fprintf(em->o, "\t%s =w csltl %s, 0\n", lo, l); /* a negative never fits one */
+    else
+      fprintf(em->o, "\t%s =w csltl %s, %ld\n", lo, l, (long) mn);
+    if (isuintty(to))
+      fprintf(em->o, "\t%s =w cugel %s, %lu\n", hi, l, (unsigned long) mx);
+    else
+      fprintf(em->o, "\t%s =w csgtl %s, %ld\n", hi, l, (long) mx);
+    fprintf(em->o, "\t%s =w or %s, %s\n", bad, lo, hi);
+  }
+  emguard(em, bad, CHK_CAST);
 }
 
 /* -- monomorphization (04-generics.md) ---------------------------------- */
@@ -1377,7 +1710,11 @@ aggbase(Em *em, Ast *e)
 /* the address of one element. The base's value is its storage -- a
  * slice's first word is the data pointer -- and the index scales by
  * the element's size, qbe having no scaled addressing. A constant
- * index folds; the checker range-checked it (01-types.md). */
+ * index on an array folds; the checker range-checked it
+ * (01-types.md). Everything else runs the check: the bound the
+ * slice's own length or the array's, and the one unsigned compare
+ * catching a negative index with the past-the-end one -- the
+ * widening idxl kept reads a negative huge. */
 static char *
 idxaddr(Em *em, Ast *e)
 {
@@ -1385,25 +1722,43 @@ idxaddr(Em *em, Ast *e)
   Type *et = bt->t;
   usize sz;
   char *b = aggbase(em, e->v.n2.a);
+  char *len = 0; /* a slice's own length, the check's bound */
 
   while (et && et->k == Tymut) /* []mut T: the element's own type */
     et = et->t;
   sz = sizeof_(et);
   if (bt->k == Tyslice) {
     char *p = newtmp(em);
+    char *l8 = newtmp(em);
 
     fprintf(em->o, "\t%s =l loadl %s\n", p, b);
+    fprintf(em->o, "\t%s =l add %s, 8\n", l8, b);
+    len = newtmp(em);
+    fprintf(em->o, "\t%s =l loadl %s\n", len, l8);
     b = p;
   }
-  if (!sz)
-    return b; /* a ZST element: every index is the array itself */
-  if (e->v.n2.b->k == Nint)
+  if (bt->k == Tyarray && e->v.n2.b->k == Nint)
     return addrplus(em, b, (usize) e->v.n2.b->v.i.num * sz);
   {
     char *ix = idxl(em, e->v.n2.b);
     char *sc = newtmp(em);
     char *a = newtmp(em);
 
+    if (!rel) {
+      char *bad = newtmp(em);
+
+      if (len) /* a slice: the length the view carries; a constant
+                * index lands here too -- a slice's length is a
+                * runtime thing, the checker's contract an array's
+                * own */
+        fprintf(em->o, "\t%s =w cugel %s, %s\n", bad, ix, len);
+      else
+        fprintf(em->o, "\t%s =w cugel %s, %lu\n", bad, ix, (unsigned long) bt->n);
+      emguard(em, bad, CHK_INDEX);
+    }
+    if (!sz)
+      return b; /* a ZST element: the check held, and every index's
+                 * address the one the data is */
     fprintf(em->o, "\t%s =l mul %s, %lu\n", sc, ix, (unsigned long) sz);
     fprintf(em->o, "\t%s =l add %s, %s\n", a, b, sc);
     return a;
@@ -2413,9 +2768,21 @@ emaexpr(Em *em, Ast *e)
     }
     v = emaexpr(em, e->v.un.e);
     t = newtmp(em);
-    if (op == Tminus)
+    if (op == Tminus) {
       fprintf(em->o, "\t%s =%c neg %s\n", t, qbety(e->ty, e), v);
-    else if (op == Ttilde)
+      if (!rel && isintty(e->ty) && !isuintty(e->ty)) /* the least:
+                                                       * the one value
+                                                       * its own
+                                                       * negation
+                                                       * does not
+                                                       * hold; an
+                                                       * unsigned
+                                                       * negation
+                                                       * wraps, the
+                                                       * defined way
+                                                       * (01) */
+        emnegchk(em, v, e->ty, e);
+    } else if (op == Ttilde)
       fprintf(em->o, "\t%s =%c xor %s, -1\n", t, qbety(e->ty, e), v);
     else if (op == Tbang)
       fprintf(em->o, "\t%s =w ceqw %s, 0\n", t, v);
@@ -2470,6 +2837,15 @@ emaexpr(Em *em, Ast *e)
         if (ops[i].u && isuintty(lt))
           ins = ops[i].u;
         fprintf(em->o, "\t%s =%c %s %s, %s\n", t, qbety(e->ty, e), ins, a, b);
+        if (!rel && (op == Tshl || op == Tshr)) /* the amount
+                                                 * against the left
+                                                 * operand's width
+                                                 * (07-operators.md) */
+          emshiftchk(em, b, e->v.bin.r->ty, lt);
+        else if (!rel && isintty(lt) && (op == Tplus || op == Tminus || op == Tstar))
+          emarithchk(em, op, a, b, t, lt, e); /* the wrap the machine
+                                               * already made, read
+                                               * back (01-types.md) */
         return t;
       }
     { /* a comparison: the domain is the operands', the result a w */
@@ -2760,6 +3136,12 @@ emaexpr(Em *em, Ast *e)
           fprintf(em->o, "\t%s =l extuw %s\n", r, tv);
         } else /* the word: the load zero-extended it already */
           r = tv;
+        if (!rel && intwidth(tt) > intwidth(to)) /* the tag's width
+                                                  * the judge: a
+                                                  * narrower target
+                                                  * reads the ends
+                                                  * (01-types.md) */
+          emcastchk(em, r, tt, to, e);
         return r;
       }
       if (fb && tb)
@@ -2781,8 +3163,18 @@ emaexpr(Em *em, Ast *e)
       t = newtmp(em);
       /* w->w keeps the one temp: the loadsx already extended it on
        * load, and every w consumer re-reads only its low half */
-      if (fw && tw)
+      if (fw && tw) {
+        if (!rel && intwidth(to) < intwidth(from)) /* the narrowing:
+                                                    * the target's
+                                                    * own ends the
+                                                    * judge, a same-
+                                                    * width change of
+                                                    * sign no change
+                                                    * at all
+                                                    * (01-types.md) */
+          emcastchk(em, a, from, to, e);
         return a;
+      }
       if (ff && tf) {
         if (from->num == IN_F32 && to->num == IN_F64)
           fprintf(em->o, "\t%s =d exts %s\n", t, a);
@@ -2793,9 +3185,13 @@ emaexpr(Em *em, Ast *e)
         return t;
       }
       if (ff && (tw || tl)) { /* f -> i: the instruction per the float
-                               * kind, the signedness per the target */
+                               * kind, the signedness per the target;
+                               * the ends checked ahead of it -- the
+                               * failed conversion (01-types.md) */
         int su = isuintty(to);
 
+        if (!rel)
+          emcastchk(em, a, from, to, e);
         fprintf(em->o, "\t%s =%c %s%s %s\n", t, qbety(to, e), from->num == IN_F32 ? "sto" : "dto",
                 su ? "ui" : "si", a);
         return t;
@@ -2815,6 +3211,9 @@ emaexpr(Em *em, Ast *e)
       if (fl && tl)
         return a; /* l<->l: one register */
       /* fl && tw: copy truncates to the word */
+      if (!rel) /* the narrowing: the target's own ends the judge
+                 * (01-types.md) */
+        emcastchk(em, a, from, to, e);
       fprintf(em->o, "\t%s =w copy %s\n", t, a);
       return t;
     }
@@ -3001,6 +3400,29 @@ emaexpr(Em *em, Ast *e)
     }
     if (!hi)
       hi = len;
+    if (!rel) { /* the range the view's own: lo past hi, hi past the
+                 * length -- either leaves it (01-types.md); the
+                 * unsigned compares read a negative end huge, the
+                 * widening idxl kept */
+      char *b1 = 0, *b2 = newtmp(em);
+
+      if (lo) {
+        b1 = newtmp(em);
+        fprintf(em->o, "\t%s =w cugtl %s, %s\n", b1, lo, hi);
+      }
+      if (bt->k == Tyarray)
+        fprintf(em->o, "\t%s =w cugtl %s, %lu\n", b2, hi, (unsigned long) bt->n);
+      else /* a slice: hi is the len when the right end was left
+            * out -- the compare reads zero, dead but uniform */
+        fprintf(em->o, "\t%s =w cugtl %s, %s\n", b2, hi, len);
+      if (b1) {
+        char *bad = newtmp(em);
+
+        fprintf(em->o, "\t%s =w or %s, %s\n", bad, b1, b2);
+        b2 = bad;
+      }
+      emguard(em, b2, CHK_INDEX);
+    }
     if (lo) {
       char *nl = newtmp(em);
 
@@ -3150,6 +3572,18 @@ emastmt(Em *em, Ast *st)
         if (ops[i].t == op) {
           fprintf(em->o, "\t%s =%c %s %s, %s\n", nv, qbety(lhs->ty, lhs),
                   ops[i].u && isuintty(lhs->ty) ? ops[i].u : ops[i].i, old, v);
+          if (!rel && isintty(lhs->ty)) { /* the same checks the
+                                           * expression's own run
+                                           * (01-types.md) */
+            if (op == Tpluseq || op == Tminuseq || op == Tstareq)
+              emarithchk(em,
+                         op == Tpluseq    ? Tplus
+                         : op == Tminuseq ? Tminus
+                                          : Tstar,
+                         old, v, nv, lhs->ty, st);
+            else if (op == Tshleq || op == Tshreq)
+              emshiftchk(em, v, st->v.bin.r->ty, lhs->ty);
+          }
           break;
         }
       if (i == sizeof ops / sizeof ops[0])
@@ -3477,7 +3911,7 @@ emitall(FILE *out, Srcfile **files, usize nfiles)
 }
 
 void
-emitfile(FILE *out, Srcfile **files, usize nfiles)
+emitfile(FILE *out, Srcfile **files, usize nfiles, int release)
 {
   FILE *scratch = tmpfile(); /* pass one names the aggregates and
                               * finds every instantiation; its text
@@ -3488,6 +3922,8 @@ emitfile(FILE *out, Srcfile **files, usize nfiles)
     fprintf(stderr, "xyz: no scratch file for the type pass\n");
     exit(1);
   }
+  rel = release; /* the runtime checks' own mode: debug inserts
+                  * them, release leaves them out (01-types.md) */
   ipass = 1;
   emitall(scratch, files, nfiles);
   draininsts(scratch);
@@ -3500,9 +3936,12 @@ emitfile(FILE *out, Srcfile **files, usize nfiles)
     printvts(scratch);
   }
   fclose(scratch);
-  dsn = 0;       /* the naming pass burned numbers; the real one restarts */
-  vtprinted = 0; /* the text restarts with it */
-  abidecls(out); /* the :type declarations, the order qbe reads */
+  dsn = 0;                            /* the naming pass burned numbers; the real one restarts */
+  vtprinted = 0;                      /* the text restarts with it */
+  memset(chkbase, 0, sizeof chkbase); /* the messages' data symbols
+                                       * with them: the numbering
+                                       * they ride restarted */
+  abidecls(out);                      /* the :type declarations, the order qbe reads */
   ipass = 2;
   emitall(out, files, nfiles); /* pass two: the text */
   draininsts(out);

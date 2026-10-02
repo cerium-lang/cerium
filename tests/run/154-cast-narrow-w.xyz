@@ -1,0 +1,5 @@
+/* 200 past i8's ceiling: the int-to-int narrowing compares the
+ * target's own ends in l */
+fn id(x: i32) -> i32 { x }
+
+fn main() -> i32 { @cast<i8>(id(200)) }
