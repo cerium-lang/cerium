@@ -169,7 +169,7 @@ any other `dyn A` (`06-dispatch.md`).
 trait Copy { }
 ```
 
-This is std's declaration — `std::copy.xyz`'s own, the compiler reading it
+This is std's declaration — `std::copy.ce`'s own, the compiler reading it
 by pointer (`12-projects.md`); a project may declare its own `Copy`, and the
 exclusion checks still read std's.
 
@@ -196,7 +196,7 @@ trait Drop {
 }
 ```
 
-std's own declaration, `std::drop.xyz` — the exclusion pair's other half, read
+std's own declaration, `std::drop.ce` — the exclusion pair's other half, read
 by pointer like `Copy` (`12-projects.md`).
 
 `Drop` has a single function, `drop`, which receives the value by ownership.

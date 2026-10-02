@@ -1,7 +1,7 @@
 #[extern(C)]
 fn write(fd: i32, buf: *u8, len: usize) -> usize;
 fn main() -> i32 {
-  let s = "hello xyz\n";
+  let s = "hello cerium\n";
   write(1, s.ptr, s.len);
   0
 }

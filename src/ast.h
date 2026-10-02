@@ -2,7 +2,7 @@
  *
  * One Ast struct, one kind enum, a union branch per kind. The
  * shape is chosen for the self-hosting port: a match over Nk maps
- * onto xyz's own E?T one arm per kind, so what is exhaustive here
+ * onto Cerium's own E?T one arm per kind, so what is exhaustive here
  * stays exhaustive there.
  *
  * Nodes are never freed: mk() allocates, the process is the arena.

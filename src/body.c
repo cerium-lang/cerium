@@ -6,7 +6,7 @@
  *   - types: every expression gets a type, every statement is checked
  *     against what it claims -- a let's annotation, a call's
  *     signature, a match's arms agreeing. A literal takes its type
- *     from the context when there is one (xyz has no literal
+ *     from the context when there is one (Cerium has no literal
  *     suffixes, 15-grammar.md) and defaults to i32/f32 otherwise.
  *   - flow (03-move.md): the same environment is flow-sensitive. A
  *     binding is live or dead (moved), a place is free or borrowed

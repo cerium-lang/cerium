@@ -119,7 +119,7 @@ moves is what you wrote.
 
 A type that owns a resource implements `Drop`: its destructor runs when the
 binding that owns the value reaches the end of its scope. `Copy` and `Drop`
-are std's own — `std::copy.xyz` and `std::drop.xyz`, read by pointer — so the
+are std's own — `std::copy.ce` and `std::drop.ce`, read by pointer — so the
 exclusion below holds whatever the project declares under either name
 (`12-projects.md`). The running example is
 a file handle:
@@ -313,7 +313,7 @@ assert(a[0] == 1);
 ## No defer
 
 Some languages add a scoped exit hook — `defer` — for cleanup a destructor
-does not cover. xyz does not carry one, on three counts:
+does not cover. Cerium does not carry one, on three counts:
 
 - **The error path cannot use it.** A panic aborts without unwinding (Panic,
   `01-types.md`), so a `defer` would not run there — the one place a hook
@@ -322,7 +322,7 @@ does not cover. xyz does not carry one, on three counts:
   the paths the compiler can see (`Timing` above); early `return` included.
 - **What is left is FFI resources**, and those are the wrapper's business:
   a `File` whose `fd` came from C closes in its `Drop`, written by hand in
-  xyz, and the compiler never sees a C resource it could hook anyway.
+  Cerium, and the compiler never sees a C resource it could hook anyway.
 
 The word `defer` stays reserved (`15-grammar.md`) — the decision is v0's,
 not the language's forever.

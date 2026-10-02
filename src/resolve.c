@@ -1930,7 +1930,7 @@ checkproject(Srcfile **files, usize nfiles, usize nstd)
     sym_typeinfo = nsitem(nsopen("std::meta"), "TypeInfo");
     sym_panic = nsitem(std, "panic");
     if (!sym_option || !sym_result || !sym_copy || !sym_drop || !sym_typeinfo || !sym_panic) {
-      fprintf(stderr, "xyz: the standard library is incomplete: Option, Result, Copy, Drop,"
+      fprintf(stderr, "cerium: the standard library is incomplete: Option, Result, Copy, Drop,"
                       " meta::TypeInfo, panic -- one is missing from the sysroot"
                       " (12-projects.md)\n");
       exit(1);

@@ -1,17 +1,17 @@
 # Macros
 
-This chapter continues `08-reflection.md`. It records why xyz has, **so far**, no
+This chapter continues `08-reflection.md`. It records why Cerium has, **so far**, no
 user-defined macro system, and why no built-in `#` construct remains. The
 conclusion is not settled — see If this changes below.
 
 ## No macro system
 
 A macro earns its place in most languages by generating code per type. Generics
-and reflection make that unnecessary here, so xyz has none.
+and reflection make that unnecessary here, so Cerium has none.
 
 ### One impl instead of one per type
 
-Where another language writes a derive macro, xyz writes a single generic impl
+Where another language writes a derive macro, Cerium writes a single generic impl
 and asks the type what it is:
 
 ```rust

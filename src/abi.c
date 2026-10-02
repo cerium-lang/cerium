@@ -1,4 +1,4 @@
-/* abi.c -- the aggregate calling convention (M3d): xyz's own
+/* abi.c -- the aggregate calling convention (M3d): Cerium's own
  * convention is the platform's C convention (01-types.md).
  *
  * Where a value crosses a call, an aggregate wears a :type, the
@@ -64,7 +64,7 @@ isagg(Type *t)
 }
 
 /* -- the aggregate calling convention (M3d) --------------------------------
- * xyz's own convention is the platform's C convention (01-types.md):
+ * Cerium's own convention is the platform's C convention (01-types.md):
  * where a value crosses a call, an aggregate wears a :type, the
  * value is the address of its storage either way, and qbe lowers
  * the rest -- register eightbytes, memory, an sret. The registry

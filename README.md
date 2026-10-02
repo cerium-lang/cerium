@@ -1,11 +1,11 @@
-# xyz
+# Cerium
 
 A system programming language, still being designed. This is its
 **specification draft** — not a tutorial, and not an implementation.
 
-`xyz` is the working codename for the project; the language has no final name
-yet. The `.xyz` file extension used throughout `11-namespaces.md` is a
-placeholder for the same reason.
+The language is **Cerium**, its files ending in **`.ce`**, and its mascot
+**Ceres** — the name is settled, the look still being drawn. `xyz`, and the
+`.ce` extension, were the working codenames this repository grew up under.
 
 ## Chapters
 
@@ -33,7 +33,7 @@ notation and the terms every chapter uses.
 | [14-macros.md](./specs/14-macros.md) | `08` | the case against a user-defined macro system (not settled) |
 | [15-grammar.md](./specs/15-grammar.md) | — | the grammar in EBNF, closed: lexing, expressions, types, declarations, statements, patterns |
 
-## What xyz guarantees
+## What Cerium guarantees
 
 There is no borrow checker and no reference type — one pointer family, and
 lifetimes nowhere — so the guarantees are uneven on purpose:
@@ -71,14 +71,14 @@ Stage 0 of the compiler is **C89** — no host framework, one bare Makefile,
 as a subprocess, and the system `cc` links. The submodule at `qbe/` points
 at a [fork](https://github.com/mivinci/qbe) that tracks upstream master —
 pinned by commit, moved by `tools/sync-qbe.sh`. The goal is self-hosting:
-the compiler rewritten in xyz itself, with LLVM held as a v1+ release
+the compiler rewritten in Cerium itself, with LLVM held as a v1+ release
 backend rather than a v0 dependency.
 
 A fresh clone builds with:
 
 ```
 git clone --recurse-submodules <url>
-cd xyz && make          # gcc; make CC=clang works too
+cd cerium && make          # gcc; make CC=clang works too
 make qbe/qbe            # the backend, on demand
 make test               # golden tests + codegen's run tests
 ```
@@ -87,12 +87,12 @@ The `qbe/` submodule is the backend: `git submodule update --init -- qbe`
 pulls it on demand, and without it `make test` skips the run section. Run
 `make hooks` once per checkout so commits format what they stage.
 
-The lexer and the parser are in: `xyz -t file.xyz` dumps the token
-stream — position, kind, value — and `xyz -a file.xyz` dumps the parse
+The lexer and the parser are in: `cerium -t file.ce` dumps the token
+stream — position, kind, value — and `cerium -a file.ce` dumps the parse
 tree as S-expressions, one node a line, children indented. The type
-checker is in through the bodies: `xyz -T file.xyz` declares every
+checker is in through the bodies: `cerium -T file.ce` declares every
 name in the file, resolves every type a declaration carries — the
-same flags read a directory as a project, every `.xyz` under it a
+same flags read a directory as a project, every `.ce` under it a
 file of it, each in the namespace its path spells
 (`12-projects.md`) — aliases
 expand to their targets, `?T`/`E?T` build on the prelude's
@@ -319,7 +319,7 @@ count is the stack now; the vector only its high-water mark
 (`01-types.md`, `09-match.md`).
 
 The language's own source ships inside the compiler now, and
-std::meta is the first of it: `std/meta.xyz` — the `TypeInfo` enum
+std::meta is the first of it: `std/meta.ce` — the `TypeInfo` enum
 and its five companions, exactly as `08-reflection.md` spells them —
 is embedded as a table of string literals (`tools/embed.sh`), joined
 in the arena, and parsed before the user's file, the lexer reading
@@ -610,12 +610,12 @@ the emitter reading the shape they always read.
 
 `11-namespaces.md` closed with `11c`, the project milestone's own
 half. A directory passed to `-T`, `-s` or `-c` is a project: every
-`.xyz` under it a file of it, each in the namespace its path
-spells — a subdirectory a sub-namespace, and `X.xyz` beside an `X/`
+`.ce` under it a file of it, each in the namespace its path
+spells — a subdirectory a sub-namespace, and `X.ce` beside an `X/`
 directory the two halves of one, the pair's namespace `X`'s own
 (the spec's own example table said otherwise for a file inside a
 directory; the reading that survives is the directory chain's, and
-the example's fifth row now agrees: `pool/conn.xyz` sits in
+the example's fifth row now agrees: `pool/conn.ce` sits in
 `net::pool`, its own name spelling no segment). The walk sorts
 every directory's entries, so a project compiles the same whatever
 the file system hands over; a directory's files come ahead of its
@@ -641,11 +641,11 @@ sub-namespaces first, the root's, then what a `use` brought in —
 so `repr::Foo` inside `net` reads `net`'s own `repr`, and `::`
 stays absolute, the root's tree only.
 
-The emitter spells a namespaced symbol out: `xyz_`, then the
+The emitter spells a namespaced symbol out: `cerium_`, then the
 namespace's path folded on — each `::` a `__`, so a namespace
 named `net_pool` and a `net` holding a `pool` never fold the same
-(`xyz_net_pool` against `xyz_net__pool`). The root's own spells
-the single-file era's bare `xyz_foo`, so every name a golden or a
+(`cerium_net_pool` against `cerium_net__pool`). The root's own spells
+the single-file era's bare `cerium_foo`, so every name a golden or a
 linker ever saw stays its own. An impl's members carry their
 file's namespace (`ownns`, filled at declare for the impl and at
 member resolution for its methods), and the emitter's walk
@@ -661,8 +661,8 @@ exit the `.expect` names, and `check/err/100-102` reject: `main`
 outside the root, a use not shared, a name declared twice in one
 namespace from two files.
 
-Codegen has begun: `xyz -s file.xyz` prints the `.ssa` text — qbe's
-input — and `xyz -c file.xyz -o out` runs the pipeline, qbe as a
+Codegen has begun: `cerium -s file.ce` prints the `.ssa` text — qbe's
+input — and `cerium -c file.ce -o out` runs the pipeline, qbe as a
 subprocess and the system `cc` linking. Checking writes each node's
 type back into the tree, so the emitter never re-derives one. What
 it emits covers the expression language: arithmetic and comparisons
@@ -727,7 +727,7 @@ and the emitter holds the fn's text back so the asks can go ahead
 of it.
 
 Aggregates cross calls on the platform's C convention — that is
-what `01-types.md` made xyz's own convention, and qbe lowers it:
+what `01-types.md` made Cerium's own convention, and qbe lowers it:
 register eightbytes, stack order, an sret, all of it. Every
 aggregate that crosses a call is named in a `:type` registry —
 structs, tuples, unions, enums as tag plus payload union, slices
@@ -746,13 +746,13 @@ monomorphization are in (M3d–M3f): one copy per binding, the
 same instance emitted once, all of it static.
 
 The layout and the behavior are tested by running them:
-`tests/run` holds one `.xyz` per binary with an `.expect` naming
+`tests/run` holds one `.ce` per binary with an `.expect` naming
 its exit code, an optional `.stdout` holding the bytes it must
 print — `#[extern(C)] fn write` is how the language prints for now
 (`tools/run-tests.sh`); the section runs only when `qbe/qbe`
 is built.
 `tests/lex`, `tests/parse` and `tests/check` hold the golden tests,
-split by pass: `ok/` has one `.golden` per `.xyz` that the dumps must
+split by pass: `ok/` has one `.golden` per `.ce` that the dumps must
 reproduce exactly, `err/` has inputs that must be rejected
 (`tools/run-tests.sh`).
 
@@ -769,7 +769,7 @@ code after it checking nothing. The emitter walks the same judgement:
 the paths that leave carry no join and no trailing return, and a body
 whose last text is the call itself ends there — a dead `ret` written
 for qbe's terminator rule alone, never run. panic itself is a plain
-fn in std, embedded the way std::meta is (`std/panic.xyz`, the
+fn in std, embedded the way std::meta is (`std/panic.ce`, the
 registry now a table of files): `write` under `#[extern(C)]` for the
 message, `abort` for the end — no unwind, no destructors, the process
 taken while the state is still trusted enough for the message it just
@@ -779,14 +779,14 @@ else it returns is rejected where it is declared.
 
 The embedding is retired: std is a directory on disk, read as the
 project's first files every compile — the sysroot
-(`12-projects.md`). `XYZ_SYSROOT` names it; `std` beside the
+(`12-projects.md`). `CERIUM_SYSROOT` names it; `std` beside the
 compiler's own executable is the usual install shape, a checkout's
 too; `std` in the working directory is the last resort. Nothing of
 the library ships inside the binary — `tools/embed.sh` and the
 string-literal table are gone — and the walk that reads `std/` is
 the one that reads a project's own tree, each file in the namespace
-its path spells: `std/meta/meta.xyz` sits in `std::meta`,
-`std/panic.xyz` in `std` itself. The checker reads `std::meta` to
+its path spells: `std/meta/meta.ce` sits in `std::meta`,
+`std/panic.ce` in `std` itself. The checker reads `std::meta` to
 check, so the sysroot and the compiler move together — a sysroot
 without `meta::TypeInfo` is named at the first compile — and `std`
 is a reserved name: a project whose tree carries a `std/` directory
@@ -811,8 +811,8 @@ And the prelude: std's flat pub face — the sugar's four and `panic`
 per file (`12-projects.md`). The injected names yield to everything:
 a declaration, an explicit use — each wins by being read first, the
 injected name never an error. The sugar's four are std's source now
-(`std/option.xyz`, `std/result.xyz`, `std/copy.xyz`,
-`std/drop.xyz`), declared and resolved like any file's items, their
+(`std/option.ce`, `std/result.ce`, `std/copy.ce`,
+`std/drop.ce`), declared and resolved like any file's items, their
 Syms taken back after pass 1 — and the names they held are free: a
 project may declare its own `Option`, its own `Copy`, while `?T`
 still means std's `Option<T>` and the exclusion checks still read

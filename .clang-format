@@ -1,4 +1,4 @@
-# xyz style: qbe-lineage C89.
+# cerium style: qbe-lineage C89.
 #   return type on its own line, every definition's brace on its own
 #   line — functions, structs, enums, unions alike, 2-space indent,
 #   pointers bind right, macro bodies aligned.

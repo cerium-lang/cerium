@@ -152,7 +152,7 @@ compiler can see that it outlives what it borrows — returning a slice of a loc
 array, say. Across function boundaries there is no lifetime information, so a
 dangling slice is undefined behaviour. A `debug` build may catch some of these;
 how, and how many, is up to the implementation — the language promises nothing
-here. See What xyz guarantees in `README.md`.
+here. See What Cerium guarantees in `README.md`.
 
 An array never decays — not to a plain pointer, and not to a slice. Both have to
 be asked for by name:
@@ -502,7 +502,7 @@ match p {
 Types distinguish them: `is_same<?*i32, *i32>::value` is false.
 
 `?T` is `Option<T>`: nothing about `None`, `Some` or `match` differs from any
-other enum. It is std's `Option<T>` — `std::option.xyz`'s own, read by
+other enum. It is std's `Option<T>` — `std::option.ce`'s own, read by
 pointer — wherever it is spelled, whatever `Option` the project declares
 under the name (`12-projects.md`); the sugar's variants answer the bare
 name first. What differs is the layout — when `T` has an unused bit pattern the
@@ -517,7 +517,7 @@ That is where the difference ends: reflection does not repeat it —
 ### Results
 
 `?` reads as "or". With a type in front of it, it names what the other case
-holds: `E?T` is `Result<T, E>` — a `T` or an `E`, std's own `std::result.xyz`
+holds: `E?T` is `Result<T, E>` — a `T` or an `E`, std's own `std::result.ce`
 read by pointer, the name as free as `Option`'s (`05-traits.md`):
 
 ```rust
@@ -869,12 +869,12 @@ function's own name, unmangled.
 
 Unmangled is the point. Overloading (`04-generics.md`) and namespaces
 (`11-namespaces.md`) both force every other function's symbol to be mangled,
-so `pub` alone can never hand C a name to call. `pub` says whether other xyz
+so `pub` alone can never hand C a name to call. `pub` says whether other Cerium
 code can call the function; `#[extern(C)]` says whether C can — two different
 questions.
 
 The attribute does not change the calling convention, because there is nothing
-to change to: xyz's own convention **is** the platform's C convention —
+to change to: Cerium's own convention **is** the platform's C convention —
 registers, stack order, everything but the symbol name. An `#[extern(C)]`
 function therefore has the same function type as an ordinary one
 (`08-reflection.md`) and can be passed around as a value freely. A compiler

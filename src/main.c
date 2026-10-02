@@ -1,15 +1,15 @@
-/* main.c -- xyz, stage 0: the driver.
+/* main.c -- cerium, stage 0: the driver.
  *
  * Five modes:
- *   xyz -t file -- the token stream, one token a line (the lexer's
+ *   cerium -t file -- the token stream, one token a line (the lexer's
  *                  golden tests, tests/lex/ok, diff against this)
- *   xyz -a file -- the AST as S-expressions (the parser's golden
+ *   cerium -a file -- the AST as S-expressions (the parser's golden
  *                  tests, tests/parse/ok, diff against this)
- *   xyz -T file -- what checking made of each item: resolved types,
+ *   cerium -T file -- what checking made of each item: resolved types,
  *                  fields, variants, impl heads (the checker's golden
  *                  tests, tests/check/ok, diff against this)
- *   xyz -s file -- the .ssa text, qbe's input (codegen's)
- *   xyz -c file -o out -- the pipeline: emit, run qbe on it, link
+ *   cerium -s file -- the .ssa text, qbe's input (codegen's)
+ *   cerium -c file -o out -- the pipeline: emit, run qbe on it, link
  *                  with the system cc (QBE_BIN and CC override the
  *                  binaries, both by environment)
  *
@@ -17,7 +17,7 @@
  * (01-types.md) -- debug is the default, the checks with it.
  *
  * The last three read a project: one file, or a directory -- every
- * .xyz under it a file of it, each in the namespace its path spells
+ * .ce under it a file of it, each in the namespace its path spells
  * (12-projects.md). -T prints one (file ...) block per file; -t and
  * -a stay single-file, a directory's tokens and AST its files' own.
  *
@@ -166,11 +166,11 @@ dirjoin(const char *dir, const char *name) /* "dir/name", the
   return p;
 }
 
-/* a directory walked: every .xyz under it a file of the project,
+/* a directory walked: every .ce under it a file of the project,
  * each in the namespace its path spells -- a subdirectory a
- * sub-namespace, X.xyz beside an X/ the two halves of one
+ * sub-namespace, X.ce beside an X/ the two halves of one
  * (12-projects.md). The entries sort, so the walk is the same
- * whatever readdir hands over; the .xyz files of a directory come
+ * whatever readdir hands over; the .ce files of a directory come
  * ahead of its subdirectories, a paired file's declarations the
  * first into the namespace it shares with its directory */
 static void
@@ -178,12 +178,12 @@ walkdir(const char *dir, Ns *ns, Srcfile ***filesp)
 {
   DIR           *d = opendir(dir);
   struct dirent *e;
-  char         **files = vnew(char *, 8); /* the .xyz's */
+  char         **files = vnew(char *, 8); /* the .ce's */
   char         **dirs = vnew(char *, 8);  /* the subdirectories */
   usize          i, n;
 
   if (!d) {
-    fprintf(stderr, "xyz: cannot read %s\n", dir);
+    fprintf(stderr, "cerium: cannot read %s\n", dir);
     exit(1);
   }
   while ((e = readdir(d))) {
@@ -194,7 +194,7 @@ walkdir(const char *dir, Ns *ns, Srcfile ***filesp)
       continue;
     len = strlen(e->d_name);
     if (!isdir(dirjoin(dir, e->d_name))) {
-      if (len < 5 || strcmp(e->d_name + len - 4, ".xyz") != 0)
+      if (len < 4 || strcmp(e->d_name + len - 3, ".ce") != 0)
         continue; /* not source: the directory's own, goldens,
                    * whatever else lives beside the code */
       nm = arenaalloc(len + 1);
@@ -212,7 +212,7 @@ walkdir(const char *dir, Ns *ns, Srcfile ***filesp)
 
   n = vlen(files);
   for (i = 0; i < n; i++) {
-    usize    blen = strlen(files[i]) - 4; /* past the .xyz */
+    usize    blen = strlen(files[i]) - 3; /* past the .ce */
     char    *base = arenaalloc(blen + 1);
     Ns      *fns = ns;
     Srcfile *sf;
@@ -220,7 +220,7 @@ walkdir(const char *dir, Ns *ns, Srcfile ***filesp)
 
     memcpy(base, files[i], blen);
     base[blen] = 0;
-    for (j = 0; j < vlen(dirs); j++) /* the beside pair: X.xyz and
+    for (j = 0; j < vlen(dirs); j++) /* the beside pair: X.ce and
                                       * X/ are one namespace, X's
                                       * own (12-projects.md) */
       if (strcmp(dirs[j], base) == 0) {
@@ -250,7 +250,7 @@ walkdir(const char *dir, Ns *ns, Srcfile ***filesp)
                                         * in, and no project may
                                         * write into it */
       fprintf(stderr,
-              "xyz: %s: 'std' is reserved for the standard library"
+              "cerium: %s: 'std' is reserved for the standard library"
               " (11-namespaces.md)\n",
               dirjoin(dir, dirs[i]));
       exit(1);
@@ -262,7 +262,7 @@ walkdir(const char *dir, Ns *ns, Srcfile ***filesp)
 }
 
 /* the project: one file -- the root's own single file -- or a
- * directory, every .xyz under it (12-projects.md). The table stands
+ * directory, every .ce under it (12-projects.md). The table stands
  * already: the walk builds the project's tree into it */
 static Srcfile **
 loadproject(const char *path, usize *nfilesp)
@@ -305,7 +305,7 @@ static const char *argv0; /* the driver's own path, for the sysroot's
 static const char *
 sysrootpath(void)
 {
-  const char *env = getenv("XYZ_SYSROOT");
+  const char *env = getenv("CERIUM_SYSROOT");
   static char buf[512];
 
   if (env && *env)
@@ -337,8 +337,8 @@ stdwalk(Srcfile ***filesp)
 
   if (!isdir(root)) {
     fprintf(stderr,
-            "xyz: the standard library is not found at %s"
-            " -- XYZ_SYSROOT names where it lives (12-projects.md)\n",
+            "cerium: the standard library is not found at %s"
+            " -- CERIUM_SYSROOT names where it lives (12-projects.md)\n",
             root);
     exit(1);
   }
@@ -386,8 +386,8 @@ dumpcheck_project(const char *path)
 static int
 usage(void)
 {
-  fprintf(stderr, "usage: xyz -t file | xyz -a file | xyz -T file | xyz -s file"
-                  " | xyz -c file -o out\n"
+  fprintf(stderr, "usage: cerium -t file | cerium -a file | cerium -T file | cerium -s file"
+                  " | cerium -c file -o out\n"
                   "       the last three read a directory as a project\n"
                   "       -r rides -s and -c: release, the runtime checks out\n");
   return 1;
@@ -412,7 +412,7 @@ compile(const char *path, const char *out, int release)
 {
   const char *qbebin = getenv("QBE_BIN");
   const char *cc = getenv("CC");
-  char        cmd[512], base[] = "/tmp/xyzXXXXXX", ssa[64];
+  char        cmd[512], base[] = "/tmp/ceriumXXXXXX", ssa[64];
   FILE       *p;
   int         fd;
 
@@ -424,7 +424,7 @@ compile(const char *path, const char *out, int release)
                        * added after -- cc links an assembler file by
                        * its suffix */
   if (fd < 0) {
-    fprintf(stderr, "xyz: cannot make a temporary file\n");
+    fprintf(stderr, "cerium: cannot make a temporary file\n");
     return 1;
   }
   close(fd);
@@ -433,7 +433,7 @@ compile(const char *path, const char *out, int release)
   snprintf(cmd, sizeof cmd, "%s -o %s -", qbebin, ssa);
   p = popen(cmd, "w");
   if (!p) {
-    fprintf(stderr, "xyz: cannot run %s\n", qbebin);
+    fprintf(stderr, "cerium: cannot run %s\n", qbebin);
     unlink(ssa);
     return 1;
   }
@@ -445,13 +445,13 @@ compile(const char *path, const char *out, int release)
     emitfile(p, files, n, release);
   }
   if (pclose(p) != 0) {
-    fprintf(stderr, "xyz: %s rejected the .ssa\n", qbebin);
+    fprintf(stderr, "cerium: %s rejected the .ssa\n", qbebin);
     unlink(ssa);
     return 1;
   }
   snprintf(cmd, sizeof cmd, "%s %s -o %s", cc, ssa, out);
   if (system(cmd) != 0) {
-    fprintf(stderr, "xyz: %s failed to link\n", cc);
+    fprintf(stderr, "cerium: %s failed to link\n", cc);
     unlink(ssa);
     return 1;
   }
@@ -501,7 +501,7 @@ main(int argc, char **argv)
                                               * them (01-types.md) */
     return usage();
   if ((mode == 't' || mode == 'a') && isdir(file)) {
-    fprintf(stderr, "xyz: -t and -a read one file; a directory is a"
+    fprintf(stderr, "cerium: -t and -a read one file; a directory is a"
                     " project (-T, -s, -c)\n");
     return 1;
   }

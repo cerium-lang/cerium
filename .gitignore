@@ -1,4 +1,3 @@
 *.o
-/xyz
+/cerium
 core.*
-src/prelude_text.h

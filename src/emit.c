@@ -879,10 +879,10 @@ tymangle(Type *t, char *buf, usize n)
   return buf;
 }
 
-/* a symbol's mangle head: xyz_, its namespace folded on -- each ::
+/* a symbol's mangle head: cerium_, its namespace folded on -- each ::
  * a __, so a namespace named net_pool and a net holding a pool
  * never fold the same (11-namespaces.md). The root's own spells the
- * single-file era's bare xyz_. Returns the chars written */
+ * single-file era's bare cerium_. Returns the chars written */
 static usize
 symns(Sym *s, char *buf, usize n)
 {
@@ -892,7 +892,7 @@ symns(Sym *s, char *buf, usize n)
 
   if (o >= n)
     die("a name too wide for the emitter's names");
-  strcpy(buf, "xyz_");
+  strcpy(buf, "cerium_");
   if (ns && ns->parent) { /* the root's own name is "": nothing folds */
     char path[512];
 
@@ -3919,7 +3919,7 @@ emitfile(FILE *out, Srcfile **files, usize nfiles, int release)
                               * declarations before their first use) */
 
   if (!scratch) {
-    fprintf(stderr, "xyz: no scratch file for the type pass\n");
+    fprintf(stderr, "cerium: no scratch file for the type pass\n");
     exit(1);
   }
   rel = release; /* the runtime checks' own mode: debug inserts
