@@ -822,3 +822,24 @@ yet, and the words refuse honestly; and a non-Copy place read on
 an assignment's left is the move chapter's own bug, the
 hand-written `a = Add::add(&a, &b)` its own evidence
 (`03-move.md`).
+
+The built-in impls are here, the spec's promise kept as source:
+std::ops carries the compiler's own table — the arithmetic four
+for every number, `Eq` and `Ord` for the integers and the `bool`
+— fifty-eight rows, each the plain words the operator's sugar
+names. A spelled call runs the row (`Add::add(&n, &m)` is `n +
+m` said the long way), and the pairs the language holds no row
+of its own for find their trait's: `bool` against `bool` orders
+through `Ord` now, the language never comparing bools. The
+floats stay out of `Eq` and `Ord` — a NaN equals nothing, itself
+included, so the laws do not hold, the calls refused, the
+operators answering as the language always did
+(`07-operators.md`). A mixed scalar pair is the language's own
+error still: the scalar rows are all `Rhs = Self`, so nothing in
+the table answers, and the rewrite's words would only misdirect
+the report. A pointer's `Add<usize>`, the spec's own mixed
+`Rhs`, is the one that will ask the question again — its casts
+not carried by emit yet (`01-types.md`) — and a project's own
+impl over a built-in is the conflict the coherence check names:
+the compiler's table is source, and two sources cannot spell
+one row.

@@ -1545,9 +1545,17 @@ optrait(Ast *e, Fenv *fe)
   return 1;
 }
 
-/* are both sides in the domain the built-in operators take -- the
- * numbers, the bool, the pointers -- so a miss is the language's own
- * error, not a trait's to answer (07-operators.md) */
+/* is one side in the domain the built-in operators take -- the
+ * numbers, the bool, the pointers (07-operators.md)? A scalar
+ * pair the language holds no row of its own for still finds its
+ * trait's (bool < bool is Ord's, std carrying the scalar impls),
+ * but a scalar pair of mixed types finds nothing: std's scalar
+ * rows are all Rhs = Self, so the language's own error answers
+ * there -- the rewrite's words would only misdirect it (a
+ * literal it cannot borrow, a method whose parameters it wants
+ * otherwise). A pointer's Add<usize>, the spec's own mixed
+ * Rhs, makes this worth another look the day its casts land
+ * (01-types.md). */
 static int
 opscalar1(Type *t)
 {
@@ -1971,12 +1979,18 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
     }
     if (binop(op, ta, tb, &res))
       return res;
-    if (ta && tb && !opscalars(ta, tb) && optrait(e, fe)) { /* a side
-                                                             * outside the built-ins' domain: the
-                                                             * operator's own trait answers
-                                                             * (07-operators.md); % and the
-                                                             * bitwise ones are language, and
-                                                             * the error below answers for them */
+    if (ta && tb && (!opscalars(ta, tb) || tysame(ta, tb)) &&
+        optrait(e, fe)) { /* the operator's own trait answers where
+                           * the built-in table ends (07-operators.md)
+                           * -- std's scalar impls included, so a pair
+                           * the language holds no row of its own for
+                           * finds its trait's: bool < bool is Ord's;
+                           * a mixed scalar pair is the language's own
+                           * error instead, the scalar rows all Rhs =
+                           * Self (opscalars above); the table was
+                           * asked first, so n + m never comes here,
+                           * and % with the bitwise ones are language,
+                           * the errors below answering for them */
       return rexpr(e, fe, want);
     }
     if (ta && tb && !tysame(ta, tb))
@@ -4155,15 +4169,18 @@ rstmt(Ast *st, Fenv *fe)
 
       if (binop(bop, lt, rt, &res))
         return;
-      if (!opscalar1(lt) && (op == Tpluseq || op == Tminuseq || op == Tstareq ||
-                             op == Tslasheq)) { /* a place outside the
-                                                 * built-ins' domain: the
-                                                 * operator's own trait
-                                                 * answers (07-operators.md)
-                                                 * -- the compound is the
-                                                 * plain assignment of
-                                                 * its call */
-        Ast *nb = opnode(Nbin, st);             /* a + b, the words the rewrite takes */
+      if ((op == Tpluseq || op == Tminuseq || op == Tstareq || op == Tslasheq) &&
+          (!opscalar1(lt) ||
+           (lt && rt && tysame(lt, rt)))) { /* the
+                                             * arithmetic compound: the operator's own
+                                             * trait answers where the built-in table
+                                             * ends (07-operators.md), std's scalar
+                                             * impls included -- the compound is the
+                                             * plain assignment of its call; a mixed
+                                             * scalar pair is the language's own error
+                                             * instead, the rows all Rhs = Self
+                                             * (opscalars above) */
+        Ast *nb = opnode(Nbin, st);         /* a + b, the words the rewrite takes */
         Ast *as;
 
         nb->v.bin.op = bop;
@@ -4179,8 +4196,9 @@ rstmt(Ast *st, Fenv *fe)
           st->k = Nassign;
           memcpy(&st->v, &as->v, sizeof st->v);
           rstmt(st, fe); /* re-entered: the plain assignment's own walk */
+          return;
         }
-        return;
+        /* no impl: the error below answers */
       }
       berr(st, "this compound assignment does not fit %s and %s", btys(lt), btys(rt));
     }

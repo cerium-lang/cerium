@@ -44,3 +44,133 @@ pub trait Ord {
 pub trait Eq {
   fn eq(self: *Self, other: *Self) -> bool;
 }
+
+/* The built-in impls the spec promises -- "the built-in types come
+ * with impls provided by the compiler" (07-operators.md) -- written
+ * here as source, the compiler's own table spelled out. A scalar
+ * pair answers the operator as the language always did: the
+ * checker's binop is asked first, so a plain `n + m` never comes
+ * here. What these rows hold is everything else -- the spelled call
+ * (`Add::add(&n, &m)` runs the row below), and the pairs the
+ * language holds no row of its own for: `b < b` is Ord's own here,
+ * the language never comparing bools.
+ *
+ * The floats carry the arithmetic four only: a NaN breaks the laws
+ * Eq and Ord assume -- it equals nothing, itself included -- so
+ * their spelled calls are refused, the operators themselves
+ * answering as the language always did. A pointer's Add<usize>,
+ * the spec's own Rhs example, waits for the ptr<->int casts emit
+ * does not carry yet (01-types.md) -- pointer arithmetic rides it. */
+
+/* -- the arithmetic four, every number -------------------------------- */
+
+impl Add for i8 { fn add(self: *Self, other: *Self) -> Self { *self + *other } }
+impl Add for i16 { fn add(self: *Self, other: *Self) -> Self { *self + *other } }
+impl Add for i32 { fn add(self: *Self, other: *Self) -> Self { *self + *other } }
+impl Add for i64 { fn add(self: *Self, other: *Self) -> Self { *self + *other } }
+impl Add for u8 { fn add(self: *Self, other: *Self) -> Self { *self + *other } }
+impl Add for u16 { fn add(self: *Self, other: *Self) -> Self { *self + *other } }
+impl Add for u32 { fn add(self: *Self, other: *Self) -> Self { *self + *other } }
+impl Add for u64 { fn add(self: *Self, other: *Self) -> Self { *self + *other } }
+impl Add for f32 { fn add(self: *Self, other: *Self) -> Self { *self + *other } }
+impl Add for f64 { fn add(self: *Self, other: *Self) -> Self { *self + *other } }
+
+impl Sub for i8 { fn sub(self: *Self, other: *Self) -> Self { *self - *other } }
+impl Sub for i16 { fn sub(self: *Self, other: *Self) -> Self { *self - *other } }
+impl Sub for i32 { fn sub(self: *Self, other: *Self) -> Self { *self - *other } }
+impl Sub for i64 { fn sub(self: *Self, other: *Self) -> Self { *self - *other } }
+impl Sub for u8 { fn sub(self: *Self, other: *Self) -> Self { *self - *other } }
+impl Sub for u16 { fn sub(self: *Self, other: *Self) -> Self { *self - *other } }
+impl Sub for u32 { fn sub(self: *Self, other: *Self) -> Self { *self - *other } }
+impl Sub for u64 { fn sub(self: *Self, other: *Self) -> Self { *self - *other } }
+impl Sub for f32 { fn sub(self: *Self, other: *Self) -> Self { *self - *other } }
+impl Sub for f64 { fn sub(self: *Self, other: *Self) -> Self { *self - *other } }
+
+impl Mul for i8 { fn mul(self: *Self, other: *Self) -> Self { *self * *other } }
+impl Mul for i16 { fn mul(self: *Self, other: *Self) -> Self { *self * *other } }
+impl Mul for i32 { fn mul(self: *Self, other: *Self) -> Self { *self * *other } }
+impl Mul for i64 { fn mul(self: *Self, other: *Self) -> Self { *self * *other } }
+impl Mul for u8 { fn mul(self: *Self, other: *Self) -> Self { *self * *other } }
+impl Mul for u16 { fn mul(self: *Self, other: *Self) -> Self { *self * *other } }
+impl Mul for u32 { fn mul(self: *Self, other: *Self) -> Self { *self * *other } }
+impl Mul for u64 { fn mul(self: *Self, other: *Self) -> Self { *self * *other } }
+impl Mul for f32 { fn mul(self: *Self, other: *Self) -> Self { *self * *other } }
+impl Mul for f64 { fn mul(self: *Self, other: *Self) -> Self { *self * *other } }
+
+impl Div for i8 { fn div(self: *Self, other: *Self) -> Self { *self / *other } }
+impl Div for i16 { fn div(self: *Self, other: *Self) -> Self { *self / *other } }
+impl Div for i32 { fn div(self: *Self, other: *Self) -> Self { *self / *other } }
+impl Div for i64 { fn div(self: *Self, other: *Self) -> Self { *self / *other } }
+impl Div for u8 { fn div(self: *Self, other: *Self) -> Self { *self / *other } }
+impl Div for u16 { fn div(self: *Self, other: *Self) -> Self { *self / *other } }
+impl Div for u32 { fn div(self: *Self, other: *Self) -> Self { *self / *other } }
+impl Div for u64 { fn div(self: *Self, other: *Self) -> Self { *self / *other } }
+impl Div for f32 { fn div(self: *Self, other: *Self) -> Self { *self / *other } }
+impl Div for f64 { fn div(self: *Self, other: *Self) -> Self { *self / *other } }
+
+/* -- Eq and Ord, the integers and the bool ---------------------------- */
+/* (the floats above: a NaN equals nothing, so the laws do not hold) */
+
+impl Eq for i8 { fn eq(self: *Self, other: *Self) -> bool { *self == *other } }
+impl Eq for i16 { fn eq(self: *Self, other: *Self) -> bool { *self == *other } }
+impl Eq for i32 { fn eq(self: *Self, other: *Self) -> bool { *self == *other } }
+impl Eq for i64 { fn eq(self: *Self, other: *Self) -> bool { *self == *other } }
+impl Eq for u8 { fn eq(self: *Self, other: *Self) -> bool { *self == *other } }
+impl Eq for u16 { fn eq(self: *Self, other: *Self) -> bool { *self == *other } }
+impl Eq for u32 { fn eq(self: *Self, other: *Self) -> bool { *self == *other } }
+impl Eq for u64 { fn eq(self: *Self, other: *Self) -> bool { *self == *other } }
+impl Eq for bool { fn eq(self: *Self, other: *Self) -> bool { *self == *other } }
+
+impl Ord for i8 {
+  fn cmp(self: *Self, other: *Self) -> Ordering {
+    if *self < *other { Ordering::Less } else if *self > *other { Ordering::Greater } else { Ordering::Equal }
+  }
+}
+
+impl Ord for i16 {
+  fn cmp(self: *Self, other: *Self) -> Ordering {
+    if *self < *other { Ordering::Less } else if *self > *other { Ordering::Greater } else { Ordering::Equal }
+  }
+}
+
+impl Ord for i32 {
+  fn cmp(self: *Self, other: *Self) -> Ordering {
+    if *self < *other { Ordering::Less } else if *self > *other { Ordering::Greater } else { Ordering::Equal }
+  }
+}
+
+impl Ord for i64 {
+  fn cmp(self: *Self, other: *Self) -> Ordering {
+    if *self < *other { Ordering::Less } else if *self > *other { Ordering::Greater } else { Ordering::Equal }
+  }
+}
+
+impl Ord for u8 {
+  fn cmp(self: *Self, other: *Self) -> Ordering {
+    if *self < *other { Ordering::Less } else if *self > *other { Ordering::Greater } else { Ordering::Equal }
+  }
+}
+
+impl Ord for u16 {
+  fn cmp(self: *Self, other: *Self) -> Ordering {
+    if *self < *other { Ordering::Less } else if *self > *other { Ordering::Greater } else { Ordering::Equal }
+  }
+}
+
+impl Ord for u32 {
+  fn cmp(self: *Self, other: *Self) -> Ordering {
+    if *self < *other { Ordering::Less } else if *self > *other { Ordering::Greater } else { Ordering::Equal }
+  }
+}
+
+impl Ord for u64 {
+  fn cmp(self: *Self, other: *Self) -> Ordering {
+    if *self < *other { Ordering::Less } else if *self > *other { Ordering::Greater } else { Ordering::Equal }
+  }
+}
+
+impl Ord for bool {
+  fn cmp(self: *Self, other: *Self) -> Ordering {
+    if *self == *other { Ordering::Equal } else if !*self { Ordering::Less } else { Ordering::Greater }
+  }
+}
