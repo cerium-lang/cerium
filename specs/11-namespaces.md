@@ -9,22 +9,22 @@ across files without becoming any deeper.
 
 ```text
 src/
-  main.xyz            → the root namespace
+  main.ce            → the root namespace
   net/
-    socket.xyz        → net
-    tls.xyz           → net — another file, the same namespace
-    pool.xyz          → net::pool
+    socket.ce        → net
+    tls.ce           → net — another file, the same namespace
+    pool.ce          → net::pool
     pool/
-      conn.xyz        → net::pool — the file inside the directory
+      conn.ce        → net::pool — the file inside the directory
 ```
 
 A declaration lands in the namespace of the directory its file sits in — a
 file's own name spells no segment, which is what "a file is not a namespace"
-above says. A subdirectory is a sub-namespace, and a file named `X.xyz` beside
+above says. A subdirectory is a sub-namespace, and a file named `X.ce` beside
 a directory `X/` is the two halves of one: both hold items of `X`'s own
 namespace, the file the natural place for the namespace's own declarations
-and the directory for its depth. `net/pool.xyz` and every file under
-`net/pool/` — `conn.xyz` among them — all declare into `net::pool`.
+and the directory for its depth. `net/pool.ce` and every file under
+`net/pool/` — `conn.ce` among them — all declare into `net::pool`.
 
 Paths are absolute — they start at the root of the project. `std` is the
 standard library: it lives outside the project tree and appears as a name at the
@@ -86,7 +86,7 @@ A `use` binds its file only — unless it is `pub`, when it binds the
 namespace:
 
 ```rust
-// src/net/face.xyz — the namespace `net`
+// src/net/face.ce — the namespace `net`
 pub use std::meta::TypeInfo;   // net::TypeInfo, from outside too
 ```
 
@@ -119,7 +119,7 @@ in, which holds both the declarations its files make, the names its `pub use`s
 re-export, and its sub-namespaces:
 
 ```rust
-// src/net/tls.xyz — the namespace `net`
+// src/net/tls.ce — the namespace `net`
 pub struct Tls { ... }
 
 fn handshake(s: *Socket, t: *Tls) -> () { ... }
@@ -131,7 +131,7 @@ sub-namespaces. `std` is one of those, so a standard-library path reads the same
 from anywhere:
 
 ```rust
-// src/net/pool/conn.xyz — the namespace `net::pool`
+// src/net/pool/conn.ce — the namespace `net::pool`
 let t = std::meta::TypeInfo{ ... };
 ```
 
@@ -149,7 +149,7 @@ compile error, as are two `use` of the same name. Neither has a renaming to fall
 back on; both are resolved by writing the full path instead:
 
 ```rust
-// src/net/tls.xyz — the namespace `net`, which already declares a `Socket`
+// src/net/tls.ce — the namespace `net`, which already declares a `Socket`
 use quic::Socket;     // ❌ net already declares a Socket
 
 fn g(s: *quic::Socket) -> () { }   // ✅ reach it by path

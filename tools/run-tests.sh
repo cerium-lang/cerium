@@ -2,22 +2,22 @@
 # run-tests.sh -- the golden tests.
 #
 # tests/lex, tests/parse and tests/check split by pass: every lex/ok
-#/*.xyz must dump exactly its .golden as a token stream (regenerate
-# one with: ./xyz -t tests/lex/ok/NN.xyz > tests/lex/ok/NN.golden --
-# after checking the dump by hand), every parse/ok/*.xyz as an AST
-# (ditto with -a), every check/ok/*.xyz as resolved declarations
-# (ditto with -T), and every err/*.xyz under any of them must be
+#/*.ce must dump exactly its .golden as a token stream (regenerate
+# one with: ./cerium -t tests/lex/ok/NN.ce > tests/lex/ok/NN.golden --
+# after checking the dump by hand), every parse/ok/*.ce as an AST
+# (ditto with -a), every check/ok/*.ce as resolved declarations
+# (ditto with -T), and every err/*.ce under any of them must be
 # rejected with a diagnostic on stderr and a nonzero exit.
 #
-# A directory in place of the .xyz is a project (12-projects.md):
-# every .xyz under it, each in the namespace its path spells. The
+# A directory in place of the .ce is a project (12-projects.md):
+# every .ce under it, each in the namespace its path spells. The
 # project tests live the same way -- check/ok/NN-name/ diffs against
 # the NN-name.golden beside it (one (file ...) block per file, -T
 # only), check/err/NN-name/ must reject, and tests/run/NN-name/
 # compiles to a binary whose exit code the NN-name.expect names. -t
 # and -a read one file; a project tests through -T, -s and -c.
 #
-# tests/run is codegen's: every *.xyz compiles to a binary whose
+# tests/run is codegen's: every *.ce compiles to a binary whose
 # exit code the matching .expect names; an optional .stdout holds
 # the bytes it must print (#[extern(C)] write is how the language
 # prints until M3c). A .release beside the source compiles it with
@@ -31,19 +31,19 @@ cd "$(dirname "$0")/.."
 
 fail=0
 golden() { # $1: the directory, $2: the dump flag
-  for f in "$1"/*.xyz; do
+  for f in "$1"/*.ce; do
     [ -e "$f" ] || continue
-    g="${f%.xyz}.golden"
+    g="${f%.ce}.golden"
     if [ ! -f "$g" ]; then
       echo "FAIL $f (no .golden)"
       fail=1
       continue
     fi
-    if ./xyz "$2" "$f" 2>/dev/null | diff -u "$g" - >/dev/null; then
+    if ./cerium "$2" "$f" 2>/dev/null | diff -u "$g" - >/dev/null; then
       echo "ok   $f"
     else
       echo "FAIL $f"
-      ./xyz "$2" "$f" 2>/dev/null | diff -u "$g" - | sed 's/^/     /'
+      ./cerium "$2" "$f" 2>/dev/null | diff -u "$g" - | sed 's/^/     /'
       fail=1
     fi
   done
@@ -55,20 +55,20 @@ golden() { # $1: the directory, $2: the dump flag
       fail=1
       continue
     fi
-    if ./xyz "$2" "$d" 2>/dev/null | diff -u "$g" - >/dev/null; then
+    if ./cerium "$2" "$d" 2>/dev/null | diff -u "$g" - >/dev/null; then
       echo "ok   $d"
     else
       echo "FAIL $d"
-      ./xyz "$2" "$d" 2>/dev/null | diff -u "$g" - | sed 's/^/     /'
+      ./cerium "$2" "$d" 2>/dev/null | diff -u "$g" - | sed 's/^/     /'
       fail=1
     fi
   done
 }
 
 rejected() { # $1: the directory, $2: the dump flag (-a or -T)
-  for f in "$1"/*.xyz; do
+  for f in "$1"/*.ce; do
     [ -e "$f" ] || continue
-    if ./xyz "${2:--a}" "$f" >/dev/null 2>&1; then
+    if ./cerium "${2:--a}" "$f" >/dev/null 2>&1; then
       echo "FAIL $f (accepted; an error was expected)"
       fail=1
     else
@@ -77,7 +77,7 @@ rejected() { # $1: the directory, $2: the dump flag (-a or -T)
   done
   for d in "$1"/*/; do # a project: -T reads the whole thing
     [ -d "$d" ] || continue
-    if ./xyz "${2:--T}" "$d" >/dev/null 2>&1; then
+    if ./cerium "${2:--T}" "$d" >/dev/null 2>&1; then
       echo "FAIL $d (accepted; an error was expected)"
       fail=1
     else
@@ -91,9 +91,9 @@ runthem() { # $1: the directory; an .expect of "!" wants rejection,
   # optional .stderr the bytes it must write there, and a .release
   # beside the source compiles it with -r (01-types.md)
   tmp=$(mktemp -d)
-  for f in "$1"/*.xyz; do
+  for f in "$1"/*.ce; do
     [ -e "$f" ] || continue
-    g="${f%.xyz}.expect"
+    g="${f%.ce}.expect"
     if [ ! -f "$g" ]; then
       echo "FAIL $f (no .expect)"
       fail=1
@@ -101,9 +101,9 @@ runthem() { # $1: the directory; an .expect of "!" wants rejection,
     fi
     exp=$(cat "$g")
     r=""
-    [ -f "${f%.xyz}.release" ] && r="-r"
+    [ -f "${f%.ce}.release" ] && r="-r"
     if [ "$exp" = "!" ]; then
-      if ./xyz $r -c "$f" -o "$tmp/out" 2>/dev/null; then
+      if ./cerium $r -c "$f" -o "$tmp/out" 2>/dev/null; then
         echo "FAIL $f (compiled; a rejection was expected)"
         fail=1
       else
@@ -111,7 +111,7 @@ runthem() { # $1: the directory; an .expect of "!" wants rejection,
       fi
       continue
     fi
-    if ! ./xyz $r -c "$f" -o "$tmp/out" 2>"$tmp/err"; then
+    if ! ./cerium $r -c "$f" -o "$tmp/out" 2>"$tmp/err"; then
       echo "FAIL $f (rejected: $(head -1 "$tmp/err"))"
       fail=1
       continue
@@ -128,13 +128,13 @@ runthem() { # $1: the directory; an .expect of "!" wants rejection,
       fail=1
       continue
     fi
-    s="${f%.xyz}.stdout"
+    s="${f%.ce}.stdout"
     if [ -f "$s" ] && ! cmp -s "$s" "$tmp/stdout"; then
       echo "FAIL $f (stdout $(head -c 40 "$tmp/stdout" | tr '\n' ' ')...)"
       fail=1
       continue
     fi
-    s="${f%.xyz}.stderr"
+    s="${f%.ce}.stderr"
     if [ -f "$s" ] && ! cmp -s "$s" "$tmp/stderr"; then
       echo "FAIL $f (stderr $(head -c 40 "$tmp/stderr" | tr '\n' ' ')...)"
       fail=1
@@ -154,7 +154,7 @@ runthem() { # $1: the directory; an .expect of "!" wants rejection,
     r=""
     [ -f "${d%/}.release" ] && r="-r"
     if [ "$exp" = "!" ]; then
-      if ./xyz $r -c "$d" -o "$tmp/out" 2>/dev/null; then
+      if ./cerium $r -c "$d" -o "$tmp/out" 2>/dev/null; then
         echo "FAIL $d (compiled; a rejection was expected)"
         fail=1
       else
@@ -162,7 +162,7 @@ runthem() { # $1: the directory; an .expect of "!" wants rejection,
       fi
       continue
     fi
-    if ! ./xyz $r -c "$d" -o "$tmp/out" 2>"$tmp/err"; then
+    if ! ./cerium $r -c "$d" -o "$tmp/out" 2>"$tmp/err"; then
       echo "FAIL $d (rejected: $(head -1 "$tmp/err"))"
       fail=1
       continue

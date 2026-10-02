@@ -26,7 +26,7 @@ code, or it may return `E?()` for an error type of the program's choosing —
 the sugar that makes `?` usable in `main` itself:
 
 ```rust
-// src/main.xyz — the root namespace
+// src/main.ce — the root namespace
 fn main() -> io::Error?() {
   let f = open(config()?)?;    // ? hands errors back, main is the last stop
   ...
@@ -56,12 +56,12 @@ without a derive.
 The standard library is a directory the compiler reads like the project's
 first files — the same walk, the same declares, the same resolves, the same
 body checks, ahead of the project's own. Where the directory is, three
-answers, first match wins: the `XYZ_SYSROOT` environment variable names it;
+answers, first match wins: the `CERIUM_SYSROOT` environment variable names it;
 `std` beside the compiler's own executable is the usual install shape, a
 checkout's too; `std` in the working directory is the last resort. Nothing
 is embedded: std is source on disk, every compile reads it, and a project
 cannot turn it off. What it holds today is small — the sugar's four
-(`std::option.xyz`, `std::result.xyz`, `std::copy.xyz`, `std::drop.xyz`:
+(`std::option.ce`, `std::result.ce`, `std::copy.ce`, `std::drop.ce`:
 `Option`, `Result`, `Copy`, `Drop`, what `?T` and the exclusion checks read
 by pointer, `01-types.md` and `03-move.md`), `std::meta`, the reflection
 model the checker itself reads against (`08-reflection.md`), and
@@ -112,7 +112,7 @@ platform facility, and platform facilities enter through `#[extern(C)]`
 lock, an atomic load, a `volatile` read, or an `asm` block is an `extern`
 call into code the linker resolves; from the language's side it is a call
 it cannot check, which is exactly the standing bargain of every `extern`
-call. A library of such bindings can be written in xyz itself — the
+call. A library of such bindings can be written in Cerium itself — the
 signatures are ordinary declarations — and one day will be.
 
 ## Open items

@@ -1,4 +1,4 @@
-/* abi.h -- the aggregate calling convention. xyz's own convention
+/* abi.h -- the aggregate calling convention. Cerium's own convention
  * is the platform's C convention (01-types.md); where a value
  * crosses a call, an aggregate wears a :type and qbe lowers the
  * rest -- register eightbytes, stack order, an sret. */
