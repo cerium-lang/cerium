@@ -187,30 +187,51 @@ Use *usefindns(const char *name);                          /* a binding that is 
 /* -- the namespace tree -------------------------------------------------
  * A directory is a namespace (11-namespaces.md); the root is the
  * project's. Each holds its own declarations and its
- * sub-namespaces. The bare name's lookup reads the root's table and
- * then what `use` brought in; a namespaced path walks the tree. */
+ * sub-namespaces. A pub use binds the namespace it sits in, not its
+ * file alone: the re-export lives beside the declarations, the same
+ * name from another place -- visible to a use, a glob, a path, and
+ * the bare name of the namespace's own files, never transitive (the
+ * target is a real item, not another re-export). The bare name's
+ * lookup reads the root's table and then what `use` brought in; a
+ * namespaced path walks the tree. */
+
+typedef struct Rexp Rexp;
+struct Rexp
+{
+  char *name;   /* the name the pub use binds */
+  Sym  *target; /* the item it re-exports, always a real one */
+  Ast  *at;     /* the pub use that made it: a collision's position */
+};
 
 struct Ns
 {
-  char *name; /* the last segment; the root's is "" */
-  Sym **tbl;  /* this namespace's own declarations */
-  usize cap, n;
-  Ns  **subs; /* the sub-namespaces, a vec */
-  Ns   *parent;
+  char  *name; /* the last segment; the root's is "" */
+  Sym  **tbl;  /* this namespace's own declarations */
+  usize  cap, n;
+  Ns   **subs; /* the sub-namespaces, a vec */
+  Ns    *parent;
+  Rexp **reexp; /* the pub use bindings, a vec (11-namespaces.md) */
 };
 
 Ns *nsroot(void);
-Ns *nsmk(Ns *parent, const char *name); /* a sub-namespace, named */
-Ns *nschild(Ns *ns, const char *name);  /* a sub-namespace by name, or NULL */
-Ns *nsopen(const char *path);           /* the ns a :: path names, each missing
-                                         * segment made -- the loader's tree walk */
-Ns *nssubfind(const char *name);        /* one by name, the lookup chain the
-                                         * bare name's own walks: the file's,
-                                         * the root's, a use's (11) */
-Sym  *nsitem(Ns *ns, const char *name); /* a declaration of this one */
-char *nsname(Ns *ns);                   /* its full path, std::meta */
-Sym **nstable(Ns *ns, usize *np);       /* every declaration of it,
-                                         * a glob's walk (11) */
+Ns *nsmk(Ns *parent, const char *name);                      /* a sub-namespace, named */
+Ns *nschild(Ns *ns, const char *name);                       /* a sub-namespace by name, or NULL */
+Ns *nsopen(const char *path);                                /* the ns a :: path names, each missing
+                                                              * segment made -- the loader's tree walk */
+Ns *nssubfind(const char *name);                             /* one by name, the lookup chain the
+                                                              * bare name's own walks: the file's,
+                                                              * the root's, a use's (11) */
+Sym *nsitem(Ns *ns, const char *name);                       /* a declaration of this one */
+Sym *nsreexpfind(Ns *ns, const char *name);                  /* a re-export's target by name, or
+                                                              * NULL -- the pub use face (11) */
+int nsreexp(Ns *ns, const char *name, Sym *target, Ast *at); /* make one: 0
+                                                              * made, 1 the name
+                                                              * held -- the caller
+                                                              * reports, for it
+                                                              * holds the position */
+char *nsname(Ns *ns);                                        /* its full path, std::meta */
+Sym **nstable(Ns *ns, usize *np);                            /* every declaration of it,
+                                                              * a glob's walk (11) */
 Sym *nsdecl(Ns *ns, const char *name, int kind, Ast *decl, Ast **gparams,
             usize ngparams); /* declare into it -- symdecl's own, one
                               * namespace over */
@@ -255,21 +276,19 @@ extern usize chk_nimpls;
 /* Self's one generic parameter, built by syminit (sym.c) */
 extern Ast *sym_selfgp;
 
-/* the prelude's hand-built pair (prelude.c): Option, Result, Copy,
- * Drop -- declared before any file is read. std's own source is the
- * sysroot's, not this (12-projects.md) */
-void prelude(void);
+/* the sugar's four (prelude.c): Option, Result, Copy, Drop -- read
+ * by pointer wherever ?T and the exclusion checks name them. Not
+ * declared by hand anymore: std's own source holds them, the Syms
+ * taken back from the tree the walks fill, after pass 1
+ * (12-projects.md). The operator traits (07-operators.md) join them
+ * as their passes arrive. */
+extern Sym *sym_option, *sym_result, *sym_copy, *sym_drop;
 
 /* std::meta's TypeInfo, from the sysroot's own source: the type every
  * @typeinfo answers with (prelude.c, 08-reflection.md) -- the Sym
  * itself set by checkproject, once the walks have filled the tree */
 extern Sym *sym_typeinfo;
 Type       *typeinfoty(void);
-
-/* the prelude enums the sugar builds on, and the exclusion pair
- * (prelude.c). The operator traits (07-operators.md) join them as
- * their passes arrive. */
-extern Sym *sym_option, *sym_result, *sym_copy, *sym_drop;
 
 /* a variant by name; the enum a bare variant name belongs to --
  * the checker's patterns and the emitter's construction share them */

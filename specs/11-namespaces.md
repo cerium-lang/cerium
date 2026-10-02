@@ -44,6 +44,9 @@ Private means visible to every file of the same directory. A file is not a
 namespace, so there is no file-level privacy: to hide a helper from the rest of
 a namespace, give it a directory of its own.
 
+A `pub use` is how a namespace gives away another's `pub` item under its own
+name — the re-export, the section after Use.
+
 ## Use
 
 `use` brings a name into scope:
@@ -74,10 +77,46 @@ let c = Red;
 `Some` and `None` need no `use` — writing them bare is part of the `?T` sugar
 (`05-traits.md`), not of this mechanism.
 
+`pub use` is the same tree with the flag on: the binding it makes is the
+namespace's, not the file's — the re-export, the section below.
+
+## pub use, re-exports
+
+A `use` binds its file only — unless it is `pub`, when it binds the
+namespace:
+
+```rust
+// src/net/face.xyz — the namespace `net`
+pub use std::meta::TypeInfo;   // net::TypeInfo, from outside too
+```
+
+The name becomes part of the namespace's public face, and every way a name is
+found sees it: a `use net::TypeInfo` from another file, a glob `use net::*`, a
+path `net::TypeInfo` in type position, and the bare name in another file of
+`net` itself. The binding is the item — nothing of the re-export leaks into a
+type, and the item's own name, path, and visibility are what they always were.
+
+Three rules hold the model simple:
+
+- **The target is a `pub` item.** A private item is not the namespace's to
+  give, and a namespace is not an item — `pub use std::meta;` is rejected,
+  there is nothing to re-export.
+- **Not transitive.** A re-export points at a real item, never at another
+  re-export — `pub use a::X;` where `a::X` is itself a re-export is an error.
+  One hop, one name.
+- **The name is taken whole.** A declaration of the same namespace under the
+  name, or another re-export of it, rejects the `pub use` — an overloaded fn
+  does not chain onto a re-export; the name is the declaration's or the
+  re-export's, never both.
+
+A glob form is not defined — `pub use quic::*;` re-exports nothing: the names
+a namespace gives away are named, one by one.
+
 ## Name resolution
 
 A name is looked up in the current namespace first — the directory the file sits
-in, which holds both the declarations its files make and its sub-namespaces:
+in, which holds both the declarations its files make, the names its `pub use`s
+re-export, and its sub-namespaces:
 
 ```rust
 // src/net/tls.xyz — the namespace `net`
@@ -124,6 +163,9 @@ brace form or the full path:
 use quic::*;                  // ❌ quic has a Socket, and so does net
 use quic::{Client, Server};   // ✅ the ones that do not collide
 ```
+
+The glob brings the re-exports too: a namespace's face is one — what its files
+declare and what its `pub use`s re-export, a glob taking it whole.
 
 There are no relative paths — `self::` and `super::` are not defined, and nothing
 needs them: a sibling is in the current namespace and is named with no path at

@@ -1,0 +1,6 @@
+/* the project's own Option: the injected name yields to the use
+ * that names it (12-projects.md) */
+pub enum Option<T> {
+  Nothing,
+  Carries(T),
+}

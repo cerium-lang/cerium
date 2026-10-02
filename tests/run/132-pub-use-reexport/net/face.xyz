@@ -1,0 +1,4 @@
+/* the namespace public face: std::meta's TypeInfo re-exported
+ * under net's own name, a use from outside reaching it
+ * (11-namespaces.md) */
+pub use std::meta::TypeInfo;

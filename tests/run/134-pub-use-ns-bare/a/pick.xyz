@@ -1,0 +1,3 @@
+/* the namespace's own file reads the pub use bare: the re-export
+ * binds the namespace, not the file that wrote it (11) */
+fn pick(t: TypeInfo) -> i32 { 41 }

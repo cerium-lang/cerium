@@ -1,0 +1,12 @@
+/* std::Option -- the option type, the sugar ?T's own enum
+ * (01-types.md): None, or Some(T). Declared here as source, the
+ * namespace its path spells (12-projects.md); the prelude binds it
+ * into every user file, and the sugar reads the Sym by pointer --
+ * ?T is Option<T> wherever it is spelled. Some and None are its
+ * variants, not names in scope: a bare Some rides the sugar's owner
+ * lookup, not a use (01-types.md). */
+
+pub enum Option<T> {
+  None,
+  Some(T),
+}

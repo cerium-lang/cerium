@@ -1,0 +1,21 @@
+/* the taken name flipped: std's four live in std now, 'Option' a
+ * plain name the project may take (12-projects.md). The sugar
+ * ignores the taking: ?T is std's Option<T> wherever it is spelled,
+ * and the sugar's variants answer the bare name first
+ * (01-types.md). */
+
+enum Option {
+  Mine,
+}
+
+fn main() -> i32 {
+  let m = Option::Mine;
+  let s: ?i32 = Some(41);
+  let a = match m {
+    Option::Mine => 1,
+  };
+  a + (match s {
+    Some(v) => v,
+    None    => 0,
+  })
+}
