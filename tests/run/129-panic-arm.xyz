@@ -1,0 +1,17 @@
+/* open_or_die, the spec's own example (10-iteration.md): the Err arm
+ * ends in panic, a call to a #[noreturn] fn, so it agrees with any arm
+ * -- the want cut at the arm, the join reading only the paths that
+ * arrive. The Err arm is the one that runs; the exit is abort's 134. */
+use std::panic;
+
+fn open_or_die(ok: bool) -> i32 {
+  let r: ()?i32 = if ok { Ok(3) } else { Err(()) };
+  match r {
+    Ok(v)  => v,
+    Err(_) => panic("cannot open"),
+  }
+}
+
+fn main() -> i32 {
+  open_or_die(false)
+}

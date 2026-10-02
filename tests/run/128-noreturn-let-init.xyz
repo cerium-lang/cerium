@@ -1,0 +1,11 @@
+/* A diverging initializer hands the let nothing: the want flowing into
+ * it is cut (10-iteration.md), the binding checked against nothing,
+ * and the statements after it never arrive -- the emitter leaves the
+ * block without its tail, the abort the whole ending. The exit is
+ * abort's own: 134. */
+use std::panic;
+
+fn main() -> i32 {
+  let v: i32 = panic("boom");
+  v + 1  /* never reached */
+}

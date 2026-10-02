@@ -756,6 +756,27 @@ split by pass: `ok/` has one `.golden` per `.xyz` that the dumps must
 reproduce exactly, `err/` has inputs that must be rejected
 (`tools/run-tests.sh`).
 
+The diverge is real now, and panic with it — the first fn std's
+runtime half carries (`01-types.md`, `10-iteration.md`).
+`#[noreturn]` marks a fn that never comes back, and the compiler
+judges a path's leaving from the syntax alone: a `return`, a `break`,
+a `continue`, or a call to one of those fns, nothing deeper. A branch
+that leaves does not join the type agreement — the spec's own `match`
+with a `return` arm beside a value arm compiles now, `open_or_die`
+with it — and the want a checker flows into the leaving position is
+cut: a `let` whose init panics binds the shape it spelled, the dead
+code after it checking nothing. The emitter walks the same judgement:
+the paths that leave carry no join and no trailing return, and a body
+whose last text is the call itself ends there — a dead `ret` written
+for qbe's terminator rule alone, never run. panic itself is a plain
+fn in std, embedded the way std::meta is (`std/panic.xyz`, the
+registry now a table of files): `write` under `#[extern(C)]` for the
+message, `abort` for the end — no unwind, no destructors, the process
+taken while the state is still trusted enough for the message it just
+wrote (`12-projects.md`). And `main` may return an integer now —
+`i32` the usual one, the program exiting with that code; anything
+else it returns is rejected where it is declared.
+
 ## Status
 
 A design in progress. The specification is internally consistent at the moment;
@@ -765,9 +786,12 @@ Still open:
 
 - Whether a macro system should exist at all — `14-macros.md` currently argues
   against one, but the conclusion is deliberately left open
-- The one open item left at the end of `12-projects.md`: external libraries,
+- The open items at the end of `12-projects.md`: external libraries,
   and how their paths enter the root — they will distribute as source
-  (`12-projects.md`), but dependency declaration waits for a manifest
+  (`12-projects.md`), but dependency declaration waits for a manifest;
+  and std's own distribution — embedded source walked as the project's
+  first files until size, front-end time, or a release cadence of its
+  own says sysroot, with a symbol cache then (`12-projects.md`)
 - The chapter-level items deferred with their chapters: `dyn A + B` and a
   `@typeinfo<dyn A>` variant (`06-dispatch.md`); an `Output` associated type
   and traits for `%`, the bitwise operators, and shifts (`07-operators.md`);

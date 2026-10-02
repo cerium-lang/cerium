@@ -1,0 +1,17 @@
+/* panic as the body's own tail, and as a return's value: both hand
+ * the checker nothing (10-iteration.md), both leave the emitter
+ * without the return it would write -- the call itself is the ending.
+ * The exit is abort's own: 134. */
+use std::panic;
+
+fn boom() -> i32 {
+  panic("boom")  /* the tail: the call, not a value */
+}
+
+fn via_return() -> i32 {
+  return panic("boom");  /* the return's own value, exempt too */
+}
+
+fn main() -> i32 {
+  boom()
+}

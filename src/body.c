@@ -2795,23 +2795,38 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
     ft = fefork(fe);
     if (side == 1) /* != narrows the then (01-types.md, Nullability) */
       locnarrow(&ft, nm, child);
-    tt = rexpr(e->v.ifx.then, &ft, want);
-    if (mustexit(e->v.ifx.then))
-      unreach(&ft); /* the then never reaches what follows */
-    if (e->v.ifx.els) {
-      ff = fefork(fe);
-      if (side == -1) /* == narrows the else */
-        locnarrow(&ff, nm, child);
-      tf = rexpr(e->v.ifx.els, &ff,
-                 want ? want
-                      : tt); /* None takes its
-                              * ?T from the other side: the then spelled it out (01-types.md) */
-      if (mustexit(e->v.ifx.els))
-        unreach(&ff);
-      if (!tysame(tt, tf))
-        berr(e, "the branches disagree: %s and %s", btys(tt), btys(tf));
-      fejoin(fe, &ft, &ff);
-      return tt;
+    {
+      int dive = mustexit(e->v.ifx.then); /* the branch never lands:
+                                           * its value nothing, it
+                                           * agrees with the other
+                                           * side whatever that is
+                                           * (10-iteration.md) */
+
+      tt = rexpr(e->v.ifx.then, &ft, dive ? 0 : want);
+      if (dive)
+        unreach(&ft); /* the then never reaches what follows */
+      if (e->v.ifx.els) {
+        int dive2;
+
+        ff = fefork(fe);
+        if (side == -1) /* == narrows the else */
+          locnarrow(&ff, nm, child);
+        dive2 = mustexit(e->v.ifx.els);
+        tf = rexpr(e->v.ifx.els, &ff,
+                   dive2 ? 0 : (want ? want : (dive ? 0 : tt))); /* None takes its
+                                                                  * ?T from the other side: the then
+                                                                  * spelled it out (01-types.md) */
+        if (dive2)
+          unreach(&ff);
+        if (!dive && !dive2 && !tysame(tt, tf))
+          berr(e, "the branches disagree: %s and %s", btys(tt), btys(tf));
+        fejoin(fe, &ft, &ff);
+        if (dive && dive2) /* neither branch lands: no value the if
+                            * produces, the world's own want standing
+                            * in (10-iteration.md) */
+          return want ? want : tyunit();
+        return dive ? tf : tt; /* the landing branch's shape alone */
+      }
     }
     { /* no else: the implicit fall-through is the untouched state */
       Fenv f0 = fefork(fe);
@@ -3560,21 +3575,28 @@ rmatch(Ast *e, Fenv *fe, Type *want)
     Fenv  fa = fefork(fe);
     usize nbase = fa.n;
     Type *at;
+    int   dive = mustexit(arm->v.n2.b); /* the arm never lands: its
+                                         * value is nothing, it agrees
+                                         * with any other arm
+                                         * (10-iteration.md) */
 
     rpat(arm->v.n2.a, st, &fa, 0);
     at = arm->v.n2.b->k == Nblock
-             ? rblock(arm->v.n2.b, &fa, want ? want : rt)
-             : rexpr(
-                   arm->v.n2.b, &fa,
-                   want ? want
-                        : rt); /* None
-                                * takes its ?T from the other side: an earlier arm spelled it out */
-    if (!rt)
-      rt = at;
-    else if (at && !tysame(rt, at))
-      berr(arm->v.n2.b, "the arms disagree: %s and %s", btys(rt), btys(at));
+             ? rblock(arm->v.n2.b, &fa, dive ? 0 : (want ? want : rt))
+             : rexpr(arm->v.n2.b, &fa,
+                     dive ? 0 : (want ? want : rt)); /* None
+                                                      * takes its ?T from the other side: an earlier
+                                                      * arm spelled it out */
+    if (!dive) /* a diverging arm seeds nothing and disagrees with
+                * nothing: there is no value to compare */
+    {
+      if (!rt)
+        rt = at;
+      else if (at && !tysame(rt, at))
+        berr(arm->v.n2.b, "the arms disagree: %s and %s", btys(rt), btys(at));
+    }
     locpop(&fa, nbase); /* the arm's bindings -- and thaws -- end here */
-    if (mustexit(arm->v.n2.b))
+    if (dive)
       continue; /* never reaches the join */
     if (!joined) {
       acc = fa; /* the first reachable arm seeds the join */
@@ -3583,8 +3605,14 @@ rmatch(Ast *e, Fenv *fe, Type *want)
       fejoin(&acc, &acc, &fa);
   }
   if (joined)
-    *fe = acc; /* every arm checked against the same pre-state */
-  return rt;   /* every arm leaving: what follows is unreachable anyway */
+    *fe = acc;                               /* every arm checked against the same pre-state */
+  return rt ? rt : (want ? want : tyunit()); /* every arm leaving:
+                                              * what follows is unreachable
+                                              * anyway -- and all of them
+                                              * leaving leaves no arm's
+                                              * shape to name, the world's
+                                              * own want standing in
+                                              * (10-iteration.md) */
 }
 
 /* -- blocks, closures, statements ----------------------------------------- */
@@ -3596,9 +3624,21 @@ rblock(Ast *b, Fenv *fe, Type *want)
   Ast **ss = b->v.blk.stmts;
   usize n = vlen(ss), i;
   Type *t;
+  int   dive = n && mustexit(ss[n - 1]); /* the last statement leaves:
+                                          * the block never lands, its
+                                          * value the shape the world
+                                          * asked for
+                                          * (10-iteration.md) */
 
   for (i = 0; i < n; i++)
     rstmt(ss[i], fe);
+  if (dive) { /* the tail is dead code: checked with nothing wanted,
+               * the errors still errors, the value no value */
+    if (b->v.blk.tail)
+      rexpr(b->v.blk.tail, fe, 0);
+    locpop(fe, nbase);
+    return want ? want : tyunit();
+  }
   t = b->v.blk.tail ? rexpr(b->v.blk.tail, fe, want) : tyunit();
   locpop(fe, nbase);
   return t;
@@ -3837,7 +3877,24 @@ rstmt(Ast *st, Fenv *fe)
   switch (st->k) {
   case Nlet: {
     Type *t = st->v.let.t ? rty(st->v.let.t, &fe->env) : 0;
-    Type *et = st->v.let.e ? rexpr(st->v.let.e, fe, t) : 0;
+    Type *et;
+
+    if (st->v.let.e && mustexit(st->v.let.e)) { /* the init never
+                                                 * lands: nothing to
+                                                 * bind, the binding
+                                                 * the shape it
+                                                 * spelled, the unit
+                                                 * when it spelled
+                                                 * none
+                                                 * (10-iteration.md) */
+      rexpr(st->v.let.e, fe, 0);                /* the arguments still check: a
+                                                 * compile error is a compile error
+                                                 * on every path */
+      st->ty = t ? t : tyunit();
+      rpat(st->v.let.pat, st->ty, fe, st->v.let.mut);
+      return;
+    }
+    et = st->v.let.e ? rexpr(st->v.let.e, fe, t) : 0;
 
     if (!t && !et)
       berr(st, "a let binds something: a type, a value, or both");
@@ -3905,11 +3962,17 @@ rstmt(Ast *st, Fenv *fe)
     return;
   }
   case Nreturn: {
-    Type *t = st->v.n1.e ? rexpr(st->v.n1.e, fe, fe->fnret) : tyunit();
+    int dive = st->v.n1.e && mustexit(st->v.n1.e); /* return
+                                                    * panic("..."):
+                                                    * the value never
+                                                    * exists, nothing
+                                                    * to compare
+                                                    * (10-iteration.md) */
+    Type *t = st->v.n1.e ? rexpr(st->v.n1.e, fe, dive ? 0 : fe->fnret) : tyunit();
 
     if (!fe->fnret)
       berr(st, "return outside a fn");
-    if (!tysame(t, fe->fnret)) {
+    if (!dive && !tysame(t, fe->fnret)) {
       Type *c = st->v.n1.e ? recoerce(st->v.n1.e, fe->fnret, fe) : 0;
 
       if (!c || !tysame(c, fe->fnret))

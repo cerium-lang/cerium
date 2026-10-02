@@ -541,8 +541,9 @@ unreach(Fenv *fe)
   }
 }
 
-/* must the statement leave -- return/break/continue, or a branch
- * where every path does (03-move.md, Timing) */
+/* must the statement leave -- return/break/continue, a call to a
+ * #[noreturn] fn, or a branch where every path does (03-move.md,
+ * Timing; 10-iteration.md) */
 int
 mustexit(Ast *st)
 {
@@ -553,6 +554,36 @@ mustexit(Ast *st)
   case Nbreak:
   case Ncontinue:
     return 1;
+  case Ncall: { /* the callee resolved the way the checker's own call
+                 * site does -- a free fn by its path, the mark on its
+                 * Sym. The judgement stays syntactic: the name's shape
+                 * is all it reads, no control flow traced
+                 * (10-iteration.md) */
+    Ast  *f = st->v.call.f;
+    Ast **segs;
+    usize nsegs, k;
+    Ns   *ns;
+    Sym  *s;
+
+    if (f->k != Npath)
+      return 0; /* an indirect callee, or the method sugar: a local's
+                 * fn value and a receiver's own are not this
+                 * milestone's */
+    segs = f->v.path.segs;
+    nsegs = vlen(segs);
+    k = nshead(segs, nsegs, &ns, f->v.path.root);
+    if (k == nsegs || nsegs - k != 1)
+      return 0; /* a namespace walk, or Type::member(...): the latter
+                 * arrives with methods of its own */
+    s = k ? nsitem(ns, segs[k]->v.seg.name) : symfind(segs[k]->v.seg.name);
+    return s && s->kind == Sfn && s->noreturn;
+  }
+  case Nlet: /* the binding's own init leaving takes the statement with
+              * it: the code after never runs (10-iteration.md) */
+    return st->v.let.e && mustexit(st->v.let.e);
+  case Nexprstmt: /* a bare call stands alone: its own leaving is the
+                   * statement's */
+    return mustexit(st->v.n1.e);
   case Nblock: {
     Ast **ss = st->v.blk.stmts;
     usize n = vlen(ss);

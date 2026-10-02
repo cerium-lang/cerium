@@ -188,6 +188,50 @@ nschild(Ns *ns, const char *name)
   return 0;
 }
 
+/* the namespace a :: path names, each missing segment made: the
+ * loader's own tree walk, a std file's registration the first user
+ * (12-projects.md). Absolute from the root -- the embedded sources
+ * name where they live, nothing nearer reads */
+Ns *
+nsopen(const char *path)
+{
+  Ns         *ns = nsroot();
+  const char *p = path;
+
+  while (*p) {
+    char  seg[64];
+    usize n = 0;
+
+    while (*p && *p != ':') {
+      if (n + 1 >= sizeof seg)
+        die("a namespace segment too wide for the tree");
+      seg[n++] = *p++;
+    }
+    if (*p == ':') { /* the pair, one step */
+      if (p[1] != ':')
+        die("a lone ':' in a namespace path");
+      p += 2;
+    } else if (*p)
+      die("a stray byte in a namespace path");
+    seg[n] = 0;
+    if (!n)
+      die("an empty segment in a namespace path");
+    {
+      Ns *sub = nschild(ns, seg);
+
+      if (!sub) { /* the segment's own spelling, kept the arena's
+                   * way: a tree name never dies */
+        char *kept = arenaalloc(n + 1);
+
+        memcpy(kept, seg, n + 1);
+        sub = nsmk(ns, kept);
+      }
+      ns = sub;
+    }
+  }
+  return ns;
+}
+
 Ns *
 nssubfind(const char *name) /* a sub-namespace by name, the chain the
                              * bare name's own lookup walks: the file's

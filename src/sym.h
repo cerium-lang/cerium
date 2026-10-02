@@ -117,7 +117,9 @@ struct Sym
   Type    *aliasty;    /* Stype: an alias's resolved target */
   int      resolving;  /* Stype: alias cycle detection, during pass 2 */
   Type    *fnty;       /* Sfn: the resolved fn type */
-  Sym     *impl;       /* Sfn: the impl a method's Sym belongs to,
+  int      noreturn;   /* Sfn: #[noreturn] was written -- the diverge
+                        * judgement reads it (10-iteration.md) */
+  Sym *impl;           /* Sfn: the impl a method's Sym belongs to,
                         * or NULL for a plain fn */
   int evaled;          /* Sfn: the evaluator ran this body to its end
                         * -- an @compileError it did not reach is a
@@ -200,6 +202,8 @@ struct Ns
 Ns *nsroot(void);
 Ns *nsmk(Ns *parent, const char *name); /* a sub-namespace, named */
 Ns *nschild(Ns *ns, const char *name);  /* a sub-namespace by name, or NULL */
+Ns *nsopen(const char *path);           /* the ns a :: path names, each missing
+                                         * segment made -- the loader's tree walk */
 Ns *nssubfind(const char *name);        /* one by name, the lookup chain the
                                          * bare name's own walks: the file's,
                                          * the root's, a use's (11) */

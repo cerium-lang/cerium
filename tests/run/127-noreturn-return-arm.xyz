@@ -1,0 +1,29 @@
+/* The diverge judgement is syntactic (10-iteration.md): an arm ending
+ * in return leaves nothing for the type agreement between arms, the
+ * compiler never tracing control flow. The spec's own shapes, made to
+ * run: the Some-returns arm beside the None value arm, the both-return
+ * match with no value to read at all, and an if/else holding the
+ * return on one side -- each a branch the checker exempts from unify
+ * and the emitter from the fall-through join. 10 = 7 + 0 + 3. */
+fn pick(o: Option<i32>) -> i32 {
+  match o {
+    Some(v) => { return v; },
+    None => 0,
+  }
+}
+
+fn both(o: Option<i32>) -> i32 {
+  match o {
+    Some(v) => { return v; },
+    None => { return 0; },
+  }
+}
+
+fn either(c: bool, v: i32) -> i32 {
+  let a = if c { return 0; } else { v };
+  a
+}
+
+fn main() -> i32 {
+  pick(Some(7)) + both(None) + either(false, 3)
+}
