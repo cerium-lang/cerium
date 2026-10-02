@@ -1,0 +1,11 @@
+/* a &mut through the operator's or the hand-written '&' reaches a
+ * value with no place of its own, and the borrow it would return
+ * has nothing to name: the materialisation a shared '&' gains
+ * (01-types.md) is a frozen slot, and a mutable one is not the
+ * answer -- the mut wants a place, and only a place */
+fn make() -> i32 { 5 }
+
+fn main() -> i32 {
+  let p = &mut make();
+  *p
+}
