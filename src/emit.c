@@ -3489,15 +3489,6 @@ emitfile(FILE *out, Srcfile **files, usize nfiles)
     exit(1);
   }
   ipass = 1;
-  { /* std's own files first: the runtime half lives there -- panic's
-     * body is the text the checks' calls name (12-projects.md) */
-    Srcfile **stds;
-    usize     nstd;
-
-    stds = stdfiles(&nstd);
-    if (nstd)
-      emitall(scratch, stds, nstd);
-  }
   emitall(scratch, files, nfiles);
   draininsts(scratch);
   for (;;) { /* the tables the handles named: their entries name
@@ -3513,15 +3504,6 @@ emitfile(FILE *out, Srcfile **files, usize nfiles)
   vtprinted = 0; /* the text restarts with it */
   abidecls(out); /* the :type declarations, the order qbe reads */
   ipass = 2;
-  { /* std ahead of the project, the same order the naming pass
-     * walked (12-projects.md) */
-    Srcfile **stds;
-    usize     nstd;
-
-    stds = stdfiles(&nstd);
-    if (nstd)
-      emitall(out, stds, nstd);
-  }
   emitall(out, files, nfiles); /* pass two: the text */
   draininsts(out);
   for (;;) {

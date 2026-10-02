@@ -53,20 +53,27 @@ without a derive.
 
 ## std, the project's first files
 
-The compiler carries the standard library's source itself, embedded, and
-walks it as the project's first files — the same declares, the same
-resolves, the same body checks, ahead of the project's own. std is not a
-manifest and not a search path: it is simply there, every compile, and a
-project cannot turn it off. What it holds today is small — `std::meta`, the
+The standard library is a directory the compiler reads like the project's
+first files — the same walk, the same declares, the same resolves, the same
+body checks, ahead of the project's own. Where the directory is, three
+answers, first match wins: the `XYZ_SYSROOT` environment variable names it;
+`std` beside the compiler's own executable is the usual install shape, a
+checkout's too; `std` in the working directory is the last resort. Nothing
+is embedded: std is source on disk, every compile reads it, and a project
+cannot turn it off. What it holds today is small — `std::meta`, the
 reflection model the checker itself reads against (`08-reflection.md`), and
 `std::panic`, the one fn every runtime check fails into (`01-types.md`,
 Panic) — each file in the namespace its path names, every item `pub`,
 reached by path or by use like any namespace's (`11-namespaces.md`).
 
-The embedding is a v0 shape, not a principle. `std::meta` will always ride
-with the compiler — the checker reads it to check, so the two have to move
-together — but the runtime half may outgrow the walk; the switches that say
-when are the open item's below.
+`std` is the library's own name, reserved: a project whose tree carries a
+`std/` directory is rejected — the namespace is the library's, and no
+project may write into it (`11-namespaces.md`).
+
+The compiler and its sysroot move together — the checker reads
+`std::meta` to check, so the two cannot drift apart — and a sysroot
+without `meta::TypeInfo` is a broken one, said at the first compile,
+not at the first `@typeinfo`.
 
 ## What v0 does not carry
 
@@ -88,12 +95,11 @@ signatures are ordinary declarations — and one day will be.
 
 ## Open items
 
-- std's distribution. Embedded source, walked as the project's first files,
-  is right while std is small. The switches that end it: std past a few
-  thousand lines, front-end time the walk makes felt, or std needing to
-  iterate outside the compiler's own releases. The answer then is a sysroot
-  — a directory the compiler reads like a project — with a symbol cache, so
-  the parse and the checks are paid once, not per compile.
+- std's walk cost. Source read from the sysroot, walked as the project's
+  first files, is right while std is small. The switches that end it: std
+  past a few thousand lines, or front-end time the walk makes felt. The
+  answer then is a symbol cache — the parse and the checks paid once, not
+  per compile.
 - External libraries, and how their paths enter the root. They will distribute
   as source — the compiler has to read a library to check against it — but how
   a dependency is declared, and what happens when two want different versions

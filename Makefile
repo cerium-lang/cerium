@@ -23,16 +23,6 @@ $(BIN): $(OBJ)
 
 $(OBJ): $(wildcard src/*.h)
 
-# std's own sources, embedded: one table of string literals each
-# (src/prelude_text.h) joined in the arena, the lexer reading the
-# joined text from memory -- every std/*.xyz parses like any other
-# source, it just never touches the disk (12-projects.md)
-STDSRC = std/meta.xyz std/panic.xyz
-
-src/prelude.o: src/prelude_text.h
-src/prelude_text.h: $(STDSRC) tools/embed.sh
-	sh tools/embed.sh $(STDSRC) > $@
-
 $(QBE_BIN):
 	@cd qbe >/dev/null 2>&1 || { \
 	    echo "qbe/ is empty -- run: git submodule update --init"; exit 1; }
@@ -51,6 +41,6 @@ hooks:
 	git config core.hooksPath .githooks
 
 clean:
-	rm -f $(OBJ) $(BIN) src/prelude_text.h
+	rm -f $(OBJ) $(BIN)
 
 .PHONY: all test fmt fmt-check hooks clean

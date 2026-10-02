@@ -237,6 +237,21 @@ walkdir(const char *dir, Ns *ns, Srcfile ***filesp)
   for (i = 0; i < n; i++) {
     Ns *sub = nschild(ns, dirs[i]);
 
+    if (strcmp(dirs[i], "std") == 0) { /* the standard library's own
+                                        * name, reserved against the
+                                        * project's directories
+                                        * (11-namespaces.md): the
+                                        * tree the sysroot's walk
+                                        * already made is the one a
+                                        * project's std/ would land
+                                        * in, and no project may
+                                        * write into it */
+      fprintf(stderr,
+              "xyz: %s: 'std' is reserved for the standard library"
+              " (11-namespaces.md)\n",
+              dirjoin(dir, dirs[i]));
+      exit(1);
+    }
     if (!sub)
       sub = nsmk(ns, dirs[i]);
     walkdir(dirjoin(dir, dirs[i]), sub, filesp);
@@ -245,16 +260,13 @@ walkdir(const char *dir, Ns *ns, Srcfile ***filesp)
 
 /* the project: one file -- the root's own single file -- or a
  * directory, every .xyz under it (12-projects.md). The table stands
- * already: the walk builds the project's tree into it, std::meta
- * among the branches */
+ * already: the walk builds the project's tree into it */
 static Srcfile **
 loadproject(const char *path, usize *nfilesp)
 {
   Srcfile **files = vnew(Srcfile *, 8);
 
-  if (isdir(path))
-    walkdir(path, nsroot(), &files);
-  else {
+  if (!isdir(path)) {
     Srcfile *sf = arenaalloc(sizeof *sf);
 
     memset(sf, 0, sizeof *sf);
@@ -262,25 +274,96 @@ loadproject(const char *path, usize *nfilesp)
     sf->ns = nsroot();
     sf->items = parsefile(path);
     vappend(&files, &sf);
+  } else {
+    usize n = strlen(path); /* the shell's own trailing slash -- the
+                             * glob's, or the user's -- kept out of the
+                             * paths the diagnostics carry */
+    char *dir;
+
+    while (n > 1 && path[n - 1] == '/')
+      n--;
+    dir = arenaalloc(n + 1);
+    memcpy(dir, path, n);
+    dir[n] = 0;
+    walkdir(dir, nsroot(), &files);
   }
   *nfilesp = vlen(files);
   return files;
 }
 
+static const char *argv0; /* the driver's own path, for the sysroot's
+                           * search below */
+
+/* where the standard library lives: the environment names it, the
+ * executable's own directory the usual install shape (the checkout's
+ * too), the working directory the last resort (12-projects.md). The
+ * std below it is source like any other -- the compiler reads it,
+ * nothing is embedded */
+static const char *
+sysrootpath(void)
+{
+  const char *env = getenv("XYZ_SYSROOT");
+  static char buf[512];
+
+  if (env && *env)
+    return env;
+  if (argv0 && strchr(argv0, '/')) { /* beside the executable */
+    char *slash = strrchr(argv0, '/');
+    usize n = (usize) (slash - argv0);
+
+    if (n + 5 < sizeof buf) { /* "/std" and the NUL */
+      memcpy(buf, argv0, n);
+      memcpy(buf + n, "/std", 5);
+      if (isdir(buf))
+        return buf;
+    }
+  }
+  return "std"; /* the working directory's own */
+}
+
+/* the standard library's walk, the compilation's first files: its
+ * directory read like a project, each file in the namespace its path
+ * spells -- the std namespace made here, ahead of the project's
+ * tree, the name the project's own walk refuses (11-namespaces.md)
+ */
+static void
+stdwalk(Srcfile ***filesp)
+{
+  const char *root = sysrootpath();
+  Ns         *ns;
+
+  if (!isdir(root)) {
+    fprintf(stderr,
+            "xyz: the standard library is not found at %s"
+            " -- XYZ_SYSROOT names where it lives (12-projects.md)\n",
+            root);
+    exit(1);
+  }
+  ns = nschild(nsroot(), "std");
+  if (!ns)
+    ns = nsmk(nsroot(), "std");
+  walkdir(root, ns, filesp);
+}
+
 /* the project's way to checked files: lexed, parsed, all four
  * passes -- a rejection dies before any output, like -a. The table
- * and std::meta stand before the walk: the project's own tree grows
- * into a live one (12-projects.md) */
+ * and the hand pair stand before any walk; std's files come ahead
+ * of the project's own, *nstd of them, and -T's dump starts past
+ * them (12-projects.md) */
 static Srcfile **
-checked(const char *path, usize *np)
+checked(const char *path, usize *np, usize *nstdp)
 {
-  Srcfile **files;
+  Srcfile **files = vnew(Srcfile *, 8);
+  Srcfile **user;
+  usize     nu, i;
 
-  preludeparse(); /* the embedded source first: the lexer is one
-                   * global, so its text reads out before any file
-                   * binds it */
   checkinit();
-  files = loadproject(path, np);
+  stdwalk(&files);
+  *nstdp = vlen(files);
+  user = loadproject(path, &nu);
+  for (i = 0; i < nu; i++)
+    vappend(&files, &user[i]);
+  *np = vlen(files);
   checkproject(files, *np);
   return files;
 }
@@ -288,10 +371,12 @@ checked(const char *path, usize *np)
 static int
 dumpcheck_project(const char *path)
 {
-  usize     n;
-  Srcfile **files = checked(path, &n);
+  usize     n, nstd;
+  Srcfile **files = checked(path, &n, &nstd);
 
-  checkdump(files, n);
+  checkdump(files + nstd, n - nstd); /* the user's files only: std's
+                                      * are the language's own, no
+                                      * golden holds them */
   return 0;
 }
 
@@ -307,8 +392,9 @@ usage(void)
 static int
 emitssa_project(const char *path)
 {
-  usize     n;
-  Srcfile **files = checked(path, &n);
+  usize n, nstd; /* nstd ignored: -s prints the whole unit, std's
+                  * panic included, like -c's own */
+  Srcfile **files = checked(path, &n, &nstd);
 
   emitfile(stdout, files, n);
   return 0;
@@ -348,8 +434,9 @@ compile(const char *path, const char *out)
     return 1;
   }
   {
-    usize     n;
-    Srcfile **files = checked(path, &n);
+    usize n, nstd; /* nstd ignored: the whole unit is emitted, std's
+                    * panic included */
+    Srcfile **files = checked(path, &n, &nstd);
 
     emitfile(p, files, n);
   }
@@ -376,6 +463,7 @@ main(int argc, char **argv)
   int         mode = 0;
   int         c;
 
+  argv0 = argv[0]; /* the sysroot's search reads it below */
   while ((c = getopt(argc, argv, "a:c:o:s:t:T:")) != -1) {
     switch (c) {
     case 'a':
