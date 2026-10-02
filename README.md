@@ -795,6 +795,32 @@ same four passes the project's do, their impls into pass 3's table
 with the user's, and `-T`'s dump starts past them — the goldens hold
 the user's files only.
 
+`pub use` arrives with it, the re-export: a use that binds the
+namespace instead of the file (`11-namespaces.md`). The name becomes
+part of the namespace's public face — a use from another file, a
+glob, a path in type position, the bare name of a sibling file, every
+way a name is found sees it. Three rules hold it simple: the target
+is a pub item, and a namespace is not one to give; never transitive —
+a re-export points at a real item, not another re-export; the name
+taken whole — a declaration under it rejects the pub use, an
+overloaded fn not chaining onto one. A glob form is not defined: the
+names a namespace gives away are named.
+
+And the prelude: std's flat pub face — the sugar's four and `panic`
+— bound into every user file without a use written, an injected glob
+per file (`12-projects.md`). The injected names yield to everything:
+a declaration, an explicit use — each wins by being read first, the
+injected name never an error. The sugar's four are std's source now
+(`std/option.xyz`, `std/result.xyz`, `std/copy.xyz`,
+`std/drop.xyz`), declared and resolved like any file's items, their
+Syms taken back after pass 1 — and the names they held are free: a
+project may declare its own `Option`, its own `Copy`, while `?T`
+still means std's `Option<T>` and the exclusion checks still read
+std's `Copy` and `Drop` (`01`, `03`). `std::meta` is not in the
+face — a glob is not recursive, the reflection model opted into by
+its own use — and `Some`, `None`, `Ok`, `Err` ride the sugar's owner
+lookup, not a binding.
+
 ## Status
 
 A design in progress. The specification is internally consistent at the moment;

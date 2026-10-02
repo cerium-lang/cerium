@@ -1,0 +1,5 @@
+/* pub use: the flag parses onto the use tree, every shape
+ * (11-namespaces.md) */
+pub use a::c;
+pub use a::{b, c};
+use a::c;

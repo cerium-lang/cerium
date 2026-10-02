@@ -1,0 +1,5 @@
+/* a plain use reads the re-export too: the target bound, the
+ * re-export transparent (11-namespaces.md) */
+use a::TypeInfo;
+
+fn take(t: TypeInfo) -> i32 { 1 }

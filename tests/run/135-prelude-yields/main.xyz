@@ -1,0 +1,14 @@
+use own::Option;
+
+fn main() -> i32 {
+  let x: Option<i32> = Option::Carries(30);
+  let s: ?i32 = Some(10);   /* the sugar still means std's */
+  let a = match x {
+    Option::Carries(v) => v,
+    Option::Nothing    => 0,
+  };
+  a + (match s {
+    Some(v) => v,
+    None    => 0,
+  })
+}

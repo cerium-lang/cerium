@@ -1,0 +1,1 @@
+struct TypeInfo { x: u32 }

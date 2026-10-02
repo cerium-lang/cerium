@@ -617,6 +617,7 @@ dumpnode(Ast *n, int i)
     child(n->v.td.t, i);
     break;
   case Nuse:
+    putpub(n);
     putchar(' ');
     dumppath(n->v.use.path, i);
     if (n->v.use.star)

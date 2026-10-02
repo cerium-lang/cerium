@@ -173,6 +173,7 @@ nsmk(Ns *parent, const char *name)
   ns->tbl = arenaalloc(ns->cap * sizeof *ns->tbl);
   memset(ns->tbl, 0, ns->cap * sizeof *ns->tbl);
   ns->subs = vnew(Ns *, 4);
+  ns->reexp = vnew(Rexp *, 2);
   vappend(&parent->subs, &ns);
   return ns;
 }
@@ -258,6 +259,39 @@ nsitem(Ns *ns, const char *name)
   return ns->tbl[probe(ns->tbl, ns->cap, name)];
 }
 
+/* a pub use's face (11-namespaces.md): the re-exports walked by
+ * name, the target given whole -- a caller that reads a Sym gets the
+ * real item, nothing of the re-export itself leaks into a type */
+Sym *
+nsreexpfind(Ns *ns, const char *name)
+{
+  usize i, n = vlen(ns->reexp);
+
+  for (i = 0; i < n; i++)
+    if (strcmp(ns->reexp[i]->name, name) == 0)
+      return ns->reexp[i]->target;
+  return 0;
+}
+
+int
+nsreexp(Ns *ns, const char *name, Sym *target, Ast *at)
+{
+  Rexp *r;
+  usize i, n = vlen(ns->reexp);
+
+  for (i = 0; i < n; i++)
+    if (strcmp(ns->reexp[i]->name, name) == 0)
+      return 1; /* the name held: the caller reports, for it holds
+                 * the position of its own */
+  r = arenaalloc(sizeof *r);
+  memset(r, 0, sizeof *r);
+  r->name = (char *) name;
+  r->target = target;
+  r->at = at;
+  vappend(&ns->reexp, &r);
+  return 0;
+}
+
 Sym **
 nstable(Ns *ns, usize *np) /* every slot filled, for a glob's walk:
                             * the table's own order, whatever it is */
@@ -293,6 +327,7 @@ syminit(void)
   nstroot.tbl = arenaalloc(nstroot.cap * sizeof *nstroot.tbl);
   memset(nstroot.tbl, 0, nstroot.cap * sizeof *nstroot.tbl);
   nstroot.subs = vnew(Ns *, 4);
+  nstroot.reexp = vnew(Rexp *, 2);
   useclear();
 
   sym_selfgp = arenaalloc(sizeof *sym_selfgp);
@@ -302,9 +337,11 @@ syminit(void)
 }
 
 Sym *
-symfind(const char *name) /* the namespace being checked first, then
-                           * the root's own, then what a `use` brought
-                           * in (11-namespaces.md) */
+symfind(const char *name) /* the namespace being checked first -- its
+                           * declarations, then its re-exports, a pub
+                           * use's binding binding the namespace
+                           * (11-namespaces.md) -- then the root's
+                           * both, then what a `use` brought in */
 {
   Sym *s;
   Use *u;
@@ -313,8 +350,14 @@ symfind(const char *name) /* the namespace being checked first, then
     s = nsitem(curns, name);
     if (s)
       return s;
+    s = nsreexpfind(curns, name);
+    if (s)
+      return s;
   }
   s = nstroot.tbl[probe(nstroot.tbl, nstroot.cap, name)];
+  if (s)
+    return s;
+  s = nsreexpfind(&nstroot, name);
   if (s)
     return s;
   u = usefind(name);

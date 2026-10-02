@@ -401,6 +401,9 @@ rpath(Ast *p, Env *env)
                              * the bare name's fallthrough below is
                              * not this path's */
       if (!s)
+        s = nsreexpfind(ns, name); /* a pub use's binding: the target
+                                    * is the type (11-namespaces.md) */
+      if (!s)
         cerrat(p, "unknown type '%s' in %s", name, nsname(ns));
       if (nsegs - k != 1)
         cerrat(p, "a type is the namespace path's end; nothing follows it (11-namespaces.md)");
@@ -1598,10 +1601,10 @@ usize chk_nimpls;
 void
 checkinit(void)
 {
-  syminit();
-  prelude(); /* the hand pair: Option, Result, Copy, Drop -- the
-              * sugar's own foundation, before any file is read
-              * (prelude.c) */
+  syminit(); /* the tree, empty: the sugar's four and std's own files
+              * arrive through the walks -- Option, Result, Copy, Drop
+              * from the sysroot's source, taken back after pass 1
+              * (12-projects.md) */
   chk_impls = 0;
   chk_nimpls = 0;
 }
@@ -1718,9 +1721,12 @@ usewalk(Ast *it, Ast **segs, usize nsegs, char **last) /* the path's
 }
 
 static void
-resolveuse1(Ast *it, Ast **head, usize nhead) /* one use tree, its
-                                               * parent's path
-                                               * carried in */
+resolveuse1(Ast *it, Ast **head, usize nhead, int pub, Ns *home) /* one use
+                                                                  * tree, its parent's path
+                                                                  * carried in, pub the tree's
+                                                                  * own flag, home the
+                                                                  * namespace a pub use binds
+                                                                  * -- its file's (11) */
 {
   Ast **segs = it->v.use.path->v.path.segs;
   usize nsegs = vlen(segs), nfull = nhead + nsegs, i;
@@ -1742,6 +1748,8 @@ resolveuse1(Ast *it, Ast **head, usize nhead) /* one use tree, its
     Sym **all;
     usize nall, j;
 
+    if (pub)
+      cerrat(it, "a pub use names items, not a glob (11-namespaces.md)");
     if (nsegs < 1)
       cerrat(it, "a use's path is absolute (11-namespaces.md)");
     for (j = 0; j < nsegs; j++) { /* the whole path one namespace
@@ -1766,6 +1774,19 @@ resolveuse1(Ast *it, Ast **head, usize nhead) /* one use tree, its
       if (usebind(s->name, s, 0, it))
         cerrat(it, "'%s' is brought in twice (11-namespaces.md)", s->name);
     }
+    for (i = 0; i < vlen(ns->reexp); i++) { /* the re-exports ride
+                                             * the glob, every one a
+                                             * pub use made -- the
+                                             * target bound under its
+                                             * name (11-namespaces.md) */
+      Rexp *r = ns->reexp[i];
+
+      if (nsitem(nsroot(), r->name))
+        cerrat(it, "'%s' is already declared; the glob cannot bring it in (11-namespaces.md)",
+               r->name);
+      if (usebind(r->name, r->target, 0, it))
+        cerrat(it, "'%s' is brought in twice (11-namespaces.md)", r->name);
+    }
     return;
   }
   if (vlen(it->v.use.subs)) { /* the brace tree: each sub its own use,
@@ -1773,7 +1794,7 @@ resolveuse1(Ast *it, Ast **head, usize nhead) /* one use tree, its
     usize nsub = vlen(it->v.use.subs);
 
     for (i = 0; i < nsub; i++)
-      resolveuse1(it->v.use.subs[i], segs, nsegs);
+      resolveuse1(it->v.use.subs[i], segs, nsegs, pub, home);
     return;
   }
   { /* the one item, or the namespace itself */
@@ -1783,6 +1804,8 @@ resolveuse1(Ast *it, Ast **head, usize nhead) /* one use tree, its
                                    * head names it after (below) */
 
     if (asns) {
+      if (pub) /* the namespace is not an item: nothing to re-export */
+        cerrat(it, "a pub use re-exports an item, not a namespace (11-namespaces.md)");
       if (nsitem(nsroot(), nm))
         cerrat(it, "'%s' is already declared; reach it by its path (11-namespaces.md)", nm);
       if (usebind(nm, 0, asns, it))
@@ -1791,17 +1814,64 @@ resolveuse1(Ast *it, Ast **head, usize nhead) /* one use tree, its
     }
     {
       Sym *s = nsitem(ns, nm);
+      int  via = 0; /* the target reached through a re-export: the
+                     * use reads the re-export's own target, a pub use
+                     * may not point at one (11-namespaces.md) */
 
-      if (!s)
-        cerrat(it, "no '%s' in %s (11-namespaces.md)", nm, nsname(ns));
-      if (!s->pub)
+      if (!s) {
+        s = nsreexpfind(ns, nm);
+        if (s)
+          via = 1;
+        else
+          cerrat(it, "no '%s' in %s (11-namespaces.md)", nm, nsname(ns));
+      }
+      if (pub && via)
+        cerrat(it,
+               "a re-export points at an item, not another re-export"
+               " -- '%s' in %s is one (11-namespaces.md)",
+               nm, nsname(ns));
+      if (!via && !s->pub)
         cerrat(it, "'%s' is private to %s (11-namespaces.md)", nm, nsname(ns));
-      if (nsitem(nsroot(), nm))
+      if (pub) { /* the namespace binding: the name taken whole -- an
+                  * fn does not chain onto a re-export (04) */
+        if (nsitem(home, nm) || nsreexpfind(home, nm))
+          cerrat(it, "'%s' is already in %s; a pub use cannot re-export it (11-namespaces.md)", nm,
+                 nsname(home));
+        nsreexp(home, nm, s, it);
+      } else if (nsitem(nsroot(), nm))
         cerrat(it, "'%s' is already declared; reach it by its path (11-namespaces.md)", nm);
-      if (usebind(nm, s, 0, it))
+      if (usebind(nm, s, 0, it)) /* the file's own binding, pub or not */
         cerrat(it, "'%s' is brought in twice (11-namespaces.md)", nm);
     }
   }
+}
+
+/* the prelude: std's flat pub face, bound into every user file after
+ * its own uses -- the injected names yield to everything declared
+ * (the tables the bare name reads first) and everything a use brought
+ * in (a binding made first is kept, usebind's own rule). The
+ * variants Some/None/Ok/Err ride their sugar, not a use
+ * (01-types.md); std::meta is not in the face, a glob is not
+ * recursive (11-namespaces.md) -- the reflection model is opted into
+ * by its own use */
+static void
+injectstd(void)
+{
+  Ns   *ns = nschild(nsroot(), "std");
+  Sym **all;
+  usize nall, i;
+
+  if (!ns) /* stdwalk made it; nothing to inject without it */
+    return;
+  all = nstable(ns, &nall);
+  for (i = 0; i < nall; i++) {
+    Sym *s = all[i];
+
+    if (s->pub)
+      usebind(s->name, s, 0, 0); /* a held name kept: the yield */
+  }
+  for (i = 0; i < vlen(ns->reexp); i++)
+    usebind(ns->reexp[i]->name, ns->reexp[i]->target, 0, 0);
 }
 
 /* the project's four passes, a file at a time where a file's own
@@ -1810,9 +1880,11 @@ resolveuse1(Ast *it, Ast **head, usize nhead) /* one use tree, its
  * file's uses bound and its declarations resolved in its own
  * context, the impl table built for all, and the bodies checked
  * back in their files. A single-file compilation is the degenerate
- * shape: one Srcfile, the root's. */
+ * shape: one Srcfile, the root's. nstd of the files are the sysroot
+ * walk's, std's own: they check like any file, but the prelude is
+ * not injected into them -- a library does not read its own face. */
 void
-checkproject(Srcfile **files, usize nfiles)
+checkproject(Srcfile **files, usize nfiles, usize nstd)
 {
   usize        i, f, nimpls;
   Sym        **impls;
@@ -1842,21 +1914,30 @@ checkproject(Srcfile **files, usize nfiles)
     }
   }
 
-  { /* std::meta's TypeInfo, taken back from the tree the walks filled:
-     * every @typeinfo answers with its variants (08-reflection.md).
-     * A sysroot without it is a broken one -- said here, not at the
-     * first @typeinfo */
+  { /* std's own face, taken back from the tree the walks filled: the
+     * sugar's four -- Option, Result, Copy, Drop, every ?T and every
+     * exclusion check reading them by pointer (01, 03, 05) -- and
+     * std::meta's TypeInfo, what every @typeinfo answers with
+     * (08-reflection.md). A sysroot without one of them is a broken
+     * one -- said here, not at the first sugar */
+    Ns *std = nsopen("std");
+
+    sym_option = nsitem(std, "Option");
+    sym_result = nsitem(std, "Result");
+    sym_copy = nsitem(std, "Copy");
+    sym_drop = nsitem(std, "Drop");
     sym_typeinfo = nsitem(nsopen("std::meta"), "TypeInfo");
-    if (!sym_typeinfo) {
-      fprintf(stderr, "xyz: the standard library's meta::TypeInfo is missing"
-                      " -- the sysroot is incomplete (12-projects.md)\n");
+    if (!sym_option || !sym_result || !sym_copy || !sym_drop || !sym_typeinfo) {
+      fprintf(stderr, "xyz: the standard library is incomplete: Option, Result, Copy, Drop,"
+                      " meta::TypeInfo -- one is missing from the sysroot (12-projects.md)\n");
       exit(1);
     }
   }
 
-  /* the uses bind file by file -- A's bindings are its own, B reads
-   * none of them (11-namespaces.md) -- then pass 2 in the same
-   * per-file context: a const's own type may read one */
+  /* the pub uses first, every file's: a re-export is a namespace
+   * declaration, order-free like any other -- one file's use reads
+   * another's pub use whatever order the walk served them in
+   * (11-namespaces.md) */
   for (f = 0; f < nfiles; f++) {
     Srcfile *sf = files[f];
     usize    j, m = vlen(sf->items);
@@ -1865,8 +1946,26 @@ checkproject(Srcfile **files, usize nfiles)
     usecur(sf->uses);
     lexsetpath(sf->path);
     for (j = 0; j < m; j++)
-      if (sf->items[j]->k == Nuse)
-        resolveuse1(sf->items[j], 0, 0);
+      if (sf->items[j]->k == Nuse && sf->items[j]->pub)
+        resolveuse1(sf->items[j], 0, 0, 1, sf->ns);
+  }
+
+  /* then the plain uses, file by file -- A's bindings are its own,
+   * B reads none of them (11-namespaces.md) -- and pass 2 in the
+   * same per-file context: a const's own type may read one */
+  for (f = 0; f < nfiles; f++) {
+    Srcfile *sf = files[f];
+    usize    j, m = vlen(sf->items);
+
+    nscur(sf->ns);
+    usecur(sf->uses);
+    lexsetpath(sf->path);
+    for (j = 0; j < m; j++)
+      if (sf->items[j]->k == Nuse && !sf->items[j]->pub)
+        resolveuse1(sf->items[j], 0, 0, 0, sf->ns);
+    if (f >= nstd) /* the prelude, after the file's own uses: the
+                    * injected names yield to them (12-projects.md) */
+      injectstd();
     resolveitems(sf->items, sf->syms);
   }
   { /* main's own return, resolved now: (), an integer the exit code
@@ -2108,7 +2207,7 @@ dumpitem(Ast *it, Sym *s, int i)
     Ast **segs = it->v.use.path->v.path.segs;
     usize j;
 
-    printf("(use ");
+    printf("(%suse ", it->pub ? "pub " : "");
     if (it->v.use.path->v.path.root)
       printf("::");
     for (j = 0; j < vlen(segs); j++)

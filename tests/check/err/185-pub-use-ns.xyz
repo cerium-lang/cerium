@@ -1,0 +1,2 @@
+pub use std::meta;
+fn main() -> i32 { 0 }

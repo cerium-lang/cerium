@@ -1,0 +1,1 @@
+struct Hidden { x: u32 }
