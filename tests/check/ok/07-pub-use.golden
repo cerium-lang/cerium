@@ -1,0 +1,5 @@
+(file
+  (use net::TypeInfo)
+  (fn main fn() -> i32))
+(file
+  (pub use std::meta::TypeInfo))

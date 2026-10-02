@@ -1,0 +1,10 @@
+/* std::Result -- the result type, the sugar E?T's own enum
+ * (01-types.md): Ok(T), or Err(E). ? hands an Err back; the shapes
+ * main may return name it (12-projects.md). Ok and Err are its
+ * variants, not names in scope: a bare Ok rides the sugar's owner
+ * lookup, not a use (01-types.md). */
+
+pub enum Result<T, E> {
+  Ok(T),
+  Err(E),
+}

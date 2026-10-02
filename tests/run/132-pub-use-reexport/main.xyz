@@ -1,0 +1,9 @@
+use net::TypeInfo;
+
+fn main() -> i32 {
+  let t: TypeInfo = @typeinfo<i64>();
+  match t {
+    TypeInfo::Int { bits, .. } => { if bits == 64 { 64 } else { 1 } },
+    _ => 2,
+  }
+}

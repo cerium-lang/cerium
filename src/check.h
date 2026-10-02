@@ -28,29 +28,36 @@ struct Srcfile
   const char *path; /* its diagnostics' name */
 };
 
-void  checkinit(void);
-void  checkproject(Srcfile **files, usize nfiles);
-Sym **declare(Ast **items, Ns *ns);                          /* pass 1: every name
-                                                              * in the table, the
-                                                              * Syms back, parallel
-                                                              * to the items */
-void resolveitems(Ast **items, Sym **syms);                  /* pass 2: what each
-                                                              * declaration is --
-                                                              * after the file's
-                                                              * uses bind in
-                                                              * checkproject */
-usize nshead(Ast **segs, usize nsegs, Ns **nsp, int rooted); /* resolve.c's
-                                                              * namespace-head
-                                                              * strip, shared by
-                                                              * pass 4: how many
-                                                              * leading segments
-                                                              * walk a namespace --
-                                                              * the file's own
-                                                              * first, the root's,
-                                                              * then what a use
-                                                              * brought in; ::
-                                                              * reads the root
-                                                              * only (11-namespaces.md) */
+void checkinit(void);
+void checkproject(Srcfile **files, usize nfiles, usize nstd); /* nstd of the files
+                                                               * the sysroot walk's,
+                                                               * std's own: they
+                                                               * check like any
+                                                               * file, the prelude
+                                                               * is not injected
+                                                               * into them
+                                                               * (12-projects.md) */
+Sym **declare(Ast **items, Ns *ns);                           /* pass 1: every name
+                                                               * in the table, the
+                                                               * Syms back, parallel
+                                                               * to the items */
+void resolveitems(Ast **items, Sym **syms);                   /* pass 2: what each
+                                                               * declaration is --
+                                                               * after the file's
+                                                               * uses bind in
+                                                               * checkproject */
+usize nshead(Ast **segs, usize nsegs, Ns **nsp, int rooted);  /* resolve.c's
+                                                               * namespace-head
+                                                               * strip, shared by
+                                                               * pass 4: how many
+                                                               * leading segments
+                                                               * walk a namespace --
+                                                               * the file's own
+                                                               * first, the root's,
+                                                               * then what a use
+                                                               * brought in; ::
+                                                               * reads the root
+                                                               * only (11-namespaces.md) */
 void checkdump(Srcfile **files, usize nfiles);
 void checkbodyfn(Sym *s, Ast *it);   /* pass 4, one fn (body.c) */
 void checkbodyimpl(Sym *s, Ast *it); /* pass 4, one impl's member fns */

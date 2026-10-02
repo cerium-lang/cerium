@@ -60,11 +60,33 @@ answers, first match wins: the `XYZ_SYSROOT` environment variable names it;
 `std` beside the compiler's own executable is the usual install shape, a
 checkout's too; `std` in the working directory is the last resort. Nothing
 is embedded: std is source on disk, every compile reads it, and a project
-cannot turn it off. What it holds today is small — `std::meta`, the
-reflection model the checker itself reads against (`08-reflection.md`), and
+cannot turn it off. What it holds today is small — the sugar's four
+(`std::option.xyz`, `std::result.xyz`, `std::copy.xyz`, `std::drop.xyz`:
+`Option`, `Result`, `Copy`, `Drop`, what `?T` and the exclusion checks read
+by pointer, `01-types.md` and `03-move.md`), `std::meta`, the reflection
+model the checker itself reads against (`08-reflection.md`), and
 `std::panic`, the one fn every runtime check fails into (`01-types.md`,
 Panic) — each file in the namespace its path names, every item `pub`,
 reached by path or by use like any namespace's (`11-namespaces.md`).
+
+The sugar's four live in std as source, and the names the language once
+held for them are free: a project may declare its own `Option`, its own
+`Copy` — the sugar does not follow the name. `?T` is std's `Option<T>`
+wherever it is spelled (`01-types.md`), and the exclusion checks read
+std's `Copy` and `Drop` (`03-move.md`) — the pointer, not the name.
+
+## The prelude
+
+std's flat face — every `pub` item directly in `std`, the sugar's four and
+`panic` among them — is bound into every user file without a `use` written:
+the prelude, an injected glob, one per file. The injected names yield to
+everything: a declaration of the file's namespace, a declaration of the
+root, a name an explicit `use` brought in — each wins by being read first,
+the injected name never an error and never a shadow. `std::meta` is not in
+the face — a glob is not recursive (`11-namespaces.md`), and the reflection
+model is opted into by its own `use` — and the sugar's variants
+(`Some`, `None`, `Ok`, `Err`) ride the sugar's owner lookup, not a binding
+(`01-types.md`).
 
 `std` is the library's own name, reserved: a project whose tree carries a
 `std/` directory is rejected — the namespace is the library's, and no

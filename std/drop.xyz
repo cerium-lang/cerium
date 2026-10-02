@@ -1,0 +1,8 @@
+/* std::Drop -- the destructor trait (03-move.md): the one fn every
+ * owning type declares, run when the value goes out of scope. The
+ * exclusion pair's other half (04-generics.md): a type that impls
+ * Drop does not impl Copy. */
+
+pub trait Drop {
+  fn drop(mut self: Self) -> ();
+}

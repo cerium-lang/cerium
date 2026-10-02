@@ -502,7 +502,10 @@ match p {
 Types distinguish them: `is_same<?*i32, *i32>::value` is false.
 
 `?T` is `Option<T>`: nothing about `None`, `Some` or `match` differs from any
-other enum. What differs is the layout — when `T` has an unused bit pattern the
+other enum. It is std's `Option<T>` — `std::option.xyz`'s own, read by
+pointer — wherever it is spelled, whatever `Option` the project declares
+under the name (`12-projects.md`); the sugar's variants answer the bare
+name first. What differs is the layout — when `T` has an unused bit pattern the
 compiler puts the empty case in that niche, so `@sizeof(?*T)` equals
 `@sizeof(*T)` and the null pointer value represents the empty case. Types
 without a spare bit pattern carry a tag instead, so `?u32` is larger than `u32`.
@@ -514,7 +517,8 @@ That is where the difference ends: reflection does not repeat it —
 ### Results
 
 `?` reads as "or". With a type in front of it, it names what the other case
-holds: `E?T` is `Result<T, E>` — a `T` or an `E` (`05-traits.md`):
+holds: `E?T` is `Result<T, E>` — a `T` or an `E`, std's own `std::result.xyz`
+read by pointer, the name as free as `Option`'s (`05-traits.md`):
 
 ```rust
 let r: Error?u32 = Ok(3);

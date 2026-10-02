@@ -1,0 +1,9 @@
+(file
+(use pub (path a c))
+
+(use pub (path a)
+  (use (path b))
+  (use (path c)))
+
+(use (path a c))
+)
