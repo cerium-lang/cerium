@@ -1,0 +1,3 @@
+/* the reserved name's own carrier: a plain fn is enough -- the walk
+ * refuses the directory before any item of it is read */
+fn evil() {}

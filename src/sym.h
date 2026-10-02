@@ -255,15 +255,14 @@ extern usize chk_nimpls;
 /* Self's one generic parameter, built by syminit (sym.c) */
 extern Ast *sym_selfgp;
 
-/* the prelude's own declarations (prelude.c): the hand-built pair,
- * and std's embedded source -- parsed before the user's file (the
- * lexer is one global), resolved once the table is clean */
+/* the prelude's hand-built pair (prelude.c): Option, Result, Copy,
+ * Drop -- declared before any file is read. std's own source is the
+ * sysroot's, not this (12-projects.md) */
 void prelude(void);
-void preludeparse(void);
-void preludefile(void);
 
-/* std::meta's TypeInfo, from the embedded source: the type every
- * @typeinfo answers with (prelude.c, 08-reflection.md) */
+/* std::meta's TypeInfo, from the sysroot's own source: the type every
+ * @typeinfo answers with (prelude.c, 08-reflection.md) -- the Sym
+ * itself set by checkproject, once the walks have filled the tree */
 extern Sym *sym_typeinfo;
 Type       *typeinfoty(void);
 

@@ -777,6 +777,24 @@ wrote (`12-projects.md`). And `main` may return an integer now —
 `i32` the usual one, the program exiting with that code; anything
 else it returns is rejected where it is declared.
 
+The embedding is retired: std is a directory on disk, read as the
+project's first files every compile — the sysroot
+(`12-projects.md`). `XYZ_SYSROOT` names it; `std` beside the
+compiler's own executable is the usual install shape, a checkout's
+too; `std` in the working directory is the last resort. Nothing of
+the library ships inside the binary — `tools/embed.sh` and the
+string-literal table are gone — and the walk that reads `std/` is
+the one that reads a project's own tree, each file in the namespace
+its path spells: `std/meta/meta.xyz` sits in `std::meta`,
+`std/panic.xyz` in `std` itself. The checker reads `std::meta` to
+check, so the sysroot and the compiler move together — a sysroot
+without `meta::TypeInfo` is named at the first compile — and `std`
+is a reserved name: a project whose tree carries a `std/` directory
+is rejected, the namespace the library's own. std's files walk the
+same four passes the project's do, their impls into pass 3's table
+with the user's, and `-T`'s dump starts past them — the goldens hold
+the user's files only.
+
 ## Status
 
 A design in progress. The specification is internally consistent at the moment;
@@ -789,9 +807,9 @@ Still open:
 - The open items at the end of `12-projects.md`: external libraries,
   and how their paths enter the root — they will distribute as source
   (`12-projects.md`), but dependency declaration waits for a manifest;
-  and std's own distribution — embedded source walked as the project's
-  first files until size, front-end time, or a release cadence of its
-  own says sysroot, with a symbol cache then (`12-projects.md`)
+  and std's walk cost — source read from the sysroot and walked as the
+  project's first files every compile, right while std is small; a
+  symbol cache when it is not (`12-projects.md`)
 - The chapter-level items deferred with their chapters: `dyn A + B` and a
   `@typeinfo<dyn A>` variant (`06-dispatch.md`); an `Output` associated type
   and traits for `%`, the bitwise operators, and shifts (`07-operators.md`);

@@ -28,12 +28,8 @@ struct Srcfile
   const char *path; /* its diagnostics' name */
 };
 
-void      checkinit(void);
-void      checkproject(Srcfile **files, usize nfiles);
-Srcfile **stdfiles(usize *np);                               /* preludefile's table: std's own
-                                                              * files, the pass-4 and emit walks
-                                                              * take them ahead of the project's
-                                                              * (12-projects.md) */
+void  checkinit(void);
+void  checkproject(Srcfile **files, usize nfiles);
 Sym **declare(Ast **items, Ns *ns);                          /* pass 1: every name
                                                               * in the table, the
                                                               * Syms back, parallel
@@ -55,9 +51,6 @@ usize nshead(Ast **segs, usize nsegs, Ns **nsp, int rooted); /* resolve.c's
                                                               * brought in; ::
                                                               * reads the root
                                                               * only (11-namespaces.md) */
-void collectstdimpls(Ast **items, Sym **syms);               /* preludefile's tail: the embedded
-                                                              * source's impls, members resolved
-                                                              * and held for checkproject's table */
 void checkdump(Srcfile **files, usize nfiles);
 void checkbodyfn(Sym *s, Ast *it);   /* pass 4, one fn (body.c) */
 void checkbodyimpl(Sym *s, Ast *it); /* pass 4, one impl's member fns */

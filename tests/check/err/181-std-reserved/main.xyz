@@ -1,0 +1,4 @@
+/* a project's own std/ would land in the namespace the sysroot's walk
+ * already filled -- no project may write into the standard library's
+ * tree (11-namespaces.md, 12-projects.md) */
+fn main() {}

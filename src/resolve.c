@@ -1595,18 +1595,13 @@ declare(Ast **items, Ns *ns)
 Sym **chk_impls;
 usize chk_nimpls;
 
-/* std's own impls, collected by preludefile's tail and held here for
- * every checkfile: the user's reads pick through them too */
-static Sym **std_impls;
-static usize nstd_impls;
-
 void
 checkinit(void)
 {
   syminit();
-  prelude();
-  preludefile(); /* std's embedded source: declared and resolved under
-                  * the clean table, before the user's items */
+  prelude(); /* the hand pair: Option, Result, Copy, Drop -- the
+              * sugar's own foundation, before any file is read
+              * (prelude.c) */
   chk_impls = 0;
   chk_nimpls = 0;
 }
@@ -1647,8 +1642,7 @@ checkdefaults(Sym *s)
 
 /* pass 2: what each declaration is. Runs after the file's uses bind
  * in checkproject -- a const's own type may read one
- * (11-namespaces.md); preludefile runs it back-to-back for the
- * embedded source, whose items use nothing */
+ * (11-namespaces.md) */
 void
 resolveitems(Ast **items, Sym **syms)
 {
@@ -1692,32 +1686,6 @@ resolveitems(Ast **items, Sym **syms)
       break;
     }
   }
-}
-
-void
-collectstdimpls(Ast **items, Sym **syms) /* preludefile's tail, once per
-                                          * embedded file, with syms that
-                                          * file's parallel table: the impls
-                                          * among std's items leave here
-                                          * with their members resolved,
-                                          * accumulated for checkproject's
-                                          * pass-3 table -- std's is_same
-                                          * rides this (05-traits.md). The
-                                          * table is made once and kept:
-                                          * the second file's call adds to
-                                          * the first's, it does not
-                                          * replace it */
-{
-  usize i, n = vlen(items);
-
-  if (!std_impls)
-    std_impls = vnew(Sym *, 4);
-  for (i = 0; i < n; i++)
-    if (items[i]->k == Nimpl) {
-      resolveimplmembers(syms[i]);
-      vappend(&std_impls, &syms[i]);
-    }
-  nstd_impls = vlen(std_impls);
 }
 
 /* -- the uses ------------------------------------------------------------
@@ -1874,6 +1842,18 @@ checkproject(Srcfile **files, usize nfiles)
     }
   }
 
+  { /* std::meta's TypeInfo, taken back from the tree the walks filled:
+     * every @typeinfo answers with its variants (08-reflection.md).
+     * A sysroot without it is a broken one -- said here, not at the
+     * first @typeinfo */
+    sym_typeinfo = nsitem(nsopen("std::meta"), "TypeInfo");
+    if (!sym_typeinfo) {
+      fprintf(stderr, "xyz: the standard library's meta::TypeInfo is missing"
+                      " -- the sysroot is incomplete (12-projects.md)\n");
+      exit(1);
+    }
+  }
+
   /* the uses bind file by file -- A's bindings are its own, B reads
    * none of them (11-namespaces.md) -- then pass 2 in the same
    * per-file context: a const's own type may read one */
@@ -1911,18 +1891,11 @@ checkproject(Srcfile **files, usize nfiles)
 
   /* pass 3: traits and impls, then coherence. The bounds check runs
    * first so a bound nobody overlaps against still gets diagnosed.
-   * std's own enter the table ahead of the project's: the reads pick
-   * through them, and the coherence below orders both kinds. */
+   * std's impls ride here with the project's own -- its files came
+   * first, the reads pick through them, and the coherence below
+   * orders both kinds. */
   impls = vnew(Sym *, 8);
   implp = vnew(const char *, 8);
-  {
-    const char *stdp = "<std>";
-
-    for (i = 0; i < nstd_impls; i++) {
-      vappend(&impls, &std_impls[i]);
-      vappend(&implp, &stdp);
-    }
-  }
   for (f = 0; f < nfiles; f++) {
     Srcfile *sf = files[f];
     usize    j, m = vlen(sf->items);
@@ -1969,31 +1942,8 @@ checkproject(Srcfile **files, usize nfiles)
   }
 
   /* pass 4: fn bodies, against the impl table pass 3 just built --
-   * each file in its own context again, the same switch. std's own
-   * files walk first: panic's body is a body like any
-   * (12-projects.md) */
-  {
-    Srcfile **stds;
-    usize     nstd, f2;
-
-    stds = stdfiles(&nstd);
-    for (f2 = 0; f2 < nstd; f2++) {
-      Srcfile *sf = stds[f2];
-      usize    j, m = vlen(sf->items);
-
-      nscur(sf->ns);
-      usecur(sf->uses);
-      lexsetpath(sf->path);
-      for (j = 0; j < m; j++) {
-        if (!sf->syms[j])
-          continue;
-        if (sf->items[j]->k == Nfn && sf->items[j]->v.fn.body)
-          checkbodyfn(sf->syms[j], sf->items[j]);
-        if (sf->items[j]->k == Nimpl)
-          checkbodyimpl(sf->syms[j], sf->items[j]);
-      }
-    }
-  }
+   * each file in its own context again, the same switch. std's panic
+   * is a body like any, its file one of the walks (12-projects.md) */
   for (f = 0; f < nfiles; f++) {
     Srcfile *sf = files[f];
     usize    j, m = vlen(sf->items);
