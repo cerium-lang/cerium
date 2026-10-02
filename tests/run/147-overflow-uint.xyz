@@ -1,0 +1,4 @@
+/* unsigned wrap: u32's cult t, a sees the sum fall under an addend */
+fn id(x: u32) -> u32 { x }
+
+fn main() -> i32 { @cast<i32>(id(4294967295) + id(1)) }

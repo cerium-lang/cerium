@@ -1,0 +1,10 @@
+/* a range whose low end clears its high: lo > hi is out of range
+ * before the bounds even matter */
+fn three() -> i32 { 3 }
+fn one() -> i32 { 1 }
+
+fn main() -> i32 {
+  let a = [4]i32{1, 2, 3, 4};
+  let s: []i32 = a[three()..one()];
+  s[0]
+}

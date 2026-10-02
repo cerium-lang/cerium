@@ -1,0 +1,5 @@
+/* zero over zero is a quiet NaN; both float compares read false,
+ * the cast never lands (01-types.md) */
+fn idf(x: f64) -> f64 { x }
+
+fn main() -> i32 { @cast<i32>(idf(0.0) / idf(0.0)) }

@@ -290,6 +290,11 @@ extern Sym *sym_option, *sym_result, *sym_copy, *sym_drop;
 extern Sym *sym_typeinfo;
 Type       *typeinfoty(void);
 
+/* std's panic, the one fn every runtime check fails into (prelude.c,
+ * 01-types.md): the emitter reads it by pointer -- a sysroot without
+ * it is a broken one, said at checkproject's own face-taking */
+extern Sym *sym_panic;
+
 /* a variant by name; the enum a bare variant name belongs to --
  * the checker's patterns and the emitter's construction share them */
 Variant *symvarfind(Sym *s, const char *name);

@@ -1,0 +1,9 @@
+/* a constant index on a slice still runs the check: the length is
+ * a runtime thing, the checker's constant-index contract an
+ * array's own (01-types.md). s holds three elements; index 3 is
+ * past them. */
+fn main() -> i32 {
+  let a = [4]i32{1, 2, 3, 4};
+  let s: []i32 = a[1..];
+  s[3]
+}

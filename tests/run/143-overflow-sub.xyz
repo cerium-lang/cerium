@@ -1,0 +1,4 @@
+/* min minus one: the pair (a^b)&(a^t) sees the borrow out of range */
+fn id(x: i32) -> i32 { x }
+
+fn main() -> i32 { id(-2147483648) - 1 }

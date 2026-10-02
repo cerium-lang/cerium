@@ -1,0 +1,5 @@
+/* i8's own ceiling, not the register's: the add recomputes in l
+ * and meets i8's ends -- 200 reads past 127 */
+fn id(x: i8) -> i8 { x }
+
+fn main() -> i32 { @cast<i32>(id(100) + id(100)) }

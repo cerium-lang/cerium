@@ -1,0 +1,9 @@
+/* the write side of an index goes through the same check: the
+ * elements are [3]mut's own writable slots (01-types.md) */
+fn three() -> i32 { 3 }
+
+fn main() -> i32 {
+  let a = [3]mut i32{10, 20, 30};
+  a[three()] = 9;
+  a[0]
+}

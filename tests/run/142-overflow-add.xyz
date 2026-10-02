@@ -1,0 +1,5 @@
+/* i32's ceiling plus one wraps in the register; the xor pair
+ * catches the sign flip before it lands */
+fn id(x: i32) -> i32 { x }
+
+fn main() -> i32 { id(2147483647) + 1 }

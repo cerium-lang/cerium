@@ -1,0 +1,8 @@
+/* a negative index rides a sign-extended word into the unsigned
+ * compare and reads far past the bound (01-types.md) */
+fn neg() -> i32 { -1 }
+
+fn main() -> i32 {
+  let a = [3]i32{10, 20, 30};
+  a[neg()]
+}

@@ -1,0 +1,8 @@
+/* the compound += carries the same check its spelled-out twin has */
+fn id(x: i32) -> i32 { x }
+
+fn main() -> i32 {
+  let mut a = 2147483647;
+  a += id(1);
+  a
+}
