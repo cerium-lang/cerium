@@ -775,3 +775,50 @@ a compile, deduplicated beside the floats. `-r` rides `-s` and
 a test compiles it with `-r`, an optional `.stderr` holds the
 bytes a panic must write there, and abort's own exit, 134, is what
 the `.expect` names.
+
+The operators are trait calls now, `07-operators.md`'s sugar made
+real: `a + b` is `Add::add(&a, &b)`, the body pass rewriting the
+operator in place where the built-in table's domain ends — both
+sides places of types the table does not hold, a scalar pair
+(numbers, `bool`, pointers) staying the language's own answer,
+the mixed pair its own error. The four arithmetic ones become
+their `Add`/`Sub`/`Mul`/`Div`, `==` the `Eq::eq` itself and `!=`
+the negated one, and the ordering operators `Ord::cmp` read
+against `Ordering::Less` and `::Greater`, each way round its own.
+`%`, the bitwise ones and the shifts are language, not traits —
+the rewrite has no row for them, and the operator's own error
+answers. The compound arithmetic forms ride the plain assignment:
+`a += b` becomes `a = a + b` under the same rewrite, the
+operator's call built first and the assignment wrapped around
+it, so every check the assignment owns is still its own. The
+operands walk as places: the move the entry read made of a
+non-Copy operand unwinds before the rewrite takes its address —
+the operator's own words only borrow, and what a borrow touches
+was never moved — so `v + n` leaves `v` readable after, a `Drop`
+impl on it notwithstanding. std::ops is here with it: `Ordering`
+and the six traits, `Rhs` defaulting to `Self`, riding the
+sysroot — the rewrite spells the whole path, so the operator
+needs no use, the call spelled out still needing one
+(`11-namespaces.md`).
+
+Two bugs the milestone's tests flushed out, both older than it.
+A trait method call froze its receiver and never thawed it: the
+dispatch took its snapshot of the arguments' borrows after the
+receiver had walked, so the picture held the freeze itself and
+the restore put it back — the receiver stayed borrowed past the
+call, the second operator over the same operands the one to name
+it, the hand-written `Trait::method(&recv, ..)` no safer. The
+picture is taken before anything walks now, the receiver's
+borrow unwinding with the call like any argument's
+(`01-types.md`). And the checker had accepted an enum's `==`
+from the start — `Ordering`'s own compare rides it — but emit
+never carried it: the comparison loads each head's tag at its
+own width and compares now, a payloadless enum exact, and one
+with payloads refuses with its trait named (`07-operators.md`).
+Two sides stay open, both older than the milestone too: a
+literal or a temporary operand — `v + 3`, `make() + make()` —
+cannot be borrowed, the language's `&` temporary not spelled
+yet, and the words refuse honestly; and a non-Copy place read on
+an assignment's left is the move chapter's own bug, the
+hand-written `a = Add::add(&a, &b)` its own evidence
+(`03-move.md`).

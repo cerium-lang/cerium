@@ -2850,7 +2850,34 @@ emaexpr(Em *em, Ast *e)
       }
     { /* a comparison: the domain is the operands', the result a w */
       char *ins = 0;
-      int   dom = qbety(lt, e);
+      int   dom;
+
+      if (lt && lt->k == Tyenum) { /* an enum without payloads, where
+                                    * the tag is the whole value: the
+                                    * tags at each head, loaded at
+                                    * their own width and compared
+                                    * (01-types.md). One with payloads
+                                    * orders through Ord, and equality
+                                    * is its own to define
+                                    * (07-operators.md) */
+        Type *tt;
+        char *ta, *tb;
+        usize vi;
+
+        if (op != Teqeq && op != Tne)
+          cerrat(e, "an enum compares through Ord, not the operators (07-operators.md)");
+        for (vi = 0; vi < lt->sym->nvariants; vi++)
+          if (lt->sym->variants[vi].npayload || lt->sym->variants[vi].nfields)
+            cerrat(e, "an enum with payloads arrives with a later milestone");
+        tt = tagtyof(lt);
+        ta = newtmp(em);
+        tb = newtmp(em);
+        fprintf(em->o, "\t%s =%c %s %s\n", ta, qbety(tt, e), ldins(tt), a);
+        fprintf(em->o, "\t%s =%c %s %s\n", tb, qbety(tt, e), ldins(tt), b);
+        fprintf(em->o, "\t%s =w %s%c %s, %s\n", t, op == Tne ? "cne" : "ceq", qbety(tt, e), ta, tb);
+        return t;
+      }
+      dom = qbety(lt, e);
 
       if (lt && lt->k == Tyint && (lt->num == IN_F32 || lt->num == IN_F64)) {
         switch (op) {
@@ -3014,8 +3041,17 @@ emaexpr(Em *em, Ast *e)
           ra = nicheout(em, selfty, ra);
           nm = e->v.call.tys ? instensure(ms, e->v.call.tys, 0, 0)->name : fsymname(ms, ms->decl);
         }
-      } else if (f->k == Npath && vlen(f->v.path.segs) == 2 && ms) {
-        nm = e->v.call.tys ? instensure(ms, e->v.call.tys, 0, 0)->name : fsymname(ms, ms->decl);
+      } else if (f->k == Npath && ms) {
+        Ast **fsegs = f->v.path.segs;
+        Ns   *fns;
+        usize fn = vlen(fsegs);
+
+        if (nshead(fsegs, fn, &fns, f->v.path.root) + 2 == fn) /* Type::member
+                                                                * under any
+                                                                * namespaces
+                                                                * walked
+                                                                * (11) */
+          nm = e->v.call.tys ? instensure(ms, e->v.call.tys, 0, 0)->name : fsymname(ms, ms->decl);
       }
     }
     for (i = 0; i < n; i++) {

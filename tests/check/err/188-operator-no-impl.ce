@@ -1,0 +1,8 @@
+/* + on a type with no Add: the operator's own trait answers
+ * (07-operators.md) */
+struct W { n: i32 }
+fn main() -> i32 {
+  let a = W{ n: 1 };
+  let b = W{ n: 2 };
+  (a + b).n
+}

@@ -1,0 +1,12 @@
+/* Add without Sub: each operator asks its own trait
+ * (07-operators.md) */
+use std::ops::Add;
+struct V3 { x: i32 }
+impl Add for V3 {
+  fn add(self: *Self, other: *V3) -> V3 { V3{ x: self.x + other.x } }
+}
+fn main() -> i32 {
+  let a = V3{ x: 1 };
+  let b = V3{ x: 2 };
+  (a - b).x
+}
