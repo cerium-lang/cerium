@@ -4,7 +4,8 @@ The long-form build log: one stretch a milestone, in the order they
 landed, each saying what arrived and how it works. The README holds the
 compiler's cross-section -- what exists, how it is used; this file holds
 how it got there. The specs hold what the language says; the merge log
-holds the patches.
+holds the patches. The repository grew up under the working codename
+`xyz`; the name landed as Cerium, its files `.ce`, with #63.
 
 The lexer and the parser are in: `cerium -t file.ce` dumps the token
 stream — position, kind, value — and `cerium -a file.ce` dumps the parse
