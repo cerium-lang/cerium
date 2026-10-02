@@ -31,6 +31,7 @@
 #include "check.h"
 #include "die.h"
 #include "eval.h"
+#include "layout.h" /* attrfind: #[noreturn] rides declare (10) */
 #include "lex.h"
 #include "sym.h"
 #include "type.h"
@@ -1573,6 +1574,10 @@ declare(Ast **items, Ns *ns)
         cerrat(it, "'%s' is declared twice", name);
       s->pub = it->pub; /* visible outside its namespace, a use's
                          * question (11-namespaces.md) */
+      if (kind == Sfn)
+        s->noreturn = attrfind(it->attrs, "noreturn") != 0; /* the
+                                                             * diverge judgement's own mark
+                                                             * (10-iteration.md) */
       if (kind == Stype)
         s->tykind = it->k == Nstruct  ? TYstruct
                     : it->k == Nunion ? TYunion
@@ -1690,17 +1695,23 @@ resolveitems(Ast **items, Sym **syms)
 }
 
 void
-collectstdimpls(Ast **items, Sym **syms) /* preludefile's tail, with
-                                          * syms the embedded source's parallel
-                                          * table: the impls among std's items
-                                          * leave here with their members
-                                          * resolved, held for checkproject's
-                                          * pass-3 table -- std's is_same rides
-                                          * this (05-traits.md) */
+collectstdimpls(Ast **items, Sym **syms) /* preludefile's tail, once per
+                                          * embedded file, with syms that
+                                          * file's parallel table: the impls
+                                          * among std's items leave here
+                                          * with their members resolved,
+                                          * accumulated for checkproject's
+                                          * pass-3 table -- std's is_same
+                                          * rides this (05-traits.md). The
+                                          * table is made once and kept:
+                                          * the second file's call adds to
+                                          * the first's, it does not
+                                          * replace it */
 {
   usize i, n = vlen(items);
 
-  std_impls = vnew(Sym *, 4);
+  if (!std_impls)
+    std_impls = vnew(Sym *, 4);
   for (i = 0; i < n; i++)
     if (items[i]->k == Nimpl) {
       resolveimplmembers(syms[i]);
@@ -1878,6 +1889,25 @@ checkproject(Srcfile **files, usize nfiles)
         resolveuse1(sf->items[j], 0, 0);
     resolveitems(sf->items, sf->syms);
   }
+  { /* main's own return, resolved now: (), an integer the exit code
+     * takes whole, or E?() -- the program's end follows it
+     * (12-projects.md). The Err half's reflection print is a later
+     * milestone's; the shapes are taken now. */
+    Sym *m = nsitem(nsroot(), "main");
+
+    if (m && m->kind == Sfn) {
+      Type *rt = fnsigof(m)->t; /* the lazy read: a forward reference
+                                 * met it already, resolveitems just
+                                 * did, either way the same answer */
+
+      if (rt->k == Tyunit || (rt->k == Tyint && rt->num < IN_F32) ||
+          (rt->k == Tyenum && rt->sym == sym_result))
+        ;
+      else
+        cerrat(m->decl, "main returns (), an integer, or E?() -- the shapes the exit code reads "
+                        "(12-projects.md)");
+    }
+  }
 
   /* pass 3: traits and impls, then coherence. The bounds check runs
    * first so a bound nobody overlaps against still gets diagnosed.
@@ -1939,7 +1969,31 @@ checkproject(Srcfile **files, usize nfiles)
   }
 
   /* pass 4: fn bodies, against the impl table pass 3 just built --
-   * each file in its own context again, the same switch */
+   * each file in its own context again, the same switch. std's own
+   * files walk first: panic's body is a body like any
+   * (12-projects.md) */
+  {
+    Srcfile **stds;
+    usize     nstd, f2;
+
+    stds = stdfiles(&nstd);
+    for (f2 = 0; f2 < nstd; f2++) {
+      Srcfile *sf = stds[f2];
+      usize    j, m = vlen(sf->items);
+
+      nscur(sf->ns);
+      usecur(sf->uses);
+      lexsetpath(sf->path);
+      for (j = 0; j < m; j++) {
+        if (!sf->syms[j])
+          continue;
+        if (sf->items[j]->k == Nfn && sf->items[j]->v.fn.body)
+          checkbodyfn(sf->syms[j], sf->items[j]);
+        if (sf->items[j]->k == Nimpl)
+          checkbodyimpl(sf->syms[j], sf->items[j]);
+      }
+    }
+  }
   for (f = 0; f < nfiles; f++) {
     Srcfile *sf = files[f];
     usize    j, m = vlen(sf->items);

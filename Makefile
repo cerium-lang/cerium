@@ -23,13 +23,15 @@ $(BIN): $(OBJ)
 
 $(OBJ): $(wildcard src/*.h)
 
-# the prelude's own source, embedded: a table of string literals
+# std's own sources, embedded: one table of string literals each
 # (src/prelude_text.h) joined in the arena, the lexer reading the
-# joined text from memory -- std/meta.xyz is parsed like any other
-# source, it just never touches the disk
+# joined text from memory -- every std/*.xyz parses like any other
+# source, it just never touches the disk (12-projects.md)
+STDSRC = std/meta.xyz std/panic.xyz
+
 src/prelude.o: src/prelude_text.h
-src/prelude_text.h: std/meta.xyz tools/embed.sh
-	sh tools/embed.sh std/meta.xyz > $@
+src/prelude_text.h: $(STDSRC) tools/embed.sh
+	sh tools/embed.sh $(STDSRC) > $@
 
 $(QBE_BIN):
 	@cd qbe >/dev/null 2>&1 || { \

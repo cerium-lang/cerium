@@ -182,6 +182,9 @@ struct Em
                   * pre-binding made (09-match.md) -- else the join
                   * would read a slot only one path defined */
   usize lbl;     /* one a block label: @L.N */
+  int   openend; /* the fn body's last text ends in the call the abort
+                  * never returns from: qbe still wants its terminator
+                  * -- emitfn's dead ret (10-iteration.md) */
   struct
   {
     char *brk;  /* where break lands */
@@ -788,6 +791,48 @@ found:
 
 static char *emaexpr(Em *em, Ast *e);
 static char *emablockval(Em *em, Ast *body, int *reached);
+int          mustexit(Ast *st); /* flow.c's syntactic judgement, body.h's own:
+                                 * the emit's dead-path marking rides it. The
+                                 * header itself stays unwelcome here -- its
+                                 * locfind is the checker's, this file's its
+                                 * own (10-iteration.md) */
+
+/* the end of the text a diverging statement writes, read for what
+ * closed it: the ret or jump the walk itself wrote -- a return, a
+ * break, the match's no-fit abort -- or the call the abort never
+ * returns from, the one ending that leaves the block open. What
+ * emits the terminator either way wants to know (10-iteration.md) */
+static int
+endsopen(Ast *st)
+{
+  switch (st->k) {
+  case Ncall: /* the call itself: no terminator after it */
+    return 1;
+  case Nlet: /* the store behind the init closes nothing */
+    return st->v.let.e && endsopen(st->v.let.e);
+  case Nexprstmt:
+    return endsopen(st->v.n1.e);
+  case Nblock: { /* the statements, then the tail: the last thing
+                  * written is the last thing that counts */
+    Ast **ss = st->v.blk.stmts;
+    usize n = vlen(ss);
+
+    if (n)
+      return endsopen(ss[n - 1]);
+    return st->v.blk.tail && endsopen(st->v.blk.tail);
+  }
+  case Nif: /* mustexit walked here only with the else in hand, and
+             * its text is the last the if writes -- an else-if chain
+             * ends in its own else */
+  case Ncif:
+    return endsopen(st->v.ifx.els);
+  case Nmatch: /* every arm left, and the no-fit abort behind them
+                * carries its own ret: closed */
+  default:     /* the return, the break, the continue: their own ret or
+                * jump closed the block */
+    return 0;
+  }
+}
 static char *emaplace(Em *em, Ast *e);
 static void  emafor(Em *em, Ast *st);
 static void  emapat(Em *em, Ast *p, Type *t, char *addr, char *val, char *fail);
@@ -1500,7 +1545,9 @@ armbody(Em *em, Ast *b, int *reached)
 {
   if (b->k == Nblock)
     return emablockval(em, b, reached);
-  *reached = 1;
+  *reached = !mustexit(b); /* a call that never comes back takes its
+                            * own way out, the arm's value nothing
+                            * (10-iteration.md) */
   return emaexpr(em, b);
 }
 
@@ -1935,8 +1982,12 @@ emamatch(Em *em, Ast *e, int *reached)
   }
   fprintf(em->o, "\tcall $abort()\n"); /* the net: not reachable */
   fprintf(em->o, "\tret 0\n");
-  fprintf(em->o, "%s\n", lend);
   *reached = any;
+  if (!any) /* every arm left already: no join to read, its label and
+             * its load dead text -- an if's own rule, the match's
+             * the same (10-iteration.md) */
+    return 0;
+  fprintf(em->o, "%s\n", lend);
   if (!slot) { /* as an if's: the unit is nothing, a type the word */
     if (t && t->k == Tytype) {
       char *z = newtmp(em);
@@ -3179,14 +3230,25 @@ emablockval(Em *em, Ast *body, int *reached)
   *reached = 1;
   for (i = 0; i < vlen(stmts); i++) {
     emastmt(em, stmts[i]);
-    if (stmts[i]->k == Nreturn || stmts[i]->k == Nbreak || stmts[i]->k == Ncontinue) {
-      *reached = 0; /* the rest is dead */
+    if (mustexit(stmts[i])) { /* the statement leaves -- a return, a
+                               * break, a continue, a call that never
+                               * comes back: the rest is dead
+                               * (10-iteration.md) */
+      *reached = 0;
+      em->openend = endsopen(stmts[i]); /* what the fn's own last text
+                                         * is owes the terminator */
       goto out;
     }
   }
-  if (body->v.blk.tail)
+  if (body->v.blk.tail) {
     v = emaexpr(em, body->v.blk.tail);
-  else
+    if (mustexit(body->v.blk.tail)) {
+      *reached = 0; /* the tail never lands: no join reads a value
+                     * out of it, no trailing ret owes one
+                     * (10-iteration.md) */
+      em->openend = endsopen(body->v.blk.tail);
+    }
+  } else
     v = 0; /* "{}": the unit */
 out:
   em->nlocs = nbase;
@@ -3272,7 +3334,12 @@ emitfn(FILE *o, Sym *s, Ast *it, char *name, Type **ats, Type *ret)
                     * aggregate as the address the :type names */
       v = nicheout(&em, ret, v);
       fprintf(em.o, "\tret %s\n", v ? v : "0");
-    }
+    } else if (em.openend) /* the body ended in the call the abort
+                            * never returns from: qbe wants its
+                            * terminator whatever the flow -- the ret
+                            * is dead the moment the call runs
+                            * (10-iteration.md) */
+      fputs("\tret 0\n", em.o);
   }
   for (i = 0; i < vlen(em.allocs); i++) /* the entry's asks, ahead of
                                          * the text that asked for
@@ -3422,6 +3489,15 @@ emitfile(FILE *out, Srcfile **files, usize nfiles)
     exit(1);
   }
   ipass = 1;
+  { /* std's own files first: the runtime half lives there -- panic's
+     * body is the text the checks' calls name (12-projects.md) */
+    Srcfile **stds;
+    usize     nstd;
+
+    stds = stdfiles(&nstd);
+    if (nstd)
+      emitall(scratch, stds, nstd);
+  }
   emitall(scratch, files, nfiles);
   draininsts(scratch);
   for (;;) { /* the tables the handles named: their entries name
@@ -3437,6 +3513,15 @@ emitfile(FILE *out, Srcfile **files, usize nfiles)
   vtprinted = 0; /* the text restarts with it */
   abidecls(out); /* the :type declarations, the order qbe reads */
   ipass = 2;
+  { /* std ahead of the project, the same order the naming pass
+     * walked (12-projects.md) */
+    Srcfile **stds;
+    usize     nstd;
+
+    stds = stdfiles(&nstd);
+    if (nstd)
+      emitall(out, stds, nstd);
+  }
   emitall(out, files, nfiles); /* pass two: the text */
   draininsts(out);
   for (;;) {

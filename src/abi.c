@@ -75,6 +75,7 @@ typedef struct
   Type *ty;   /* 0: a helper union, only its declaration matters */
   char *name; /* ":t.N"; a niche shape shares its payload's */
   char *decl; /* the "type :" line, 0 when riding another's */
+  int   done; /* abidecls printed it: a walk's own mark */
 } TyDef;
 
 static TyDef *tydefs; /* vnew'd lazily: vappend refuses NULL */
@@ -400,19 +401,45 @@ sigty(Type *t, Ast *at)
   return typereg(t);
 }
 
+/* one declaration, its references first: the registry's numbers
+ * order nothing on their own -- a signature may have registered a
+ * type long before another's body reached around to it (std walks
+ * ahead of the project, 12-projects.md), and qbe reads a use only
+ * after its definition. The names a decl spells are the registry's
+ * own -- ":t." a number follows -- so the walk reads its own text */
+static void
+printdef(FILE *out, usize i)
+{
+  TyDef      *d = &tydefs[i];
+  const char *p;
+
+  if (!d->decl || d->done)
+    return;
+  d->done = 1; /* ahead of the walk: the registry's shape forbids a
+                * cycle -- a type's own nested registrations asked
+                * for their numbers only after it took its own */
+  p = d->decl;
+  while ((p = strstr(p, ":t.")) != 0) {
+    char         *e;
+    unsigned long n = strtoul(p + 3, &e, 10);
+
+    if (e != p + 3 && n < vlen(tydefs))
+      printdef(out, (usize) n);
+    p = e;
+  }
+  fprintf(out, "%s\n", d->decl);
+}
+
 /* the registry's declarations, printed ahead of the functions:
- * innermost first -- a type's number was taken before anything it
- * held registered, so counting down is the topological order qbe
- * reads (a use never precedes its definition). Emitfile calls this
- * between its naming pass and the real one. */
+ * each one's references before itself, the walk above the order.
+ * Emitfile calls this between its naming pass and the real one. */
 void
 abidecls(FILE *out)
 {
   usize i = vlen(tydefs);
 
   while (i--)
-    if (tydefs[i].decl)
-      fprintf(out, "%s\n", tydefs[i].decl);
+    printdef(out, i);
   if (vlen(tydefs))
     fputs("\n", out);
 }

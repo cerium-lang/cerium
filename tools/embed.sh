@@ -1,8 +1,14 @@
 #!/bin/sh
-# embed.sh -- a source file as a C string table, on stdout: one
-# quoted literal per line, a 0 sentinel closing. The prelude's source
-# ships inside the binary (std::meta parses like any other source,
-# 08-reflection.md); this is how it gets there.
+# embed.sh -- the std sources as C string tables, on stdout: one
+# table per input file, one quoted literal per line, a 0 sentinel
+# closing each. The prelude's source ships inside the binary
+# (std::meta parses like any other source, 08-reflection.md) and so
+# does std's runtime half -- panic is a plain fn, the calls the
+# checks make name it (01-types.md); these tables are how both get
+# there.
+#
+# A table's name spells its file's own: std/meta.xyz the
+# prelude_src_meta below, prelude.c's registry reading it there.
 #
 # The input must be ASCII with no other rule: a backslash and a quote
 # are escaped, and each line contributes its own "\n". An empty line
@@ -13,13 +19,19 @@
 
 set -e
 
-[ $# -eq 1 ] || { echo "usage: embed.sh file" >&2; exit 1; }
-[ -f "$1" ] || { echo "embed.sh: $1: not a file" >&2; exit 1; }
+[ $# -ge 1 ] || { echo "usage: embed.sh file..." >&2; exit 1; }
 
-echo "/* generated from $1 by tools/embed.sh -- do not edit */"
-echo "static const char *const prelude_src[] = {"
+for f in "$@"; do
+  [ -f "$f" ] || { echo "embed.sh: $f: not a file" >&2; exit 1; }
+  b=$(basename "$f")
+  b=${b%.xyz}
 
-sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/^/  "/' -e 's/$/\\n",/' "$1"
+  echo "/* generated from $f by tools/embed.sh -- do not edit */"
+  echo "static const char *const prelude_src_$b[] = {"
 
-echo "  0,"
-echo "};"
+  sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/^/  "/' -e 's/$/\\n",/' "$f"
+
+  echo "  0,"
+  echo "};"
+  echo
+done

@@ -28,8 +28,12 @@ struct Srcfile
   const char *path; /* its diagnostics' name */
 };
 
-void  checkinit(void);
-void  checkproject(Srcfile **files, usize nfiles);
+void      checkinit(void);
+void      checkproject(Srcfile **files, usize nfiles);
+Srcfile **stdfiles(usize *np);                               /* preludefile's table: std's own
+                                                              * files, the pass-4 and emit walks
+                                                              * take them ahead of the project's
+                                                              * (12-projects.md) */
 Sym **declare(Ast **items, Ns *ns);                          /* pass 1: every name
                                                               * in the table, the
                                                               * Syms back, parallel
