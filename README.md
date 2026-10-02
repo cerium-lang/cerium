@@ -77,11 +77,13 @@ runtime checks out, the wraps a release owns (`01-types.md`).
   attribute forms
 - **the checker** — namespaces and `use` in its four shapes, generics
   with defaults and const parameters, trait impls ordered by
-  specificity, the flow rules — moves, frozen borrows, `mut`'s two
-  levels, narrowing (`03-move.md`) — and compile-time evaluation:
-  const and static initializers, plain-fn calls, aggregate values, the
-  const `for`, `$$` splices, `@typeinfo` and the field walk
-  (`08-reflection.md`)
+  specificity, operators as trait calls — `a + b` is `Add::add(&a,
+  &b)`, the traits in `std::ops`, scalars keeping the built-in table
+  (`07-operators.md`) — the flow rules — moves, frozen borrows,
+  `mut`'s two levels, narrowing (`03-move.md`) — and compile-time
+  evaluation: const and static initializers, plain-fn calls,
+  aggregate values, the const `for`, `$$` splices, `@typeinfo` and
+  the field walk (`08-reflection.md`)
 - **emit** — qbe `.ssa`, the `cerium_` mangle folding namespaces, the
   data segment under const values, and a debug build's four runtime
   checks — index, arithmetic overflow, shift, cast — every failure one
@@ -89,7 +91,8 @@ runtime checks out, the wraps a release owns (`01-types.md`).
 - **std** — a directory the compiler reads as the project's first
   files (`CERIUM_SYSROOT` names where it lives), the prelude —
   `Option`, `Result`, `Copy`, `Drop`, `panic` — bound without a use,
-  `pub use` the re-export (`11-namespaces.md`)
+  `pub use` the re-export (`11-namespaces.md`), `std::ops` the
+  operator traits (`07-operators.md`)
 
 ### Testing
 
@@ -98,7 +101,7 @@ split `ok/` against `err/` — a dump must reproduce its `.golden`
 exactly, a rejection must say why — and `tests/run`, where every `.ce`
 compiles to a binary whose exit, stdout and stderr the files beside it
 name, an optional `.release` building it with `-r`
-(`tools/run-tests.sh`). 417 green at the time of writing.
+(`tools/run-tests.sh`). 424 green at the time of writing.
 
 ## The specification
 

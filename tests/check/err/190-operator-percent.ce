@@ -1,0 +1,8 @@
+/* % is language, not a trait (07-operators.md): a non-scalar side
+ * keeps the language's own error */
+struct V3 { x: i32 }
+fn main() -> i32 {
+  let a = V3{ x: 12 };
+  let b = V3{ x: 5 };
+  (a % b).x
+}

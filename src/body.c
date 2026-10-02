@@ -1372,6 +1372,194 @@ binop(Tok op, Type *a, Type *b, Type **res)
   }
 }
 
+/* a node the operator's rewrite makes, placed where the operator
+ * stood: the operands keep their own places, the wrappers take the
+ * operator's, so a rejection names the line the operator was on */
+static Ast *
+opnode(Nk k, Ast *at)
+{
+  Ast *n = mk(k);
+
+  n->line = at->line;
+  n->col = at->col;
+  return n;
+}
+
+/* the vector append the rewrite's own spelling: n a local, its
+ * address the append takes (vec.h) */
+static void
+opvpush(Ast ***vp, Ast *n)
+{
+  vappend(vp, &n);
+}
+
+/* one segment of a path the rewrite spells: a name alone, no generic
+ * arguments -- the default and the call's own unifier carry the
+ * binding (04-generics.md) */
+static Ast *
+opseg(const char *nm, Ast *at)
+{
+  Ast *s = opnode(Nseg, at);
+
+  s->v.seg.name = (char *) nm;
+  return s;
+}
+
+/* std::ops::<x>, three segments so far -- the trait, or Ordering --
+ * the whole path spelled, so the operator needs no use
+ * (11-namespaces.md) */
+static Ast *
+oppath(const char *x, Ast *at)
+{
+  Ast *p = opnode(Npath, at);
+
+  p->v.path.segs = vnew(Ast *, 4);
+  opvpush(&p->v.path.segs, opseg("std", at));
+  opvpush(&p->v.path.segs, opseg("ops", at));
+  opvpush(&p->v.path.segs, opseg(x, at));
+  return p;
+}
+
+/* &v, the shared borrow the trait's method takes -- it ends with the
+ * call, exactly as a written one does (05-traits.md) */
+static Ast *
+opborrow(Ast *v, Ast *at)
+{
+  Ast *b = opnode(Nun, at);
+
+  b->v.un.op = Tamp;
+  b->v.un.e = v;
+  return b;
+}
+
+/* the operand read as a value moves what it holds when the type is
+ * not Copy -- but the operator's own words only borrow: the rewrite
+ * below takes &l and &r, and what a borrow touches was never moved.
+ * The move the entry read made unwinds here (07-operators.md). */
+static void
+opunmove(Ast *e, Fenv *fe)
+{
+  char   buf[256];
+  Local *root = placeroot(e, fe, buf, sizeof buf);
+
+  if (root)
+    root->dead = 0;
+}
+
+/* the operator as its trait call, what a non-scalar side makes of it
+ * (07-operators.md): `a + b` becomes Add::add(&a, &b), `a != b`
+ * becomes !Eq::eq(&a, &b), and an ordering compares the answer
+ * against the end it names -- `a < b` is cmp == Ordering::Less, `a
+ * >= b` is cmp != Ordering::Less -- the variants read as themselves,
+ * no discriminant spelled anywhere. The node is rewritten in place,
+ * the walk re-entered reads its own words. The answer says the
+ * operator had a trait to spell: % and the bitwise ones are language,
+ * and the caller's own error answers for them. */
+static int
+optrait(Ast *e, Fenv *fe)
+{
+  Tok         op = e->v.bin.op;
+  Ast        *l = e->v.bin.l, *r = e->v.bin.r;
+  const char *tr = 0, *mth = 0;
+  const char *is = 0, *isnot = 0;
+  Ast        *top;
+
+  switch (op) {
+  case Tplus:
+    tr = "Add";
+    mth = "add";
+    break;
+  case Tminus:
+    tr = "Sub";
+    mth = "sub";
+    break;
+  case Tstar:
+    tr = "Mul";
+    mth = "mul";
+    break;
+  case Tslash:
+    tr = "Div";
+    mth = "div";
+    break;
+  case Teqeq:
+  case Tne:
+    tr = "Eq";
+    mth = "eq";
+    break;
+  case Tlt:
+    tr = "Ord";
+    mth = "cmp";
+    is = "Less";
+    break;
+  case Tgt:
+    tr = "Ord";
+    mth = "cmp";
+    is = "Greater";
+    break;
+  case Tle:
+    tr = "Ord";
+    mth = "cmp";
+    isnot = "Greater";
+    break;
+  case Tge:
+    tr = "Ord";
+    mth = "cmp";
+    isnot = "Less";
+    break;
+  default:
+    return 0;
+  }
+  opunmove(l, fe);
+  opunmove(r, fe);
+  { /* the call: std::ops::<Trait>::<method>(&l, &r) */
+    Ast *f = oppath(tr, e);
+    Ast *c = opnode(Ncall, e);
+
+    opvpush(&f->v.path.segs, opseg(mth, e));
+    c->v.call.f = f;
+    c->v.call.args = vnew(Ast *, 2);
+    opvpush(&c->v.call.args, opborrow(l, e));
+    opvpush(&c->v.call.args, opborrow(r, e));
+    top = c;
+    if (is || isnot) { /* the ordering's read: == the end it names, !=
+                        * the far one */
+      Ast *v = oppath("Ordering", e);
+      Ast *b = opnode(Nbin, e);
+
+      opvpush(&v->v.path.segs, opseg(is ? is : isnot, e));
+      b->v.bin.op = is ? Teqeq : Tne;
+      b->v.bin.l = c;
+      b->v.bin.r = v;
+      top = b;
+    } else if (op == Tne) { /* the negation: != is !eq */
+      Ast *n = opnode(Nun, e);
+
+      n->v.un.op = Tbang;
+      n->v.un.e = c;
+      top = n;
+    }
+  }
+  memset(&e->v, 0, sizeof e->v);
+  e->k = top->k;
+  memcpy(&e->v, &top->v, sizeof e->v);
+  return 1;
+}
+
+/* are both sides in the domain the built-in operators take -- the
+ * numbers, the bool, the pointers -- so a miss is the language's own
+ * error, not a trait's to answer (07-operators.md) */
+static int
+opscalar1(Type *t)
+{
+  return isnumty(t) || (t && (t->k == Tybool || t->k == Typtr));
+}
+
+static int
+opscalars(Type *a, Type *b)
+{
+  return opscalar1(a) && opscalar1(b);
+}
+
 /* the operator's spelling, for diagnostics */
 static const char *
 opname(Tok op)
@@ -1783,6 +1971,14 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
     }
     if (binop(op, ta, tb, &res))
       return res;
+    if (ta && tb && !opscalars(ta, tb) && optrait(e, fe)) { /* a side
+                                                             * outside the built-ins' domain: the
+                                                             * operator's own trait answers
+                                                             * (07-operators.md); % and the
+                                                             * bitwise ones are language, and
+                                                             * the error below answers for them */
+      return rexpr(e, fe, want);
+    }
     if (ta && tb && !tysame(ta, tb))
       berr(e, "'%s' wants both sides the same type: %s and %s", opname(op), btys(ta), btys(tb));
     berr(e, "'%s' is not defined for %s", opname(op), btys(ta));
@@ -2122,14 +2318,28 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
           if (!n)
             berr(e, "'%s::%s' takes the receiver as its first argument", s->name, nm1);
           {
+            /* the receiver walks below, ahead of the snapshots the
+             * blocks under it take: its freeze unwinds with the call
+             * like any argument's (01-types.md), so the picture is
+             * taken before anything walked -- the receiver's own
+             * borrow among them, for what it walks is what freezes */
+            Frzsave *svs = n ? arenaalloc(n * sizeof *svs) : 0;
+            usize    k;
             /* peel Self out of the receiver: the declared self is a
              * pattern over Self (*Self, []mut Self, ...), the
              * argument is that shape over a concrete type. The
              * receiver walks once, want-less -- the impl's signature
              * is not known until Self is */
             Type *sig0 = dm->ty->nargs ? dm->ty->args[0] : 0;
-            Type *rt = rexpr(args[0], fe, 0);
+            Type *rt;
             Type *self;
+
+            if (svs) {
+              memset(svs, 0, n * sizeof *svs);
+              for (k = 0; k < n; k++)
+                argborrow(args[k], fe, &svs[k]);
+            }
+            rt = rexpr(args[0], fe, 0);
 
             if (!rt)
               return 0;
@@ -2176,15 +2386,9 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                       mtys[zi] = 0;
                   } else
                     mtys = 0;
-                  {
-                    Frzsave *svs = n ? arenaalloc(n * sizeof *svs) : 0;
-                    usize    k;
-
-                    if (svs) {
-                      memset(svs, 0, n * sizeof *svs);
-                      for (k = 0; k < n; k++)
-                        argborrow(args[k], fe, &svs[k]);
-                    }
+                  { /* the call's own freeze picture is the outer
+                     * one's: the receiver among the arguments, taken
+                     * before it walked (01-types.md) */
                     if (n != t->nargs)
                       berr(e, "'%s::%s' takes %lu arguments, %lu given", s->name, nm1,
                            (unsigned long) t->nargs, (unsigned long) n);
@@ -2226,15 +2430,8 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                     mtys[zi] = 0;
                 } else
                   mtys = 0;
-                {
-                  Frzsave *svs = n ? arenaalloc(n * sizeof *svs) : 0;
-                  usize    k;
-
-                  if (svs) {
-                    memset(svs, 0, n * sizeof *svs);
-                    for (k = 0; k < n; k++)
-                      argborrow(args[k], fe, &svs[k]);
-                  }
+                { /* the outer picture again: the receiver's freeze
+                   * unwinds with the call like the rest (01) */
                   if (n != t->nargs)
                     berr(e, "'%s::%s' takes %lu arguments, %lu given", s->name, nm1,
                          (unsigned long) t->nargs, (unsigned long) n);
@@ -3948,16 +4145,44 @@ rstmt(Ast *st, Fenv *fe)
     /* the compound forms: a = a op b, the operator's own rules */
     rt = rexpr(st->v.bin.r, fe, lt);
     {
+      Tok   bop = op == Tpluseq    ? Tplus
+                  : op == Tminuseq ? Tminus
+                  : op == Tstareq  ? Tstar
+                  : op == Tslasheq ? Tslash
+                  : op == Tshleq   ? Tshl
+                                   : Tshr;
       Type *res = 0;
 
-      if (!binop(op == Tpluseq    ? Tplus
-                 : op == Tminuseq ? Tminus
-                 : op == Tstareq  ? Tstar
-                 : op == Tslasheq ? Tslash
-                 : op == Tshleq   ? Tshl
-                                  : Tshr,
-                 lt, rt, &res))
-        berr(st, "this compound assignment does not fit %s and %s", btys(lt), btys(rt));
+      if (binop(bop, lt, rt, &res))
+        return;
+      if (!opscalar1(lt) && (op == Tpluseq || op == Tminuseq || op == Tstareq ||
+                             op == Tslasheq)) { /* a place outside the
+                                                 * built-ins' domain: the
+                                                 * operator's own trait
+                                                 * answers (07-operators.md)
+                                                 * -- the compound is the
+                                                 * plain assignment of
+                                                 * its call */
+        Ast *nb = opnode(Nbin, st);             /* a + b, the words the rewrite takes */
+        Ast *as;
+
+        nb->v.bin.op = bop;
+        nb->v.bin.l = st->v.bin.l;
+        nb->v.bin.r = st->v.bin.r;
+        if (optrait(nb, fe)) { /* rewritten in place: the call itself,
+                                * an arithmetic trait dressing nothing */
+          as = opnode(Nassign, st);
+          as->v.bin.op = Teq;
+          as->v.bin.l = st->v.bin.l;
+          as->v.bin.r = nb;
+          memset(&st->v, 0, sizeof st->v);
+          st->k = Nassign;
+          memcpy(&st->v, &as->v, sizeof st->v);
+          rstmt(st, fe); /* re-entered: the plain assignment's own walk */
+        }
+        return;
+      }
+      berr(st, "this compound assignment does not fit %s and %s", btys(lt), btys(rt));
     }
     return;
   }

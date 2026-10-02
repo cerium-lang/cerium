@@ -1,0 +1,29 @@
+/* the arithmetic operators as trait calls (07-operators.md): a + b
+ * is Add::add(&a, &b), and a compound assignment is the plain
+ * assignment of that call. */
+use std::ops::{Add, Sub, Mul, Div};
+struct V3 { x: i32, y: i32 }
+impl Add for V3 {
+  fn add(self: *Self, other: *V3) -> V3 { V3{ x: self.x + other.x, y: self.y + other.y } }
+}
+impl Sub for V3 {
+  fn sub(self: *Self, other: *V3) -> V3 { V3{ x: self.x - other.x, y: self.y - other.y } }
+}
+impl Mul for V3 {
+  fn mul(self: *Self, other: *V3) -> V3 { V3{ x: self.x * other.x, y: self.y * other.y } }
+}
+impl Div for V3 {
+  fn div(self: *Self, other: *V3) -> V3 { V3{ x: self.x / other.x, y: self.y / other.y } }
+}
+fn main() -> i32 {
+  let a = V3{ x: 10, y: 20 };
+  let b = V3{ x: 2, y: 4 };
+  let s = a + b;
+  let d = a - b;
+  let m = a * b;
+  let q = a / b;
+  let mut c = V3{ x: 1, y: 1 };
+  c += a;
+  (s.x - 12) + (s.y - 24) + (d.x - 8) + (d.y - 16) + (m.x - 20) + (m.y - 80) +
+    (q.x - 5) + (q.y - 5) + (c.x - 11) + (c.y - 21) + 100
+}

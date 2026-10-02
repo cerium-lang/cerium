@@ -1,0 +1,6 @@
+/* both sides in the built-ins' domain, not the same type: the
+ * language's own error, no trait consulted (07-operators.md) */
+fn main() -> i32 {
+  let n = 1;
+  n + true
+}

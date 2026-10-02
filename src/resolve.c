@@ -1929,6 +1929,22 @@ checkproject(Srcfile **files, usize nfiles, usize nstd)
     sym_drop = nsitem(std, "Drop");
     sym_typeinfo = nsitem(nsopen("std::meta"), "TypeInfo");
     sym_panic = nsitem(std, "panic");
+    { /* the operator traits, the sugar's own (07-operators.md): the
+       * rewrite spells their paths, so the names never enter a scope
+       * -- but the traits themselves must be there */
+      static const char *const ops[] = {"Add", "Sub", "Mul", "Div", "Ord", "Eq", "Ordering"};
+      Ns                      *ons = nsopen("std::ops");
+      usize                    oi;
+
+      for (oi = 0; oi < sizeof ops / sizeof ops[0]; oi++)
+        if (!ons || !nsitem(ons, ops[oi])) {
+          fprintf(stderr,
+                  "cerium: the standard library is incomplete: %s is missing from"
+                  " std::ops (07-operators.md)\n",
+                  ops[oi]);
+          exit(1);
+        }
+    }
     if (!sym_option || !sym_result || !sym_copy || !sym_drop || !sym_typeinfo || !sym_panic) {
       fprintf(stderr, "cerium: the standard library is incomplete: Option, Result, Copy, Drop,"
                       " meta::TypeInfo, panic -- one is missing from the sysroot"
