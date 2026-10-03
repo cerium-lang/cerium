@@ -50,11 +50,22 @@ takes whole. Nothing is borrowed on the way in — an operator is sugar for a
 call, and the call's own signature says what moves.
 
 A borrowed pair is the caller's to spell, and it is an impl of the operator's
-trait over the pointer:
+trait over the pointer. The std writes one generic row per operator, and the
+row names the projection its answer rides on:
 
 ```rust
-impl<T: Add> Add for *T { ... }   // &a + &b, the rows the pointers carry
+impl<T: Add + Copy> Add for *T {   // &a + &b, the row the pointers carry
+  type Output = T::Output;
+  fn add(self: *T, other: *T) -> T::Output { Add::add(*self, *other) }
+}
 ```
+
+The `Copy` bound is the row's own law: reading `*self` out of a shared borrow
+is a copy or it is a move out of one, and the latter is not a thing to write
+(`03-move.md`). A type that is not Copy borrows no row — its own impl spells
+its fields, or takes the values. One generic row covers every Copy element:
+where another language writes a macro over its matrix, Cerium writes this
+(`14-macros.md`).
 
 Compound assignment is its own trait — the left is borrowed for the write, the
 right enters by value:
@@ -140,10 +151,11 @@ As a language rule, indexing is uniform and can be checked at compile time.
 ## Open items
 
 - Traits for `%`, the bitwise operators, shifts, and unary `-`.
-- The pointer's own rows — `impl<T: Add> Add for *T`, and `impl<T> Add<usize>
-  for *T` — and the generic projection they read (`T::Output`,
-  `04-generics.md`): a borrowed pair `&a + &b` and pointer arithmetic wait on
-  both.
+- Pointer arithmetic — `impl<T> Add<usize> for *T`: the row's own body has no
+  expression to spell (`*self + other` is the call the row would answer), so
+  it waits on the emitter taking a pointer beside an integer, widened; the
+  borrowed rows and the generic projection they read (`T::Output`,
+  04-generics.md) landed with them.
 - The destructor half of a moved operand: a non-Copy parameter's slot does not
   drop yet (`03-move.md`), and a non-Copy `AddAssign` cannot spell its body —
   the store to a borrowed place wants the take the move chapter has not

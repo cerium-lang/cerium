@@ -1,0 +1,33 @@
+/* the borrowed rows (07-operators.md): `&a + &b` asks the same Add
+ * of the pointers, the std's one generic row reading the Copy out
+ * of both and handing it on -- where another language writes a
+ * macro over its matrix (14-macros.md), Cerium writes this. The
+ * comparisons borrow the same way: Eq deciding, Ord ordering. */
+use std::ops::{Add, Eq, Ord, Ordering};
+struct V { x: i32 }
+impl Add for V {
+  type Output = V;
+  fn add(self: V, other: V) -> V { V{ x: self.x + other.x } }
+}
+impl Eq for V {
+  fn eq(self: V, other: V) -> bool { self.x == other.x }
+}
+impl Ord for V {
+  fn cmp(self: V, other: V) -> Ordering {
+    if self.x < other.x { Ordering::Less }
+    else if self.x > other.x { Ordering::Greater }
+    else { Ordering::Equal }
+  }
+}
+fn main() -> i32 {
+  let a = 3;
+  let b = 4;
+  let s = &a + &b; /* the built-in element through the generic row */
+  let u = V{ x: 10 };
+  let w = V{ x: 20 };
+  let p = &u + &w; /* a user's type through the same row: Copy by
+                    * structure, its field a Copy */
+  let e = @cast<i32>(&u == &w); /* Eq's borrowed row decides */
+  let o = @cast<i32>(&u < &w); /* Ord's borrowed row orders */
+  s + p.x + e + o
+}

@@ -1,0 +1,19 @@
+(file
+  (use ops::Scale)
+  (struct P
+    (field n i32))
+  (impl Scale<P> for P
+    (type Output P)
+    (fn scale fn(P, P) -> P))
+  (fn main fn() -> i32))
+(file
+  (use std::Copy)
+  (trait Scale<Rhs>
+    (type Output)
+    (fn scale fn(Self, Rhs) -> Self::Output))
+  (impl Scale<i32> for i32
+    (type Output i32)
+    (fn scale fn(i32, i32) -> i32))
+  (impl Scale<*T> for *T
+    (type Output T::Output)
+    (fn scale fn(*T, *T) -> T::Output)))

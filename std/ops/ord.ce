@@ -12,13 +12,17 @@
  * comparing bools. The floats stay out: a NaN orders against
  * nothing, itself included, so the law Ord assumes does not
  * hold over them, the calls refused, the operators answering as
- * the language always did. */
+ * the language always did. The borrowed rows below name Copy:
+ * a library does not read its own face (12-projects.md), so the
+ * marker arrives by use, the file's own binding. */
 
 pub enum Ordering {
   Less,
   Equal,
   Greater,
 }
+
+use std::Copy;
 
 pub trait Ord {
   fn cmp(self: Self, other: Self) -> Ordering;
@@ -76,4 +80,16 @@ impl Ord for bool {
   fn cmp(self: Self, other: Self) -> Ordering {
     if self == other { Ordering::Equal } else if !self { Ordering::Less } else { Ordering::Greater }
   }
+}
+
+/* the borrowed rows: `&a < &b` asks the same Ord of the pointers,
+ * the Copy reads out of both and handed on. One generic row
+ * covers every Copy element -- where another language writes a
+ * macro over its matrix (14-macros.md), Cerium writes this. A
+ * type that is not Copy borrows no row: moving out of a shared
+ * borrow is not a thing to write, its own impl spells its fields
+ * (07-operators.md). */
+
+impl<T: Ord + Copy> Ord for *T {
+  fn cmp(self: *T, other: *T) -> Ordering { Ord::cmp(*self, *other) }
 }

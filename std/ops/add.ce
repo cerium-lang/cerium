@@ -9,7 +9,12 @@
  * the built-in table does not take. `Rhs` defaults to Self
  * (04-generics.md), so `impl Add for V3` is Add<V3> for V3; the
  * answer is the `Output` associated type (05-traits.md), the
- * rows here answering with themselves. */
+ * rows here answering with themselves. The borrowed rows below
+ * name Copy: a library does not read its own face
+ * (12-projects.md), so the marker arrives by use, the file's own
+ * binding. */
+
+use std::Copy;
 
 pub trait Add<Rhs = Self> {
   type Output;
@@ -26,6 +31,19 @@ impl Add for u32 { type Output = u32; fn add(self: Self, other: Self) -> Self::O
 impl Add for u64 { type Output = u64; fn add(self: Self, other: Self) -> Self::Output { self + other } }
 impl Add for f32 { type Output = f32; fn add(self: Self, other: Self) -> Self::Output { self + other } }
 impl Add for f64 { type Output = f64; fn add(self: Self, other: Self) -> Self::Output { self + other } }
+
+/* the borrowed rows: `&a + &b` asks the same Add of the pointers,
+ * the Copy reads out of both and handed on. One generic row
+ * covers every Copy element -- where another language writes a
+ * macro over its matrix (14-macros.md), Cerium writes this. A
+ * type that is not Copy borrows no row: moving out of a shared
+ * borrow is not a thing to write, its own impl spells its fields
+ * (07-operators.md). */
+
+impl<T: Add + Copy> Add for *T {
+  type Output = T::Output;
+  fn add(self: *T, other: *T) -> T::Output { Add::add(*self, *other) }
+}
 
 /* std::ops::AddAssign -- `a += b` is AddAssign::add_assign(&mut
  * a, b) (07-operators.md): the compound is its own trait, the

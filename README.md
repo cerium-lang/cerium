@@ -79,8 +79,9 @@ runtime checks out, the wraps a release owns (`01-types.md`).
   with defaults and const parameters, trait impls ordered by
   specificity, operators as trait calls — `a + b` is `Add::add(a,
   b)`, both operands by value, the traits and the built-in rows
-  in `std::ops`, the compound assignments their own
-  (`07-operators.md`) — the flow rules — moves, frozen borrows,
+  in `std::ops`, the compound assignments their own, the borrowed
+  pairs one generic row — `&a + &b` over any Copy element through
+  `T::Output` (`07-operators.md`) — the flow rules — moves, frozen borrows,
   `mut`'s two levels, narrowing, a temporary's `&` its own
   materialised place (`03-move.md`) — and compile-time
   evaluation: const and static initializers, plain-fn calls,
@@ -103,7 +104,7 @@ split `ok/` against `err/` — a dump must reproduce its `.golden`
 exactly, a rejection must say why — and `tests/run`, where every `.ce`
 compiles to a binary whose exit, stdout and stderr the files beside it
 name, an optional `.release` building it with `-r`
-(`tools/run-tests.sh`). 430 green at the time of writing.
+(`tools/run-tests.sh`). 434 green at the time of writing.
 
 ## The specification
 

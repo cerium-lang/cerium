@@ -1,0 +1,22 @@
+/* the project's root: main reads the row through a use, its own
+ * bound naming the used trait -- the use's binding read in this
+ * file's context, whichever file the coherence served last
+ * (11-namespaces.md). */
+use ops::Scale;
+
+struct P { n: i32 }
+
+impl Scale for P {
+  type Output = P;
+  fn scale(self: P, other: P) -> P { P{ n: self.n * other.n } }
+}
+
+fn main() -> i32 {
+  let a = 6;
+  let b = 7;
+  let r = Scale::scale(&a, &b); /* the borrowed row, through the use */
+  let u = P{ n: 5 };
+  let w = P{ n: 8 };
+  let q = Scale::scale(&u, &w); /* the user's type through it */
+  r + q.n
+}

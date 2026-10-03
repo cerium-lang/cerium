@@ -3849,13 +3849,14 @@ emitinst(FILE *o, Inst *in)
   ng = s->ngparams;
   ats = vlen(it->v.fn.params) ? tyargs(vlen(it->v.fn.params)) : 0;
   for (i = 0; i < vlen(it->v.fn.params); i++)
-    ats[i] = gsubstv(s->fnty->args[i], s->gparams, in->tys, in->gcvals, ng);
+    ats[i] = projopen(gsubstv(s->fnty->args[i], s->gparams, in->tys, in->gcvals, ng), it);
   icur = in; /* the calls the re-check and the emit that follows find
               * are the chain's next level -- the instances the
               * emitter names arrive here, after the body's own
               * walk, both under this instance (04-generics.md) */
   recheckfn(s, it, in->tys, in->cvals, in->gcvals);
-  emitfn(o, s, it, in->name, ats, gsubstv(s->fnty->t, s->gparams, in->tys, in->gcvals, ng));
+  emitfn(o, s, it, in->name, ats,
+         projopen(gsubstv(s->fnty->t, s->gparams, in->tys, in->gcvals, ng), it));
   icur = 0;
 }
 

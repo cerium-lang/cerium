@@ -9,7 +9,11 @@
  * built-in table does not take. The floats stay out: a NaN
  * equals nothing, itself included, so the law Eq assumes does
  * not hold over them, the calls refused, the operators answering
- * as the language always did. */
+ * as the language always did. The borrowed rows below name Copy:
+ * a library does not read its own face (12-projects.md), so the
+ * marker arrives by use, the file's own binding. */
+
+use std::Copy;
 
 pub trait Eq {
   fn eq(self: Self, other: Self) -> bool;
@@ -24,3 +28,15 @@ impl Eq for u16 { fn eq(self: Self, other: Self) -> bool { self == other } }
 impl Eq for u32 { fn eq(self: Self, other: Self) -> bool { self == other } }
 impl Eq for u64 { fn eq(self: Self, other: Self) -> bool { self == other } }
 impl Eq for bool { fn eq(self: Self, other: Self) -> bool { self == other } }
+
+/* the borrowed rows: `&a == &b` asks the same Eq of the pointers,
+ * the Copy reads out of both and handed on. One generic row
+ * covers every Copy element -- where another language writes a
+ * macro over its matrix (14-macros.md), Cerium writes this. A
+ * type that is not Copy borrows no row: moving out of a shared
+ * borrow is not a thing to write, its own impl spells its fields
+ * (07-operators.md). */
+
+impl<T: Eq + Copy> Eq for *T {
+  fn eq(self: *T, other: *T) -> bool { Eq::eq(*self, *other) }
+}

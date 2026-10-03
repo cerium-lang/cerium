@@ -382,6 +382,9 @@ gsubstv(Type *t, Ast **gps, Type **tys, Val **gcvals, usize n)
     return tyslice(gsubstv(t->t, gps, tys, gcvals, n));
   case Tymut:
     return tymut(gsubstv(t->t, gps, tys, gcvals, n));
+  case Typroj: /* Self::Item under the generics this walk binds: the
+                * Self the projection hangs on walks with them */
+    return typroj(t->sym, gsubstv(t->t, gps, tys, gcvals, n), t->name);
   case Tyarray:
     if (t->gp) { /* [N]T, the length a const parameter's: the
                   * binding's number stands in, and a black box one

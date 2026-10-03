@@ -239,6 +239,9 @@ selfsubst(Type *t, Type *self)
     return tyslice(selfsubst(t->t, self));
   case Tymut:
     return tymut(selfsubst(t->t, self));
+  case Typroj: /* Self::Item: the projection hangs on the Self this
+                * walk replaces, wherever it sits */
+    return typroj(t->sym, selfsubst(t->t, self), t->name);
   case Tyarray:
     return tyarray(t->n, selfsubst(t->t, self));
   case Tytuple:
@@ -264,6 +267,28 @@ selfsubst(Type *t, Type *self)
   default:
     return t;
   }
+}
+
+/* a projection the call made concrete: the Self it hangs on is a
+ * type now, so the impl's own answer reads -- the same lookup a
+ * spelled name takes (05-traits.md). A Self still a parameter
+ * stays the projection: the instantiation's re-check answers it
+ * (04-generics.md). An impl's row may answer in a projection of
+ * its own -- a generic row's Output is the Self's -- so the walk
+ * loops until a type stands */
+Type *
+projopen(Type *t, Ast *at)
+{
+  while (t && t->k == Typroj && t->t && t->t->k != Typaram) {
+    Sym    *imp;
+    Type  **tys;
+    Member *m = implfind(t->sym, t->t, t->name, &imp, &tys);
+
+    if (!m || m->kind != Mtype)
+      berr(at, "no '%s' for %s", t->sym->name, btys(t->t));
+    t = tys ? gsubst(m->val, imp->gparams, tys, imp->ngparams) : m->val;
+  }
+  return t;
 }
 
 /* what a declared projection was is the handle's own spelling: the
@@ -2451,6 +2476,14 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                 if (!bounded)
                   berr(args[0], "'%s' is not a bound on '%s'", s->name, self->gp->v.gp.name);
                 t = selfsubst(dm->ty, self);
+                if (s->ngparams) { /* the trait's own generics, at
+                                    * their defaults: the path spelled
+                                    * none, and Rhs defaults to this
+                                    * Self (04-generics.md) */
+                  Type **ttys = dflttail(s, 0, 0, 0, self, args[0]);
+
+                  t = gsubst(t, s->gparams, ttys, s->ngparams);
+                }
                 e->v.call.sym = 0; /* the re-check writes the impl's pick */
                 e->v.call.tys = 0;
                 { /* the member's own family, bound from the arguments */
@@ -2533,7 +2566,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                 }
                 memberdone(e, mg, mtys, nmg, nm1);
                 e->v.call.tys = insttys(imp, tys, mg, mtys, nmg);
-                return nmg ? gsubst(t->t, mg, mtys, nmg) : t->t;
+                return projopen(nmg ? gsubst(t->t, mg, mtys, nmg) : t->t, e);
               }
             }
           }
@@ -4547,10 +4580,10 @@ recheckfn(Sym *s, Ast *it, Type **tys, Val **cvals, Val **gcvals)
     env = envpush(&env, "Self", ng ? gsubst(st, s->gparams, tys, ng) : st);
   }
   for (i = 0; i < vlen(it->v.fn.params); i++)
-    ats[i] = gsubstv(s->fnty->args[i], s->gparams, tys, gcvals, ng);
+    ats[i] = projopen(gsubstv(s->fnty->args[i], s->gparams, tys, gcvals, ng), it);
   bodyfn = s;
-  runbody(it, env, ats, gsubstv(s->fnty->t, s->gparams, tys, gcvals, ng), cvals, s->gparams,
-          gcvals);
+  runbody(it, env, ats, projopen(gsubstv(s->fnty->t, s->gparams, tys, gcvals, ng), it), cvals,
+          s->gparams, gcvals);
 }
 
 /* one impl's member fns: the same env resolveimplmembers built --
