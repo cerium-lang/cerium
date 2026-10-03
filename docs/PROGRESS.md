@@ -963,3 +963,49 @@ borrowing the same way (`Eq` deciding, `Ord` ordering), and
 row still waiting, its body having no expression to spell until
 the emitter takes a pointer beside an integer
 (`07-operators.md`).
+
+Then the rest of the table landed, and the open item's first
+word closed whole: `Rem`, the bitwise three, the shift pair, and
+unary `-` -- `Neg` -- seven traits over six files in
+`std::ops`, each the borrowed row's shape the turn already knew.
+The compound family closed the same way the lexer spells it:
+`<<=` and `>>=` exist as tokens, so `ShlAssign` and `ShrAssign`
+ride beside `AddAssign`, while `%=` `&=` `|=` `^=` are nobody's
+tokens and no Assign waits for them -- a trait without its
+operator is a trait nobody calls. `Rem` writes integers only,
+the remainder an integer's own idea, a float pair keeping the
+language's error; `Neg` takes the floats too, negating one its
+own arithmetic. The rewrite grew its unary half -- a helper
+beside the binary one, `-v` becoming `Neg::neg(v)` when the
+operand is no scalar the checker answers itself, so `-&a` keeps
+the language's error and a library spells the call.
+
+`bool` asked its own question on the way, and the crash answered
+before the spec did: std's bool row for `&` spells `self &
+other`, and with no built-in answering a bool pair first, the
+walk rewrote the row's own body into `BitAnd::bitand(self,
+other)` -- the row calling itself, the stack overflowing, the
+process dying at 139. The integers never showed it because the
+built-in table takes them first, the same shield the arithmetic
+four ride; the fix is the shield itself extended, the table
+taking a bool pair for `&`, `|`, and `^` -- the one-bit integer
+taken whole, the rows beside them for the spelled call -- while
+`%` and the shifts keep their integer sense, no bool row ever
+written.
+
+And the re-check's own context hole surfaced with the rows, the
+one 07d's test could not see: a generic row's body re-checks per
+instantiation in the emitter, and the walk read whatever
+namespace the caller's file had served last -- std's row naming
+`Rem::rem` from its own body while the cursor sat on a user's
+file that bound nothing of it, the report a mixed position, the
+caller's path over the row's own line. The 167 test had used
+every trait, so the caller always bound them; a use-less file
+was the reveal. The fix rides the Sym itself now: every
+declaration carries its own file, pass 1 and pass 3 filling it,
+and the instantiation's walk switches to it -- namespace, uses,
+the path its diagnostics print -- the same law the coherence
+walks took in 07d, the emitter's half arriving with it
+(`04-generics.md`). The sysroot's completeness face grew the
+nine new names beside the arithmetic seven's, so a broken
+sysroot says so at its own face rather than an unknown name's.

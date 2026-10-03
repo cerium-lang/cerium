@@ -1,0 +1,61 @@
+/* std::ops::Shr -- `a >> b` is Shr::shr(a, b), the operator's
+ * sugar (07-operators.md): both operands enter by value, the
+ * left one moving where its type is not Copy. The built-in rows
+ * the spec promises are spelled here as source: a plain `n >> m`
+ * never comes to them, the checker's binop asked first, and that
+ * table takes any integer beside any integer -- a shift's amount
+ * is its own width, not the shifted's (07-operators.md), so the
+ * rows here, all Rhs = Self, are for the types the table does
+ * not take. `Rhs` defaults to Self (04-generics.md); the answer
+ * is the `Output` associated type (05-traits.md), the rows here
+ * answering with themselves. The borrowed rows below name Copy:
+ * a library does not read its own face (12-projects.md), so the
+ * marker arrives by use, the file's own binding. */
+
+use std::Copy;
+
+pub trait Shr<Rhs = Self> {
+  type Output;
+  fn shr(self: Self, other: Rhs) -> Self::Output;
+}
+
+impl Shr for i8 { type Output = i8; fn shr(self: Self, other: Self) -> Self::Output { self >> other } }
+impl Shr for i16 { type Output = i16; fn shr(self: Self, other: Self) -> Self::Output { self >> other } }
+impl Shr for i32 { type Output = i32; fn shr(self: Self, other: Self) -> Self::Output { self >> other } }
+impl Shr for i64 { type Output = i64; fn shr(self: Self, other: Self) -> Self::Output { self >> other } }
+impl Shr for u8 { type Output = u8; fn shr(self: Self, other: Self) -> Self::Output { self >> other } }
+impl Shr for u16 { type Output = u16; fn shr(self: Self, other: Self) -> Self::Output { self >> other } }
+impl Shr for u32 { type Output = u32; fn shr(self: Self, other: Self) -> Self::Output { self >> other } }
+impl Shr for u64 { type Output = u64; fn shr(self: Self, other: Self) -> Self::Output { self >> other } }
+
+/* the borrowed rows: `&a >> &b` asks the same Shr of the
+ * pointers, the Copy reads out of both and handed on. One
+ * generic row covers every Copy element -- where another
+ * language writes a macro over its matrix (14-macros.md),
+ * Cerium writes this. A type that is not Copy borrows no row:
+ * moving out of a shared borrow is not a thing to write, its
+ * own impl spells its fields (07-operators.md). */
+
+impl<T: Shr + Copy> Shr for *T {
+  type Output = T::Output;
+  fn shr(self: *T, other: *T) -> T::Output { Shr::shr(*self, *other) }
+}
+
+/* std::ops::ShrAssign -- `a >>= b` is ShrAssign::shr_assign(&mut
+ * a, b) (07-operators.md): the compound is its own trait, the
+ * left borrowed for the write, the right a value the parameter's
+ * slot takes whole. An answer made in place needs no Output --
+ * nothing comes back, the left holds it. */
+
+pub trait ShrAssign<Rhs = Self> {
+  fn shr_assign(self: *mut Self, other: Rhs);
+}
+
+impl ShrAssign for i8 { fn shr_assign(self: *mut Self, other: Self) { *self = *self >> other; } }
+impl ShrAssign for i16 { fn shr_assign(self: *mut Self, other: Self) { *self = *self >> other; } }
+impl ShrAssign for i32 { fn shr_assign(self: *mut Self, other: Self) { *self = *self >> other; } }
+impl ShrAssign for i64 { fn shr_assign(self: *mut Self, other: Self) { *self = *self >> other; } }
+impl ShrAssign for u8 { fn shr_assign(self: *mut Self, other: Self) { *self = *self >> other; } }
+impl ShrAssign for u16 { fn shr_assign(self: *mut Self, other: Self) { *self = *self >> other; } }
+impl ShrAssign for u32 { fn shr_assign(self: *mut Self, other: Self) { *self = *self >> other; } }
+impl ShrAssign for u64 { fn shr_assign(self: *mut Self, other: Self) { *self = *self >> other; } }

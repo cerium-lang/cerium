@@ -1,5 +1,5 @@
-/* % is language, not a trait (07-operators.md): a non-scalar side
- * keeps the language's own error */
+/* % on a type with no Rem: the operator's own trait answers, the
+ * scalar pairs the built-in table took first (07-operators.md) */
 struct V3 { x: i32 }
 fn main() -> i32 {
   let a = V3{ x: 12 };

@@ -1359,6 +1359,13 @@ binop(Tok op, Type *a, Type *b, Type **res)
       *res = a;
       return 1;
     }
+    if ((op == Tamp || op == Tbar || op == Tcaret) && a && a->k == Tybool &&
+        tysame(a, b)) { /* a bool is the one-bit integer: and, or,
+                         * xor take it whole (07-operators.md), the
+                         * rows beside them for the spelled call */
+      *res = a;
+      return 1;
+    }
     if ((op == Tshl || op == Tshr) && isintty(a) && isintty(b)) {
       *res = a; /* any integer shifts (07-operators.md) */
       return 1;
@@ -1493,8 +1500,9 @@ opbarelocal(Ast *e)
  * Copy, the right one a value the parameter's own slot takes
  * whole. The node is rewritten in place, the walk re-entered
  * reads its own words. The answer says the operator had a trait
- * to spell: % and the bitwise ones are language, and the
- * caller's own error answers for them. */
+ * to spell: every operator here has one, the remainder and the
+ * bitwise and the shifts among them (07-operators.md), the
+ * built-in table asked first so a scalar pair never arrives. */
 static int
 optrait(Ast *e, Fenv *fe)
 {
@@ -1520,6 +1528,30 @@ optrait(Ast *e, Fenv *fe)
   case Tslash:
     tr = "Div";
     mth = "div";
+    break;
+  case Tpercent:
+    tr = "Rem";
+    mth = "rem";
+    break;
+  case Tamp:
+    tr = "BitAnd";
+    mth = "bitand";
+    break;
+  case Tbar:
+    tr = "BitOr";
+    mth = "bitor";
+    break;
+  case Tcaret:
+    tr = "BitXor";
+    mth = "bitxor";
+    break;
+  case Tshl:
+    tr = "Shl";
+    mth = "shl";
+    break;
+  case Tshr:
+    tr = "Shr";
+    mth = "shr";
     break;
   case Teqeq:
   case Tne:
@@ -1607,6 +1639,30 @@ static int
 opscalars(Type *a, Type *b)
 {
   return opscalar1(a) && opscalar1(b);
+}
+
+/* the unary operator as its trait call, what a non-scalar operand
+ * makes of it (07-operators.md): `-v` becomes Neg::neg(v), the
+ * operand entering by value, moving where its type is not Copy.
+ * The same in-place rewrite the binary one is: the node becomes
+ * the call, the walk re-entered reads its own words. A scalar
+ * the checker's own unary does not take never arrives -- the
+ * language's own error answers for it, the trait's words would
+ * only misdirect the report. */
+static void
+opuntrait(Ast *e, Fenv *fe, const char *tr, const char *mth)
+{
+  Ast *f = oppath(tr, e);
+  Ast *c = opnode(Ncall, e);
+
+  opunmove(e->v.un.e, fe);
+  opvpush(&f->v.path.segs, opseg(mth, e));
+  c->v.call.f = f;
+  c->v.call.args = vnew(Ast *, 1);
+  opvpush(&c->v.call.args, e->v.un.e);
+  memset(&e->v, 0, sizeof e->v);
+  e->k = c->k;
+  memcpy(&e->v, &c->v, sizeof e->v);
 }
 
 /* the operator's spelling, for diagnostics */
@@ -2196,6 +2252,13 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
       case Tminus:
         if (t && isnumty(t))
           return t;
+        if (t && !opscalar1(t)) { /* -v is Neg's call, the
+                                   * checker's own unary
+                                   * answering the scalars first
+                                   * (07-operators.md) */
+          opuntrait(e, fe, "Neg", "neg");
+          return rexpr(e, fe, want);
+        }
         break;
       case Ttilde:
         if (t && isintty(t))
@@ -4282,12 +4345,14 @@ rstmt(Ast *st, Fenv *fe)
 
       if (binop(bop, lt, rt, &res))
         return;
-      if ((op == Tpluseq || op == Tminuseq || op == Tstareq || op == Tslasheq) &&
+      if ((op == Tpluseq || op == Tminuseq || op == Tstareq || op == Tslasheq || op == Tshleq ||
+           op == Tshreq) &&
           (!opscalar1(lt) || (lt && rt && tysame(lt, rt)))) { /* the
                                                                * arithmetic compound: its own trait
                                                                * now (07-operators.md) --
                                                                * AddAssign, SubAssign, MulAssign,
-                                                               * DivAssign -- the left borrowed
+                                                               * DivAssign, and the shifts' own
+                                                               * pair -- the left borrowed
                                                                * for the write, the right a value
                                                                * the parameter's slot takes
                                                                * whole; a mixed scalar pair is
@@ -4297,11 +4362,15 @@ rstmt(Ast *st, Fenv *fe)
         const char *tr = op == Tpluseq    ? "AddAssign"
                          : op == Tminuseq ? "SubAssign"
                          : op == Tstareq  ? "MulAssign"
-                                          : "DivAssign";
+                         : op == Tslasheq ? "DivAssign"
+                         : op == Tshleq   ? "ShlAssign"
+                                          : "ShrAssign";
         const char *mth = op == Tpluseq    ? "add_assign"
                           : op == Tminuseq ? "sub_assign"
                           : op == Tstareq  ? "mul_assign"
-                                           : "div_assign";
+                          : op == Tslasheq ? "div_assign"
+                          : op == Tshleq   ? "shl_assign"
+                                           : "shr_assign";
 
         opunmove(st->v.bin.l, fe); /* the left is borrowed for the
                                     * write, not moved by the entry's

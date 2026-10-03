@@ -14,7 +14,16 @@ They live in `std::ops`.
 | `a - b` | `Sub<Rhs>` | `fn sub(self: Self, other: Rhs) -> Self::Output` |
 | `a * b` | `Mul<Rhs>` | `fn mul(self: Self, other: Rhs) -> Self::Output` |
 | `a / b` | `Div<Rhs>` | `fn div(self: Self, other: Rhs) -> Self::Output` |
+| `a % b` | `Rem<Rhs>` | `fn rem(self: Self, other: Rhs) -> Self::Output` |
+| `a & b` | `BitAnd<Rhs>` | `fn bitand(self: Self, other: Rhs) -> Self::Output` |
+| `a | b` | `BitOr<Rhs>` | `fn bitor(self: Self, other: Rhs) -> Self::Output` |
+| `a ^ b` | `BitXor<Rhs>` | `fn bitxor(self: Self, other: Rhs) -> Self::Output` |
+| `a << b` | `Shl<Rhs>` | `fn shl(self: Self, other: Rhs) -> Self::Output` |
+| `a >> b` | `Shr<Rhs>` | `fn shr(self: Self, other: Rhs) -> Self::Output` |
+| `-a` | `Neg` | `fn neg(self: Self) -> Self::Output` |
 | `a += b` | `AddAssign<Rhs>` | `fn add_assign(self: *mut Self, other: Rhs)` |
+| `a <<= b` | `ShlAssign<Rhs>` | `fn shl_assign(self: *mut Self, other: Rhs)` |
+| `a >>= b` | `ShrAssign<Rhs>` | `fn shr_assign(self: *mut Self, other: Rhs)` |
 | `a < b`, `a > b`, `a <= b`, `a >= b` | `Ord` | `fn cmp(self: Self, other: Self) -> Ordering` |
 | `a == b`, `a != b` | `Eq` | `fn eq(self: Self, other: Self) -> bool` |
 
@@ -28,6 +37,12 @@ enum Ordering {
 
 There is one method per trait, not one per operator: `a <= b` is `cmp` read the
 other way round, and `a != b` is `!eq`.
+
+The compound family is closed by the language's own tokens: `+=` `-=` `*=` `/=`
+`<<=` `>>=` are what the lexer spells, so `RemAssign`, `BitAndAssign`, and the
+rest have no operator to sugar — a trait without its operator is a trait nobody
+calls, and std writes none. `Rem` itself is an integer's own idea — no float
+row exists, a float beside a float keeps the language's error.
 
 `Rhs` is a type parameter and defaults to `Self`, so `impl Add for Vec3` means
 `impl Add<Vec3> for Vec3`. It need not be `Self` — that is what pointer
@@ -74,11 +89,18 @@ right enters by value:
 a += b;   // AddAssign::add_assign(&mut a, b) — requires the row, and a mut slot
 ```
 
+Unary `-` is the same sugar with one operand: `-a` is `Neg::neg(a)`, the value
+entering whole. A borrowed operand reaches the row by the spelled call alone —
+`-&a` keeps the language's error, the pointer a scalar to the checker's unary,
+and `Neg::neg(&a)` is what a library writes instead.
+
 ## Who implements them
 
-The built-in types come with impls provided by the compiler — integers, floats,
-`bool`, pointers, and so on. A type of your own implements them like any other
-trait, subject to the orphan rule (`05-traits.md`):
+The scalar rows live in `std::ops` as source, spelled like any other impl —
+a plain `n + m` never reaches them, the built-in table answering first, but
+the spelled call `Add::add(n, m)` is theirs to answer, and a generic's bound
+reads them through the same rows. A type of your own implements them like any
+other trait, subject to the orphan rule (`05-traits.md`):
 
 ```rust
 struct Vec3 { x: f32, y: f32, z: f32 }
@@ -109,18 +131,27 @@ Some things are language, not traits:
 
 - `&&` and `||` — they short-circuit, which a call cannot
 - `?`, `!`, `...`, and every `@` builtin — syntax and builtins, not operators
-- `%`, the bitwise operators, shifts, and unary `-` and `~` are built in for
-  integers; they have no trait
+- `~` — it has no trait, an integer's own complement
+- `%`, the bitwise operators, shifts, and unary `-` are traits now, the rows in
+  `std::ops` — but a scalar pair never reaches them: the built-in table answers
+  first, an integer beside an integer and a float beside a float, and what the
+  table does not take is the trait's to answer. `bool` is the one-bit integer
+  for `&`, `|`, and `^` — the table takes it whole, the rows beside them for
+  the spelled call — while `%` and the shifts keep their integer sense and no
+  bool row exists.
 
 ### Shifts
 
-`a << n` and `a >> n` are built in for integers, with any integer type on
-the right. A signed `>>` is an arithmetic shift — the sign bit repeats — and
-an unsigned `>>` is a logical one; there is no `>>>`, because the unsigned
-types already say which shift is meant. A shift amount at or above the
-operand's width panics at run time — "shift amount out of range" — and is a
-compile error when the amount is a compile-time known constant, the same
-bargain a constant index out of range makes (`01-types.md`).
+`a << n` and `a >> n` take any integer type beside any integer type — a
+shift's amount is its own width, not the shifted's — the built-in table
+answering that pair first, the `Shl` and `Shr` rows waiting for what is left.
+A signed `>>` is an arithmetic shift — the sign bit repeats — and an unsigned
+`>>` is a logical one; there is no `>>>`, because the unsigned types already
+say which shift is meant. A shift amount at or above the operand's width
+panics at run time — "shift amount out of range" — and is a compile error when
+the amount is a compile-time known constant, the same bargain a constant index
+out of range makes (`01-types.md`). The compounds `<<=` and `>>=` carry their
+own traits, `ShlAssign` and `ShrAssign`, beside `AddAssign`'s.
 
 ### Why indexing is not a trait
 
@@ -150,7 +181,6 @@ As a language rule, indexing is uniform and can be checked at compile time.
 
 ## Open items
 
-- Traits for `%`, the bitwise operators, shifts, and unary `-`.
 - Pointer arithmetic — `impl<T> Add<usize> for *T`: the row's own body has no
   expression to spell (`*self + other` is the call the row would answer), so
   it waits on the emitter taking a pointer beside an integer, widened; the

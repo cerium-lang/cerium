@@ -1959,6 +1959,16 @@ checkproject(Srcfile **files, usize nfiles, usize nstd)
     lexsetpath(sf->path);
     sf->uses = usenew();
     sf->syms = declare(sf->items, sf->ns);
+    { /* each Sym its own file: a generic's body re-checks per
+       * instantiation, and the emitter switches to this file's
+       * context for the walk -- the names the body reads are the
+       * ones this file bound (04-generics.md) */
+      usize j, m = vlen(sf->items);
+
+      for (j = 0; j < m; j++)
+        if (sf->syms[j])
+          sf->syms[j]->ownsf = sf;
+    }
     { /* main is the project's own fn: the root's, nowhere else
        * (12-projects.md). Two in one namespace declare-errored
        * already; this is the one namespace it may live in. */
@@ -1989,7 +1999,9 @@ checkproject(Srcfile **files, usize nfiles, usize nstd)
     { /* the operator traits, the sugar's own (07-operators.md): the
        * rewrite spells their paths, so the names never enter a scope
        * -- but the traits themselves must be there */
-      static const char *const ops[] = {"Add", "Sub", "Mul", "Div", "Ord", "Eq", "Ordering"};
+      static const char *const ops[] = {"Add",       "Sub",    "Mul", "Div",     "Rem", "BitAnd",
+                                        "BitOr",     "BitXor", "Shl", "Shr",     "Neg", "ShlAssign",
+                                        "ShrAssign", "Ord",    "Eq",  "Ordering"};
       Ns                      *ons = nsopen("std::ops");
       usize                    oi;
 
@@ -2093,6 +2105,15 @@ checkproject(Srcfile **files, usize nfiles, usize nstd)
         resolvetrait(s);
       if (it->k == Nimpl) {
         resolveimplmembers(s);
+        { /* the members' fns the same file's own: their bodies
+           * re-check per instance under this file's context, the
+           * free fns' own rule above (04-generics.md) */
+          usize k;
+
+          for (k = 0; k < s->nmembers; k++)
+            if (s->members[k].sym)
+              s->members[k].sym->ownsf = sf;
+        }
         vappend(&impls, &s);
         vappend(&implsf, &sf);
       }

@@ -17,8 +17,8 @@
 /* one file of a project: the items it parsed, the namespace its path
  * spells, its own use bindings, and pass 1's Syms parallel to the
  * items (12-projects.md). A single-file compilation is the same
- * shape: one Srcfile, the root's */
-typedef struct Srcfile Srcfile;
+ * shape: one Srcfile, the root's -- the typedef itself sym.h's own,
+ * a Sym's file rides it (04-generics.md) */
 struct Srcfile
 {
   Ast       **items;

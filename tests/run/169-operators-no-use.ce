@@ -1,0 +1,16 @@
+/* the borrowed rows with no use in sight (07-operators.md): the
+ * rewrite spells the rooted path, so the caller binds nothing for
+ * it -- and the rows' own bodies re-check in the file that wrote
+ * them, the generic's names read in its own context, not whichever
+ * file the emitter served last (04-generics.md). */
+fn main() -> i32 {
+  let a = 17;
+  let b = 5;
+  let r = &a % &b; /* 2 */
+  let s = &a & &b; /* 17 & 5: 1 */
+  let o = &a | &b; /* 17 | 5: 21 */
+  let x = &a ^ &b; /* 17 ^ 5: 20 */
+  let l = &a << &b; /* 17 << 5: 544 */
+  let g = &a >> &b; /* 17 >> 5: 0 */
+  r + s + o + x + (l - 544) + g
+}

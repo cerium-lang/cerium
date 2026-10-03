@@ -1,0 +1,6 @@
+/* % keeps its integer sense: bool is the one-bit integer for and,
+ * or, xor -- not for the remainder, no row ever written for it
+ * (07-operators.md) */
+fn main() -> i32 {
+  @cast<i32>(true % false)
+}

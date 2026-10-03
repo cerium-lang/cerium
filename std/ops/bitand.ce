@@ -1,0 +1,45 @@
+/* std::ops::BitAnd -- `a & b` is BitAnd::bitand(a, b), the
+ * operator's sugar (07-operators.md): both operands enter by
+ * value, the left one moving where its type is not Copy. The
+ * built-in rows the spec promises are spelled here as source: a
+ * plain `n & m` never comes to them, the checker's binop asked
+ * first. `Rhs` defaults to Self (04-generics.md); the answer is
+ * the `Output` associated type (05-traits.md), the rows here
+ * answering with themselves. The integers are the domain, and
+ * `bool` beside them: a pair the language never took, its
+ * intersection a bool's own idea, the row here the spelling
+ * (07-operators.md). No `BitAndAssign`: the language carries no
+ * `&=` to sugar it, and a trait without its operator is a trait
+ * nobody calls (07-operators.md). The borrowed rows below name
+ * Copy: a library does not read its own face (12-projects.md),
+ * so the marker arrives by use, the file's own binding. */
+
+use std::Copy;
+
+pub trait BitAnd<Rhs = Self> {
+  type Output;
+  fn bitand(self: Self, other: Rhs) -> Self::Output;
+}
+
+impl BitAnd for i8 { type Output = i8; fn bitand(self: Self, other: Self) -> Self::Output { self & other } }
+impl BitAnd for i16 { type Output = i16; fn bitand(self: Self, other: Self) -> Self::Output { self & other } }
+impl BitAnd for i32 { type Output = i32; fn bitand(self: Self, other: Self) -> Self::Output { self & other } }
+impl BitAnd for i64 { type Output = i64; fn bitand(self: Self, other: Self) -> Self::Output { self & other } }
+impl BitAnd for u8 { type Output = u8; fn bitand(self: Self, other: Self) -> Self::Output { self & other } }
+impl BitAnd for u16 { type Output = u16; fn bitand(self: Self, other: Self) -> Self::Output { self & other } }
+impl BitAnd for u32 { type Output = u32; fn bitand(self: Self, other: Self) -> Self::Output { self & other } }
+impl BitAnd for u64 { type Output = u64; fn bitand(self: Self, other: Self) -> Self::Output { self & other } }
+impl BitAnd for bool { type Output = bool; fn bitand(self: Self, other: Self) -> Self::Output { self & other } }
+
+/* the borrowed rows: `&a & &b` asks the same BitAnd of the
+ * pointers, the Copy reads out of both and handed on. One
+ * generic row covers every Copy element -- where another
+ * language writes a macro over its matrix (14-macros.md),
+ * Cerium writes this. A type that is not Copy borrows no row:
+ * moving out of a shared borrow is not a thing to write, its
+ * own impl spells its fields (07-operators.md). */
+
+impl<T: BitAnd + Copy> BitAnd for *T {
+  type Output = T::Output;
+  fn bitand(self: *T, other: *T) -> T::Output { BitAnd::bitand(*self, *other) }
+}

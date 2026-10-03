@@ -1,0 +1,68 @@
+/* the rest of the operator traits (07-operators.md): % and the
+ * bitwise ones and the shifts and unary -, each its row in std's
+ * ops -- the built-in table answering the scalar pairs first, the
+ * trait taking what is left. The compound shifts carry their own
+ * pair, <<= and >>=; the other compounds have no token in the
+ * language, and no row waits for them. */
+use std::ops::{Rem, BitAnd, BitOr, BitXor, Shl, Shr, Neg, ShlAssign, ShrAssign};
+
+struct Flags { bits: i32 }
+
+impl Rem for Flags {
+  type Output = Flags;
+  fn rem(self: Flags, other: Flags) -> Flags { Flags{ bits: self.bits % other.bits } }
+}
+impl BitAnd for Flags {
+  type Output = Flags;
+  fn bitand(self: Flags, other: Flags) -> Flags { Flags{ bits: self.bits & other.bits } }
+}
+impl BitOr for Flags {
+  type Output = Flags;
+  fn bitor(self: Flags, other: Flags) -> Flags { Flags{ bits: self.bits | other.bits } }
+}
+impl BitXor for Flags {
+  type Output = Flags;
+  fn bitxor(self: Flags, other: Flags) -> Flags { Flags{ bits: self.bits ^ other.bits } }
+}
+impl Shl for Flags {
+  type Output = Flags;
+  fn shl(self: Flags, other: Flags) -> Flags { Flags{ bits: self.bits << other.bits } }
+}
+impl Shr for Flags {
+  type Output = Flags;
+  fn shr(self: Flags, other: Flags) -> Flags { Flags{ bits: self.bits >> other.bits } }
+}
+impl Neg for Flags {
+  type Output = Flags;
+  fn neg(self: Flags) -> Flags { Flags{ bits: -self.bits } }
+}
+impl ShlAssign for Flags {
+  fn shl_assign(self: *mut Flags, other: Flags) { *self = *self << other; }
+}
+impl ShrAssign for Flags {
+  fn shr_assign(self: *mut Flags, other: Flags) { *self = *self >> other; }
+}
+
+fn main() -> i32 {
+  let a = 17;
+  let b = 5;
+  let r = a % b; /* the built-in table first: 2 */
+  let br = &a % &b; /* the borrowed row: 2 */
+  let f = Flags{ bits: 12 };
+  let g = Flags{ bits: 10 };
+  let and = f & g; /* the trait's own row: 8 */
+  let or = f | g; /* 14 */
+  let xr = f ^ g; /* 6 */
+  let band = &f & &g; /* the borrowed row over the user's type: 8 */
+  let sh = f << g; /* 12288 */
+  let sr = Flags{ bits: 256 } >> Flags{ bits: 4 }; /* 16 */
+  let neg = -f; /* -12 */
+  let bt = @cast<i32>(true & false) + @cast<i32>(true | false) +
+    @cast<i32>(true ^ true); /* the bool rows beside the built-ins: 1 */
+  let mut h = Flags{ bits: 1 };
+  h <<= Flags{ bits: 4 }; /* the compound's own trait: 16 */
+  let mut k = Flags{ bits: 256 };
+  k >>= Flags{ bits: 4 }; /* 16 */
+  r + br + and.bits + or.bits + xr.bits + band.bits + (sh.bits - 12288) + sr.bits +
+    (neg.bits + 12) + bt + h.bits + k.bits
+}
