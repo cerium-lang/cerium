@@ -78,9 +78,10 @@ runtime checks out, the wraps a release owns (`01-types.md`).
 - **the checker** — namespaces and `use` in its four shapes, generics
   with defaults and const parameters, trait impls ordered by
   specificity, operators as trait calls — `a + b` is `Add::add(&a,
-  &b)`, the traits in `std::ops`, scalars keeping the built-in table
+  &b)`, the traits and the built-in rows in `std::ops`
   (`07-operators.md`) — the flow rules — moves, frozen borrows,
-  `mut`'s two levels, narrowing (`03-move.md`) — and compile-time
+  `mut`'s two levels, narrowing, a temporary's `&` its own
+  materialised place (`03-move.md`) — and compile-time
   evaluation: const and static initializers, plain-fn calls,
   aggregate values, the const `for`, `$$` splices, `@typeinfo` and
   the field walk (`08-reflection.md`)
@@ -101,7 +102,7 @@ split `ok/` against `err/` — a dump must reproduce its `.golden`
 exactly, a rejection must say why — and `tests/run`, where every `.ce`
 compiles to a binary whose exit, stdout and stderr the files beside it
 name, an optional `.release` building it with `-r`
-(`tools/run-tests.sh`). 424 green at the time of writing.
+(`tools/run-tests.sh`). 429 green at the time of writing.
 
 ## The specification
 

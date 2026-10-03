@@ -1,0 +1,24 @@
+/* std::ops::Add -- `a + b` is Add::add(&a, &b), the operator's
+ * sugar (07-operators.md). The built-in rows the spec promises --
+ * "the built-in types come with impls provided by the compiler" --
+ * are spelled here as source: a plain `n + m` never comes to
+ * them, the checker's binop asked first, and what they hold is
+ * the spelled call, and every side the built-in table does not
+ * take. `Rhs` defaults to Self (04-generics.md), so `impl Add for
+ * V3` is Add<V3> for V3; the result is Self, an `Output`
+ * associated type still open (07-operators.md). */
+
+pub trait Add<Rhs = Self> {
+  fn add(self: *Self, other: *Rhs) -> Self;
+}
+
+impl Add for i8 { fn add(self: *Self, other: *Self) -> Self { *self + *other } }
+impl Add for i16 { fn add(self: *Self, other: *Self) -> Self { *self + *other } }
+impl Add for i32 { fn add(self: *Self, other: *Self) -> Self { *self + *other } }
+impl Add for i64 { fn add(self: *Self, other: *Self) -> Self { *self + *other } }
+impl Add for u8 { fn add(self: *Self, other: *Self) -> Self { *self + *other } }
+impl Add for u16 { fn add(self: *Self, other: *Self) -> Self { *self + *other } }
+impl Add for u32 { fn add(self: *Self, other: *Self) -> Self { *self + *other } }
+impl Add for u64 { fn add(self: *Self, other: *Self) -> Self { *self + *other } }
+impl Add for f32 { fn add(self: *Self, other: *Self) -> Self { *self + *other } }
+impl Add for f64 { fn add(self: *Self, other: *Self) -> Self { *self + *other } }

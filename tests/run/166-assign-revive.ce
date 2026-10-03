@@ -1,0 +1,26 @@
+/* the assignment's left is a place the store writes, not a value
+ * the read moves: the walk's own value read marked it dead, and
+ * the marking unwinds -- the store itself leaves the binding
+ * holding the value it was given, alive again (03-move.md). Three
+ * answers: the plain store, the call that borrows the left, and
+ * the self-assignment. */
+use std::ops::Add;
+
+struct W { n: i32 }
+
+impl Drop for W { fn drop(mut self: Self) { } }
+
+impl Add for W {
+  fn add(self: *Self, other: *Self) -> Self { W{ n: self.n + other.n } }
+}
+
+fn main() -> i32 {
+  let mut a = W{ n: 1 };
+  a = W{ n: 2 };                 /* the plain store revives */
+  let r1 = a.n;                  /* 2 */
+  let b = W{ n: 5 };
+  a = Add::add(&a, &b);          /* the call borrows the left */
+  let r2 = a.n;                  /* 7 */
+  a = a;                         /* the self-assignment */
+  r1 + r2 + a.n                  /* 2 + 7 + 7 = 16 */
+}

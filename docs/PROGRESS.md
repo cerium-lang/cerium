@@ -822,3 +822,60 @@ yet, and the words refuse honestly; and a non-Copy place read on
 an assignment's left is the move chapter's own bug, the
 hand-written `a = Add::add(&a, &b)` its own evidence
 (`03-move.md`).
+
+The built-in impls are here, the spec's promise kept as source:
+std::ops carries the compiler's own table — the arithmetic four
+for every number, `Eq` and `Ord` for the integers and the `bool`
+— fifty-eight rows, each the plain words the operator's sugar
+names. A spelled call runs the row (`Add::add(&n, &m)` is `n +
+m` said the long way), and the pairs the language holds no row
+of its own for find their trait's: `bool` against `bool` orders
+through `Ord` now, the language never comparing bools. The
+floats stay out of `Eq` and `Ord` — a NaN equals nothing, itself
+included, so the laws do not hold, the calls refused, the
+operators answering as the language always did
+(`07-operators.md`). A mixed scalar pair is the language's own
+error still: the scalar rows are all `Rhs = Self`, so nothing in
+the table answers, and the rewrite's words would only misdirect
+the report. A pointer's `Add<usize>`, the spec's own mixed
+`Rhs`, is the one that will ask the question again — its casts
+not carried by emit yet (`01-types.md`) — and a project's own
+impl over a built-in is the conflict the coherence check names:
+the compiler's table is source, and two sources cannot spell
+one row.
+
+Both sides left open at the milestone's edge are closed now,
+each its own change of shape. The temporary's `&` gains its
+address: a value with no place of its own — a literal, a call's
+answer, a sum — is materialised, a nameless slot the statement's
+own block holds, the binding dying with the block so the pointer
+it lent has nothing left to conflict with, the nesting `&(&3)`
+as ordinary as the flat form, a loop's round reusing its slot as
+any let does (`01-types.md`). The operator's rewrite and the
+hand-written call both reach it — `v + V3{..}` and
+`Eq::eq(&x, &(y - 1))` one grammar now — and a `&mut` temporary
+stays refused, honestly: the materialised slot is a frozen
+share, and a mutable borrow of it is not the answer — the mut
+wants a place, and only a place.
+
+The assignment's left is a place the store writes, not a value
+the read moves — the walk's own value read had marked it dead
+before the store could revive it, so the plain `a = W{..}` lost
+its `a.n`, the hand-written `a = Add::add(&a, &b)` poisoned its
+own right, and `a = a` tripped the very mark it had just set
+(`03-move.md`). The marking unwinds at the read and the store
+restores the binding to the alive its value gives it — one line
+each side of the store, bare locals only, for a field's chain
+may carry a partial move the store must not erase. The chapter's
+destructor question stays where it was: the assign path inserts
+no drop of its own, so the fix adds no inconsistency — the full
+answer is the move chapter's to finish.
+
+And the temporary's test flushed a third out, older than the
+milestone too: the checker's value read moved unconditionally,
+so a Copy's read under a shared borrow was refused — `let p =
+&a; let y = a * 1;` the words against the law, a copy not a
+move-out and a share tolerating it. The read asks the type
+first now (`01-types.md`), and none of the four hundred
+twenty-six had leaned on the old conservativeness — nothing
+regressed, the check simply said less.

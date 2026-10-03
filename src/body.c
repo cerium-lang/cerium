@@ -1446,6 +1446,15 @@ opunmove(Ast *e, Fenv *fe)
     root->dead = 0;
 }
 
+/* is the place a bare local -- `a`, not `a.n` or `*p` -- so an
+ * assignment's read of it unwinds whole: a field chain may carry a
+ * partial move the store must not erase (03-move.md) */
+static int
+opbarelocal(Ast *e)
+{
+  return e->k == Npath && vlen(e->v.path.segs) == 1;
+}
+
 /* the operator as its trait call, what a non-scalar side makes of it
  * (07-operators.md): `a + b` becomes Add::add(&a, &b), `a != b`
  * becomes !Eq::eq(&a, &b), and an ordering compares the answer
@@ -1545,9 +1554,17 @@ optrait(Ast *e, Fenv *fe)
   return 1;
 }
 
-/* are both sides in the domain the built-in operators take -- the
- * numbers, the bool, the pointers -- so a miss is the language's own
- * error, not a trait's to answer (07-operators.md) */
+/* is one side in the domain the built-in operators take -- the
+ * numbers, the bool, the pointers (07-operators.md)? A scalar
+ * pair the language holds no row of its own for still finds its
+ * trait's (bool < bool is Ord's, std carrying the scalar impls),
+ * but a scalar pair of mixed types finds nothing: std's scalar
+ * rows are all Rhs = Self, so the language's own error answers
+ * there -- the rewrite's words would only misdirect it (a
+ * literal it cannot borrow, a method whose parameters it wants
+ * otherwise). A pointer's Add<usize>, the spec's own mixed
+ * Rhs, makes this worth another look the day its casts land
+ * (01-types.md). */
 static int
 opscalar1(Type *t)
 {
@@ -1642,8 +1659,15 @@ rexprpath1(Ast *e, Fenv *fe, char *name, Type *want, Ns *ns)
   if (l) {
     if (l->dead)
       berr(e, "'%s' has been moved", name);
-    if (touchconflict(e, fe, 1)) /* reading it out moves what it holds */
+    if (touchconflict(e, fe, !iscopy(l->cur))) { /* reading it out
+                                                  * moves what it holds
+                                                  * -- a Copy reads out
+                                                  * a copy, which a
+                                                  * shared borrow
+                                                  * tolerates
+                                                  * (01-types.md) */
       berr(e, "'%s' is borrowed (01-types.md)", name);
+    }
     if (l->isconst && l->cv && l->cv->t->k == Tyint && l->cv->t->num != IN_F32 &&
         l->cv->t->num != IN_F64) { /* a const
                                     * parameter this walk holds an integer
@@ -1971,12 +1995,18 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
     }
     if (binop(op, ta, tb, &res))
       return res;
-    if (ta && tb && !opscalars(ta, tb) && optrait(e, fe)) { /* a side
-                                                             * outside the built-ins' domain: the
-                                                             * operator's own trait answers
-                                                             * (07-operators.md); % and the
-                                                             * bitwise ones are language, and
-                                                             * the error below answers for them */
+    if (ta && tb && (!opscalars(ta, tb) || tysame(ta, tb)) &&
+        optrait(e, fe)) { /* the operator's own trait answers where
+                           * the built-in table ends (07-operators.md)
+                           * -- std's scalar impls included, so a pair
+                           * the language holds no row of its own for
+                           * finds its trait's: bool < bool is Ord's;
+                           * a mixed scalar pair is the language's own
+                           * error instead, the scalar rows all Rhs =
+                           * Self (opscalars above); the table was
+                           * asked first, so n + m never comes here,
+                           * and % with the bitwise ones are language,
+                           * the errors below answering for them */
       return rexpr(e, fe, want);
     }
     if (ta && tb && !tysame(ta, tb))
@@ -2020,8 +2050,48 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
     if (op == Tamp) { /* &x / &mut x: the place is borrowed, not read */
       Type *t = rplace(e->v.un.e, fe);
 
-      if (!t)
-        berr(e->v.un.e, "cannot borrow a temporary");
+      if (!t) {          /* a value with no place of its own -- &3, &make(),
+                          * &(b - 1) -- is materialised: a nameless slot the
+                          * statement's own block holds, the value stored
+                          * into it, its address the answer. The slot's
+                          * binding dies with the block, so nothing after can
+                          * touch what the pointer points at -- the borrow's
+                          * own safest shape, the lifetime a call's argument's
+                          * borrow already owns (01-types.md). A &mut keeps
+                          * the refusal: a writable temporary has no honest
+                          * reader */
+        static usize nm; /* the materialised names, unique in the
+                          * compile: '%' is no identifier's first
+                          * byte, so no binding of the program's own
+                          * can collide */
+        char  nbuf[24];
+        Ast  *blk = opnode(Nblock, e);
+        Ast  *ls = opnode(Nlet, e);
+        Ast  *pat = opnode(Nppath, e);
+        Ast  *pp = opnode(Npath, e);
+        Ast  *rp = opnode(Npath, e);
+        Ast  *bor = opnode(Nun, e);
+        Ast **ss = vnew(Ast *, 1);
+
+        if (e->v.un.mut)
+          berr(e->v.un.e, "a &mut needs a place (01-types.md)");
+        sprintf(nbuf, "%%t%lu", (unsigned long) nm++);
+        pp->v.path.segs = vnew(Ast *, 1);
+        opvpush(&pp->v.path.segs, opseg(nbuf, e));
+        pat->v.ppath.path = pp;
+        rp->v.path.segs = vnew(Ast *, 1);
+        opvpush(&rp->v.path.segs, opseg(nbuf, e));
+        ls->v.let.pat = pat;
+        ls->v.let.e = e->v.un.e;
+        bor->v.un.op = Tamp;
+        bor->v.un.e = rp;
+        opvpush(&ss, ls);
+        blk->v.blk.stmts = ss;
+        blk->v.blk.tail = bor;
+        e->k = Nblock;
+        memcpy(&e->v, &blk->v, sizeof e->v);
+        return rexpr(e, fe, want); /* re-entered: the block's own walk */
+      }
       if (e->v.un.mut && !placewritable(e->v.un.e, fe))
         berr(e->v.un.e, "a &mut needs a mut slot (01-types.md)");
       /* a shared & may stack on a live shared borrow (01-types.md: a
@@ -4123,6 +4193,15 @@ rstmt(Ast *st, Fenv *fe)
     Type *lt = rexpr(st->v.bin.l, fe, 0);
     Type *rt;
 
+    if (opbarelocal(st->v.bin.l)) /* the left is a place the store
+                                   * writes, not a value the read
+                                   * moves -- the walk's own value
+                                   * read marked it, and the marking
+                                   * unwinds here (03-move.md): the
+                                   * right side is still to walk, and
+                                   * `a = Add::add(&a, &b)` reads a
+                                   * living a */
+      opunmove(st->v.bin.l, fe);
     if (!isplace(st->v.bin.l))
       berr(st->v.bin.l, "assignment needs a place on the left");
     if (!placewritable(st->v.bin.l, fe))
@@ -4140,6 +4219,14 @@ rstmt(Ast *st, Fenv *fe)
         if (!c || !tysame(c, lt))
           berr(st->v.bin.r, "the place is %s, the value is %s", btys(lt), btys(rt));
       }
+      if (opbarelocal(st->v.bin.l)) /* the store leaves the binding
+                                     * holding the value it was
+                                     * given: alive again -- `a = a`
+                                     * moved the right side into it,
+                                     * and the assignment's own words
+                                     * end with the left alive
+                                     * (03-move.md) */
+        opunmove(st->v.bin.l, fe);
       return;
     }
     /* the compound forms: a = a op b, the operator's own rules */
@@ -4155,15 +4242,18 @@ rstmt(Ast *st, Fenv *fe)
 
       if (binop(bop, lt, rt, &res))
         return;
-      if (!opscalar1(lt) && (op == Tpluseq || op == Tminuseq || op == Tstareq ||
-                             op == Tslasheq)) { /* a place outside the
-                                                 * built-ins' domain: the
-                                                 * operator's own trait
-                                                 * answers (07-operators.md)
-                                                 * -- the compound is the
-                                                 * plain assignment of
-                                                 * its call */
-        Ast *nb = opnode(Nbin, st);             /* a + b, the words the rewrite takes */
+      if ((op == Tpluseq || op == Tminuseq || op == Tstareq || op == Tslasheq) &&
+          (!opscalar1(lt) ||
+           (lt && rt && tysame(lt, rt)))) { /* the
+                                             * arithmetic compound: the operator's own
+                                             * trait answers where the built-in table
+                                             * ends (07-operators.md), std's scalar
+                                             * impls included -- the compound is the
+                                             * plain assignment of its call; a mixed
+                                             * scalar pair is the language's own error
+                                             * instead, the rows all Rhs = Self
+                                             * (opscalars above) */
+        Ast *nb = opnode(Nbin, st);         /* a + b, the words the rewrite takes */
         Ast *as;
 
         nb->v.bin.op = bop;
@@ -4179,8 +4269,9 @@ rstmt(Ast *st, Fenv *fe)
           st->k = Nassign;
           memcpy(&st->v, &as->v, sizeof st->v);
           rstmt(st, fe); /* re-entered: the plain assignment's own walk */
+          return;
         }
-        return;
+        /* no impl: the error below answers */
       }
       berr(st, "this compound assignment does not fit %s and %s", btys(lt), btys(rt));
     }

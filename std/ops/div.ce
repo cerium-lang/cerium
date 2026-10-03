@@ -1,0 +1,22 @@
+/* std::ops::Div -- `a / b` is Div::div(&a, &b), the operator's
+ * sugar (07-operators.md). The built-in rows the spec promises
+ * are spelled here as source: a plain `n / m` never comes to
+ * them, the checker's binop asked first, and what they hold is
+ * the spelled call, and every side the built-in table does not
+ * take. `Rhs` defaults to Self (04-generics.md); the result is
+ * Self, an `Output` associated type still open (07-operators.md). */
+
+pub trait Div<Rhs = Self> {
+  fn div(self: *Self, other: *Rhs) -> Self;
+}
+
+impl Div for i8 { fn div(self: *Self, other: *Self) -> Self { *self / *other } }
+impl Div for i16 { fn div(self: *Self, other: *Self) -> Self { *self / *other } }
+impl Div for i32 { fn div(self: *Self, other: *Self) -> Self { *self / *other } }
+impl Div for i64 { fn div(self: *Self, other: *Self) -> Self { *self / *other } }
+impl Div for u8 { fn div(self: *Self, other: *Self) -> Self { *self / *other } }
+impl Div for u16 { fn div(self: *Self, other: *Self) -> Self { *self / *other } }
+impl Div for u32 { fn div(self: *Self, other: *Self) -> Self { *self / *other } }
+impl Div for u64 { fn div(self: *Self, other: *Self) -> Self { *self / *other } }
+impl Div for f32 { fn div(self: *Self, other: *Self) -> Self { *self / *other } }
+impl Div for f64 { fn div(self: *Self, other: *Self) -> Self { *self / *other } }

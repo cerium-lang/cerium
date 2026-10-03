@@ -1,0 +1,22 @@
+/* std::ops::Mul -- `a * b` is Mul::mul(&a, &b), the operator's
+ * sugar (07-operators.md). The built-in rows the spec promises
+ * are spelled here as source: a plain `n * m` never comes to
+ * them, the checker's binop asked first, and what they hold is
+ * the spelled call, and every side the built-in table does not
+ * take. `Rhs` defaults to Self (04-generics.md); the result is
+ * Self, an `Output` associated type still open (07-operators.md). */
+
+pub trait Mul<Rhs = Self> {
+  fn mul(self: *Self, other: *Rhs) -> Self;
+}
+
+impl Mul for i8 { fn mul(self: *Self, other: *Self) -> Self { *self * *other } }
+impl Mul for i16 { fn mul(self: *Self, other: *Self) -> Self { *self * *other } }
+impl Mul for i32 { fn mul(self: *Self, other: *Self) -> Self { *self * *other } }
+impl Mul for i64 { fn mul(self: *Self, other: *Self) -> Self { *self * *other } }
+impl Mul for u8 { fn mul(self: *Self, other: *Self) -> Self { *self * *other } }
+impl Mul for u16 { fn mul(self: *Self, other: *Self) -> Self { *self * *other } }
+impl Mul for u32 { fn mul(self: *Self, other: *Self) -> Self { *self * *other } }
+impl Mul for u64 { fn mul(self: *Self, other: *Self) -> Self { *self * *other } }
+impl Mul for f32 { fn mul(self: *Self, other: *Self) -> Self { *self * *other } }
+impl Mul for f64 { fn mul(self: *Self, other: *Self) -> Self { *self * *other } }

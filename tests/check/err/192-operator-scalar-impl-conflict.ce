@@ -1,0 +1,11 @@
+/* the built-in impls are std's own rows (07-operators.md), so a
+ * project's own impl over a built-in is the conflict the
+ * coherence check names -- the compiler's table is written as
+ * source, and two sources cannot spell one row */
+use std::ops::Add;
+
+impl Add for i32 {
+  fn add(self: *Self, other: *Self) -> Self { *self + *other }
+}
+
+fn main() -> i32 { 0 }
