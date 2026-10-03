@@ -1,0 +1,6 @@
+/* the shifts keep their integer sense: bool beside bool asks no
+ * row, the built-in table wanting integers and std never writing
+ * one (07-operators.md) */
+fn main() -> i32 {
+  @cast<i32>(true << false)
+}

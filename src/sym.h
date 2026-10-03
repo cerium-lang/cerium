@@ -26,6 +26,9 @@ typedef struct Field   Field;
 typedef struct Variant Variant;
 typedef struct Member  Member;
 typedef struct Ns      Ns;
+typedef struct Srcfile Srcfile; /* check.h's own: a Sym's file, the
+                                 * context an instantiation's re-check
+                                 * switches back to */
 
 enum
 {
@@ -104,6 +107,11 @@ struct Sym
   int      kind;       /* one of Snone..Simpl above */
   int      pub;        /* visible outside its namespace (11) */
   Ns      *ownns;      /* the namespace it was declared in */
+  Srcfile *ownsf;      /* the file it was declared in, or NULL for
+                        * the prelude's -- a generic's body re-checks
+                        * per instance, and reads names in the file
+                        * that wrote it, not whichever file the
+                        * emitter served last (04-generics.md) */
   Ast     *decl;       /* the declaring item, or NULL for the prelude */
   Ast    **gparams;    /* the Ngparam nodes */
   usize    ngparams;   /* their count */

@@ -3844,6 +3844,16 @@ emitinst(FILE *o, Inst *in)
   Type **ats;
 
   s = in->s;
+  if (s->ownsf) { /* the re-check reads the body's names -- a
+                   * generic's bare self-reference the first among
+                   * them (07-operators.md) -- in the file that
+                   * wrote it: the caller's uses bind nothing for
+                   * the body, and its own context ends at its own
+                   * file (04-generics.md) */
+    nscur(s->ownsf->ns);
+    usecur(s->ownsf->uses);
+    lexsetpath(s->ownsf->path);
+  }
   it = astclone(s->decl); /* the shared declaration, copied whole:
                            * every instance rewrites its own */
   ng = s->ngparams;

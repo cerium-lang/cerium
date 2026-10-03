@@ -1,0 +1,45 @@
+/* std::ops::Neg -- `-a` is Neg::neg(a), the operator's sugar
+ * (07-operators.md): the operand enters by value, moving where
+ * its type is not Copy. The built-in rows the spec promises are
+ * spelled here as source: a plain `-n` never comes to them, the
+ * checker's own unary asked first. The answer is the `Output`
+ * associated type (05-traits.md) -- a negation may answer in a
+ * type other than its operand's, a wrapped error the everyday
+ * case -- the rows here answering with themselves. The floats
+ * ride along: negating one is its own arithmetic, nothing like
+ * the remainder's integer idea (rem.ce). The borrowed row below
+ * names Copy: a library does not read its own face
+ * (12-projects.md), so the marker arrives by use, the file's own
+ * binding. */
+
+use std::Copy;
+
+pub trait Neg {
+  type Output;
+  fn neg(self: Self) -> Self::Output;
+}
+
+impl Neg for i8 { type Output = i8; fn neg(self: Self) -> Self::Output { -self } }
+impl Neg for i16 { type Output = i16; fn neg(self: Self) -> Self::Output { -self } }
+impl Neg for i32 { type Output = i32; fn neg(self: Self) -> Self::Output { -self } }
+impl Neg for i64 { type Output = i64; fn neg(self: Self) -> Self::Output { -self } }
+impl Neg for u8 { type Output = u8; fn neg(self: Self) -> Self::Output { -self } }
+impl Neg for u16 { type Output = u16; fn neg(self: Self) -> Self::Output { -self } }
+impl Neg for u32 { type Output = u32; fn neg(self: Self) -> Self::Output { -self } }
+impl Neg for u64 { type Output = u64; fn neg(self: Self) -> Self::Output { -self } }
+impl Neg for f32 { type Output = f32; fn neg(self: Self) -> Self::Output { -self } }
+impl Neg for f64 { type Output = f64; fn neg(self: Self) -> Self::Output { -self } }
+
+/* the borrowed row: `-&a` would read the Copy out and negate
+ * it -- but the sugar spells no such form, the spelled call
+ * `Neg::neg(&a)` the one that arrives here. One generic row
+ * covers every Copy element -- where another language writes a
+ * macro over its matrix (14-macros.md), Cerium writes this. A
+ * type that is not Copy borrows no row: moving out of a shared
+ * borrow is not a thing to write, its own impl spells its
+ * fields (07-operators.md). */
+
+impl<T: Neg + Copy> Neg for *T {
+  type Output = T::Output;
+  fn neg(self: *T) -> T::Output { Neg::neg(*self) }
+}
