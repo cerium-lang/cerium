@@ -119,6 +119,38 @@ locnarrow(Fenv *fe, char *name, Type *t)
     l->cur = t;
 }
 
+/* the move picture, one bit per binding: a row's trial walks the
+ * call's arguments and moves what it reads (03-move.md), and a row
+ * that did not take them cannot leave its moves behind -- the next
+ * row's walk would read them as gone. Nothing else in the
+ * environment moves on an argument walk: narrowing is the branch
+ * forms' own, borrows unwind through the freezes' own pictures, and
+ * a let is a statement, not an expression (07-operators.md). */
+int *
+movsnap(Fenv *fe)
+{
+  int  *d;
+  usize i;
+
+  if (!fe->n)
+    return 0;
+  d = arenaalloc(fe->n * sizeof *d);
+  for (i = 0; i < fe->n; i++)
+    d[i] = fe->ls[i].dead;
+  return d;
+}
+
+void
+movrestore(Fenv *fe, int *snap)
+{
+  usize i;
+
+  if (!snap)
+    return;
+  for (i = 0; i < fe->n; i++)
+    fe->ls[i].dead = snap[i];
+}
+
 /* -- copy and drop (03-move.md) ------------------------------------------ */
 
 static int hasdrop(Type *t); /* the exclusion's other half, below */
@@ -1066,32 +1098,73 @@ implfind(Sym *trait, Type *t, const char *name, Sym **imp, Type ***tysp)
   return bm;
 }
 
+/* the trait's rows that carry this member and fit this type, the
+ * most specific first (07-operators.md). The receiver alone orders
+ * them -- implspecific, the declaration check's own total order
+ * among one type's rows -- but a row's signature is a claim about
+ * the call's other arguments too, and the spelled arguments decide
+ * among the rows the receiver could not. The caller walks them in
+ * this order: the first row that takes the arguments is the call's,
+ * and the specificity order keeps the pick the receiver's own when
+ * the arguments fit more than one. */
+usize
+implcands(Sym *trait, Type *t, const char *name, Implcand *cs, usize cap)
+{
+  usize i, j, nc = 0;
+
+  if (!t)
+    return 0;
+  for (i = 0; i < chk_nimpls; i++) {
+    Sym     *im = chk_impls[i];
+    Type   **tys;
+    Member  *m = 0;
+    Implcand c;
+
+    if (!im->ifort || !im->ipath || im->ipath->sym != trait)
+      continue;
+    for (j = 0; j < im->nmembers; j++)
+      if (strcmp(im->members[j].name, name) == 0) {
+        m = &im->members[j];
+        break;
+      }
+    if (!m)
+      continue;
+    if (!implfit(im, t, &tys))
+      continue;
+    if (nc == cap)
+      continue; /* a pathological table: the first rows carry the
+                 * answer anyway */
+    c.imp = im;
+    c.m = m;
+    c.tys = tys;
+    for (j = nc; j > 0 && implspecific(im, cs[j - 1].imp); j--)
+      cs[j] = cs[j - 1];
+    cs[j] = c;
+    nc++;
+  }
+  return nc;
+}
+
 /* the same walk for the sugar: no trait named, so every impl of
  * every trait that carries this member and fits this type is a
  * candidate. The inherent table was already walked and came up
  * empty, so what lands here is a trait method by elimination. The
- * order crosses trait lines: the most specific fit wins, and
+ * order crosses trait lines: the most specific fit first, and
  * impls incomparable across traits keep the declaration's first --
  * the explicit form is how a crossed sugar is disambiguated
  * (05-traits.md). */
-Member *
-traitfindt(Type *t, const char *name, Sym **imp, Type ***tysp)
+usize
+traitcands(Type *t, const char *name, Implcand *cs, usize cap)
 {
-  usize   i, j;
-  Sym    *best = 0;
-  Type  **btys = 0;
-  Member *bm = 0;
+  usize i, j, nc = 0;
 
-  if (imp)
-    *imp = 0;
-  if (tysp)
-    *tysp = 0;
   if (!t)
     return 0;
   for (i = 0; i < chk_nimpls; i++) {
-    Sym    *im = chk_impls[i];
-    Type  **tys;
-    Member *m = 0;
+    Sym     *im = chk_impls[i];
+    Type   **tys;
+    Member  *m = 0;
+    Implcand c;
 
     if (!im->ifort || !im->ipath)
       continue;
@@ -1104,19 +1177,17 @@ traitfindt(Type *t, const char *name, Sym **imp, Type ***tysp)
       continue;
     if (!implfit(im, t, &tys))
       continue;
-    if (!best || implspecific(im, best)) {
-      best = im;
-      btys = tys;
-      bm = m;
-    }
+    if (nc == cap)
+      continue;
+    c.imp = im;
+    c.m = m;
+    c.tys = tys;
+    for (j = nc; j > 0 && implspecific(im, cs[j - 1].imp); j--)
+      cs[j] = cs[j - 1];
+    cs[j] = c;
+    nc++;
   }
-  if (!best)
-    return 0;
-  if (imp)
-    *imp = best;
-  if (tysp && btys)
-    *tysp = btys;
-  return bm;
+  return nc;
 }
 
 /* does this type implement this trait? A bound's question at a call

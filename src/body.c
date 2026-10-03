@@ -451,38 +451,52 @@ membergps(Member *m, usize *np)
  * ran, plus the binding when the parameter names one of the
  * member's own variables. A pass-through stands for itself -- the
  * re-check binds it for real, exactly as a generic fn's recursive
- * call inside a generic body (04-generics.md). */
-static void
-argfit(Ast *a, Type *pt, Type *at, Ast **mg, Type **mtys, usize nm, Fenv *fe, const char *who)
+ * call inside a generic body (04-generics.md). Soft is the row
+ * trial's own ask (07-operators.md): a mismatch the caller can
+ * walk away from -- another row may take the argument -- answers 0
+ * instead of the report. */
+static int
+argfit(Ast *a, Type *pt, Type *at, Ast **mg, Type **mtys, usize nm, Fenv *fe, const char *who,
+       int soft)
 {
   if (!at || !pt)
-    return;
+    return 1;
   if (tysame(at, pt)) {
     if (mtys)
       gunify(pt, at, mg, mtys, nm);
-    return;
+    return 1;
   }
   {
     Type *c = recoerce(a, pt, fe);
 
     if (c)
-      return;
+      return 1;
   }
-  if (!mtys || !gunify(pt, at, mg, mtys, nm))
+  if (!mtys || !gunify(pt, at, mg, mtys, nm)) {
+    if (soft)
+      return 0;
     berr(a, "'%s' wants %s here, this is %s", who, btys(pt), btys(at));
+  }
+  return 1;
 }
 
 /* the binding, once the arguments spoke: every slot landed, every
  * bound the parameters carry answered (04-generics.md) -- the same
- * checks a generic fn's call runs over its own list. */
-static void
-memberdone(Ast *e, Ast **mg, Type **mtys, usize nm, const char *who)
+ * checks a generic fn's call runs over its own list. Soft is the
+ * row trial's ask (07-operators.md): a slot the arguments left open
+ * or a bound they could not answer is a row that did not take the
+ * call, the next row's to try, not a report. */
+static int
+memberdone(Ast *e, Ast **mg, Type **mtys, usize nm, const char *who, int soft)
 {
   usize g, bi;
 
   for (g = 0; g < nm; g++)
-    if (!mtys[g])
+    if (!mtys[g]) {
+      if (soft)
+        return 0;
       berr(e, "cannot infer '%s' for '%s' from the call", mg[g]->v.gp.name, who);
+    }
   for (g = 0; g < nm; g++) {
     Ast **bs = mg[g]->v.gp.bounds;
 
@@ -490,11 +504,15 @@ memberdone(Ast *e, Ast **mg, Type **mtys, usize nm, const char *who)
       Sym   *tr = bs[bi]->v.path.sym; /* the bound's own cache (04) */
       Type **ta;
 
-      if (!boundsatisfies(bs[bi], mtys[g], mg, mtys, nm, &ta))
+      if (!boundsatisfies(bs[bi], mtys[g], mg, mtys, nm, &ta)) {
+        if (soft)
+          return 0;
         berr(e, "'%s' does not implement '%s'; '%s' cannot take it", btys(mtys[g]),
              btys(tysym(tr, ta, tr->ngparams)), who);
+      }
     }
   }
+  return 1;
 }
 
 /* the instance the call writes back: the impl's binding -- from the
@@ -674,7 +692,11 @@ tryonesig(Sym *s, Ast *a, Ast **args, usize n, usize nfreeze, Fenv *fe, Ast *seg
                                     * a spelled-out binding */
   Type **ats;
   usize  i;
-  int    ok = n == fnty->nargs;
+  int   *snap; /* the argument walks' moves, to unwind with the
+                * freezes when this signature does not take them --
+                * the next one's walk reads the moved bindings as
+                * live again (03-move.md) */
+  int ok = n == fnty->nargs;
 
   if (!ok) {
     thawargs(svs, nfreeze);
@@ -708,6 +730,7 @@ tryonesig(Sym *s, Ast *a, Ast **args, usize n, usize nfreeze, Fenv *fe, Ast *seg
         sigs[i] = gsubst(fnty->args[i], s->gparams, tys, s->ngparams);
     }
   }
+  snap = movsnap(fe);
   for (i = 0; ok && i < n; i++) {
     ats[i] = rexpr(args[i], fe, sigs[i]);
     if (!ats[i] || !sigs[i])
@@ -812,7 +835,9 @@ tryonesig(Sym *s, Ast *a, Ast **args, usize n, usize nfreeze, Fenv *fe, Ast *seg
     thawargs(svs, nfreeze); /* the call is done; its borrows ended with it */
     return gsubstv(fnty->t, s->gparams, tys, gcvals, s->ngparams);
   }
-  thawargs(svs, nfreeze); /* this signature did not take: its freezes unwound */
+  thawargs(svs, nfreeze); /* this signature did not take: its freezes
+                           * unwound, its moves with them */
+  movrestore(fe, snap);
   return 0;
 }
 
@@ -1010,23 +1035,28 @@ mkvariant(Sym *s, struct Variant *v, Ast *a, Ast **args, usize n, Fenv *fe, Type
  * receiver is dereferenced first -- &*sp is sp again -- so a pointer
  * as written fits the pointer selves directly. *recv is the
  * receiver's type as written, ty the dereferenced one the method was
- * found under. */
-static void
-recvadapt(Ast *x, Type *selfty, Type *rty, Type *ty, Fenv *fe, Frzsave *sv)
+ * found under. Soft is the row trial's ask (07-operators.md): a
+ * receiver this row's own self cannot take answers 0, the next
+ * row's to try. */
+static int
+recvadapt(Ast *x, Type *selfty, Type *rty, Type *ty, Fenv *fe, Frzsave *sv, int soft)
 {
   char pbuf[256];
   int  isplacebinding;
 
   if (!rty || !selfty || !ty)
-    return;
+    return 1;
   isplacebinding = placeroot(x, fe, pbuf, sizeof pbuf) != 0;
   if (selfty->k == Typtr) { /* a pointer self: &place, or as written */
     Type *want = selfty->t->k == Tymut ? selfty->t->t : selfty->t;
 
     if (tysame(rty, selfty))
-      return; /* &*sp is sp: the pointer already is the address */
-    if (!tysame(ty, want))
+      return 1; /* &*sp is sp: the pointer already is the address */
+    if (!tysame(ty, want)) {
+      if (soft)
+        return 0;
       berr(x, "this receiver is %s, the method wants %s", btys(rty), btys(selfty));
+    }
     sv->root = placeroot(x, fe, pbuf, sizeof pbuf);
     if (sv->root) { /* what was frozen, to put back after the call */
       sv->frz = sv->root->frz;
@@ -1034,29 +1064,44 @@ recvadapt(Ast *x, Type *selfty, Type *rty, Type *ty, Fenv *fe, Frzsave *sv)
       sv->frzpath = sv->root->frzpath;
     }
     if (selfty->t->k == Tymut) { /* &mut: a mut slot, and it freezes */
-      if (!placewritable(x, fe))
+      if (!placewritable(x, fe)) {
+        if (soft)
+          return 0;
         berr(x, "a &mut receiver needs a mut slot (01-types.md)");
-      if (touchconflict(x, fe, 1))
+      }
+      if (touchconflict(x, fe, 1)) {
+        if (soft)
+          return 0;
         berr(x, "this place is already borrowed (01-types.md)");
+      }
       freeze(x, fe, 1, (int) fe->n);
     } else { /* &: shared, reads stay fine */
-      if (touchconflict(x, fe, 0))
+      if (touchconflict(x, fe, 0)) {
+        if (soft)
+          return 0;
         berr(x, "this place is already borrowed (01-types.md)");
+      }
       freeze(x, fe, 0, (int) fe->n);
     }
-    return;
+    return 1;
   }
   if (tysame(ty, selfty)) { /* by value: the receiver moves in */
     if (isplacebinding && !iscopy(ty)) {
       Local *root = placeroot(x, fe, pbuf, sizeof pbuf);
 
-      if (fe->loopd > 0 && locfindi(fe, root->name) < fe->loopbase)
+      if (fe->loopd > 0 && locfindi(fe, root->name) < fe->loopbase) {
+        if (soft)
+          return 0;
         berr(x, "'%s' began before the for and would be moved every round", root->name);
+      }
       root->dead = 1; /* the binding is the move's one legal start */
     }
-    return;
+    return 1;
   }
+  if (soft)
+    return 0;
   berr(x, "this receiver is %s, the method wants %s", btys(rty), btys(selfty));
+  return 0; /* unreachable */
 }
 
 /* -- the @ builtins (08-reflection.md) ----------------------------------- */
@@ -2575,56 +2620,95 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                     for (i = 1; i < n; i++) {
                       Type *at = rexpr(args[i], fe, t->args[i]);
 
-                      argfit(args[i], t->args[i], at, mg, mtys, nmg, fe, nm1);
+                      argfit(args[i], t->args[i], at, mg, mtys, nmg, fe, nm1, 0);
                     }
                     thawargs(svs, n); /* the call is done; its borrows ended with it */
                   }
-                  memberdone(e, mg, mtys, nmg, nm1);
+                  memberdone(e, mg, mtys, nmg, nm1, 0);
                   return nmg ? gsubst(t->t, mg, mtys, nmg) : t->t;
                 }
               }
-              im = implfind(s, self, nm1, &imp, &tys);
-              if (!im)
-                berr(args[0], "no '%s' for %s", s->name, btys(self));
-              t = tys ? gsubst(im->ty, imp->gparams, tys, imp->ngparams) : im->ty;
-              e->v.call.sym = im->sym; /* the impl's member: the body that runs */
-              {                        /* the member's own family, bound from the arguments */
-                Ast  **mg = membergps(im, &nmg);
-                Type **mtys;
+              { /* the rows the receiver alone cannot order: a row's
+                 * signature is a claim about the call's other
+                 * arguments too -- `Add::add(p, n)` with n usize and
+                 * the pointer's own row both wait under the borrowed
+                 * row's narrower one. The call walks the rows itself,
+                 * the most specific first, and the first that takes
+                 * its arguments is the call's. A row that did not
+                 * take them unwinds what its walk froze and moved --
+                 * the overload chain's own discipline (04) -- and the
+                 * report, when none takes them, is the first row's:
+                 * the pick the receiver would have made alone
+                 * (07-operators.md). */
+                Implcand cs[64];
+                usize    nc = implcands(s, self, nm1, cs, 64);
+                int      soft = 1;
+                Ast    **mg;
+                Type   **mtys;
+                Type    *at;
+                int     *snap;
+                int      ok;
+                usize    ci;
 
-                if (nmg) {
-                  mtys = tyargs(nmg);
-                  for (zi = 0; zi < nmg; zi++)
-                    mtys[zi] = 0;
-                } else
-                  mtys = 0;
-                { /* the outer picture again: the receiver's freeze
-                   * unwinds with the call like the rest (01) */
-                  if (n != t->nargs)
+                if (!nc)
+                  berr(args[0], "no '%s' for %s", s->name, btys(self));
+              trial:
+                for (ci = 0; ci < nc; ci++) {
+                  im = cs[ci].m;
+                  imp = cs[ci].imp;
+                  tys = cs[ci].tys;
+                  t = tys ? gsubst(im->ty, imp->gparams, tys, imp->ngparams) : im->ty;
+                  mg = membergps(im, &nmg);
+                  if (nmg) {
+                    mtys = tyargs(nmg);
+                    for (zi = 0; zi < nmg; zi++)
+                      mtys[zi] = 0;
+                  } else
+                    mtys = 0;
+                  if (n != t->nargs) {
+                    if (soft)
+                      continue;
                     berr(e, "'%s::%s' takes %lu arguments, %lu given", s->name, nm1,
                          (unsigned long) t->nargs, (unsigned long) n);
+                  }
                   { /* the receiver already walked: check its type
-                     * where it stands, the rest against the instance */
-                    Type *c;
+                     * where it stands, the rest against the row */
+                    if (!tysame(rt, t->args[0])) {
+                      Type *c = recoerce(args[0], t->args[0], fe);
 
-                    if (tysame(rt, t->args[0]))
-                      c = rt;
-                    else
-                      c = recoerce(args[0], t->args[0], fe);
-                    if (!c || !tysame(c, t->args[0]))
-                      berr(args[0], "'%s::%s' wants %s here, this is %s", s->name, nm1,
-                           btys(t->args[0]), btys(rt));
+                      if (!c || !tysame(c, t->args[0])) {
+                        if (soft)
+                          continue;
+                        berr(args[0], "'%s::%s' wants %s here, this is %s", s->name, nm1,
+                             btys(t->args[0]), btys(rt));
+                      }
+                    }
                   }
-                  for (i = 1; i < n; i++) {
-                    Type *at = rexpr(args[i], fe, t->args[i]);
-
-                    argfit(args[i], t->args[i], at, mg, mtys, nmg, fe, nm1);
+                  snap = movsnap(fe);
+                  ok = 1;
+                  for (i = 1; ok && i < n; i++) {
+                    at = rexpr(args[i], fe, t->args[i]);
+                    ok = argfit(args[i], t->args[i], at, mg, mtys, nmg, fe, nm1, soft);
                   }
-                  thawargs(svs, n); /* the call is done; its borrows ended with it */
+                  if (ok)
+                    ok = memberdone(e, mg, mtys, nmg, nm1, soft);
+                  if (!ok) { /* this row did not take: its freezes
+                              * unwound, its moves with them */
+                    thawargs(svs, n);
+                    movrestore(fe, snap);
+                    continue;
+                  }
+                  e->v.call.sym = im->sym; /* the row's member: the body that runs */
+                  thawargs(svs, n);        /* the call is done; its borrows ended with it */
+                  e->v.call.tys = insttys(imp, tys, mg, mtys, nmg);
+                  return projopen(nmg ? gsubst(t->t, mg, mtys, nmg) : t->t, e);
                 }
-                memberdone(e, mg, mtys, nmg, nm1);
-                e->v.call.tys = insttys(imp, tys, mg, mtys, nmg);
-                return projopen(nmg ? gsubst(t->t, mg, mtys, nmg) : t->t, e);
+                if (soft) {
+                  soft = 0;
+                  nc = 1;
+                  goto trial;
+                }
+                return 0; /* unreachable */
               }
             }
           }
@@ -2690,12 +2774,12 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                 for (i = 0; i < n; i++) {
                   Type *at = rexpr(args[i], fe, t->args[i]);
 
-                  argfit(args[i], t->args[i], at, mg, mtys, nmg, fe, nm1);
+                  argfit(args[i], t->args[i], at, mg, mtys, nmg, fe, nm1, 0);
                 }
               }
               thawargs(svs, n); /* the call is done; its borrows ended with it */
             }
-            memberdone(e, mg, mtys, nmg, nm1);
+            memberdone(e, mg, mtys, nmg, nm1, 0);
             e->v.call.tys = insttys(0, 0, mg, mtys, nmg);
             return nmg ? gsubst(t->t, mg, mtys, nmg) : t->t;
           }
@@ -2789,8 +2873,6 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
         Ast   *hitb = 0;     /* the bound that named the trait */
 
         m = inherentfindt(ty, f->v.fld.name, &imp, &tys);
-        if (!m)
-          m = traitfindt(ty, f->v.fld.name, &imp, &tys);
         if (!m && ty->k == Typaram) {
           /* a generic fn's parameter: no impl resolves here -- the
            * bound names the trait, the declaration's signature
@@ -2816,8 +2898,93 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
             berr(f, "'%s' has no method '%s'; a bound on the parameter brings it", f->v.fld.name,
                  f->v.fld.name);
         }
-        if (!m)
-          berr(f, "'%s' has no method '%s'", btys(ty), f->v.fld.name);
+        if (!m) {
+          /* the trait rows, no trait named: every row that fits the
+           * receiver and carries the member, the most specific
+           * first. The receiver alone ordered them until now; a
+           * row's signature is a claim about the call's other
+           * arguments too, so the call walks the rows itself and
+           * the first that takes its arguments is the call's --
+           * the spelled call's own discipline (07-operators.md). A
+           * row that did not take them unwinds what its walk
+           * froze and moved, and the report, when none takes
+           * them, is the first row's: the pick the receiver would
+           * have made alone. */
+          Implcand cs[64];
+          usize    nc = traitcands(ty, f->v.fld.name, cs, 64);
+          int      soft = 1;
+          Ast    **mg;
+          Type   **mtys;
+          Type    *at;
+          int     *snap;
+          Frzsave *svs = n ? arenaalloc(n * sizeof *svs) : 0;
+          usize    i, k;
+
+          if (!nc)
+            berr(f, "'%s' has no method '%s'", btys(ty), f->v.fld.name);
+          if (svs) { /* the explicit arguments' borrows end with the
+                      * call too, as any call's do (01-types.md) */
+            memset(svs, 0, n * sizeof *svs);
+            for (k = 0; k < n; k++)
+              argborrow(args[k], fe, &svs[k]);
+          }
+        row:
+          for (zi = 0; zi < nc; zi++) {
+            m = cs[zi].m;
+            imp = cs[zi].imp;
+            tys = cs[zi].tys;
+            t = tys ? gsubst(m->ty, imp->gparams, tys, imp->ngparams) : m->ty;
+            mg = membergps(m, &nmg);
+            if (nmg) {
+              mtys = tyargs(nmg);
+              for (k = 0; k < nmg; k++)
+                mtys[k] = 0;
+            } else
+              mtys = 0;
+            {
+              Frzsave sv;
+              int     ok = 1;
+
+              memset(&sv, 0, sizeof sv);
+              snap = movsnap(fe);
+              if (!recvadapt(f->v.fld.e, t->nargs ? t->args[0] : 0, rt, ty, fe, &sv, soft))
+                ok = 0;
+              if (ok && n + 1 != t->nargs) {
+                if (soft)
+                  ok = 0;
+                else
+                  berr(e, "'%s' takes %lu arguments, %lu given", f->v.fld.name,
+                       (unsigned long) (t->nargs - 1), (unsigned long) n);
+              }
+              for (i = 0; ok && i < n; i++) {
+                at = rexpr(args[i], fe, t->args[i + 1]);
+                ok = argfit(args[i], t->args[i + 1], at, mg, mtys, nmg, fe, f->v.fld.name, soft);
+              }
+              if (ok)
+                ok = memberdone(f, mg, mtys, nmg, f->v.fld.name, soft);
+              if (!ok) { /* this row did not take: its freezes
+                          * unwound, its moves with them */
+                thawargs(svs, n);
+                frzrestore(&sv);
+                movrestore(fe, snap);
+                continue;
+              }
+              e->v.call.sym = m->sym; /* the row's member: the body that runs */
+              e->v.call.tys = tys;    /* the impl's binding; the member's
+                                       * own joins it below */
+              thawargs(svs, n);       /* the explicit arguments' borrows, LIFO */
+              frzrestore(&sv);        /* the receiver's borrow ends with the call */
+              e->v.call.tys = insttys(imp, tys, mg, mtys, nmg);
+              return nmg ? gsubst(t->t, mg, mtys, nmg) : t->t;
+            }
+          }
+          if (soft) {
+            soft = 0;
+            nc = 1;
+            goto row;
+          }
+          return 0; /* unreachable */
+        }
         if (m->kind != Mfn)
           berr(f, "'%s' is not a method", f->v.fld.name);
         if (declared) {
@@ -2868,7 +3035,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
               for (k = 0; k < n; k++)
                 argborrow(args[k], fe, &svs[k]);
             }
-            recvadapt(f->v.fld.e, t->nargs ? t->args[0] : 0, rt, ty, fe, &sv);
+            recvadapt(f->v.fld.e, t->nargs ? t->args[0] : 0, rt, ty, fe, &sv, 0);
             if (n + 1 != t->nargs)
               berr(e, "'%s' takes %lu arguments, %lu given", f->v.fld.name,
                    (unsigned long) (t->nargs - 1), (unsigned long) n);
@@ -2878,13 +3045,13 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
               for (i = 0; i < n; i++) {
                 Type *at = rexpr(args[i], fe, t->args[i + 1]);
 
-                argfit(args[i], t->args[i + 1], at, mg, mtys, nmg, fe, f->v.fld.name);
+                argfit(args[i], t->args[i + 1], at, mg, mtys, nmg, fe, f->v.fld.name, 0);
               }
             }
             thawargs(svs, n); /* the explicit arguments' borrows, LIFO */
             frzrestore(&sv);  /* the receiver's borrow ends with the call */
           }
-          memberdone(f, mg, mtys, nmg, f->v.fld.name);
+          memberdone(f, mg, mtys, nmg, f->v.fld.name, 0);
           if (!declared)
             e->v.call.tys = insttys(imp, tys, mg, mtys, nmg);
           return nmg ? gsubst(t->t, mg, mtys, nmg) : t->t;

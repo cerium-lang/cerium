@@ -1,0 +1,14 @@
+/* the sugar's rows answer the same way (07-operators.md): neither
+ * W row takes a bool for its second argument, and the report is
+ * the first row's own -- the receiver's pick alone */
+struct D { x: i32 }
+impl Drop for D { fn drop(mut self: D) -> () { } }
+struct W<T> { v: T }
+trait Mv<Rhs = Self> { fn m(self: Self, a: D, b: Rhs) -> i32; }
+impl<T: Copy> Mv<i32> for W<T> { fn m(self: W<T>, a: D, b: i32) -> i32 { a.x + b } }
+impl<T> Mv<u8> for W<T> { fn m(self: W<T>, a: D, b: u8) -> i32 { a.x } }
+fn main() -> i32 {
+  let w: W<i32> = W{ v: 1 };
+  let d = D{ x: 30 };
+  w.m(d, true)
+}

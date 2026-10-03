@@ -1,0 +1,50 @@
+/* the call's own arguments pick the row (07-operators.md): the
+ * receiver ordered the rows until now, and a row's signature is a
+ * claim about the other arguments too -- `Add::add(p, n)` with n
+ * usize spells the pointer's own row, not the borrowed one's, and
+ * the call walks the rows the most specific first until one takes
+ * its arguments. A row that did not take them unwinds what its
+ * walk froze and moved -- the second W row below reads the moved
+ * D as live again -- and the report, when no row takes them, is
+ * the first row's own: the pick the receiver would have made
+ * alone. The sugar walks the same rows; the generic's re-check
+ * lands on them too. */
+use std::ops::Add;
+
+struct D { x: i32 }
+impl Drop for D { fn drop(mut self: D) -> () { } }
+struct W<T> { v: T }
+
+trait Mv<Rhs = Self> { fn m(self: Self, a: D, b: Rhs) -> i32; }
+
+impl<T: Copy> Mv<i32> for W<T> {
+  fn m(self: W<T>, a: D, b: i32) -> i32 { a.x + b }
+}
+impl<T> Mv<u8> for W<T> {
+  fn m(self: W<T>, a: D, b: u8) -> i32 { a.x }
+}
+
+fn step<T>(p: *T, n: usize) -> *T { Add::add(p, n) }
+
+fn main() -> i32 {
+  let a = [3]i32{7, 8, 9};
+  let p: *i32 = &a[0];
+  let q = Add::add(p, @cast<usize>(2)); /* the pointer's own row: p
+                                         * steps by the element */
+  let s = Add::add(p, q); /* the borrowed row still takes the pair:
+                           * *p + *q */
+  let w: W<i32> = W{ v: 1 };
+  let d = D{ x: 30 };
+  let m = Mv::m(w, d, @cast<u8>(7)); /* the first row moved d and
+                                       * did not take: the second
+                                       * reads it as live */
+  let g = step(&a[1], @cast<usize>(1)); /* the re-check under T=i32:
+                                         * the same rows, the same
+                                         * pick */
+  let w2: W<i32> = W{ v: 2 };
+  let d2 = D{ x: 40 };
+  let m2 = w2.m(d2, @cast<u8>(3)); /* the sugar walks the rows the
+                                     * same way, its receiver's own
+                                     * move unwound with the rest */
+  *q + s + m + *g + m2
+}
