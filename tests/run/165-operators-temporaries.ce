@@ -1,39 +1,38 @@
-/* the '&' of a temporary (01-types.md): a value with no place of
- * its own -- a literal, a call's answer, a sum -- is materialised,
- * a nameless slot the statement's own block holds, its address the
- * answer. The operator's rewrite reaches it (`v + 3` wants &3),
- * and so does the hand-written call (`Eq::eq(&x, &(y - 1))`),
- * both sides of one call borrowing what the other reads, the
- * nesting, and the loop's round reusing its slot. */
-use std::ops::{Add, Eq};
+/* the right operand by value (07-operators.md): `v + V3{..}` and
+ * `make() + make()` pass themselves -- the parameter's own slot
+ * takes the value whole, no address taken, nothing borrowed, the
+ * materialisation the operator once needed gone from its path.
+ * The hand-written `&` of a temporary keeps it (01-types.md): a
+ * value with no place of its own -- a sum, a nesting -- is
+ * materialised, a nameless slot the statement's own block holds,
+ * its address the answer. */
+use std::ops::Add;
 
 struct V3 { x: i32, y: i32 }
 
 impl Add for V3 {
-  fn add(self: *Self, other: *Self) -> Self { V3{ x: self.x + other.x, y: self.y + other.y } }
+  type Output = V3;
+  fn add(self: V3, other: V3) -> V3 { V3{ x: self.x + other.x, y: self.y + other.y } }
 }
 
 fn make() -> V3 { V3{ x: 10, y: 20 } }
 
 fn main() -> i32 {
   let v = V3{ x: 1, y: 2 };
-  let mut r = 0;
-  let a = v + V3{ x: 5, y: 5 };   /* a literal operand */
-  let b = make() + make();        /* two call answers */
-  r += a.x + a.y;                 /* 13 */
-  r += b.x + b.y;                 /* 60 */
+  let a = v + V3{ x: 5, y: 5 };         /* a literal operand, straight into the slot */
+  let b = make() + make();              /* two call answers */
+  let mut r = a.x + a.y + b.x + b.y;    /* 13 + 60 */
   let x = 3;
   let y = 4;
-  let p = &(y - 1);               /* the hand-written form */
-  if Eq::eq(&x, p) { r += 1; };            /* 3 == 3 */
-  if Eq::eq(&x, &(x * 1)) { r += 2; };     /* both sides, one call */
-  let q = &(&3);                  /* the nesting */
-  r += **q;                       /* 3 */
+  let p = &(y - 1);                     /* the hand-written form: materialised */
+  if *p == x { r += 1; };               /* 3 == 3 */
+  let q = &(&3);                        /* the nesting */
+  r += **q;                             /* 3 */
   let mut i = 0;
   for i < 3 {
-    let t = &(i + 1);             /* the round reuses its slot */
+    let t = &(i + 1);                   /* the round reuses its slot */
     r += *t;
     i += 1;
   }
-  r                               /* 13 + 60 + 1 + 2 + 3 + 6 = 85 */
+  r                                     /* 73 + 1 + 3 + 6 = 83 */
 }

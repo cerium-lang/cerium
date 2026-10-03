@@ -1,24 +1,49 @@
-/* std::ops::Add -- `a + b` is Add::add(&a, &b), the operator's
- * sugar (07-operators.md). The built-in rows the spec promises --
- * "the built-in types come with impls provided by the compiler" --
- * are spelled here as source: a plain `n + m` never comes to
- * them, the checker's binop asked first, and what they hold is
- * the spelled call, and every side the built-in table does not
- * take. `Rhs` defaults to Self (04-generics.md), so `impl Add for
- * V3` is Add<V3> for V3; the result is Self, an `Output`
- * associated type still open (07-operators.md). */
+/* std::ops::Add -- `a + b` is Add::add(a, b), the operator's
+ * sugar (07-operators.md): both operands enter by value, the
+ * left one moving where its type is not Copy, the right one a
+ * value the parameter's own slot takes whole. The built-in rows
+ * the spec promises -- "the built-in types come with impls
+ * provided by the compiler" -- are spelled here as source: a
+ * plain `n + m` never comes to them, the checker's binop asked
+ * first, and what they hold is the spelled call, and every side
+ * the built-in table does not take. `Rhs` defaults to Self
+ * (04-generics.md), so `impl Add for V3` is Add<V3> for V3; the
+ * answer is the `Output` associated type (05-traits.md), the
+ * rows here answering with themselves. */
 
 pub trait Add<Rhs = Self> {
-  fn add(self: *Self, other: *Rhs) -> Self;
+  type Output;
+  fn add(self: Self, other: Rhs) -> Self::Output;
 }
 
-impl Add for i8 { fn add(self: *Self, other: *Self) -> Self { *self + *other } }
-impl Add for i16 { fn add(self: *Self, other: *Self) -> Self { *self + *other } }
-impl Add for i32 { fn add(self: *Self, other: *Self) -> Self { *self + *other } }
-impl Add for i64 { fn add(self: *Self, other: *Self) -> Self { *self + *other } }
-impl Add for u8 { fn add(self: *Self, other: *Self) -> Self { *self + *other } }
-impl Add for u16 { fn add(self: *Self, other: *Self) -> Self { *self + *other } }
-impl Add for u32 { fn add(self: *Self, other: *Self) -> Self { *self + *other } }
-impl Add for u64 { fn add(self: *Self, other: *Self) -> Self { *self + *other } }
-impl Add for f32 { fn add(self: *Self, other: *Self) -> Self { *self + *other } }
-impl Add for f64 { fn add(self: *Self, other: *Self) -> Self { *self + *other } }
+impl Add for i8 { type Output = i8; fn add(self: Self, other: Self) -> Self::Output { self + other } }
+impl Add for i16 { type Output = i16; fn add(self: Self, other: Self) -> Self::Output { self + other } }
+impl Add for i32 { type Output = i32; fn add(self: Self, other: Self) -> Self::Output { self + other } }
+impl Add for i64 { type Output = i64; fn add(self: Self, other: Self) -> Self::Output { self + other } }
+impl Add for u8 { type Output = u8; fn add(self: Self, other: Self) -> Self::Output { self + other } }
+impl Add for u16 { type Output = u16; fn add(self: Self, other: Self) -> Self::Output { self + other } }
+impl Add for u32 { type Output = u32; fn add(self: Self, other: Self) -> Self::Output { self + other } }
+impl Add for u64 { type Output = u64; fn add(self: Self, other: Self) -> Self::Output { self + other } }
+impl Add for f32 { type Output = f32; fn add(self: Self, other: Self) -> Self::Output { self + other } }
+impl Add for f64 { type Output = f64; fn add(self: Self, other: Self) -> Self::Output { self + other } }
+
+/* std::ops::AddAssign -- `a += b` is AddAssign::add_assign(&mut
+ * a, b) (07-operators.md): the compound is its own trait, the
+ * left borrowed for the write, the right a value the parameter's
+ * slot takes whole. An answer made in place needs no Output --
+ * nothing comes back, the left holds it. */
+
+pub trait AddAssign<Rhs = Self> {
+  fn add_assign(self: *mut Self, other: Rhs);
+}
+
+impl AddAssign for i8 { fn add_assign(self: *mut Self, other: Self) { *self = *self + other; } }
+impl AddAssign for i16 { fn add_assign(self: *mut Self, other: Self) { *self = *self + other; } }
+impl AddAssign for i32 { fn add_assign(self: *mut Self, other: Self) { *self = *self + other; } }
+impl AddAssign for i64 { fn add_assign(self: *mut Self, other: Self) { *self = *self + other; } }
+impl AddAssign for u8 { fn add_assign(self: *mut Self, other: Self) { *self = *self + other; } }
+impl AddAssign for u16 { fn add_assign(self: *mut Self, other: Self) { *self = *self + other; } }
+impl AddAssign for u32 { fn add_assign(self: *mut Self, other: Self) { *self = *self + other; } }
+impl AddAssign for u64 { fn add_assign(self: *mut Self, other: Self) { *self = *self + other; } }
+impl AddAssign for f32 { fn add_assign(self: *mut Self, other: Self) { *self = *self + other; } }
+impl AddAssign for f64 { fn add_assign(self: *mut Self, other: Self) { *self = *self + other; } }

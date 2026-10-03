@@ -1420,22 +1420,25 @@ oppath(const char *x, Ast *at)
   return p;
 }
 
-/* &v, the shared borrow the trait's method takes -- it ends with the
- * call, exactly as a written one does (05-traits.md) */
+/* &v, the shared borrow -- the compound's own rewrite still
+ * spells one: `a += b` is AddAssign::add_assign(&mut a, b), the
+ * left borrowed for the write (07-operators.md) */
 static Ast *
-opborrow(Ast *v, Ast *at)
+opborrow(Ast *v, int mut, Ast *at)
 {
   Ast *b = opnode(Nun, at);
 
   b->v.un.op = Tamp;
+  b->v.un.mut = mut;
   b->v.un.e = v;
   return b;
 }
 
 /* the operand read as a value moves what it holds when the type is
- * not Copy -- but the operator's own words only borrow: the rewrite
- * below takes &l and &r, and what a borrow touches was never moved.
- * The move the entry read made unwinds here (07-operators.md). */
+ * not Copy -- and the rewrite below passes the operand itself, so
+ * the re-entered walk reads it again and moves it once whole: the
+ * move the entry read made unwinds here, the second read the one
+ * that stays (07-operators.md). */
 static void
 opunmove(Ast *e, Fenv *fe)
 {
@@ -1456,14 +1459,17 @@ opbarelocal(Ast *e)
 }
 
 /* the operator as its trait call, what a non-scalar side makes of it
- * (07-operators.md): `a + b` becomes Add::add(&a, &b), `a != b`
- * becomes !Eq::eq(&a, &b), and an ordering compares the answer
+ * (07-operators.md): `a + b` becomes Add::add(a, b), `a != b`
+ * becomes !Eq::eq(a, b), and an ordering compares the answer
  * against the end it names -- `a < b` is cmp == Ordering::Less, `a
  * >= b` is cmp != Ordering::Less -- the variants read as themselves,
- * no discriminant spelled anywhere. The node is rewritten in place,
- * the walk re-entered reads its own words. The answer says the
- * operator had a trait to spell: % and the bitwise ones are language,
- * and the caller's own error answers for them. */
+ * no discriminant spelled anywhere. The operands enter as
+ * themselves: by value, the left one moving where its type is not
+ * Copy, the right one a value the parameter's own slot takes
+ * whole. The node is rewritten in place, the walk re-entered
+ * reads its own words. The answer says the operator had a trait
+ * to spell: % and the bitwise ones are language, and the
+ * caller's own error answers for them. */
 static int
 optrait(Ast *e, Fenv *fe)
 {
@@ -1520,15 +1526,15 @@ optrait(Ast *e, Fenv *fe)
   }
   opunmove(l, fe);
   opunmove(r, fe);
-  { /* the call: std::ops::<Trait>::<method>(&l, &r) */
+  { /* the call: std::ops::<Trait>::<method>(l, r) */
     Ast *f = oppath(tr, e);
     Ast *c = opnode(Ncall, e);
 
     opvpush(&f->v.path.segs, opseg(mth, e));
     c->v.call.f = f;
     c->v.call.args = vnew(Ast *, 2);
-    opvpush(&c->v.call.args, opborrow(l, e));
-    opvpush(&c->v.call.args, opborrow(r, e));
+    opvpush(&c->v.call.args, l);
+    opvpush(&c->v.call.args, r);
     top = c;
     if (is || isnot) { /* the ordering's read: == the end it names, !=
                         * the far one */
@@ -1561,8 +1567,9 @@ optrait(Ast *e, Fenv *fe)
  * but a scalar pair of mixed types finds nothing: std's scalar
  * rows are all Rhs = Self, so the language's own error answers
  * there -- the rewrite's words would only misdirect it (a
- * literal it cannot borrow, a method whose parameters it wants
- * otherwise). A pointer's Add<usize>, the spec's own mixed
+ * method whose parameters it wants otherwise, the report naming
+ * the call and not the operator). A pointer's Add<usize>, the
+ * spec's own mixed
  * Rhs, makes this worth another look the day its casts land
  * (01-types.md). */
 static int
@@ -4229,7 +4236,7 @@ rstmt(Ast *st, Fenv *fe)
         opunmove(st->v.bin.l, fe);
       return;
     }
-    /* the compound forms: a = a op b, the operator's own rules */
+    /* the compound forms: the operator's own rules */
     rt = rexpr(st->v.bin.r, fe, lt);
     {
       Tok   bop = op == Tpluseq    ? Tplus
@@ -4243,35 +4250,50 @@ rstmt(Ast *st, Fenv *fe)
       if (binop(bop, lt, rt, &res))
         return;
       if ((op == Tpluseq || op == Tminuseq || op == Tstareq || op == Tslasheq) &&
-          (!opscalar1(lt) ||
-           (lt && rt && tysame(lt, rt)))) { /* the
-                                             * arithmetic compound: the operator's own
-                                             * trait answers where the built-in table
-                                             * ends (07-operators.md), std's scalar
-                                             * impls included -- the compound is the
-                                             * plain assignment of its call; a mixed
-                                             * scalar pair is the language's own error
-                                             * instead, the rows all Rhs = Self
-                                             * (opscalars above) */
-        Ast *nb = opnode(Nbin, st);         /* a + b, the words the rewrite takes */
-        Ast *as;
+          (!opscalar1(lt) || (lt && rt && tysame(lt, rt)))) { /* the
+                                                               * arithmetic compound: its own trait
+                                                               * now (07-operators.md) --
+                                                               * AddAssign, SubAssign, MulAssign,
+                                                               * DivAssign -- the left borrowed
+                                                               * for the write, the right a value
+                                                               * the parameter's slot takes
+                                                               * whole; a mixed scalar pair is
+                                                               * the language's own error
+                                                               * instead, the rows all Rhs =
+                                                               * Self (opscalars above) */
+        const char *tr = op == Tpluseq    ? "AddAssign"
+                         : op == Tminuseq ? "SubAssign"
+                         : op == Tstareq  ? "MulAssign"
+                                          : "DivAssign";
+        const char *mth = op == Tpluseq    ? "add_assign"
+                          : op == Tminuseq ? "sub_assign"
+                          : op == Tstareq  ? "mul_assign"
+                                           : "div_assign";
 
-        nb->v.bin.op = bop;
-        nb->v.bin.l = st->v.bin.l;
-        nb->v.bin.r = st->v.bin.r;
-        if (optrait(nb, fe)) { /* rewritten in place: the call itself,
-                                * an arithmetic trait dressing nothing */
-          as = opnode(Nassign, st);
-          as->v.bin.op = Teq;
-          as->v.bin.l = st->v.bin.l;
-          as->v.bin.r = nb;
+        opunmove(st->v.bin.l, fe); /* the left is borrowed for the
+                                    * write, not moved by the entry's
+                                    * read; the right moves once
+                                    * whole below */
+        opunmove(st->v.bin.r, fe);
+        { /* the call: std::ops::<Trait>::<method>(&mut l, r) */
+          Ast *f = oppath(tr, st);
+          Ast *c = opnode(Ncall, st);
+          Ast *x = opnode(Nexprstmt, st);
+
+          opvpush(&f->v.path.segs, opseg(mth, st));
+          c->v.call.f = f;
+          c->v.call.args = vnew(Ast *, 2);
+          opvpush(&c->v.call.args, opborrow(st->v.bin.l, 1, st));
+          opvpush(&c->v.call.args, st->v.bin.r);
+          x->v.n1.e = c;
           memset(&st->v, 0, sizeof st->v);
-          st->k = Nassign;
-          memcpy(&st->v, &as->v, sizeof st->v);
-          rstmt(st, fe); /* re-entered: the plain assignment's own walk */
+          st->k = Nexprstmt;
+          memcpy(&st->v, &x->v, sizeof st->v);
+          rstmt(st, fe); /* re-entered: the call's own walk, its
+                          * dispatch the one that answers where no
+                          * row exists */
           return;
         }
-        /* no impl: the error below answers */
       }
       berr(st, "this compound assignment does not fit %s and %s", btys(lt), btys(rt));
     }

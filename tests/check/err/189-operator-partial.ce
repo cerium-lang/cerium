@@ -3,7 +3,8 @@
 use std::ops::Add;
 struct V3 { x: i32 }
 impl Add for V3 {
-  fn add(self: *Self, other: *V3) -> V3 { V3{ x: self.x + other.x } }
+  type Output = V3;
+  fn add(self: V3, other: V3) -> V3 { V3{ x: self.x + other.x } }
 }
 fn main() -> i32 {
   let a = V3{ x: 1 };

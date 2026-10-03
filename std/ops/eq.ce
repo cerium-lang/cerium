@@ -1,5 +1,8 @@
-/* std::ops::Eq -- `a == b` is Eq::eq(&a, &b), `a != b` its
- * negation, the operator's sugar (07-operators.md). The built-in
+/* std::ops::Eq -- `a == b` is Eq::eq(a, b), `a != b` its
+ * negation, the operator's sugar (07-operators.md): both
+ * operands enter by value, the left one moving where its type is
+ * not Copy. The answer is a bool, not an Output -- a comparison
+ * decides, it does not produce (07-operators.md). The built-in
  * rows the spec promises are spelled here as source: a plain
  * `n == m` never comes to them, the checker's binop asked first,
  * and what they hold is the spelled call, and every side the
@@ -9,15 +12,15 @@
  * as the language always did. */
 
 pub trait Eq {
-  fn eq(self: *Self, other: *Self) -> bool;
+  fn eq(self: Self, other: Self) -> bool;
 }
 
-impl Eq for i8 { fn eq(self: *Self, other: *Self) -> bool { *self == *other } }
-impl Eq for i16 { fn eq(self: *Self, other: *Self) -> bool { *self == *other } }
-impl Eq for i32 { fn eq(self: *Self, other: *Self) -> bool { *self == *other } }
-impl Eq for i64 { fn eq(self: *Self, other: *Self) -> bool { *self == *other } }
-impl Eq for u8 { fn eq(self: *Self, other: *Self) -> bool { *self == *other } }
-impl Eq for u16 { fn eq(self: *Self, other: *Self) -> bool { *self == *other } }
-impl Eq for u32 { fn eq(self: *Self, other: *Self) -> bool { *self == *other } }
-impl Eq for u64 { fn eq(self: *Self, other: *Self) -> bool { *self == *other } }
-impl Eq for bool { fn eq(self: *Self, other: *Self) -> bool { *self == *other } }
+impl Eq for i8 { fn eq(self: Self, other: Self) -> bool { self == other } }
+impl Eq for i16 { fn eq(self: Self, other: Self) -> bool { self == other } }
+impl Eq for i32 { fn eq(self: Self, other: Self) -> bool { self == other } }
+impl Eq for i64 { fn eq(self: Self, other: Self) -> bool { self == other } }
+impl Eq for u8 { fn eq(self: Self, other: Self) -> bool { self == other } }
+impl Eq for u16 { fn eq(self: Self, other: Self) -> bool { self == other } }
+impl Eq for u32 { fn eq(self: Self, other: Self) -> bool { self == other } }
+impl Eq for u64 { fn eq(self: Self, other: Self) -> bool { self == other } }
+impl Eq for bool { fn eq(self: Self, other: Self) -> bool { self == other } }
