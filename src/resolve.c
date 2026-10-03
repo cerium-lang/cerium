@@ -1500,15 +1500,17 @@ boundscontain(Sym **bs, usize n, Sym *t)
 }
 
 /* a ⊇ b: every trait b's bounds name, a's name too. No dedup -- a
- * bound written twice counts twice, which only ever overstates. */
+ * bound written twice counts twice, which only ever overstates.
+ * The table itself is pass 3's cache: the walks re-read it per
+ * call, the emitter's picks among them, and a bound's name
+ * resolves in the file that wrote it (04-generics.md) */
 int
 boundsincl(Sym *a, Sym *b)
 {
-  Sym  *aa[16], *bb[16];
-  usize na = collectbounds(a, aa), nb = collectbounds(b, bb), i;
+  usize i;
 
-  for (i = 0; i < nb; i++)
-    if (!boundscontain(aa, na, bb[i]))
+  for (i = 0; i < b->nibounds; i++)
+    if (!boundscontain(a->ibounds, a->nibounds, b->ibounds[i]))
       return 0;
   return 1;
 }
@@ -1518,11 +1520,10 @@ boundsincl(Sym *a, Sym *b)
 static int
 boundsexclude(Sym *a, Sym *b)
 {
-  Sym  *aa[16], *bb[16];
-  usize na = collectbounds(a, aa), nb = collectbounds(b, bb);
-
-  return (boundscontain(aa, na, sym_copy) && boundscontain(bb, nb, sym_drop)) ||
-         (boundscontain(aa, na, sym_drop) && boundscontain(bb, nb, sym_copy));
+  return (boundscontain(a->ibounds, a->nibounds, sym_copy) &&
+          boundscontain(b->ibounds, b->nibounds, sym_drop)) ||
+         (boundscontain(a->ibounds, a->nibounds, sym_drop) &&
+          boundscontain(b->ibounds, b->nibounds, sym_copy));
 }
 
 /* a later impl against an earlier one: provably disjoint, or
@@ -2123,12 +2124,20 @@ checkproject(Srcfile **files, usize nfiles, usize nstd)
   chk_nimpls = vlen(impls);
   nimpls = vlen(impls);
   for (i = 0; i < nimpls; i++) {
-    Sym *bs[16];
+    Sym  *bs[16];
+    usize nb;
 
     nscur(implsf[i]->ns);
     usecur(implsf[i]->uses);
     lexsetpath(implsf[i]->path);
-    collectbounds(impls[i], bs); /* the diagnostic is the point */
+    nb = collectbounds(impls[i], bs); /* the diagnostic is the point */
+    {                                 /* the cache the specificity walks read: the emitter's picks
+                                       * run in the caller's context, and a bound's name resolves
+                                       * in the file that wrote it (04-generics.md) */
+      impls[i]->ibounds = arenaalloc(nb * sizeof *impls[i]->ibounds);
+      memcpy(impls[i]->ibounds, bs, nb * sizeof *bs);
+      impls[i]->nibounds = nb;
+    }
   }
   for (i = 0; i < nimpls; i++) {
     nscur(implsf[i]->ns);

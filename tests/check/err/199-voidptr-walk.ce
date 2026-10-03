@@ -1,0 +1,8 @@
+/* voidptr cannot be walked (01-types.md): no element size to
+ * scale by, and no row was ever written -- the operator's own
+ * trait refusing where the language holds no row either */
+fn main() -> i32 {
+  let v: voidptr = @cast<voidptr>(0);
+  let w = v + 1;
+  0
+}

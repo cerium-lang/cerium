@@ -40,6 +40,21 @@ impl<T: Sub + Copy> Sub for *T {
   fn sub(self: *T, other: *T) -> T::Output { Sub::sub(*self, *other) }
 }
 
+/* pointer arithmetic's other half (01-types.md): `p - n` steps
+ * back by the element's own size. There is no subtraction of two
+ * pointers -- a distance is a slice's own length to carry, not a
+ * number to read off an address -- so the mixed Rhs is the only
+ * row the pointer takes. The body is the language's own pair,
+ * the built-in table answering it, no Copy bound, the body
+ * dereferences nothing; a plain `p - n` never comes here, any
+ * integer the table's to take, the spelled call arriving with
+ * usize in hand. */
+
+impl<T> Sub<usize> for *T {
+  type Output = *T;
+  fn sub(self: *T, other: usize) -> *T { self - other }
+}
+
 /* std::ops::SubAssign -- `a -= b` is SubAssign::sub_assign(&mut
  * a, b) (07-operators.md): the compound is its own trait, the
  * left borrowed for the write, the right a value the parameter's
@@ -59,3 +74,11 @@ impl SubAssign for u32 { fn sub_assign(self: *mut Self, other: Self) { *self = *
 impl SubAssign for u64 { fn sub_assign(self: *mut Self, other: Self) { *self = *self - other; } }
 impl SubAssign for f32 { fn sub_assign(self: *mut Self, other: Self) { *self = *self - other; } }
 impl SubAssign for f64 { fn sub_assign(self: *mut Self, other: Self) { *self = *self - other; } }
+
+/* the pointer's own compound (01-types.md): `p -= n` the
+ * language answers for any integer, this row the spelled call's,
+ * the body the same pair the expression's own. */
+
+impl<T> SubAssign<usize> for *T {
+  fn sub_assign(self: *mut *T, other: usize) { *self = *self - other; }
+}
