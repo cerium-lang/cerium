@@ -58,9 +58,10 @@ impl<T> Add<usize> for *T {
 The body is the language's own pair — a pointer beside an integer, the
 built-in table answering it, so the row never answers itself. A plain `p + n`
 never comes here, any integer the table's to take; the spelled call arrives
-with `usize` in hand — and the spelled call is where the row's own picking
-waits: `implfind` reads the receiver alone, and the borrowed row's signature
-can take the pick over this one's (the open item below).
+with `usize` in hand — and the spelled call picks the row itself: the rows the
+receiver fits walk in specificity order, and the first whose signature takes
+the call's arguments answers (`Add::add(p, n)` with `n: usize` takes this row
+over the borrowed one's, `Add::add(p, q)` the borrowed one's).
 
 The answer is the `Output` associated type (`05-traits.md`), so an operation
 may return something other than either operand — the arithmetic four carry it,
@@ -191,12 +192,6 @@ As a language rule, indexing is uniform and can be checked at compile time.
 
 ## Open items
 
-- The row pick's trait parameters, at a spelled call: `implfind` reads the
-  receiver alone, so a spelled call's other arguments never narrow the
-  candidates — `Add::add(p, n)` with `n: usize` can take the borrowed row's
-  signature over the mixed one's. The bound's own arguments are read now
-  (`04-generics.md`); the call's remain — walking the arguments ahead of the
-  pick, without the freezes the walk takes.
 - The destructor half of a moved operand: a non-Copy parameter's slot does not
   drop yet (`03-move.md`), and a non-Copy `AddAssign` cannot spell its body —
   the store to a borrowed place wants the take the move chapter has not

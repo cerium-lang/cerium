@@ -86,6 +86,13 @@ int    touchconflict(Ast *place, Fenv *fe, int writing);
 /* narrowing (01-types.md, Nullability) */
 int narrowcond(Ast *cond, Fenv *fe, char **name, Type **child);
 
+/* the move picture a trial takes with it: an argument walk moves
+ * what it reads (03-move.md), and a row that did not take the call
+ * cannot leave its moves behind -- the next row's walk would read
+ * them as gone. One int per binding, the arena's own. */
+int *movsnap(Fenv *fe);
+void movrestore(Fenv *fe, int *snap);
+
 /* joins (03-move.md, Branches) */
 void     fejoin(Fenv *fe, Fenv *a, Fenv *b);
 void     unreach(Fenv *fe);
@@ -96,12 +103,25 @@ int      gunifyv(Type *sig, Type *arg, Ast **gps, Type **tys, Val **gcvals,
                  usize n); /* the const generic parameters bind their
                             * numbers beside the types (08) */
 
+/* a trait's rows for one type, the most specific first: the rows
+ * the receiver alone cannot order by their signature, the call's
+ * own arguments walk against each in turn and the first that takes
+ * them is the call's (07-operators.md). */
+typedef struct Implcand Implcand;
+struct Implcand
+{
+  Sym    *imp; /* the row's impl */
+  Member *m;   /* its member the call names */
+  Type  **tys; /* the receiver's binding of the impl's variables */
+};
+
 /* inherent impl members: *imp receives the supplying impl, for the
  * caller's genericity gate */
 Member *inherentfind(Sym *s, const char *name, Sym **imp);
 Member *inherentfindt(Type *t, const char *name, Sym **imp, Type ***tysp);
 Member *implfind(Sym *trait, Type *t, const char *name, Sym **imp, Type ***tysp);
-Member *traitfindt(Type *t, const char *name, Sym **imp, Type ***tysp);
+usize   implcands(Sym *trait, Type *t, const char *name, Implcand *cs, usize cap);
+usize   traitcands(Type *t, const char *name, Implcand *cs, usize cap);
 Sym    *implfor(Sym *trait, Type *t, Type ***tysp);
 int     implsatisfies(Sym *trait, Type *t, Type **targs, usize ntargs);
 int     boundsatisfies(Ast *b, Type *t, Ast **gps, Type **tys, usize n, Type ***ta);

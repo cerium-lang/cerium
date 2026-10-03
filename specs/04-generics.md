@@ -139,6 +139,14 @@ written.
 Multiple impls of the same trait are ordered by how specific their bounds are.
 For a given concrete type, the most specific matching impl wins.
 
+The receiver alone reads that order; a row's signature is a claim about the
+call's other arguments too. A call — spelled or sugar — walks the rows the
+receiver fits in specificity order and takes the first whose signature accepts
+its arguments; a row that does not take them steps aside, unwinding what its
+argument walks froze and moved, and the report when no row takes them is the
+first row's own, the pick the receiver would have made alone
+(`07-operators.md`).
+
 ```rust
 impl<T: Copy>      Show for T { /* bitwise dump */ }
 impl               Show for File { /* detailed report */ }

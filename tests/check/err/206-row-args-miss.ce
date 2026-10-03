@@ -1,0 +1,11 @@
+/* no row takes the arguments (07-operators.md): both of *T's rows
+ * wait under the borrowed one, and a bool answers neither -- the
+ * report is the first row's own, the pick the receiver would have
+ * made alone */
+use std::ops::Add;
+fn main() -> i32 {
+  let a = [3]i32{7, 8, 9};
+  let p: *i32 = &a[0];
+  let q = Add::add(p, true);
+  *q
+}

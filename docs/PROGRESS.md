@@ -1110,3 +1110,39 @@ takes the borrowed row's signature over the mixed one's. The
 bound's half is closed; the call's waits on walking the
 arguments ahead of the pick, without the freezes the walk takes
 (`07-operators.md`).
+
+The call's own half closes the same way the bound's did, with
+the row's claim read where it lives. implfind answered a spelled
+call with one row, the receiver's pick ordered by specificity
+and never asked about the arguments -- so `Add::add(p, n)` with
+`n: usize` died on the borrowed row's `*T`, the pointer's own
+row waiting under it unheard. The fix is the overload chain's
+own discipline, moved one table over: the rows the receiver
+fits, collected in specificity order (`implcands`, the sugar's
+own `traitcands` beside it), and walked one by one -- the first
+row whose signature takes the call's arguments is the call's, a
+row that does not take them steps aside. The sugar walks the
+same rows (`p.add(n)` now reads the arguments into its pick
+too), and a generic's re-check lands on the same walk, which is
+where a `step<T>` over pointers really answers.
+
+A row that steps aside must leave nothing behind. Its argument
+walks freeze borrows -- unwound, as any call's are -- and move
+what they read, and a move left standing would poison the next
+row's walk: the second W row of the test reads the `D` the
+first row moved, and without the unwind it reports a move the
+program never made. The moves ride a snapshot now, one dead bit
+per binding (`movsnap`/`movrestore`), taken where the freezes'
+own pictures are -- and nothing else in the walk needs one:
+narrowing is the branch forms' own, a let is a statement, and
+the rewrites an expression walk makes are idempotent, the next
+row's want writing over them. The overload chain itself was
+leaving moves behind the same way, `f(d, x)` failing one
+signature after walking `d` and reporting `d` moved to the next
+-- the hole the snapshot was built for, closed in passing, the
+one mechanism serving both tables. And when no row takes the
+arguments, the report is the first row's own: the walk runs
+once more over the most specific row in earnest, and the
+diagnostic says what the receiver's pick alone would have said,
+`'add' wants *i32 here, this is usize` -- the same words the
+single-row call always had.
