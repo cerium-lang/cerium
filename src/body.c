@@ -487,13 +487,12 @@ memberdone(Ast *e, Ast **mg, Type **mtys, usize nm, const char *who)
     Ast **bs = mg[g]->v.gp.bounds;
 
     for (bi = 0; bi < vlen(bs); bi++) {
-      Ast **bsegs = bs[bi]->v.path.segs;
-      Sym  *tr = vlen(bsegs) == 1 ? symfind(bsegs[0]->v.seg.name) : 0;
+      Sym   *tr = bs[bi]->v.path.sym; /* the bound's own cache (04) */
+      Type **ta;
 
-      if (!tr || tr->kind != Strait)
-        continue; /* collectbounds said it, at declaration */
-      if (!implsatisfies(tr, mtys[g]))
-        berr(e, "'%s' does not implement '%s'; '%s' cannot take it", btys(mtys[g]), tr->name, who);
+      if (!boundsatisfies(bs[bi], mtys[g], mg, mtys, nm, &ta))
+        berr(e, "'%s' does not implement '%s'; '%s' cannot take it", btys(mtys[g]),
+             btys(tysym(tr, ta, tr->ngparams)), who);
     }
   }
 }
@@ -787,24 +786,19 @@ tryonesig(Sym *s, Ast *a, Ast **args, usize n, usize nfreeze, Fenv *fe, Ast *seg
                             * tuple the rows came in */
           rn = tys[gi]->k == Tytuple ? tys[gi]->nargs : 0;
         for (bi = 0; bi < vlen(bs); bi++) {
-          Ast **bsegs = bs[bi]->v.path.segs;
-          Sym  *tr;
+          Sym   *tr = bs[bi]->v.path.sym; /* the bound's own cache (04) */
+          Type **ta;
 
-          if (vlen(bsegs) != 1)
-            continue; /* collectbounds diagnosed the shape */
-          tr = symfind(bsegs[0]->v.seg.name);
-          if (!tr || tr->kind != Strait)
-            continue; /* ditto */
           if (pk) {
             for (ri = 0; ri < rn; ri++)
-              if (!implsatisfies(tr, tys[gi]->args[ri]))
+              if (!boundsatisfies(bs[bi], tys[gi]->args[ri], s->gparams, tys, s->ngparams, &ta))
                 berr(a, "'%s' does not implement '%s'; '%s' cannot take it",
-                     btys(tys[gi]->args[ri]), tr->name, s->name);
+                     btys(tys[gi]->args[ri]), btys(tysym(tr, ta, tr->ngparams)), s->name);
             continue; /* the empty pack: no row, no bound to fail */
           }
-          if (!implsatisfies(tr, tys[gi]))
-            berr(a, "'%s' does not implement '%s'; '%s' cannot take it", btys(tys[gi]), tr->name,
-                 s->name);
+          if (!boundsatisfies(bs[bi], tys[gi], s->gparams, tys, s->ngparams, &ta))
+            berr(a, "'%s' does not implement '%s'; '%s' cannot take it", btys(tys[gi]),
+                 btys(tysym(tr, ta, tr->ngparams)), s->name);
         }
       }
     }
@@ -2524,26 +2518,27 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                  * this bound -- and the instantiation's re-check
                  * picks the impl (04-generics.md) */
                 Ast **bs = self->gp->v.gp.bounds;
-                int   bounded = 0;
+                Ast  *hit = 0;
                 usize bi;
 
-                for (bi = 0; bi < vlen(bs); bi++) {
-                  Ast **bsegs = bs[bi]->v.path.segs;
-                  Sym  *tr = vlen(bsegs) == 1 ? symfind(bsegs[0]->v.seg.name) : 0;
-
-                  if (tr == s) {
-                    bounded = 1;
+                for (bi = 0; bi < vlen(bs); bi++)
+                  if (bs[bi]->v.path.sym == s) { /* the bound's own
+                                                  * cache (04) */
+                    hit = bs[bi];
                     break;
                   }
-                }
-                if (!bounded)
+                if (!hit)
                   berr(args[0], "'%s' is not a bound on '%s'", s->name, self->gp->v.gp.name);
                 t = selfsubst(dm->ty, self);
-                if (s->ngparams) { /* the trait's own generics, at
-                                    * their defaults: the path spelled
-                                    * none, and Rhs defaults to this
-                                    * Self (04-generics.md) */
-                  Type **ttys = dflttail(s, 0, 0, 0, self, args[0]);
+                if (s->ngparams) { /* the trait's own generics: the
+                                    * ones the bound spelled, the
+                                    * rest their defaults -- a bound
+                                    * that spelled none takes this
+                                    * Self, the parameter under it
+                                    * (07-operators.md) */
+                  Type **btys = hit->v.path.tys;
+                  usize  nb = vlen(hit->v.path.segs[0]->v.seg.args);
+                  Type **ttys = dflttail(s, btys, nb, 0, self, args[0]);
 
                   t = gsubst(t, s->gparams, ttys, s->ngparams);
                 }
@@ -2791,6 +2786,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
          * struct literal runs (04-generics.md) */
         Type **tys = 0;
         int    declared = 0; /* a bound's signature, inside a generic fn */
+        Ast   *hitb = 0;     /* the bound that named the trait */
 
         m = inherentfindt(ty, f->v.fld.name, &imp, &tys);
         if (!m)
@@ -2804,14 +2800,12 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
           usize bi, mi;
 
           for (bi = 0; bi < vlen(bs); bi++) {
-            Ast **bsegs = bs[bi]->v.path.segs;
-            Sym  *tr = vlen(bsegs) == 1 ? symfind(bsegs[0]->v.seg.name) : 0;
+            Sym *tr = bs[bi]->v.path.sym; /* the bound's own cache (04) */
 
-            if (!tr || tr->kind != Strait)
-              continue;
             for (mi = 0; mi < tr->nmembers; mi++)
               if (tr->members[mi].kind == Mfn && strcmp(tr->members[mi].name, f->v.fld.name) == 0) {
                 m = &tr->members[mi];
+                hitb = bs[bi];
                 declared = 1;
                 break;
               }
@@ -2827,7 +2821,20 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
         if (m->kind != Mfn)
           berr(f, "'%s' is not a method", f->v.fld.name);
         if (declared) {
+          Sym *tr = hitb->v.path.sym; /* the trait the bound named */
+
           t = selfsubst(m->ty, ty);
+          if (tr->ngparams) { /* the trait's own generics: the ones
+                               * the bound spelled, the rest their
+                               * defaults -- the same filling the
+                               * spelled call takes
+                               * (07-operators.md) */
+            Type **btys = hitb->v.path.tys;
+            usize  nb = vlen(hitb->v.path.segs[0]->v.seg.args);
+            Type **ttys = dflttail(tr, btys, nb, 0, ty, f);
+
+            t = gsubst(t, tr->gparams, ttys, tr->ngparams);
+          }
           e->v.call.sym = 0; /* the re-check writes the impl's pick */
           e->v.call.tys = 0;
         } else {

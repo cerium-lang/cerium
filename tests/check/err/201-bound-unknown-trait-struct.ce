@@ -1,0 +1,4 @@
+/* the same law on a plain type's parameters: the bound names a
+ * trait, and the name is read at the declaration */
+struct S<T: NoSuchTrait> { x: T }
+fn main() -> i32 { 0 }

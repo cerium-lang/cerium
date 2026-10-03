@@ -1,0 +1,30 @@
+/* a bound may spell the trait's own arguments (04-generics.md): the
+ * spelled call inside a generic fn reads them into the declaration's
+ * signature -- the method sugar takes the same filling -- and the
+ * call's binding check holds the row to them, Rhs no longer whoever
+ * answered first. A bound that spelled none asks the trait's
+ * defaults, this Self the type under the bound: T: Marks asks
+ * Marks<T>. */
+
+trait Marks<Rhs = Self> {
+  fn mark(self: Self, other: Rhs) -> i32;
+}
+
+impl Marks<i32> for u8 {
+  fn mark(self: u8, other: i32) -> i32 { @cast<i32>(self) * 100 + other }
+}
+
+impl Marks for u16 { /* the default: Marks<u16> for u16 */
+  fn mark(self: u16, other: u16) -> i32 { @cast<i32>(self) + @cast<i32>(other) }
+}
+
+fn spelled<T: Marks<i32>>(a: T, n: i32) -> i32 { Marks::mark(a, n) }
+fn bare<T: Marks>(a: T, n: T) -> i32 { Marks::mark(a, n) }
+fn sugar<T: Marks>(a: T, n: T) -> i32 { a.mark(n) }
+
+fn main() -> i32 {
+  let a = spelled(@cast<u8>(1), 5); /* 105, the row the bound named */
+  let b = bare(@cast<u16>(30), @cast<u16>(4));  /* 34, the row the default named */
+  let c = sugar(@cast<u16>(20), @cast<u16>(3)); /* 23, the sugar's own filling */
+  a + b + c
+}

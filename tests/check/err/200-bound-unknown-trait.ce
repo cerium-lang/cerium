@@ -1,0 +1,5 @@
+/* a bound is a trait's name, read where the bound was written
+ * (04-generics.md) -- the declaration's own file, whatever context
+ * the consumers run under */
+fn f<T: NoSuchTrait>(x: T) -> i32 { 0 }
+fn main() -> i32 { 0 }

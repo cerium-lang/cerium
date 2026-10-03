@@ -191,12 +191,12 @@ As a language rule, indexing is uniform and can be checked at compile time.
 
 ## Open items
 
-- The row pick's trait parameters: `implfind` reads the receiver alone, so a
-  spelled call's other arguments never narrow the candidates — `Add::add(p,
-  n)` with `n: usize` can take the borrowed row's signature over the mixed
-  one's, and the bound walks are the same shape, `T: Add<usize>` satisfied by
-  any `Add` row at all. The fix reads the trait's parameters in — at the call
-  from the arguments, in a bound from what the bound names.
+- The row pick's trait parameters, at a spelled call: `implfind` reads the
+  receiver alone, so a spelled call's other arguments never narrow the
+  candidates — `Add::add(p, n)` with `n: usize` can take the borrowed row's
+  signature over the mixed one's. The bound's own arguments are read now
+  (`04-generics.md`); the call's remain — walking the arguments ahead of the
+  pick, without the freezes the walk takes.
 - The destructor half of a moved operand: a non-Copy parameter's slot does not
   drop yet (`03-move.md`), and a non-Copy `AddAssign` cannot spell its body —
   the store to a borrowed place wants the take the move chapter has not

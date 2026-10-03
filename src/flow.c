@@ -203,16 +203,15 @@ iscopy1(Type *t)
     return 1;
   case Typaram: { /* a parameter copies under a Copy bound -- the
                    * bound promised it, or nobody could have written
-                   * the impl that supplies it (05-traits.md) */
+                   * the impl that supplies it (05-traits.md). The
+                   * bound's cache names the trait itself: a Copy of
+                   * the file's own making grants nothing */
     Ast **bs = t->gp->v.gp.bounds;
     usize i;
 
-    for (i = 0; i < vlen(bs); i++) {
-      Ast **segs = bs[i]->v.path.segs;
-
-      if (vlen(segs) == 1 && strcmp(segs[0]->v.seg.name, "Copy") == 0)
+    for (i = 0; i < vlen(bs); i++)
+      if (bs[i]->v.path.sym == sym_copy)
         return 1;
-    }
     return 0;
   }
   default: /* Tytrait, Typroj, Tyfn */
@@ -864,11 +863,6 @@ boundsok(Sym *im, Type **tys)
     Ast **bs = gps[i]->v.gp.bounds;
 
     for (j = 0; j < vlen(bs); j++) {
-      Ast **segs = bs[j]->v.path.segs;
-      Sym  *t = vlen(segs) == 1 ? symfind(segs[0]->v.seg.name) : 0;
-
-      if (!t || t->kind != Strait)
-        continue;              /* collectbounds said it, at declaration */
       if (gps[i]->v.gp.pack) { /* the bound holds every row: the
                                 * whole tuple asked as one would
                                 * find this impl itself answering --
@@ -878,11 +872,11 @@ boundsok(Sym *im, Type **tys)
         usize ri;
 
         for (ri = 0; ri < rn; ri++)
-          if (!implsatisfies(t, tys[i]->args[ri]))
+          if (!boundsatisfies(bs[j], tys[i]->args[ri], gps, tys, im->ngparams, 0))
             return 0; /* a row the bound does not answer */
         continue;     /* the empty pack: every row it has answers */
       }
-      if (!implsatisfies(t, tys[i]))
+      if (!boundsatisfies(bs[j], tys[i], gps, tys, im->ngparams, 0))
         return 0; /* the receiver does not answer this bound */
     }
   }
@@ -1128,7 +1122,9 @@ traitfindt(Type *t, const char *name, Sym **imp, Type ***tysp)
 /* does this type implement this trait? A bound's question at a call
  * site (04-generics.md): the impl table answers, and what it finds
  * carries no binding -- the question is satisfied, not resolved.
- * Copy is the exception: no impl table ever answers it, the
+ * The arguments the bound spelled ride along: a row whose own head
+ * named others does not answer it (07-operators.md). Copy is the
+ * exception: no impl table ever answers it, the
  * structure does (03-move.md). A blanket impl whose bound asks the
  * question again under itself proves nothing -- another impl must
  * answer, or the bound fails. */
@@ -1140,7 +1136,7 @@ static struct
 static usize satn;
 
 int
-implsatisfies(Sym *trait, Type *t)
+implsatisfies(Sym *trait, Type *t, Type **targs, usize ntargs)
 {
   usize i;
   int   r;
@@ -1163,6 +1159,21 @@ implsatisfies(Sym *trait, Type *t)
 
     if (!im->ifort || !im->ipath || im->ipath->sym != trait)
       continue;
+    if (ntargs && im->ipath->nargs >= ntargs) {
+      /* the row's own head must take the arguments the bound spelled
+       * -- the same pattern walk its own receiver takes, the row's
+       * variables bound against them (07-operators.md) */
+      Type **rt = tyargs(im->ngparams);
+      usize  j;
+
+      for (j = 0; j < im->ngparams; j++)
+        rt[j] = 0;
+      for (j = 0; j < ntargs; j++)
+        if (!implatch(im->ipath->args[j], targs[j], im->gparams, rt, im->ngparams))
+          break;
+      if (j < ntargs)
+        continue; /* this row's arguments are other ones */
+    }
     if (implfit(im, t, 0)) {
       r = 1;
       break;
@@ -1170,4 +1181,36 @@ implsatisfies(Sym *trait, Type *t)
   }
   satn--;
   return r;
+}
+
+/* a bound's question with its own arguments: the trait and the type
+ * arguments it spelled, read where the bound was written, the
+ * owner's binding landed in them -- a bound may name the parameters
+ * around it (04-generics.md). The tail the bound left unspelled is
+ * the trait's own defaults, this type the Self they read: T: Add
+ * asks Add<T>, the row's own Self (07-operators.md). The arguments
+ * the question asked come back through *ta, for the diagnostic that
+ * names them; NULL says nobody will. */
+int
+boundsatisfies(Ast *b, Type *t, Ast **gps, Type **tys, usize n, Type ***ta)
+{
+  Sym   *tr = b->v.path.sym;
+  Type **btys = b->v.path.tys;
+  usize  nb = vlen(b->v.path.segs[0]->v.seg.args);
+
+  if (btys && gps) {
+    Type **st = tyargs(nb);
+    usize  j;
+
+    for (j = 0; j < nb; j++)
+      st[j] = gsubst(btys[j], gps, tys, n);
+    btys = st;
+  }
+  if (nb < tr->ngparams) {
+    btys = dflttail(tr, btys, nb, 0, t, b);
+    nb = tr->ngparams;
+  }
+  if (ta)
+    *ta = btys;
+  return implsatisfies(tr, t, btys, nb);
 }
