@@ -12,5 +12,6 @@ jobs:
         with:
           submodules: true
       - run: make fmt-check
+      - run: make qbe/qbe
       - run: make CC=${{ matrix.cc }}
       - run: make test
