@@ -1643,6 +1643,39 @@ boundsexclude(Sym *a, Sym *b)
           boundscontain(b->ibounds, b->nibounds, sym_copy));
 }
 
+/* a trait impl's whole identity: the trait's own arguments beside
+ * the type it is for, one picture -- the call picks rows by their
+ * arguments (07-operators.md), so the declaration's order and
+ * disjointness read them too. Is a's row a specialization of b's,
+ * the variables binding across both halves? */
+int
+rowspec(Sym *a, Sym *b)
+{
+  SpecSub s;
+  usize   i;
+
+  memset(&s, 0, sizeof s);
+  for (i = 0; i < a->ipath->nargs; i++)
+    if (!spec1(a->ipath->args[i], b->ipath->args[i], &s))
+      return 0;
+  return spec1(a->ifort ? a->ifort : a->ipath, b->ifort ? b->ifort : b->ipath, &s);
+}
+
+/* two rows, provably disjoint: a call the two cannot both take --
+ * the trait's arguments or the for-type itself, whichever already
+ * disagrees. A variable in either place matches anything, so rows
+ * that meet only through one stay unproven (04-generics.md) */
+static int
+rowdisjoint(Sym *a, Sym *b)
+{
+  usize i;
+
+  for (i = 0; i < a->ipath->nargs; i++)
+    if (disjoint(a->ipath->args[i], b->ipath->args[i]))
+      return 1;
+  return disjoint(a->ifort ? a->ifort : a->ipath, b->ifort ? b->ifort : b->ipath);
+}
+
 /* a later impl against an earlier one: provably disjoint, or
  * strictly ordered by specificity, or rejected on the spot
  * (04-generics.md -- overlap is checked at declaration) */
@@ -1656,16 +1689,22 @@ checkoverlap(Sym *a, Sym *b)
   if (!!a->ifort != !!b->ifort)
     return; /* a trait impl and an inherent one never share a slot */
   if (a->ifort && a->ipath->sym != b->ipath->sym)
-    return; /* different traits never conflict */
-  ab = specializes(fa, fb);
-  ba = specializes(fb, fa);
+    return;       /* different traits never conflict */
+  if (a->ifort) { /* the row's own shape: the trait's arguments
+                   * beside the type it is for */
+    ab = rowspec(a, b);
+    ba = rowspec(b, a);
+  } else {
+    ab = specializes(fa, fb);
+    ba = specializes(fb, fa);
+  }
   if (ab != ba)
     return; /* strictly ordered one way or the other */
   if (boundsexclude(a, b))
     return; /* provably disjoint through the exclusion table */
   if (boundsincl(a, b) != boundsincl(b, a))
     return; /* equal shape, ordered by bounds (04-generics.md) */
-  if (disjoint(fa, fb))
+  if (rowdisjoint(a, b))
     return;
   if (a->ifort)
     cerrat(a->decl, "conflicting implementations of '%s' for %s", a->ipath->sym->name,

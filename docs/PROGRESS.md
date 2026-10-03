@@ -1168,3 +1168,28 @@ fourteen functions, and nothing private is left in the new
 file. That is the honest shape: the spelled surface is the
 walk's own vocabulary, not a module behind a door. No behavior
 moved -- the 450 stand as they were.
+
+The row's identity is its trait's arguments beside the type it
+is for. The overlap check had been reading half the row -- two
+impls of one trait were compared by their for-type and their
+bounds alone, so `Add for S` and `Add<usize> for S` were
+rejected as one row written twice, and the pointer rows of std
+were coexisting on their bounds difference alone, the argument
+that really told them apart (usize against *T) never read. The
+declaration's order and disjointness grew the arguments: one
+specification walk over the whole row (`rowspec`, the variables
+binding across the argument positions and the for-type
+together), one disjointness read where any position that
+already disagrees settles it. Concrete arguments that differ
+are disjoint rows; an argument a variable can bind orders
+instead, `impl<T> Add<T> for S` standing under `Add<usize> for
+S`; the same shape with a variable either can bind is still the
+conflict it always was. The call-site specificity order
+(`implspecific`) runs the same walk now, so the rows the
+receiver collects keep the order their declaration was checked
+under. One shape of row stays out of reach on purpose: a row
+whose variables live only in its arguments (`impl<T> Add<T> for
+S`) is declared legal but no call reaches it -- the candidate
+walk binds a row's variables from the receiver alone -- and
+that binding from the call's own arguments is the open item
+beside the destructor half.

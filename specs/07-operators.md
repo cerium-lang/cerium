@@ -196,3 +196,9 @@ As a language rule, indexing is uniform and can be checked at compile time.
   drop yet (`03-move.md`), and a non-Copy `AddAssign` cannot spell its body —
   the store to a borrowed place wants the take the move chapter has not
   written.
+- A row whose variables live only in the trait's arguments (`impl<T> Add<T>
+  for S`) is declared legal — ordered under its specific rows — but no call
+  reaches it yet: the candidate walk binds a row's variables from the
+  receiver alone, and this row's `T` waits on the arguments. The spelled
+  call's trial already walks arguments; binding them into the row is the
+  missing half.

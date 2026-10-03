@@ -101,9 +101,12 @@ Sym *implfor(Sym *trait, Type *t, Type ***tysp);
  * does every type matching a also match b? The same order that
  * checks overlap at declaration orders the matches a call finds
  * (04-generics.md). And the bounds half of the joint order: a's
- * bounds naming every trait b's do. */
+ * bounds naming every trait b's do. rowspec is the order's whole
+ * row: a trait impl's arguments beside the type it is for, the
+ * variables binding across both. */
 int specializes(Type *a, Type *b);
 int boundsincl(Sym *a, Sym *b);
+int rowspec(Sym *a, Sym *b);
 
 /* a diagnostic at a node: path:line:col: message, then exit(1) --
  * the same shape the lexer's and the parser's errors take */
