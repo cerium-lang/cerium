@@ -1,16 +1,18 @@
 /* Rhs need not be Self (07-operators.md): Add<i32> for V3 is what
- * v + n spells, the right operand borrowed at its own type. A
- * non-Copy left operand only borrows -- the trait's own words -- so
- * the place stays live for the read after. */
+ * v + n spells, the right operand by value at its own type. The
+ * left enters by value too, moving where its type is not Copy --
+ * the trait's own words -- so the place is dead after, and only
+ * the answer holds what the call made. */
 use std::ops::Add;
 struct V3 { x: i32 }
-impl Drop for V3 { fn drop(mut self: Self) -> () { } }
+impl Drop for V3 { fn drop(mut self: Self) { } }
 impl Add<i32> for V3 {
-  fn add(self: *Self, other: *i32) -> V3 { V3{ x: self.x + *other } }
+  type Output = V3;
+  fn add(self: V3, other: i32) -> V3 { V3{ x: self.x + other } }
 }
 fn main() -> i32 {
   let v = V3{ x: 5 };
   let n = 3;
-  let r = v + n;
-  r.x + v.x
+  let r = v + n;      /* the left moves: v is dead after */
+  r.x                  /* 8 */
 }

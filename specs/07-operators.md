@@ -10,12 +10,13 @@ They live in `std::ops`.
 
 | operator | trait | method |
 | --- | --- | --- |
-| `a + b` | `Add<Rhs>` | `fn add(self: *Self, other: *Rhs) -> Self` |
-| `a - b` | `Sub<Rhs>` | `fn sub(self: *Self, other: *Rhs) -> Self` |
-| `a * b` | `Mul<Rhs>` | `fn mul(self: *Self, other: *Rhs) -> Self` |
-| `a / b` | `Div<Rhs>` | `fn div(self: *Self, other: *Rhs) -> Self` |
-| `a < b`, `a > b`, `a <= b`, `a >= b` | `Ord` | `fn cmp(self: *Self, other: *Self) -> Ordering` |
-| `a == b`, `a != b` | `Eq` | `fn eq(self: *Self, other: *Self) -> bool` |
+| `a + b` | `Add<Rhs>` | `fn add(self: Self, other: Rhs) -> Self::Output` |
+| `a - b` | `Sub<Rhs>` | `fn sub(self: Self, other: Rhs) -> Self::Output` |
+| `a * b` | `Mul<Rhs>` | `fn mul(self: Self, other: Rhs) -> Self::Output` |
+| `a / b` | `Div<Rhs>` | `fn div(self: Self, other: Rhs) -> Self::Output` |
+| `a += b` | `AddAssign<Rhs>` | `fn add_assign(self: *mut Self, other: Rhs)` |
+| `a < b`, `a > b`, `a <= b`, `a >= b` | `Ord` | `fn cmp(self: Self, other: Self) -> Ordering` |
+| `a == b`, `a != b` | `Eq` | `fn eq(self: Self, other: Self) -> bool` |
 
 ```rust
 enum Ordering {
@@ -36,20 +37,30 @@ arithmetic is (`01-types.md`):
 impl<T> Add<usize> for *T { ... }
 ```
 
-The result is always `Self`. There is no `Output` associated type: an operation
-that would return something else — a matrix times a vector — is a method.
+The answer is the `Output` associated type (`05-traits.md`), so an operation
+may return something other than either operand — the arithmetic four carry it,
+and a comparison does not: `cmp` and `eq` decide, they do not produce, so their
+answer is `Ordering` and `bool` outright.
 
 ## Desugaring
 
-`a + b` is `Add::add(&a, &b)`. Both operands are passed by pointer, which is why
-the methods take `*Self` and `*Rhs`; nothing is moved or copied. This is the one
-place besides a method call where an address is taken for you
-(`05-traits.md`) — an operator is sugar for a call, not an implicit conversion.
+`a + b` is `Add::add(a, b)`. Both operands enter by value, the left one moving
+where its type is not Copy, the right one a value the parameter's own slot
+takes whole. Nothing is borrowed on the way in — an operator is sugar for a
+call, and the call's own signature says what moves.
 
-Compound assignment needs no trait of its own:
+A borrowed pair is the caller's to spell, and it is an impl of the operator's
+trait over the pointer:
 
 ```rust
-a += b;   // a = a + b — requires Add, and a to be a mut slot
+impl<T: Add> Add for *T { ... }   // &a + &b, the rows the pointers carry
+```
+
+Compound assignment is its own trait — the left is borrowed for the write, the
+right enters by value:
+
+```rust
+a += b;   // AddAssign::add_assign(&mut a, b) — requires the row, and a mut slot
 ```
 
 ## Who implements them
@@ -62,14 +73,15 @@ trait, subject to the orphan rule (`05-traits.md`):
 struct Vec3 { x: f32, y: f32, z: f32 }
 
 impl Add for Vec3 {
-  fn add(self: *Self, other: *Self) -> Vec3 {
+  type Output = Vec3;
+  fn add(self: Vec3, other: Vec3) -> Vec3 {
     Vec3{ x: self.x + other.x, y: self.y + other.y, z: self.z + other.z }
   }
 }
 ```
 
 An operator needs no `use` — the compiler finds the trait. Writing the call out,
-`Add::add(&a, &b)`, does need one, like any trait method
+`Add::add(a, b)`, does need one, like any trait method
 (`11-namespaces.md`).
 
 A bound is what makes an operator available in generic code:
@@ -127,7 +139,12 @@ As a language rule, indexing is uniform and can be checked at compile time.
 
 ## Open items
 
-- An `Output` associated type, for operations that return something other than
-  `Self` — a matrix times a vector.
-- Traits for `%`, the bitwise operators, shifts, unary `-`, and in-place
-  operations that would avoid building a new value.
+- Traits for `%`, the bitwise operators, shifts, and unary `-`.
+- The pointer's own rows — `impl<T: Add> Add for *T`, and `impl<T> Add<usize>
+  for *T` — and the generic projection they read (`T::Output`,
+  `04-generics.md`): a borrowed pair `&a + &b` and pointer arithmetic wait on
+  both.
+- The destructor half of a moved operand: a non-Copy parameter's slot does not
+  drop yet (`03-move.md`), and a non-Copy `AddAssign` cannot spell its body —
+  the store to a borrowed place wants the take the move chapter has not
+  written.

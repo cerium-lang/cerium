@@ -1,22 +1,44 @@
-/* std::ops::Mul -- `a * b` is Mul::mul(&a, &b), the operator's
- * sugar (07-operators.md). The built-in rows the spec promises
- * are spelled here as source: a plain `n * m` never comes to
- * them, the checker's binop asked first, and what they hold is
- * the spelled call, and every side the built-in table does not
- * take. `Rhs` defaults to Self (04-generics.md); the result is
- * Self, an `Output` associated type still open (07-operators.md). */
+/* std::ops::Mul -- `a * b` is Mul::mul(a, b), the operator's
+ * sugar (07-operators.md): both operands enter by value, the
+ * left one moving where its type is not Copy. The built-in rows
+ * the spec promises are spelled here as source: a plain `n * m`
+ * never comes to them, the checker's binop asked first. `Rhs`
+ * defaults to Self (04-generics.md); the answer is the `Output`
+ * associated type (05-traits.md), the rows here answering with
+ * themselves. */
 
 pub trait Mul<Rhs = Self> {
-  fn mul(self: *Self, other: *Rhs) -> Self;
+  type Output;
+  fn mul(self: Self, other: Rhs) -> Self::Output;
 }
 
-impl Mul for i8 { fn mul(self: *Self, other: *Self) -> Self { *self * *other } }
-impl Mul for i16 { fn mul(self: *Self, other: *Self) -> Self { *self * *other } }
-impl Mul for i32 { fn mul(self: *Self, other: *Self) -> Self { *self * *other } }
-impl Mul for i64 { fn mul(self: *Self, other: *Self) -> Self { *self * *other } }
-impl Mul for u8 { fn mul(self: *Self, other: *Self) -> Self { *self * *other } }
-impl Mul for u16 { fn mul(self: *Self, other: *Self) -> Self { *self * *other } }
-impl Mul for u32 { fn mul(self: *Self, other: *Self) -> Self { *self * *other } }
-impl Mul for u64 { fn mul(self: *Self, other: *Self) -> Self { *self * *other } }
-impl Mul for f32 { fn mul(self: *Self, other: *Self) -> Self { *self * *other } }
-impl Mul for f64 { fn mul(self: *Self, other: *Self) -> Self { *self * *other } }
+impl Mul for i8 { type Output = i8; fn mul(self: Self, other: Self) -> Self::Output { self * other } }
+impl Mul for i16 { type Output = i16; fn mul(self: Self, other: Self) -> Self::Output { self * other } }
+impl Mul for i32 { type Output = i32; fn mul(self: Self, other: Self) -> Self::Output { self * other } }
+impl Mul for i64 { type Output = i64; fn mul(self: Self, other: Self) -> Self::Output { self * other } }
+impl Mul for u8 { type Output = u8; fn mul(self: Self, other: Self) -> Self::Output { self * other } }
+impl Mul for u16 { type Output = u16; fn mul(self: Self, other: Self) -> Self::Output { self * other } }
+impl Mul for u32 { type Output = u32; fn mul(self: Self, other: Self) -> Self::Output { self * other } }
+impl Mul for u64 { type Output = u64; fn mul(self: Self, other: Self) -> Self::Output { self * other } }
+impl Mul for f32 { type Output = f32; fn mul(self: Self, other: Self) -> Self::Output { self * other } }
+impl Mul for f64 { type Output = f64; fn mul(self: Self, other: Self) -> Self::Output { self * other } }
+
+/* std::ops::MulAssign -- `a *= b` is MulAssign::mul_assign(&mut
+ * a, b) (07-operators.md): the compound is its own trait, the
+ * left borrowed for the write, the right a value the parameter's
+ * slot takes whole. */
+
+pub trait MulAssign<Rhs = Self> {
+  fn mul_assign(self: *mut Self, other: Rhs);
+}
+
+impl MulAssign for i8 { fn mul_assign(self: *mut Self, other: Self) { *self = *self * other; } }
+impl MulAssign for i16 { fn mul_assign(self: *mut Self, other: Self) { *self = *self * other; } }
+impl MulAssign for i32 { fn mul_assign(self: *mut Self, other: Self) { *self = *self * other; } }
+impl MulAssign for i64 { fn mul_assign(self: *mut Self, other: Self) { *self = *self * other; } }
+impl MulAssign for u8 { fn mul_assign(self: *mut Self, other: Self) { *self = *self * other; } }
+impl MulAssign for u16 { fn mul_assign(self: *mut Self, other: Self) { *self = *self * other; } }
+impl MulAssign for u32 { fn mul_assign(self: *mut Self, other: Self) { *self = *self * other; } }
+impl MulAssign for u64 { fn mul_assign(self: *mut Self, other: Self) { *self = *self * other; } }
+impl MulAssign for f32 { fn mul_assign(self: *mut Self, other: Self) { *self = *self * other; } }
+impl MulAssign for f64 { fn mul_assign(self: *mut Self, other: Self) { *self = *self * other; } }

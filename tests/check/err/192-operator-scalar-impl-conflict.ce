@@ -5,7 +5,8 @@
 use std::ops::Add;
 
 impl Add for i32 {
-  fn add(self: *Self, other: *Self) -> Self { *self + *other }
+  type Output = i32;
+  fn add(self: Self, other: Self) -> Self::Output { self + other }
 }
 
 fn main() -> i32 { 0 }

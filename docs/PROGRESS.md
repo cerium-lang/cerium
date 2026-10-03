@@ -879,3 +879,42 @@ move-out and a share tolerating it. The read asks the type
 first now (`01-types.md`), and none of the four hundred
 twenty-six had leaned on the old conservativeness — nothing
 regressed, the check simply said less.
+
+And then the operators turned round: the milestone's own review
+asked what a right value would do, and the answer the language
+took is the one Rust took -- the operands enter by value, the
+left one moving where its type is not Copy, the right one a
+value the parameter's own slot takes whole (07-operators.md).
+The table turned out to be standing on ground already laid:
+associated types were 05's own feature whole -- a trait declares
+`type Output;`, an impl binds it, `Self::Output` resolves
+(`05-traits.md`) -- a by-value `self` had its precedent in
+`Drop`'s own signature, and the pointer was already Copy. What
+the turn asked for was the signatures themselves: the arithmetic
+four carrying an `Output`, the comparisons deciding outright
+(`cmp` and `eq` answer `Ordering` and `bool`, no Output of their
+own), and a compound of its own -- `AddAssign` and its three
+siblings, the left borrowed for the write, the right a value,
+the trait the in-place open item had been waiting for.
+
+The rewrite turned with them: `a + b` is `Add::add(a, b)`, and
+`a += b` is `AddAssign::add_assign(&mut a, b)`. The operand
+unmarking kept its place for a new reason -- the walk's first
+read had marked the left moved, and the re-entered call reads it
+again: the mark unwinds so the second read is the one move that
+stays. The materialisation left the operator's path entirely --
+a right value enters the parameter's slot directly, and the
+hand-written `&` of a temporary keeps its slot for itself
+(`01-types.md`). A non-Copy left operand now moves, and the
+words are honest about it: `v + v` is the moved report, and `a =
+Add::add(a, b)` moves the left out and stores the answer back
+-- the assignment's own revive (03-move.md) serving the new
+shape as it served the old. Two old walls showed themselves on
+the way, both older than the turn: a `*mut` parameter's field
+is not a writable place yet, and a non-Copy store to a borrowed
+place wants the take the move chapter has not written -- so a
+non-Copy `AddAssign` cannot spell its body today, the open item
+that carries (`03-move.md`, `07-operators.md`). The spelled
+borrowing call -- `Add::add(&n, &m)` -- refuses the way Rust's
+does: the pointer's rows are an impl of the operator's own
+trait, and they wait on the pointer as a Self (07-operators.md).

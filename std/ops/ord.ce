@@ -1,15 +1,18 @@
 /* std::ops::Ord -- the four orderings are one method read against
  * Ordering's ends: `a < b` is cmp == Ordering::Less, `a >= b` is
- * cmp != Ordering::Less, the operator's sugar (07-operators.md).
- * Ordering lives here, the answer's own type. The built-in rows
- * the spec promises are spelled here as source: a plain `n < m`
- * never comes to them, the checker's binop asked first, and what
- * they hold is the spelled call, and every side the built-in
- * table does not take -- `bool` against `bool` included, the
- * language never comparing bools. The floats stay out: a NaN
- * orders against nothing, itself included, so the law Ord
- * assumes does not hold over them, the calls refused, the
- * operators answering as the language always did. */
+ * cmp != Ordering::Less, the operator's sugar (07-operators.md):
+ * both operands enter by value, the left one moving where its
+ * type is not Copy. Ordering lives here, the answer's own type;
+ * a comparison decides, it does not produce, so no Output
+ * (07-operators.md). The built-in rows the spec promises are
+ * spelled here as source: a plain `n < m` never comes to them,
+ * the checker's binop asked first, and what they hold is the
+ * spelled call, and every side the built-in table does not
+ * take -- `bool` against `bool` included, the language never
+ * comparing bools. The floats stay out: a NaN orders against
+ * nothing, itself included, so the law Ord assumes does not
+ * hold over them, the calls refused, the operators answering as
+ * the language always did. */
 
 pub enum Ordering {
   Less,
@@ -18,59 +21,59 @@ pub enum Ordering {
 }
 
 pub trait Ord {
-  fn cmp(self: *Self, other: *Self) -> Ordering;
+  fn cmp(self: Self, other: Self) -> Ordering;
 }
 
 impl Ord for i8 {
-  fn cmp(self: *Self, other: *Self) -> Ordering {
-    if *self < *other { Ordering::Less } else if *self > *other { Ordering::Greater } else { Ordering::Equal }
+  fn cmp(self: Self, other: Self) -> Ordering {
+    if self < other { Ordering::Less } else if self > other { Ordering::Greater } else { Ordering::Equal }
   }
 }
 
 impl Ord for i16 {
-  fn cmp(self: *Self, other: *Self) -> Ordering {
-    if *self < *other { Ordering::Less } else if *self > *other { Ordering::Greater } else { Ordering::Equal }
+  fn cmp(self: Self, other: Self) -> Ordering {
+    if self < other { Ordering::Less } else if self > other { Ordering::Greater } else { Ordering::Equal }
   }
 }
 
 impl Ord for i32 {
-  fn cmp(self: *Self, other: *Self) -> Ordering {
-    if *self < *other { Ordering::Less } else if *self > *other { Ordering::Greater } else { Ordering::Equal }
+  fn cmp(self: Self, other: Self) -> Ordering {
+    if self < other { Ordering::Less } else if self > other { Ordering::Greater } else { Ordering::Equal }
   }
 }
 
 impl Ord for i64 {
-  fn cmp(self: *Self, other: *Self) -> Ordering {
-    if *self < *other { Ordering::Less } else if *self > *other { Ordering::Greater } else { Ordering::Equal }
+  fn cmp(self: Self, other: Self) -> Ordering {
+    if self < other { Ordering::Less } else if self > other { Ordering::Greater } else { Ordering::Equal }
   }
 }
 
 impl Ord for u8 {
-  fn cmp(self: *Self, other: *Self) -> Ordering {
-    if *self < *other { Ordering::Less } else if *self > *other { Ordering::Greater } else { Ordering::Equal }
+  fn cmp(self: Self, other: Self) -> Ordering {
+    if self < other { Ordering::Less } else if self > other { Ordering::Greater } else { Ordering::Equal }
   }
 }
 
 impl Ord for u16 {
-  fn cmp(self: *Self, other: *Self) -> Ordering {
-    if *self < *other { Ordering::Less } else if *self > *other { Ordering::Greater } else { Ordering::Equal }
+  fn cmp(self: Self, other: Self) -> Ordering {
+    if self < other { Ordering::Less } else if self > other { Ordering::Greater } else { Ordering::Equal }
   }
 }
 
 impl Ord for u32 {
-  fn cmp(self: *Self, other: *Self) -> Ordering {
-    if *self < *other { Ordering::Less } else if *self > *other { Ordering::Greater } else { Ordering::Equal }
+  fn cmp(self: Self, other: Self) -> Ordering {
+    if self < other { Ordering::Less } else if self > other { Ordering::Greater } else { Ordering::Equal }
   }
 }
 
 impl Ord for u64 {
-  fn cmp(self: *Self, other: *Self) -> Ordering {
-    if *self < *other { Ordering::Less } else if *self > *other { Ordering::Greater } else { Ordering::Equal }
+  fn cmp(self: Self, other: Self) -> Ordering {
+    if self < other { Ordering::Less } else if self > other { Ordering::Greater } else { Ordering::Equal }
   }
 }
 
 impl Ord for bool {
-  fn cmp(self: *Self, other: *Self) -> Ordering {
-    if *self == *other { Ordering::Equal } else if !*self { Ordering::Less } else { Ordering::Greater }
+  fn cmp(self: Self, other: Self) -> Ordering {
+    if self == other { Ordering::Equal } else if !self { Ordering::Less } else { Ordering::Greater }
   }
 }

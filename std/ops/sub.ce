@@ -1,22 +1,44 @@
-/* std::ops::Sub -- `a - b` is Sub::sub(&a, &b), the operator's
- * sugar (07-operators.md). The built-in rows the spec promises
- * are spelled here as source: a plain `n - m` never comes to
- * them, the checker's binop asked first, and what they hold is
- * the spelled call, and every side the built-in table does not
- * take. `Rhs` defaults to Self (04-generics.md); the result is
- * Self, an `Output` associated type still open (07-operators.md). */
+/* std::ops::Sub -- `a - b` is Sub::sub(a, b), the operator's
+ * sugar (07-operators.md): both operands enter by value, the
+ * left one moving where its type is not Copy. The built-in rows
+ * the spec promises are spelled here as source: a plain `n - m`
+ * never comes to them, the checker's binop asked first. `Rhs`
+ * defaults to Self (04-generics.md); the answer is the `Output`
+ * associated type (05-traits.md), the rows here answering with
+ * themselves. */
 
 pub trait Sub<Rhs = Self> {
-  fn sub(self: *Self, other: *Rhs) -> Self;
+  type Output;
+  fn sub(self: Self, other: Rhs) -> Self::Output;
 }
 
-impl Sub for i8 { fn sub(self: *Self, other: *Self) -> Self { *self - *other } }
-impl Sub for i16 { fn sub(self: *Self, other: *Self) -> Self { *self - *other } }
-impl Sub for i32 { fn sub(self: *Self, other: *Self) -> Self { *self - *other } }
-impl Sub for i64 { fn sub(self: *Self, other: *Self) -> Self { *self - *other } }
-impl Sub for u8 { fn sub(self: *Self, other: *Self) -> Self { *self - *other } }
-impl Sub for u16 { fn sub(self: *Self, other: *Self) -> Self { *self - *other } }
-impl Sub for u32 { fn sub(self: *Self, other: *Self) -> Self { *self - *other } }
-impl Sub for u64 { fn sub(self: *Self, other: *Self) -> Self { *self - *other } }
-impl Sub for f32 { fn sub(self: *Self, other: *Self) -> Self { *self - *other } }
-impl Sub for f64 { fn sub(self: *Self, other: *Self) -> Self { *self - *other } }
+impl Sub for i8 { type Output = i8; fn sub(self: Self, other: Self) -> Self::Output { self - other } }
+impl Sub for i16 { type Output = i16; fn sub(self: Self, other: Self) -> Self::Output { self - other } }
+impl Sub for i32 { type Output = i32; fn sub(self: Self, other: Self) -> Self::Output { self - other } }
+impl Sub for i64 { type Output = i64; fn sub(self: Self, other: Self) -> Self::Output { self - other } }
+impl Sub for u8 { type Output = u8; fn sub(self: Self, other: Self) -> Self::Output { self - other } }
+impl Sub for u16 { type Output = u16; fn sub(self: Self, other: Self) -> Self::Output { self - other } }
+impl Sub for u32 { type Output = u32; fn sub(self: Self, other: Self) -> Self::Output { self - other } }
+impl Sub for u64 { type Output = u64; fn sub(self: Self, other: Self) -> Self::Output { self - other } }
+impl Sub for f32 { type Output = f32; fn sub(self: Self, other: Self) -> Self::Output { self - other } }
+impl Sub for f64 { type Output = f64; fn sub(self: Self, other: Self) -> Self::Output { self - other } }
+
+/* std::ops::SubAssign -- `a -= b` is SubAssign::sub_assign(&mut
+ * a, b) (07-operators.md): the compound is its own trait, the
+ * left borrowed for the write, the right a value the parameter's
+ * slot takes whole. */
+
+pub trait SubAssign<Rhs = Self> {
+  fn sub_assign(self: *mut Self, other: Rhs);
+}
+
+impl SubAssign for i8 { fn sub_assign(self: *mut Self, other: Self) { *self = *self - other; } }
+impl SubAssign for i16 { fn sub_assign(self: *mut Self, other: Self) { *self = *self - other; } }
+impl SubAssign for i32 { fn sub_assign(self: *mut Self, other: Self) { *self = *self - other; } }
+impl SubAssign for i64 { fn sub_assign(self: *mut Self, other: Self) { *self = *self - other; } }
+impl SubAssign for u8 { fn sub_assign(self: *mut Self, other: Self) { *self = *self - other; } }
+impl SubAssign for u16 { fn sub_assign(self: *mut Self, other: Self) { *self = *self - other; } }
+impl SubAssign for u32 { fn sub_assign(self: *mut Self, other: Self) { *self = *self - other; } }
+impl SubAssign for u64 { fn sub_assign(self: *mut Self, other: Self) { *self = *self - other; } }
+impl SubAssign for f32 { fn sub_assign(self: *mut Self, other: Self) { *self = *self - other; } }
+impl SubAssign for f64 { fn sub_assign(self: *mut Self, other: Self) { *self = *self - other; } }
