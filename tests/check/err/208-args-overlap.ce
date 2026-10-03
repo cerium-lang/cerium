@@ -1,0 +1,19 @@
+/* the arguments that differ a row do not save it when they do
+ * not (04-generics.md): two rows of one trait, the same
+ * for-type, the same argument shape -- a variable either one can
+ * bind -- are one row written twice */
+use std::ops::Add;
+
+struct S { n: i32 }
+
+impl<T> Add<T> for S {
+  type Output = S;
+  fn add(self: Self, other: T) -> Self::Output { self }
+}
+
+impl<U> Add<U> for S {
+  type Output = S;
+  fn add(self: Self, other: U) -> Self::Output { self }
+}
+
+fn main() -> i32 { 0 }

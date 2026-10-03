@@ -243,6 +243,14 @@ When an impl is declared, the compiler compares it against every existing impl
 of the same trait: it is accepted only if the two are provably disjoint or
 strictly ordered by specificity. Anything else is rejected on the spot.
 
+A row's identity is its trait's arguments beside the type it is for.
+`Add for S` — whose `Rhs` defaulted to `Self` — and `Add<usize> for S` are
+disjoint rows: no call takes both, and both are legal. An argument a variable
+can bind orders instead: `impl<T> Add<T> for S` stands under `Add<usize> for
+S`, the specific row answering the call that spells it. But two rows whose
+arguments are the same shape, a variable either one can bind, are one row
+written twice.
+
 The consequence is stability: adding an impl can never change how existing
 code resolves, because a conflicting impl never gets in. This is what makes
 specialization safe to build on without a runtime or a fixed link order.

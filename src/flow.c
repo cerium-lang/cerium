@@ -948,18 +948,26 @@ implfit(Sym *im, Type *t, Type ***tysp)
   return 1;
 }
 
-/* the joint specificity order the declaration check ran: shape
- * strictly first, then bounds (04-generics.md). Among one type's
- * matches disjointness never differs them -- both matched the same
- * type -- so this walk alone settles the pick. */
+/* the joint specificity order the declaration check ran: the
+ * whole row first -- a trait impl's arguments beside its
+ * for-type (04-generics.md) -- then bounds. Among one type's
+ * matches disjointness never differs them -- both matched the
+ * same type -- so this walk alone settles the pick. */
 static int
 implspecific(Sym *a, Sym *b)
 {
-  Type *fa = a->ifort ? a->ifort : a->ipath;
-  Type *fb = b->ifort ? b->ifort : b->ipath;
-  int   ab = specializes(fa, fb);
-  int   ba = specializes(fb, fa);
+  int ab, ba;
 
+  if (a->ifort) { /* a trait row: its arguments are its shape too */
+    ab = rowspec(a, b);
+    ba = rowspec(b, a);
+  } else {
+    Type *fa = a->ifort ? a->ifort : a->ipath;
+    Type *fb = b->ifort ? b->ifort : b->ipath;
+
+    ab = specializes(fa, fb);
+    ba = specializes(fb, fa);
+  }
   if (ab != ba)
     return ab;                                  /* strictly ordered by shape */
   return boundsincl(a, b) && !boundsincl(b, a); /* equal shape: bounds */

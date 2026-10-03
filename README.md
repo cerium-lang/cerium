@@ -109,7 +109,7 @@ split `ok/` against `err/` — a dump must reproduce its `.golden`
 exactly, a rejection must say why — and `tests/run`, where every `.ce`
 compiles to a binary whose exit, stdout and stderr the files beside it
 name, an optional `.release` building it with `-r`
-(`tools/run-tests.sh`). 450 green at the time of writing.
+(`tools/run-tests.sh`). 452 green at the time of writing.
 
 ## The specification
 

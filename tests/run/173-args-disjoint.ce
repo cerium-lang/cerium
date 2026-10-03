@@ -1,0 +1,58 @@
+/* the trait's own arguments are the row's identity too
+ * (04-generics.md, 07-operators.md): rows the receiver fits that
+ * disagree in their Rhs no longer conflict -- the declaration
+ * reads the arguments beside the for-type, and the spelled call
+ * picks the row whose arguments take it, the same walk the
+ * receiver's order always ran. The default Rhs is Self
+ * (04-generics.md), so `Add for S` and `Add<usize> for S` are
+ * two rows of one trait, disjoint by their arguments; two
+ * concrete arguments that differ are disjoint the same way; and
+ * a generic argument stands under a concrete one, the specific
+ * row answering the call that spells it. */
+use std::ops::Add;
+
+struct S { n: i32 }
+
+impl Add for S {
+  type Output = S;
+  fn add(self: Self, other: Self) -> Self::Output { S{ n: self.n + other.n } }
+}
+
+impl Add<usize> for S {
+  type Output = S;
+  fn add(self: Self, other: usize) -> Self::Output { S{ n: self.n + @cast<i32>(other) } }
+}
+
+struct W { n: i32 }
+
+impl Add<usize> for W {
+  type Output = W;
+  fn add(self: Self, other: usize) -> Self::Output { W{ n: self.n + @cast<i32>(other) } }
+}
+
+impl Add<u8> for W {
+  type Output = W;
+  fn add(self: Self, other: u8) -> Self::Output { W{ n: self.n - @cast<i32>(other) } }
+}
+
+struct V { n: i32 }
+
+impl<T> Add<T> for V {
+  type Output = V;
+  fn add(self: Self, other: T) -> Self::Output { self }
+}
+
+impl Add<usize> for V {
+  type Output = V;
+  fn add(self: Self, other: usize) -> Self::Output { V{ n: self.n + @cast<i32>(other) } }
+}
+
+fn main() -> i32 {
+  let a = S{ n: 1 } + S{ n: 2 };                /* the default row, by sugar */
+  let b = Add::add(S{ n: 5 }, @cast<usize>(3)); /* the usize row beside it */
+  let c = Add::add(W{ n: 5 }, @cast<usize>(3)); /* usize and u8: disjoint */
+  let d = Add::add(W{ n: 9 }, @cast<u8>(4));
+  let e = Add::add(V{ n: 1 }, @cast<usize>(2)); /* the specific row answers
+                                                 * where the generic one stands */
+  a.n + b.n + c.n + d.n + e.n
+}
