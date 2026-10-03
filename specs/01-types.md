@@ -435,8 +435,9 @@ a block, or a walk that knows only where it ends:
 let next: *i32 = p + 1;   // steps by @sizeof(i32)
 ```
 
-`+` and `-` take an integer; there is no subtraction of two pointers. `voidptr`
-cannot be walked, since it has no element size.
+`+` and `-` take an integer. There is no subtraction of two pointers as a
+distance — the pair's `-` is the borrowed row's, the elements' own difference
+(`07-operators.md`). `voidptr` cannot be walked, since it has no element size.
 
 Pointers of the same type compare with `<`, `>`, `<=` and `>=`, which is what a
 walk needs in order to know where to stop:

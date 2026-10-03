@@ -2830,6 +2830,23 @@ emaexpr(Em *em, Ast *e)
     }
     a = emaexpr(em, e->v.bin.l);
     b = emaexpr(em, e->v.bin.r);
+    if ((op == Tplus || op == Tminus) && lt && lt->k == Typtr) {
+      /* pointer arithmetic (01-types.md): the amount widened
+       * whole, scaled by the element's own size, the pointer
+       * stepped by the product -- the built-in table's own
+       * answer, the std's Add<usize> row spelling it a call
+       * (07-operators.md). A voidptr is no Typtr and never
+       * arrives: there is no element size to scale by */
+      Type *el = lt->t;
+      char *s = newtmp(em);
+
+      while (el && el->k == Tymut) /* *mut T: the element's own type */
+        el = el->t;
+      b = tol(em, b, e->v.bin.r->ty);
+      fprintf(em->o, "\t%s =l mul %s, %lu\n", s, b, (unsigned long) sizeof_(el));
+      fprintf(em->o, "\t%s =l %s %s, %s\n", t, op == Tplus ? "add" : "sub", a, s);
+      return t;
+    }
     for (i = 0; i < sizeof ops / sizeof ops[0]; i++)
       if (ops[i].t == op) {
         char *ins = ops[i].i;
@@ -3604,6 +3621,20 @@ emastmt(Em *em, Ast *st)
 
       v = emaexpr(em, st->v.bin.r);
       fprintf(em->o, "\t%s =%c %s %s\n", old, qbety(lhs->ty, lhs), ldins(lhs->ty), p);
+      if ((op == Tpluseq || op == Tminuseq) && lhs->ty && lhs->ty->k == Typtr) {
+        /* a pointer stepped in place (01-types.md): the amount
+         * scaled, the same arithmetic the expression's own walks */
+        Type *el = lhs->ty->t;
+        char *s = newtmp(em);
+
+        while (el && el->k == Tymut) /* *mut T: the element's own type */
+          el = el->t;
+        v = tol(em, v, st->v.bin.r->ty);
+        fprintf(em->o, "\t%s =l mul %s, %lu\n", s, v, (unsigned long) sizeof_(el));
+        fprintf(em->o, "\t%s =l %s %s, %s\n", nv, op == Tpluseq ? "add" : "sub", old, s);
+        fprintf(em->o, "\t%s %s, %s\n", stins(lhs->ty), nv, p);
+        return;
+      }
       for (i = 0; i < sizeof ops / sizeof ops[0]; i++)
         if (ops[i].t == op) {
           fprintf(em->o, "\t%s =%c %s %s, %s\n", nv, qbety(lhs->ty, lhs),

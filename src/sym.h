@@ -158,6 +158,11 @@ struct Sym
   Type *ipath, *ifort; /* Simpl: the head. ipath is the trait (a trait
                           impl) or the type itself (an inherent one);
                           ifort, what a trait impl is for */
+  Sym **ibounds;       /* Simpl: the gparams' bounds' traits, pass 3's own
+                          read -- the specificity walks re-read them per
+                          call, and a bound's name resolves in its file's
+                          context, not the caller's (04-generics.md) */
+  usize nibounds;      /* their count, sixteen at most */
 };
 
 void syminit(void);

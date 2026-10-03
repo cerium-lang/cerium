@@ -1009,3 +1009,53 @@ walks took in 07d, the emitter's half arriving with it
 (`04-generics.md`). The sysroot's completeness face grew the
 nine new names beside the arithmetic seven's, so a broken
 sysroot says so at its own face rather than an unknown name's.
+
+Then the last operator row landed, and the milestone's oldest
+waiting word closed: pointer arithmetic. The checker's binop had
+taken a pointer beside an integer since the spec's own first
+draft of it; the emitter had not, and `p + 2` died at qbe's face
+-- an add with a pointer on one side and a w on the other, no
+width to share. The emit takes it now, both spellings: the
+amount widened whole to l, scaled by the element's own size,
+the pointer stepped by the product; the compound the same walk
+in place. Any integer steps -- the table's own answer, the
+`i8` amount no stranger than the `usize` one -- and a voidptr
+is no Typtr and never arrives: no element size to scale by,
+the operator's own trait refusing where the language holds no
+row either.
+
+The rows spell it in source, four of them: `Add<usize>` and
+`Sub<usize>` for `*T`, the compounds beside. The body is the
+language's own pair -- `self + other`, a pointer beside an
+integer, the built-in table answering it -- so the row never
+answers itself, the shield the integer rows ride; and no Copy
+bound rides it, the body dereferences nothing. What the body
+of the open item's own words had feared -- no expression to
+spell, `*self + other` the call the row would answer -- was
+the deref nobody asked for: the row steps the pointer, it
+does not read through it.
+
+The specificity walks surfaced their own context hole with
+the rows: the emitter's pick -- `implfind`, ordered by
+`implspecific` -- reads the bounds' trait names, and read them
+in whatever namespace the caller's file had served last, std's
+`T: Sub` resolving against a user's file that bound nothing of
+it. The coherence walks had taken the file-restoring law in
+07d and the instantiation's re-check in 07e; this was the same
+function's third consumer, and the fix is not another restore
+but a cache: pass 3 reads each impl's bounds once, in its own
+file, and the table rides the Sym -- every specificity walk
+after, coherence's or the emitter's, reads what pass 3 wrote.
+
+And the pick itself showed what the milestone leaves open:
+`implfind` reads the receiver alone, the trait's own
+parameters never narrowing the candidates -- so the spelled
+call `Add::add(p, n)` takes the borrowed row's signature over
+the mixed one's, the mixed row waiting on a fix that reads the
+trait's parameters in, at the call from the arguments, in a
+bound from what the bound names. The operator's own path never
+notices -- the binop answers the pointer pair before any row
+is asked -- and the pair's `-` keeps the borrowed row's own
+answer, the elements' difference, the spec's "no subtraction
+of two pointers" now saying what it always meant: no distance
+(`01-types.md`).

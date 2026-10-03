@@ -1,0 +1,25 @@
+/* pointer arithmetic (01-types.md): `p + n` and `p - n` step by
+ * the element's own size, any integer the amount, the compound
+ * stepping in place. A walk reads `<` for its stop; the same-type
+ * pair's `-` is no distance -- the borrowed row answers it with
+ * the elements' own difference (07-operators.md). */
+fn main() -> i32 {
+  let a = [4]i32{10, 20, 30, 40};
+  let p: *i32 = &a[1];
+  let q: *i32 = p - 1; /* back one element: &a[0] */
+  let mut w: *i32 = &a[0];
+  w += 3; /* in place: &a[3] */
+  let mut x: *i32 = &a[3];
+  x -= 2; /* back in place: &a[1] */
+  let n: i8 = 2; /* the amount any integer */
+  let y: *i32 = p + n; /* &a[3] */
+  let m = &a[0] - &a[1]; /* the borrowed row: 10 - 20 */
+  let mut it: *i32 = &a[0];
+  let end: *i32 = it + 4;
+  let mut sum = 0;
+  for it < end { /* the walk's stop (01-types.md) */
+    sum = sum + *it;
+    it = it + 1;
+  }
+  *q + *w + *x + *y + sum - 100 + m + 10
+}

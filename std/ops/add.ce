@@ -45,6 +45,20 @@ impl<T: Add + Copy> Add for *T {
   fn add(self: *T, other: *T) -> T::Output { Add::add(*self, *other) }
 }
 
+/* pointer arithmetic (01-types.md): `p + n` steps by the
+ * element's own size, the mixed Rhs the spec itself names. The
+ * body is the language's own pair -- a pointer beside an
+ * integer, the built-in table answering it -- so the row never
+ * answers itself, and no Copy bound rides it: the body
+ * dereferences nothing. A plain `p + n` never comes here, any
+ * integer the table's to take; the spelled call arrives with
+ * usize in hand. */
+
+impl<T> Add<usize> for *T {
+  type Output = *T;
+  fn add(self: *T, other: usize) -> *T { self + other }
+}
+
 /* std::ops::AddAssign -- `a += b` is AddAssign::add_assign(&mut
  * a, b) (07-operators.md): the compound is its own trait, the
  * left borrowed for the write, the right a value the parameter's
@@ -65,3 +79,11 @@ impl AddAssign for u32 { fn add_assign(self: *mut Self, other: Self) { *self = *
 impl AddAssign for u64 { fn add_assign(self: *mut Self, other: Self) { *self = *self + other; } }
 impl AddAssign for f32 { fn add_assign(self: *mut Self, other: Self) { *self = *self + other; } }
 impl AddAssign for f64 { fn add_assign(self: *mut Self, other: Self) { *self = *self + other; } }
+
+/* the pointer's own compound (01-types.md): `p += n` the
+ * language answers for any integer, this row the spelled call's,
+ * the body the same pair the expression's own. */
+
+impl<T> AddAssign<usize> for *T {
+  fn add_assign(self: *mut *T, other: usize) { *self = *self + other; }
+}

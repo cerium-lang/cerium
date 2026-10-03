@@ -46,11 +46,21 @@ row exists, a float beside a float keeps the language's error.
 
 `Rhs` is a type parameter and defaults to `Self`, so `impl Add for Vec3` means
 `impl Add<Vec3> for Vec3`. It need not be `Self` — that is what pointer
-arithmetic is (`01-types.md`):
+arithmetic is (`01-types.md`), and the row spells it in `std::ops`:
 
 ```rust
-impl<T> Add<usize> for *T { ... }
+impl<T> Add<usize> for *T {
+  type Output = *T;
+  fn add(self: *T, other: usize) -> *T { self + other }
+}
 ```
+
+The body is the language's own pair — a pointer beside an integer, the
+built-in table answering it, so the row never answers itself. A plain `p + n`
+never comes here, any integer the table's to take; the spelled call arrives
+with `usize` in hand — and the spelled call is where the row's own picking
+waits: `implfind` reads the receiver alone, and the borrowed row's signature
+can take the pick over this one's (the open item below).
 
 The answer is the `Output` associated type (`05-traits.md`), so an operation
 may return something other than either operand — the arithmetic four carry it,
@@ -181,11 +191,12 @@ As a language rule, indexing is uniform and can be checked at compile time.
 
 ## Open items
 
-- Pointer arithmetic — `impl<T> Add<usize> for *T`: the row's own body has no
-  expression to spell (`*self + other` is the call the row would answer), so
-  it waits on the emitter taking a pointer beside an integer, widened; the
-  borrowed rows and the generic projection they read (`T::Output`,
-  04-generics.md) landed with them.
+- The row pick's trait parameters: `implfind` reads the receiver alone, so a
+  spelled call's other arguments never narrow the candidates — `Add::add(p,
+  n)` with `n: usize` can take the borrowed row's signature over the mixed
+  one's, and the bound walks are the same shape, `T: Add<usize>` satisfied by
+  any `Add` row at all. The fix reads the trait's parameters in — at the call
+  from the arguments, in a bound from what the bound names.
 - The destructor half of a moved operand: a non-Copy parameter's slot does not
   drop yet (`03-move.md`), and a non-Copy `AddAssign` cannot spell its body —
   the store to a borrowed place wants the take the move chapter has not
