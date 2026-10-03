@@ -1,0 +1,10 @@
+/* a nested index whose inner index is a runtime value: the base chain
+ * is walked as places all the way down, and every index expression
+ * along it -- the inner one included -- is checked and emitted like
+ * the outer (01-types.md). */
+fn main() -> i32 {
+  let m = [2][2]i32{[2]i32{1, 2}, [2]i32{3, 4}};
+  let i = 1;
+
+  m[i][0] + m[0][i]   /* 3 + 2: the inner and the outer, both runtime */
+}

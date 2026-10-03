@@ -1193,3 +1193,53 @@ S`) is declared legal but no call reaches it -- the candidate
 walk binds a row's variables from the receiver alone -- and
 that binding from the call's own arguments is the open item
 beside the destructor half.
+
+The assignment half of the destructor story, the first cut of
+07's remaining half. The left of a store is a place now: Nassign
+walks it with rplace, the same place read a field access takes,
+so the store never moves what it overwrites -- and a non-Copy
+AddAssign can spell its body at last, `*self = D { ... }` the
+borrowed-place store the move chapter legislated but the walk
+could not say. The old value's destructor rides the same
+statement: the checker resolves the place's own Drop row and
+hangs a pre-made call off the assignment, and the emitter runs
+it between the new value and the store -- the new value fixed to
+a temporary first, for `x = x` hands the destructor the very
+place it reads, and what the store writes back has to survive
+it. @take is emitted on the same page: the value out to a slot,
+the zero block back over the place, and the checker spends the
+inline borrow the argument made, as a deref always has -- the
+std sugar `take(x)` is `@take(&mut x)`, and a sugar that froze
+its operand past the take would be no sugar at all.
+
+The new caller exposed two holes rplace had carried since it was
+only a base-chain reader. Its Tstar case read the pointer
+without the spend wrapper, so `*@field(p, "z") = 40` froze p
+inside the very walk that would hand the store its address --
+the second walk the store's own checks make found the freeze and
+reported it; the wrapper the value read and the writability ask
+both carry closes it. And its index case never walked the index
+expression, because a base chain hands the outer node its own
+walk -- an assignment's left has no outer node, so `a[three()] =
+9` reached the emitter with an index that was never checked, and
+the emitter reads an index's type before it reads the element.
+The walk the value read takes moved in, and with it a latent
+crash on main became a fix: `m[i][0]` with a runtime i was
+checked nowhere -- the base-chain read left the inner index to
+an outer walk that did not exist -- and now both walks read the
+whole chain. The A row of the place walk answers a range index
+with the slice view itself now too, the same type the value read
+gives, so the store's own report on one names the slice it
+cannot write.
+
+One discovery on the way, worth its words: the compound
+assignment's rewrite spells `std::ops::AddAssign` whole, so the
+row a user's `a +=` reaches is std's trait -- an AddAssign
+declared beside the use site never enters, and the impl has to
+name std's own (`use std::ops::AddAssign; impl AddAssign<D> for
+D`). That is the design -- the operator needs no use
+(11-namespaces.md) -- but it is the first place the distinction
+is user-visible, and the probe that declared its own trait
+chased "no 'AddAssign' for D" through two Syms of one name
+before the three-segment path in the rewrite said what it was
+doing.

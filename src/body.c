@@ -138,12 +138,61 @@ rplace1(Ast *e, Fenv *fe)
     if (!bt)
       return 0;
     bt = derefthrough(bt);
-    return bt->k == Tyarray || bt->k == Tyslice ? bt->t : 0;
+    if (bt->k != Tyarray && bt->k != Tyslice)
+      return 0;           /* a tuple or a pack: rexpr's own ground, the row
+                           * rewrite it answers there */
+    if (e->k == Nindex) { /* the index: a value the store reads, and
+                           * one no other walk takes when this node is
+                           * a place -- or a base below one -- so it is
+                           * checked here or never (01-types.md) */
+      Type *it = rexpr(e->v.n2.b, fe, 0);
+
+      if (!it || !isintty(it))
+        berr(e->v.n2.b, "an index is an integer, this is %s", btys(it));
+      if (e->v.n2.b->k == Nint && bt->k == Tyarray &&
+          !bt->gp /* the
+                   * length a const parameter names has
+                   * no number here (08-reflection.md) */
+          && e->v.n2.b->v.i.num >= bt->n)
+        berr(e->v.n2.b, "index %lu out of range for %s", (unsigned long) e->v.n2.b->v.i.num,
+             btys(bt));
+      return bt->t;
+    }
+    { /* the bounds, the same walk */
+      if (e->v.ridx.lo) {
+        Type *lt = rexpr(e->v.ridx.lo, fe, 0);
+
+        if (!lt || !isintty(lt))
+          berr(e->v.ridx.lo, "a slice bound is an integer, this is %s", btys(lt));
+      }
+      if (e->v.ridx.hi) {
+        Type *ht = rexpr(e->v.ridx.hi, fe, 0);
+
+        if (!ht || !isintty(ht))
+          berr(e->v.ridx.hi, "a slice bound is an integer, this is %s", btys(ht));
+      }
+      if (e->v.ridx.lo && e->v.ridx.hi && e->v.ridx.lo->k == Nint && e->v.ridx.hi->k == Nint &&
+          bt->k == Tyarray && !bt->gp &&
+          (e->v.ridx.lo->v.i.num > e->v.ridx.hi->v.i.num || e->v.ridx.hi->v.i.num > bt->n))
+        berr(e, "slice bounds out of range for %s", btys(bt));
+    }
+    return tyslice(bt->t); /* the view itself, the same answer the
+                            * value read gives -- a place the store
+                            * does not yet write through */
   }
   case Nun:
     if (e->v.un.op == Tstar) {
-      Type *pt = rexpr(e->v.un.e, fe, 0); /* the pointer itself: a Copy */
+      Type *pt;
+      int   spent = spentborrow(e->v.un.e);
 
+      if (spent) /* the same spend the value read takes: the inline
+                  * borrow dies the moment it is made, so the walk
+                  * freezes nothing the store below would then find
+                  * borrowed (01-types.md) */
+        fe->nofreeze++;
+      pt = rexpr(e->v.un.e, fe, 0); /* the pointer itself: a Copy */
+      if (spent)
+        fe->nofreeze--;
       return pt && pt->k == Typtr ? pt->t : 0;
     }
     return 0;
@@ -575,7 +624,7 @@ thawargs(Frzsave *svs, usize n)
  * borrow spelled by name (08-reflection.md). The deref spends the
  * borrow whole: it dies the moment it is made, so the walk around
  * it tells freeze to hold its hand (01-types.md) */
-static int
+int
 spentborrow(Ast *operand)
 {
   if (operand->k == Nun && operand->v.un.op == Tamp)
@@ -3346,8 +3395,17 @@ rstmt(Ast *st, Fenv *fe)
   }
   case Nassign: {
     Tok   op = st->v.bin.op;
-    Type *lt = rexpr(st->v.bin.l, fe, 0);
+    Type *lt = rplace(st->v.bin.l, fe); /* the left is a place the
+                                         * store writes, not a value
+                                         * the read moves (03) --
+                                         * `*p = v` and `x.f = v` walk
+                                         * here now, a place's read
+                                         * taking nothing */
     Type *rt;
+
+    if (!lt)
+      lt = rexpr(st->v.bin.l, fe, 0); /* not a place: the report below
+                                       * names what it is */
 
     if (opbarelocal(st->v.bin.l)) /* the left is a place the store
                                    * writes, not a value the read
@@ -3383,6 +3441,37 @@ rstmt(Ast *st, Fenv *fe)
                                      * end with the left alive
                                      * (03-move.md) */
         opunmove(st->v.bin.l, fe);
+      { /* the old value's destructor, when the type owns one
+         * (03-move.md): the store runs it first, a row the place's
+         * own type picks -- the call pre-made, its argument the
+         * place itself, so the emitter drops what it overwrites.
+         * A type with no row of its own drops nothing here --
+         * a field's inherited destructor arrives with the scope
+         * half. */
+        Sym    *imp;
+        Type  **tys;
+        Member *m = implfind(sym_drop, lt, "drop", &imp, &tys);
+
+        if (m) {
+          Ast *f = opnode(Npath, st); /* std::Drop::drop, the row's
+                                       * own home spelled -- the sym
+                                       * is the emitter's handle, the
+                                       * path what a dump says */
+          Ast *c = opnode(Ncall, st);
+
+          f->v.path.segs = vnew(Ast *, 3);
+          opvpush(&f->v.path.segs, opseg("std", st));
+          opvpush(&f->v.path.segs, opseg("Drop", st));
+          opvpush(&f->v.path.segs, opseg("drop", st));
+          c->v.call.f = f;
+          c->v.call.args = vnew(Ast *, 1);
+          opvpush(&c->v.call.args, st->v.bin.l);
+          c->v.call.sym = m->sym;
+          c->v.call.tys = tys && imp->ngparams ? tys : 0;
+          c->ty = tyunit();
+          st->v.bin.drop = c;
+        }
+      }
       return;
     }
     /* the compound forms: the operator's own rules */

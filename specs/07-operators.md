@@ -192,10 +192,13 @@ As a language rule, indexing is uniform and can be checked at compile time.
 
 ## Open items
 
-- The destructor half of a moved operand: a non-Copy parameter's slot does not
-  drop yet (`03-move.md`), and a non-Copy `AddAssign` cannot spell its body —
-  the store to a borrowed place wants the take the move chapter has not
-  written.
+- The destructor half's assignment side is written: the left of a store is a
+  place, so a non-Copy `AddAssign` spells its body — `*self = ...` — and
+  reassignment runs the old value's `drop` before the store, `@take` emitted
+  with the zero value written back (`03-move.md`). What stays open is the
+  scope half: a binding that still owns a value at its scope's end runs
+  nothing yet, nor does a bare temporary's statement, an early exit's
+  reachable bindings, or a non-Copy parameter's slot.
 - A row whose variables live only in the trait's arguments (`impl<T> Add<T>
   for S`) is declared legal — ordered under its specific rows — but no call
   reaches it yet: the candidate walk binds a row's variables from the

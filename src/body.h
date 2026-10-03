@@ -84,6 +84,9 @@ Local *placeroot(Ast *e, Fenv *fe, char *path, usize psz);
 void   freeze(Ast *place, Fenv *fe, int mut, int by);
 void   frzrestore(Frzsave *sv);
 int    touchconflict(Ast *place, Fenv *fe, int writing);
+int    spentborrow(Ast *operand); /* the deref -- or the @take -- around
+                                   * it spends the borrow whole: the walk
+                                   * tells freeze to hold its hand */
 
 /* narrowing (01-types.md, Nullability) */
 int narrowcond(Ast *cond, Fenv *fe, char **name, Type **child);
