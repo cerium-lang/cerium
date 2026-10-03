@@ -103,6 +103,7 @@ Member *inherentfindt(Type *t, const char *name, Sym **imp, Type ***tysp);
 Member *implfind(Sym *trait, Type *t, const char *name, Sym **imp, Type ***tysp);
 Member *traitfindt(Type *t, const char *name, Sym **imp, Type ***tysp);
 Sym    *implfor(Sym *trait, Type *t, Type ***tysp);
-int     implsatisfies(Sym *trait, Type *t);
+int     implsatisfies(Sym *trait, Type *t, Type **targs, usize ntargs);
+int     boundsatisfies(Ast *b, Type *t, Ast **gps, Type **tys, usize n, Type ***ta);
 
 #endif

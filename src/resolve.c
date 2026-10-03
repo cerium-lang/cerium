@@ -449,9 +449,16 @@ rpath(Ast *p, Env *env)
       if (segs[1]->v.seg.args)
         cerrat(p, "'%s' takes no type arguments", nm1);
       for (bi = 0; bi < vlen(bs); bi++) {
-        Ast **bsegs = bs[bi]->v.path.segs;
-        Sym  *tr = vlen(bsegs) == 1 ? symfind(bsegs[0]->v.seg.name) : 0;
+        Sym *tr = bs[bi]->v.path.sym; /* the bound's own cache (04) */
 
+        if (!tr) { /* a signature read ahead of its declaration's own
+                    * walk -- a lazy pass-2 read in another file. The
+                    * name reads here; the cache holds once the walk
+                    * lands (04-generics.md) */
+          Ast **bsegs = bs[bi]->v.path.segs;
+
+          tr = vlen(bsegs) == 1 ? symfind(bsegs[0]->v.seg.name) : 0;
+        }
         if (!tr || tr->kind != Strait)
           continue;
         for (mi = 0; mi < tr->nmembers; mi++)
@@ -1154,6 +1161,125 @@ resolveimplmembers(Sym *s)
   }
 }
 
+/* one parameter list's bounds, read here where they were written:
+ * the trait each names -- a bound is a trait's name (04-generics.md)
+ * -- and the type arguments it spelled, cached on the bound's own
+ * node. The consumers run under whoever called them -- a call's
+ * binding check, the generic branch's signature, a projection's
+ * hunt -- and a name would read that caller's context
+ * (11-namespaces.md); the cache is what keeps the bound's own
+ * file's reading. The tail the bound left unspelled is not cached:
+ * its defaults belong to whoever asks, their Self their own
+ * (07-operators.md). */
+static void
+boundresolve(Ast **gps, Env *env)
+{
+  usize i, j;
+
+  for (i = 0; i < vlen(gps); i++) {
+    Ast **bs = gps[i]->v.gp.bounds;
+
+    for (j = 0; j < vlen(bs); j++) {
+      Ast  *b = bs[j];
+      Ast **segs = b->v.path.segs;
+      Ast  *seg;
+      Sym  *s;
+      usize n;
+
+      if (vlen(segs) != 1)
+        cerrat(b, "a bound is a trait's name");
+      seg = segs[0];
+      s = symfind(seg->v.seg.name);
+      if (!s)
+        cerrat(b, "unknown trait '%s'", seg->v.seg.name);
+      if (s->kind != Strait)
+        cerrat(b, "a bound names a trait, and '%s' is not one", seg->v.seg.name);
+      n = vlen(seg->v.seg.args);
+      if (n > s->ngparams)
+        cerrat(b, "'%s' takes %lu type argument%s, not %lu", s->name, (unsigned long) s->ngparams,
+               s->ngparams == 1 ? "" : "s", (unsigned long) n);
+      if (n < s->ngparams) { /* the tail the bound left unspelled:
+                              * whoever asks fills it from the
+                              * trait's defaults, so every parameter
+                              * past the spelled ones must carry one
+                              * (04-generics.md) */
+        usize k;
+
+        for (k = n; k < s->ngparams; k++)
+          if (!s->gparams[k]->v.gp.dflt)
+            cerrat(b, "the bound spells no '%s', and it has no default", s->gparams[k]->v.gp.name);
+      }
+      b->v.path.sym = s;
+      b->v.path.tys = n ? rargs(seg, env, &n) : 0;
+    }
+  }
+}
+
+/* the bounds one declaration's parameters carry, and the member
+ * fns' own under it -- free fns and plain types here too, for their
+ * consumers read them under the caller's context (04-generics.md).
+ * The members' scope mirrors what resolves their signatures: an
+ * impl's Self is its own type with the trait's head arguments over
+ * the impl's generics (05-traits.md), a trait's Self the trait's
+ * own parameter. */
+static void
+resolvebounds(Ast *it, Sym *s)
+{
+  Ast **gps;
+  Ast **ms = 0;
+  Env   mem;
+
+  switch (it->k) {
+  case Nfn:
+    gps = it->v.fn.gparams;
+    break;
+  case Nstruct:
+  case Nunion:
+    gps = it->v.ty.gparams;
+    break;
+  case Nenum:
+    gps = it->v.en.gparams;
+    break;
+  case Ntypedef:
+    gps = it->v.td.gparams;
+    break;
+  case Ntrait:
+  case Nimpl: {
+    Env   own = envgparams(0, it->k == Ntrait ? it->v.ty.gparams : it->v.impl.gparams,
+                         it->k == Ntrait ? vlen(it->v.ty.gparams) : vlen(it->v.impl.gparams));
+    usize i;
+
+    gps = it->k == Ntrait ? it->v.ty.gparams : it->v.impl.gparams;
+    boundresolve(gps, &own);
+    mem = own;
+    if (it->k == Ntrait) {
+      mem.strait = s;
+      mem = envpush(&mem, "Self", selfty());
+      ms = it->v.ty.members;
+    } else {
+      mem.impl = s;
+      mem = envpush(&mem, "Self", s->ifort ? s->ifort : s->ipath);
+      mem = envtraitargs(&mem, s);
+      ms = it->v.impl.members;
+    }
+    for (i = 0; i < vlen(ms); i++)
+      if (ms[i]->k == Nfn) {
+        Env e2 = envgparams(&mem, ms[i]->v.fn.gparams, vlen(ms[i]->v.fn.gparams));
+
+        boundresolve(ms[i]->v.fn.gparams, &e2);
+      }
+    return;
+  }
+  default:
+    return;
+  }
+  {
+    Env env = envgparams(0, gps, vlen(gps));
+
+    boundresolve(gps, &env);
+  }
+}
+
 /* -- comparing a trait impl against its trait -------------------------- */
 
 /* what a trait's declaration resolves against an impl: Self becomes
@@ -1460,7 +1586,9 @@ disjoint(Type *a, Type *b)
 }
 
 /* the traits an impl's parameter bounds name, at most sixteen -- a
- * bound is a trait's name (04-generics.md) */
+ * bound is a trait's name (04-generics.md), read where it was
+ * written: the bound's own cache, filled at declaration
+ * (07-operators.md) */
 static usize
 collectbounds(Sym *s, Sym **out)
 {
@@ -1470,20 +1598,9 @@ collectbounds(Sym *s, Sym **out)
   for (i = 0; i < vlen(gps); i++) {
     Ast **bs = gps[i]->v.gp.bounds;
 
-    for (j = 0; j < vlen(bs); j++) {
-      Ast **segs = bs[j]->v.path.segs;
-      Sym  *t;
-
-      if (vlen(segs) != 1)
-        cerrat(bs[j], "a bound is a trait's name");
-      t = symfind(segs[0]->v.seg.name);
-      if (!t)
-        cerrat(bs[j], "unknown trait '%s'", segs[0]->v.seg.name);
-      if (t->kind != Strait)
-        cerrat(bs[j], "a bound names a trait, and '%s' is not one", segs[0]->v.seg.name);
+    for (j = 0; j < vlen(bs); j++)
       if (n < 16)
-        out[n++] = t;
-    }
+        out[n++] = bs[j]->v.path.sym;
   }
   return n;
 }
@@ -1717,16 +1834,22 @@ resolveitems(Ast **items, Sym **syms)
     checkdefaults(s);
     switch (it->k) {
     case Nfn:
+      resolvebounds(it, s); /* the signature may read its own bounds
+                             * -- T::Item names the trait that carries
+                             * it (04-generics.md) */
       resolvefn(s);
       break;
     case Nstruct:
     case Nunion:
+      resolvebounds(it, s);
       resolvestruct(s);
       break;
     case Nenum:
+      resolvebounds(it, s);
       resolveenum(s);
       break;
     case Ntypedef:
+      resolvebounds(it, s);
       aliastarget(s);
       break;
     case Nconst:
@@ -1739,8 +1862,15 @@ resolveitems(Ast **items, Sym **syms)
                     * value is too, its storage is runtime */
       break;
     }
+    case Ntrait: /* the members' signatures are pass 3's, possibly a
+                  * lazy read under whoever asked -- their bounds
+                  * read here, in the trait's own file (04) */
+      resolvebounds(it, s);
+      break;
     case Nimpl:
-      resolveimpl(s);
+      resolveimpl(s); /* the head first: the members' bounds read
+                       * its Self and the trait's arguments */
+      resolvebounds(it, s);
       break;
     default: /* use items: namespaces are their own feature */
       break;

@@ -1059,3 +1059,54 @@ is asked -- and the pair's `-` keeps the borrowed row's own
 answer, the elements' difference, the spec's "no subtraction
 of two pointers" now saying what it always meant: no distance
 (`01-types.md`).
+
+The bound's own arguments came next, the open item's other half.
+The parser had kept them all along -- `T: Add<usize>`'s `<usize>`
+sat whole in the bound's own segment, for no one to read: every
+bound walk answered the trait's name alone, so a bound that
+spelled `Add<usize>` was satisfied by any `Add` row at all, and
+one that spelled a trait the file never bound passed silently
+too. The spelling is the constraint now, and the spec says so
+(`04-generics.md`, the section written with this): the row that
+answers must take the arguments the bound named, whatever its
+receiver fits.
+
+The reading happens where the bound was written. Every consumer
+of a bound runs under whoever called it -- the call's binding
+check, the generic branch's signature, a projection's hunt, the
+impl table's own bounds -- and a name reads that caller's
+context: the fourth consumer of the family 07d's file-restoring
+law grew for, and this one takes the cache 07f took, on the
+bound's own node this time -- the trait's Sym and the arguments
+it spelled, read once at the declaration, in the declaring file,
+before any signature that might read them resolves. Free fns and
+plain types ride the same walk, so an unknown trait, a trait's
+parameters overspelled, a tail no default can fill -- all
+diagnosed where the bound is written, no longer silently
+ignored.
+
+The spelled call reads the spelling into the signature: the
+bound's arguments the prefix, the trait's defaults the tail, the
+Self of the call the parameter under the bound -- and the method
+sugar takes the same filling, which closes a hole the sugar had
+all along: `a.add(b)` under `T: Add` died on a naked `Rhs`,
+selfsubst never reaching the trait's own parameters. The binding
+check reads them into the row selection: the row's own head must
+take them, the same pattern walk its receiver takes, the row's
+variables bound against the arguments -- so the borrowed row's
+`*T` no longer answers a bound that asked for `usize`. The tail
+a bound left unspelled tightened with it: the trait's own
+defaults, this type the Self they read -- `T: Add` asks
+`Add<T>`, the row's own Self, what `Rhs` always meant. The
+diagnostic names the ask now, `'u8' does not implement
+'Marks<i64>'` saying which Marks, and the copy walk reads the
+cache too -- a `Copy` of the file's own making grants nothing,
+the Sym's identity the promise, not the name's spelling.
+
+What remains is the call's own half: implfind still reads the
+receiver alone, and a spelled call's other arguments never
+narrow the candidates -- `Add::add(p, n)` with `n: usize` still
+takes the borrowed row's signature over the mixed one's. The
+bound's half is closed; the call's waits on walking the
+arguments ahead of the pick, without the freezes the walk takes
+(`07-operators.md`).

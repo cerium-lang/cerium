@@ -1,0 +1,11 @@
+/* a bound that spelled none asks the trait's defaults, this Self
+ * the type under the bound (04-generics.md): T: Marks asks
+ * Marks<T>, and the row the default names must answer */
+trait Marks<Rhs = i64> {
+  fn mark(self: Self, other: Rhs) -> i32;
+}
+impl Marks<i32> for u8 {
+  fn mark(self: u8, other: i32) -> i32 { 7 }
+}
+fn f<T: Marks>(a: T) -> i32 { 0 }
+fn main() -> i32 { f(@cast<u8>(1)) }

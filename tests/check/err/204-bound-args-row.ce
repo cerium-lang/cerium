@@ -1,0 +1,11 @@
+/* the spelling is the constraint: a row over another Rhs does not
+ * answer the bound, however well its receiver fits
+ * (04-generics.md) */
+trait Marks<Rhs = Self> {
+  fn mark(self: Self, other: Rhs) -> i32;
+}
+impl Marks<i32> for u8 {
+  fn mark(self: u8, other: i32) -> i32 { 7 }
+}
+fn f<T: Marks<i64>>(a: T) -> i32 { 0 }
+fn main() -> i32 { f(@cast<u8>(1)) }

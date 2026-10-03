@@ -1,0 +1,9 @@
+/* the tail a bound leaves unspelled is the trait's defaults, so a
+ * parameter past the spelled ones with no default is a bound no ask
+ * can complete -- rejected where the bound is written
+ * (04-generics.md) */
+trait Naked<A> {
+  fn n(self: Self, a: A) -> i32;
+}
+fn f<T: Naked>(x: T) -> i32 { 0 }
+fn main() -> i32 { 0 }

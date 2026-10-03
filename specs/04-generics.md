@@ -115,6 +115,25 @@ matching (see below):
 fn sort<T: Ord + Show>(a: []mut T) { ... }
 ```
 
+A bound names a trait, and the trait's own parameters may be spelled in the
+name (`05-traits.md`): the constraint is then the trait at those arguments,
+and only a row that takes them answers it.
+
+```rust
+trait Marks<Rhs = Self> {
+  fn mark(self: Self, other: Rhs) -> i32;
+}
+
+fn drain<T: Marks<usize>>(a: T, n: usize) -> i32 { Marks::mark(a, n) }
+```
+
+A `Marks` row over any other `Rhs` does not answer `T` here, however well its
+receiver fits. The tail the bound left unspelled is the trait's own defaults,
+`Self` the type under the bound: `T: Marks` asks `Marks<T>` — the row's own
+`Self`, what `Rhs` defaults to. A parameter past the spelled ones with no
+default is a bound no ask can complete, and it is rejected where the bound is
+written.
+
 ## Specialization
 
 Multiple impls of the same trait are ordered by how specific their bounds are.
