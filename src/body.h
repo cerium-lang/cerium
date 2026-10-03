@@ -1,9 +1,11 @@
-/* body.h -- the shared face of pass 4: the flow environment and the
- * helpers the body walk calls. flow.c owns them; body.c walks. */
+/* body.h -- the shared face of pass 4. flow.c the environment and
+ * its helpers, body.c the walk, operators.c the spelled surface,
+ * patterns.c what a match arms: the four meet here. */
 
 #ifndef BODY_H
 #define BODY_H
 
+#include "lex.h" /* Tok: the operator table reads the token's own kind */
 #include "sym.h" /* Sym, Member, Variant, Env -- and, through it, Ast and Type */
 
 /* the FZ_* borrow states stay private to flow.c: the walk goes
@@ -125,5 +127,41 @@ usize   traitcands(Type *t, const char *name, Implcand *cs, usize cap);
 Sym    *implfor(Sym *trait, Type *t, Type ***tysp);
 int     implsatisfies(Sym *trait, Type *t, Type **targs, usize ntargs);
 int     boundsatisfies(Ast *b, Type *t, Ast **gps, Type **tys, usize n, Type ***ta);
+
+/* the walk itself (body.c). The spelled surface and the match route
+ * back into these: a builtin's or an operator's operand is a walk
+ * of its own, a match arm's body a block. bodyfn is the fn whose
+ * body pass 4 is walking -- the @compileError it holds reports only
+ * when the evaluator never ran it (08-reflection.md). */
+Type       *rexpr(Ast *e, Fenv *fe, Type *want);
+Type       *rplace(Ast *e, Fenv *fe);
+Type       *rblock(Ast *b, Fenv *fe, Type *want);
+extern Sym *bodyfn;
+
+/* the spelled surface (07-operators.md, 08-reflection.md), its own
+ * file: operators.c. The walk hands the shapes over, and the
+ * rewrite hands its pieces back: the comparison chain checks the
+ * table itself, the in-place rewrites borrow and append with the
+ * constructors below. */
+Type       *rbuiltin(Ast *e, Fenv *fe, Type *want);
+int         binop(Tok op, Type *a, Type *b, Type **res);
+int         optrait(Ast *e, Fenv *fe);
+void        opuntrait(Ast *e, Fenv *fe, const char *tr, const char *mth);
+void        opunmove(Ast *e, Fenv *fe);
+Ast        *opnode(Nk k, Ast *at);
+void        opvpush(Ast ***vp, Ast *n);
+Ast        *opseg(const char *nm, Ast *at);
+Ast        *oppath(const char *x, Ast *at);
+Ast        *opborrow(Ast *v, int mut, Ast *at);
+int         opbarelocal(Ast *e);
+int         opscalar1(Type *t);
+int         opscalars(Type *a, Type *b);
+const char *opname(Tok op);
+
+/* patterns and match (09-match.md), its own file: patterns.c. A
+ * pattern fits or reports; the match that arms them and the const
+ * route a scrutinee may take are its too. */
+void  rpat(Ast *p, Type *t, Fenv *fe, int mut);
+Type *rmatch(Ast *e, Fenv *fe, Type *want);
 
 #endif

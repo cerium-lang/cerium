@@ -1146,3 +1146,25 @@ once more over the most specific row in earnest, and the
 diagnostic says what the receiver's pick alone would have said,
 `'add' wants *i32 here, this is usize` -- the same words the
 single-row call always had.
+
+body.c had grown past its shape: 4882 lines, the walk and three
+sublanguages beside it -- the @ builtins, the operator table,
+the patterns a match arms. The split follows the seams the
+section markers had already drawn, the same discipline as
+flow.c before it: the shapes the language spells itself --
+@cast, -a, a + b, each read by hand and rewritten into the
+call it answers -- are operators.c now (07-operators.md,
+08-reflection.md), and the patterns a pattern fits and the
+match that arms them are patterns.c (09-match.md). body.c is
+the walk itself again, 3761 lines and one concern, and body.h
+is the face the four files share.
+
+The face is wider than the section markers promised. The walk
+calls nearly every helper the operator table had built for
+itself -- the comparison chain reads binop and opscalars, the
+in-place rewrites assemble their calls with opnode and
+opborrow and opvpush -- so the whole table is shared,
+fourteen functions, and nothing private is left in the new
+file. That is the honest shape: the spelled surface is the
+walk's own vocabulary, not a module behind a door. No behavior
+moved -- the 450 stand as they were.

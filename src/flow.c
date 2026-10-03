@@ -2,7 +2,7 @@
  * helpers the body walk calls. Bindings live and die here, borrows
  * freeze and thaw (03-move.md), branches join conservatively, and
  * the diagnostics speak. The walk itself is body.c; body.h is the
- * face between the two. */
+ * face the pass's files share. */
 
 #include <stdarg.h>
 #include <stdio.h>
