@@ -1,0 +1,17 @@
+/* ops::Scale -- a trait in its own namespace, its borrowed row
+ * naming it: the coherence walks read the bound back in this
+ * file's context, whatever file the checker served last
+ * (11-namespaces.md). */
+use std::Copy;
+
+pub trait Scale<Rhs = Self> {
+  type Output;
+  fn scale(self: Self, other: Rhs) -> Self::Output;
+}
+
+impl Scale for i32 { type Output = i32; fn scale(self: Self, other: Self) -> Self::Output { self * other } }
+
+impl<T: Scale + Copy> Scale for *T {
+  type Output = T::Output;
+  fn scale(self: *T, other: *T) -> T::Output { Scale::scale(*self, *other) }
+}

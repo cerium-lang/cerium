@@ -918,3 +918,48 @@ that carries (`03-move.md`, `07-operators.md`). The spelled
 borrowing call -- `Add::add(&n, &m)` -- refuses the way Rust's
 does: the pointer's rows are an impl of the operator's own
 trait, and they wait on the pointer as a Self (07-operators.md).
+
+Then the rows arrived, and the last sentence turned past tense.
+A generic row -- `impl<T: Add + Copy> Add for *T` -- is one
+impl where another language writes a macro over a matrix
+(`14-macros.md`), and Cerium's lack of lifetimes is what makes
+it writable at all: Rust's core cannot blanket-impl `Add for &T`
+because a lifetime would ride the row, and here nothing does.
+The `Copy` bound is the row's own law, not a convenience:
+reading `*self` out of a shared borrow is a copy or it is a
+move out of one, and the latter has no spelling (`03-move.md`)
+-- so a type carrying a Drop borrows no row, and the call says
+`no 'Add' for *W` without ever reaching the body nobody could
+have written.
+
+Landing the row asked three things of the compiler, none of
+them large and each of them a hole a different pass was keeping.
+The trait's own `Rhs` stayed a bare parameter through the bound
+walks -- `selfsubst` replaced `Self` and nothing else -- so the
+declared signature met the argument as a stray `Rhs` the call
+could not place; the defaults machinery (`dflttail`) already
+knew the answer, and the bound walk now fills the tail the way
+an impl head always had. The projection the row answers with --
+`type Output = T::Output`, `T::Output` the parameter's own
+bounds resolving to a `typroj` -- walked through `gsubst`
+unchanged, so an instantiation carried `Add::V::Output` into
+the emitter as a type nobody could lower; the walk now opens a
+projection over a concrete Self the way a spelled name always
+could (`projopen`, the impl table's own answer), at the call,
+at the re-check, and at the emit's instantiation close. And the
+coherence walks read a bound's trait name with whatever
+namespace the checker had served last -- std's own row naming
+`Add` from `std::ops` while the cursor sat on the last file
+read -- so the walks now restore each impl's own file, its
+namespace and uses beside the path its diagnostics print; std's
+files take a `use std::Copy` for the same reason, a library
+not reading its own face (`12-projects.md`).
+
+What the rows bought is the whole story of the turn's last
+open item closing except its pointer half: `&a + &b` works over
+every Copy element, the std's and a user's, the comparisons
+borrowing the same way (`Eq` deciding, `Ord` ordering), and
+`impl<T> Add<usize> for *T` -- pointer arithmetic -- is the one
+row still waiting, its body having no expression to spell until
+the emitter takes a pointer beside an integer
+(`07-operators.md`).

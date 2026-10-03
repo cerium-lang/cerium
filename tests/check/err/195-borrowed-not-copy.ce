@@ -1,0 +1,17 @@
+/* a type that is not Copy borrows no row (07-operators.md): moving
+ * out of a shared borrow is not a thing to write, so the generic
+ * row's Copy bound says no and the call is refused -- a type of its
+ * own spells its fields, or takes the values. */
+use std::ops::Add;
+struct W { n: i32 }
+impl Drop for W { fn drop(mut self: Self) { } }
+impl Add for W {
+  type Output = W;
+  fn add(self: W, other: W) -> W { W{ n: self.n + other.n } }
+}
+fn main() -> i32 {
+  let a = W{ n: 3 };
+  let b = W{ n: 4 };
+  let c = &a + &b;
+  c.n
+}

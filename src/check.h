@@ -70,14 +70,27 @@ void recheckfn(Sym *s, Ast *it, Type **tys, Val **cvals,
 
 /* resolve.c's type resolver, shared by pass 4: one type node, one
  * path in type position, against the names in scope */
-Type *rty(Ast *t, Env *env);
-Type *rpath(Ast *p, Env *env);
-Type *fnsigof(Sym *s); /* a fn's signature, on demand (eval.c: a
-                        * forward reference from a const) */
+Type  *rty(Ast *t, Env *env);
+Type  *rpath(Ast *p, Env *env);
+Type **dflttail(Sym *s, Type **args, usize nargs, Env *outer, Type *self,
+                Ast *at); /* the missing tail of a
+                           * declaration's arguments,
+                           * from its own defaults: a
+                           * bound call fills a trait's
+                           * generics this way, its Self
+                           * the parameter under the
+                           * bound (04, 07) */
+Type *fnsigof(Sym *s);    /* a fn's signature, on demand (eval.c: a
+                           * forward reference from a const) */
 
 /* resolve.c's trait-head bindings, shared by pass 4: the trait's
  * own parameters, as the impl's head named them */
 Env envtraitargs(Env *e, Sym *s);
+
+/* body.c's projection opener, shared by the emitter: a projection
+ * over a concrete Self, opened to the impl's answer -- an
+ * instantiation's own close (04-generics.md, 05-traits.md) */
+Type *projopen(Type *t, Ast *at);
 
 /* flow.c's impl table walk: the impl of a trait for a type, the
  * question a handle's construction asks (06-dispatch.md). The

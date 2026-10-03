@@ -244,8 +244,10 @@ aliasinst(Sym *s, Type **args, usize nargs, Ast *at)
  * it names the parameters before it -- and a trait's Self, which is
  * the impl's own type where an impl head is resolving one, the
  * trait's parameter itself elsewhere. outer carries an impl head's
- * own generics; a struct's defaults have nothing outside them. */
-static Type **
+ * own generics; a struct's defaults have nothing outside them. A
+ * bound call shares this: the path spelled no arguments, so Rhs is
+ * the Self of that call -- the parameter under the bound (07). */
+Type **
 dflttail(Sym *s, Type **args, usize nargs, Env *outer, Type *self, Ast *at)
 {
   Type **full = tyargs(s->ngparams);
@@ -432,8 +434,62 @@ rpath(Ast *p, Env *env)
      * same name on one type is an ambiguity neither wins */
     char *nm0 = segs[0]->v.seg.name;
     char *nm1 = segs[1]->v.seg.name;
+    Type *pt = envfind(env, nm0);
     Sym  *s = symfind(nm0);
 
+    if (pt && pt->k == Typaram) {
+      /* T::Item, the parameter's own bounds naming the trait that
+       * carries Item (04-generics.md): a projection, answered
+       * under a binding -- the instantiation's re-check, or the
+       * impl's row -- never here */
+      Ast **bs = pt->gp->v.gp.bounds;
+      usize bi, mi;
+      Sym  *hitsym = 0;
+
+      if (segs[1]->v.seg.args)
+        cerrat(p, "'%s' takes no type arguments", nm1);
+      for (bi = 0; bi < vlen(bs); bi++) {
+        Ast **bsegs = bs[bi]->v.path.segs;
+        Sym  *tr = vlen(bsegs) == 1 ? symfind(bsegs[0]->v.seg.name) : 0;
+
+        if (!tr || tr->kind != Strait)
+          continue;
+        for (mi = 0; mi < tr->nmembers; mi++)
+          if (tr->members[mi].kind == Mtype && strcmp(tr->members[mi].name, nm1) == 0) {
+            if (hitsym)
+              cerrat(p, "'%s' carries '%s' twice; the bounds cannot be told apart", nm0, nm1);
+            hitsym = tr;
+          }
+      }
+      if (!hitsym)
+        cerrat(p, "'%s' is not an associated type of a bound on '%s'", nm1, nm0);
+      return typroj(hitsym, pt, nm1);
+    }
+    if (pt && pt->k != Typaram && pt->sym) {
+      /* T::Item under the binding: the parameter is a type now,
+       * and the outer form's own answer reads it -- the impl's
+       * row, the same lookup a spelled name takes (05-traits.md) */
+      Member *hit = 0;
+      usize   i, j;
+
+      for (i = 0; i < chk_nimpls; i++) {
+        Sym *im = chk_impls[i];
+
+        if (!im->ifort || !im->ipath || im->ifort->sym != pt->sym || im->ngparams)
+          continue; /* a pattern impl's reads under its instance (04) */
+        for (j = 0; j < im->nmembers; j++)
+          if (im->members[j].kind == Mtype && strcmp(im->members[j].name, nm1) == 0) {
+            if (hit)
+              cerrat(p, "'%s' carries '%s' twice; the trait cannot be told apart", nm0, nm1);
+            hit = &im->members[j];
+          }
+      }
+      if (hit) {
+        if (segs[1]->v.seg.args)
+          cerrat(p, "'%s' takes no type arguments", nm1);
+        return hit->val;
+      }
+    }
     if (s && s->kind == Strait)
       cerrat(p,
              "'%s::%s' names the trait's own projection; the type implementing it "
@@ -1886,11 +1942,12 @@ injectstd(void)
 void
 checkproject(Srcfile **files, usize nfiles, usize nstd)
 {
-  usize        i, f, nimpls;
-  Sym        **impls;
-  const char **implp; /* each impl's file, its coherence errors named
-                       * there: the diagnostics follow the table, not
-                       * whichever file the lexer served last */
+  usize     i, f, nimpls;
+  Sym     **impls;
+  Srcfile **implsf; /* each impl's file, its coherence errors named
+                     * there and its names read in its own context:
+                     * the diagnostics follow the table, not
+                     * whichever file the checker served last */
 
   /* pass 1: every file's every name, each into its own namespace --
    * a file may read a name another declared before any use binds or
@@ -2013,7 +2070,11 @@ checkproject(Srcfile **files, usize nfiles, usize nstd)
    * first, the reads pick through them, and the coherence below
    * orders both kinds. */
   impls = vnew(Sym *, 8);
-  implp = vnew(const char *, 8);
+  implsf = vnew(Srcfile *, 8); /* the file each impl came from: the
+                                * walks below read names, and a name
+                                * reads its file's context -- the
+                                * namespace, its uses, the path a
+                                * diagnostic prints (11) */
   for (f = 0; f < nfiles; f++) {
     Srcfile *sf = files[f];
     usize    j, m = vlen(sf->items);
@@ -2033,7 +2094,7 @@ checkproject(Srcfile **files, usize nfiles, usize nstd)
       if (it->k == Nimpl) {
         resolveimplmembers(s);
         vappend(&impls, &s);
-        vappend(&implp, &sf->path);
+        vappend(&implsf, &sf);
       }
     }
   }
@@ -2043,18 +2104,24 @@ checkproject(Srcfile **files, usize nfiles, usize nstd)
   for (i = 0; i < nimpls; i++) {
     Sym *bs[16];
 
-    lexsetpath(implp[i]);
+    nscur(implsf[i]->ns);
+    usecur(implsf[i]->uses);
+    lexsetpath(implsf[i]->path);
     collectbounds(impls[i], bs); /* the diagnostic is the point */
   }
   for (i = 0; i < nimpls; i++) {
-    lexsetpath(implp[i]);
+    nscur(implsf[i]->ns);
+    usecur(implsf[i]->uses);
+    lexsetpath(implsf[i]->path);
     if (impls[i]->ifort)
       checkimplcomplete(impls[i]);
   }
   for (i = 0; i < nimpls; i++) {
     usize j;
 
-    lexsetpath(implp[i]);
+    nscur(implsf[i]->ns);
+    usecur(implsf[i]->uses);
+    lexsetpath(implsf[i]->path);
     for (j = 0; j < i; j++)
       checkoverlap(impls[i], impls[j]);
   }

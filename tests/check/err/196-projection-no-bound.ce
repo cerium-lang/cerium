@@ -1,0 +1,6 @@
+/* T::Item under a bound that carries no Item (04-generics.md): the
+ * projection reads the parameter's own bounds, and a bound that
+ * does not carry the associated type does not answer it. */
+use std::ops::Add;
+fn f<T: Add>(a: T) -> T::Bogus { a }
+fn main() -> i32 { 0 }

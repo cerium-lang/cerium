@@ -5,7 +5,11 @@
  * never comes to them, the checker's binop asked first. `Rhs`
  * defaults to Self (04-generics.md); the answer is the `Output`
  * associated type (05-traits.md), the rows here answering with
- * themselves. */
+ * themselves. The borrowed rows below name Copy: a library does
+ * not read its own face (12-projects.md), so the marker arrives
+ * by use, the file's own binding. */
+
+use std::Copy;
 
 pub trait Div<Rhs = Self> {
   type Output;
@@ -22,6 +26,19 @@ impl Div for u32 { type Output = u32; fn div(self: Self, other: Self) -> Self::O
 impl Div for u64 { type Output = u64; fn div(self: Self, other: Self) -> Self::Output { self / other } }
 impl Div for f32 { type Output = f32; fn div(self: Self, other: Self) -> Self::Output { self / other } }
 impl Div for f64 { type Output = f64; fn div(self: Self, other: Self) -> Self::Output { self / other } }
+
+/* the borrowed rows: `&a / &b` asks the same Div of the pointers,
+ * the Copy reads out of both and handed on. One generic row
+ * covers every Copy element -- where another language writes a
+ * macro over its matrix (14-macros.md), Cerium writes this. A
+ * type that is not Copy borrows no row: moving out of a shared
+ * borrow is not a thing to write, its own impl spells its fields
+ * (07-operators.md). */
+
+impl<T: Div + Copy> Div for *T {
+  type Output = T::Output;
+  fn div(self: *T, other: *T) -> T::Output { Div::div(*self, *other) }
+}
 
 /* std::ops::DivAssign -- `a /= b` is DivAssign::div_assign(&mut
  * a, b) (07-operators.md): the compound is its own trait, the
