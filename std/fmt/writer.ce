@@ -1,7 +1,8 @@
 /* std::fmt::Writer -- the join of a sink to the typed writes
- * every Fmt composes from: str, bool, u8, and the u64 the digits
- * live in once -- the signed writes the sign and the magnitude,
- * the narrow ones widened on the way in.
+ * every Fmt composes from: str, bool, u8, the u64 the digits
+ * live in, and the floats in the arithmetic's own words -- the
+ * signed writes the sign and the magnitude, the narrow ones
+ * widened on the way in.
  *
  * The count is the Writer's own bookkeeping: each write returns
  * its own segment's bytes, the ? behind it dropping only that,
@@ -88,6 +89,281 @@ impl Writer {
 
   fn write_usize(self: *mut Self, n: usize) -> Result<usize, Error> {
     self.write_u64(@cast<u64>(n))
+  }
+
+  /* a float's own words, the %.15g shape in pure arithmetic --
+   * the language has no bit reinterpretation (@cast converts, it
+   * does not transmute), so the specials read off the
+   * arithmetic's own face: NaN n != n, the infinities
+   * n - n != 0. The fixed form inside i64's reach, the integer
+   * part exact and the fraction the window below; outside it the
+   * exponent form, the mantissa carried into [1, 10) by the
+   * decade ladders -- a handful of roundings either way, the
+   * last digit the arithmetic's own, the correctly rounded
+   * shortest a milestone of its own. An f32 widens first: it
+   * prints as the double it becomes */
+  fn write_f32(self: *mut Self, n: f32) -> Result<usize, Error> {
+    self.write_f64(@cast<f64>(n))
+  }
+
+  fn write_f64(self: *mut Self, n: f64) -> Result<usize, Error> {
+    if n != n {
+      self.write_str("NaN")
+    } else if n - n != 0.0 {
+      if n < 0.0 {
+        self.write_str("-inf")
+      } else {
+        self.write_str("inf")
+      }
+    } else {
+      if n < 0.0 {
+        self.write_str("-")?;
+      };
+      let a = if n < 0.0 { 0.0 - n } else { n };
+
+      if a == 0.0 {
+        self.write_str("0")
+      } else if a >= 9223372036854775808.0 { /* 2^63: past i64 */
+        self.write_f64_big(a)
+      } else if a < 0.000000000000001 { /* 1e-15: the window empty */
+        self.write_f64_tiny(a)
+      } else {
+        /* the fixed form's window: the integer part whole, the
+         * fraction the digits fifteen significant leave it --
+         * three integer digits leave twelve, none leave fifteen
+         * (the %.15g shape); past fifteen the integer says it
+         * all, more digits than fifteen already */
+        let mut v = @cast<u64>(a);
+        let mut i: usize = 0;
+
+        for v != 0 {
+          i = i + 1;
+          v = v / 10;
+        }
+        let w = if i < 15 {
+          15 - i
+        } else {
+          @cast<usize>(0)
+        };
+
+        self.write_fixed(a, w)
+      }
+    }
+  }
+
+  /* the fixed form's own halves: the integer part whole and
+   * exact, the fraction a window of w digits rounded -- the
+   * carry the rounding makes moves the integer, 999...9 the
+   * window wide the next integer instead. The window's digits
+   * carry their leading zeros (0.00042) and lose the trailing
+   * ones; a fraction that rounds to nothing leaves no dot --
+   * the digits that are there, and nothing more */
+  fn write_fixed(self: *mut Self, m: f64, w: usize) -> Result<usize, Error> {
+    let ip = @cast<u64>(m);
+
+    if w == 0 {
+      self.write_u64(ip)
+    } else {
+      let mut p: f64 = 1.0; /* 10^w, exact -- w fifteen at the widest */
+      let mut j: usize = 0;
+
+      for j < w {
+        p = p * 10.0;
+        j = j + 1;
+      }
+      let d = @cast<u64>((m - @cast<f64>(ip)) * p + 0.5); /* the window, rounded */
+      let carried = d == @cast<u64>(p);
+      let ip2 = if carried { ip + 1 } else { ip };
+      let fr = if carried { @cast<u64>(0) } else { d };
+
+      let r1 = self.write_u64(ip2)?;
+      if fr != 0 {
+        let ds = [15]mut u8 { };
+        let mut i: usize = 0;
+        let mut v = fr;
+        let mut last = w;
+
+        for i < w {
+          ds[i] = 48;
+          i = i + 1;
+        }
+        i = w;
+        for v != 0 {
+          i = i - 1;
+          ds[i] = @cast<u8>(48 + v % 10);
+          v = v / 10;
+        }
+        for ds[last - 1] == 48 {
+          last = last - 1;
+        }
+        self.write_str(".")?;
+        i = 0;
+        for i < last {
+          self.write_u8(ds[i])?;
+          i = i + 1;
+        }
+        Ok(r1 + last + 1)
+      } else {
+        Ok(r1)
+      }
+    }
+  }
+
+  /* beyond i64, up: the decade ladder, each rung a division and
+   * a comparison -- the composed power never past the value it
+   * measured, nothing overflowing. The rungs the correctly
+   * rounded powers themselves, 10^16 the last exact one; a
+   * boundary misjudged is one decade, the correction below */
+  fn write_f64_big(self: *mut Self, a: f64) -> Result<usize, Error> {
+    let mut p: f64 = 1.0;
+    let mut e: i64 = 0;
+
+    if a / p >= 1.0e256 {
+      p = p * 1.0e256;
+      e = e + 256;
+    };
+    if a / p >= 1.0e128 {
+      p = p * 1.0e128;
+      e = e + 128;
+    };
+    if a / p >= 1.0e64 {
+      p = p * 1.0e64;
+      e = e + 64;
+    };
+    if a / p >= 1.0e32 {
+      p = p * 1.0e32;
+      e = e + 32;
+    };
+    if a / p >= 1.0e16 {
+      p = p * 1.0e16;
+      e = e + 16;
+    };
+    if a / p >= 1.0e8 {
+      p = p * 1.0e8;
+      e = e + 8;
+    };
+    if a / p >= 1.0e4 {
+      p = p * 1.0e4;
+      e = e + 4;
+    };
+    if a / p >= 100.0 {
+      p = p * 100.0;
+      e = e + 2;
+    };
+    if a / p >= 10.0 {
+      p = p * 10.0;
+      e = e + 1;
+    };
+    let mut m = a / p;
+
+    if m >= 10.0 {
+      m = m / 10.0;
+      e = e + 1;
+    } else if m < 1.0 {
+      m = m * 10.0;
+      e = e - 1;
+    };
+    self.write_exp(m, e)
+  }
+
+  /* below the window, down: the mirrored ladder, a
+   * multiplication and a comparison a rung -- the composed power
+   * never past one over the value, nothing overflowing either.
+   * Past 10^-308 the subnormals, where the composed power will
+   * not fit: the decades counted a multiplication at a time, the
+   * values down here few bits of their own */
+  fn write_f64_tiny(self: *mut Self, a: f64) -> Result<usize, Error> {
+    if a < 1.0e-308 {
+      let mut m = a * 1.0e308;
+      let mut e: i64 = @cast<i64>(0 - 308);
+
+      for m < 1.0 {
+        m = m * 10.0;
+        e = e - 1;
+      }
+      self.write_exp(m, e)
+    } else {
+      let mut p: f64 = 1.0;
+      let mut e: i64 = 0;
+
+      if a * p < 1.0e-256 {
+        p = p * 1.0e256;
+        e = e - 256;
+      };
+      if a * p < 1.0e-128 {
+        p = p * 1.0e128;
+        e = e - 128;
+      };
+      if a * p < 1.0e-64 {
+        p = p * 1.0e64;
+        e = e - 64;
+      };
+      if a * p < 1.0e-32 {
+        p = p * 1.0e32;
+        e = e - 32;
+      };
+      if a * p < 1.0e-16 {
+        p = p * 1.0e16;
+        e = e - 16;
+      };
+      if a * p < 1.0e-8 {
+        p = p * 1.0e8;
+        e = e - 8;
+      };
+      if a * p < 1.0e-4 {
+        p = p * 1.0e4;
+        e = e - 4;
+      };
+      if a * p < 0.01 {
+        p = p * 100.0;
+        e = e - 2;
+      };
+      if a * p < 0.1 {
+        p = p * 10.0;
+        e = e - 1;
+      };
+      let mut m = a * p * 10.0;
+
+      e = e - 1;
+      if m >= 10.0 {
+        m = m / 10.0;
+        e = e + 1;
+      } else if m < 1.0 {
+        m = m * 10.0;
+        e = e - 1;
+      };
+      self.write_exp(m, e)
+    }
+  }
+
+  /* the exponent form's own segments: the mantissa in the
+   * shared window (fourteen digits, its integer part one), the
+   * e, the decade signed -- the minus the i64's own. The
+   * mantissa pulled first to the decade it meant to land on:
+   * the ladders' roundings leave it a few parts in 1e15, and
+   * one that close under an edge belongs to the edge -- the
+   * pull's own reach (1e-14) past the window's rounding, so a
+   * carry it would make never reaches a mantissa of ten */
+  fn write_exp(self: *mut Self, m: f64, e: i64) -> Result<usize, Error> {
+    let mut e = e;
+    /* the pull's own reach, an f64 by its binding -- two bare
+     * float literals side by side would meet as f32s first */
+    let reach: f64 = 1.0e-14;
+
+    let m2 = if m > 10.0 - reach {
+      e = e + 1;
+      @cast<f64>(1.0)
+    } else if m < 1.0 + reach {
+      @cast<f64>(1.0)
+    } else {
+      m
+    };
+
+    let r1 = self.write_fixed(m2, 14)?;
+    let r2 = self.write_str("e")?;
+    let r3 = self.write_i64(e)?;
+
+    Ok(r1 + r2 + r3)
   }
 
   /* the whole print's own number: the running count, every segment
