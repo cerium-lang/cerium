@@ -1,106 +1,14 @@
-/* std::fmt -- the formatting half: the Fmt a type implements to print
- * itself, and the Writer that joins a sink to the typed writes every
- * impl composes from. The digits live here once -- write_u64 the one
- * algorithm, the signed writes the sign and the magnitude, and the
- * narrow ones widened on the way in. Every write hands its Result
- * back, so an impl composes with ? (01-types.md): the trait's own
- * shape is the propagation's.
- *
- * The count is the Writer's own bookkeeping: each write returns its
- * own segment's bytes, the ? behind it dropping only that, and the
- * running total stays in n. The Fmt itself returns nothing -- its
- * work is done when its writes are -- and written reads the total
- * out for whoever owns the Writer, the print's own answer: the
- * whole print in one number however many writes it took. */
+/* std::fmt -- the Fmt a type implements to print itself, composed
+ * from the Writer's typed writes (writer.ce, the join of a sink
+ * to them). Every write hands its Result back, so an impl
+ * composes with ? (01-types.md): the trait's own shape is the
+ * propagation's. The Fmt itself returns nothing -- its work is
+ * done when its writes are; the count is the Writer's own, and
+ * the print that owns the Writer answers with it. */
 
 use std::Result;
-use std::io::{Error, Write};
+use std::io::Error;
 
 pub trait Fmt {
   fn fmt(self: *Self, w: *mut Writer) -> Result<(), Error>;
-}
-
-pub struct Writer {
-  w: dyn mut Write,
-  mut n: usize, /* the running count: every segment's bytes, kept as they land */
-}
-
-impl Writer {
-  fn write_str(self: *mut Self, s: []u8) -> Result<usize, Error> {
-    let r = self.w.write(s)?;
-
-    self.n = self.n + r;
-    Ok(r)
-  }
-
-  fn write_u8(self: *mut Self, b: u8) -> Result<usize, Error> {
-    let one = [1]u8 { b };
-    let r = self.w.write(one[..])?;
-
-    self.n = self.n + r;
-    Ok(r)
-  }
-
-  fn write_bool(self: *mut Self, b: bool) -> Result<usize, Error> {
-    if b {
-      self.write_str("true")
-    } else {
-      self.write_str("false")
-    }
-  }
-
-  fn write_u64(self: *mut Self, n: u64) -> Result<usize, Error> {
-    if n == 0 {
-      self.write_str("0")
-    } else {
-      /* the digits, low end first: a stack block a u64 cannot
-       * overflow. They go out high end first, a byte at a time --
-       * a mutable block cannot hand its slice to an immutable
-       * parameter until mut-dropping lands (01-types.md), and a
-       * digit at a time is the shape that needs no block read as
-       * writable at all */
-      let ds = [20]mut u8 { };
-      let mut i: usize = 0;
-      let mut v = n;
-
-      for v != 0 {
-        ds[i] = @cast<u8>(48 + v % 10); /* 48: '0', the byte literal
-                                         * itself a later milestone */
-        i = i + 1;
-        v = v / 10;
-      }
-      /* i the count now: the walk reads it backwards */
-      let cnt = i;
-      let mut k: usize = 0;
-
-      for k < cnt {
-        self.write_u8(ds[cnt - 1 - k])?;
-        k = k + 1;
-      }
-      Ok(k)
-    }
-  }
-
-  fn write_i64(self: *mut Self, n: i64) -> Result<usize, Error> {
-    if n < 0 {
-      self.write_str("-")?;
-      self.write_u64(@cast<u64>(-n))
-    } else {
-      self.write_u64(@cast<u64>(n))
-    }
-  }
-
-  fn write_i32(self: *mut Self, n: i32) -> Result<usize, Error> {
-    self.write_i64(@cast<i64>(n))
-  }
-
-  fn write_usize(self: *mut Self, n: usize) -> Result<usize, Error> {
-    self.write_u64(@cast<u64>(n))
-  }
-
-  /* the whole print's own number: the running count, every segment
-   * in it -- the print that owns the Writer answers with it */
-  fn written(self: *mut Self) -> Result<usize, Error> {
-    Ok(self.n)
-  }
 }

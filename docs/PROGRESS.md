@@ -1545,3 +1545,14 @@ numbers stay with the writes, the whole print's with the print.
 The literals go straight to the writes that take them; a single
 character is a write_u8 away, the byte literal it wants still
 a later milestone (#91). 477 green, the golden bytes the same.
+
+The second pass took the same library one home further in. The
+Writer is a file of its own beside the Fmt it serves (writer.ce),
+the trait's file the trait alone. And the errno is the real one
+now: the C library answers a failed call -1 and sets a word it
+keeps per thread -- __errno_location is where every C library
+agrees the word lives, the errno macro in C the same call spelled
+-- and sys::errno reads it out for whoever asks. The Error
+carries it as Sys(i32), the system call's own failure, whichever
+call it was; the write's own answer is only the -1 that said it
+failed. 477 green, the golden bytes the same.

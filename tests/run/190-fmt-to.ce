@@ -31,7 +31,7 @@ impl Write for Mem {
     let r = sys::write(2, buf.ptr, buf.len);
 
     if r < 0 {
-      Err(io::Error::Errno(@cast<i32>(-r)))
+      Err(io::Error::Sys(sys::errno()))
     } else {
       Ok(@cast<usize>(r))
     }

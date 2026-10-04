@@ -11,10 +11,8 @@ use std::fmt::{Fmt, Writer};
 use std::sys;
 
 pub enum Error {
-  Errno(i32), /* the C write answered negative: its word negated
-               * back, the errno it named -- Linux answers -errno,
-               * and the reading is the Linux one (POSIX promises
-               * only -1) */
+  Sys(i32), /* a system call failed: the errno it set, read from
+             * the platform's own thread-local word (std::sys) */
 }
 
 pub struct Stdout { }
@@ -24,7 +22,7 @@ impl Write for Stdout {
     let n = sys::write(1, buf.ptr, buf.len);
 
     if n < 0 {
-      Err(Error::Errno(@cast<i32>(-n)))
+      Err(Error::Sys(sys::errno()))
     } else {
       Ok(@cast<usize>(n))
     }
@@ -38,7 +36,7 @@ impl Write for Stderr {
     let n = sys::write(2, buf.ptr, buf.len);
 
     if n < 0 {
-      Err(Error::Errno(@cast<i32>(-n)))
+      Err(Error::Sys(sys::errno()))
     } else {
       Ok(@cast<usize>(n))
     }
