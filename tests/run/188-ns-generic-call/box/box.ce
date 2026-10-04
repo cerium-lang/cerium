@@ -1,0 +1,10 @@
+/* box -- the directory's own namespace: a generic fn others reach
+ * through the path, the checker's pick the only instantiation
+ * there is */
+pub fn twice<T>(v: T) -> T {
+  v
+}
+
+pub fn count<T>(v: *T, n: usize) -> usize {
+  n
+}

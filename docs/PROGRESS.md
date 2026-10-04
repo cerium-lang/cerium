@@ -1456,3 +1456,16 @@ made still fails it. 187 chains the asks three deep and hands a
 spelled `Marks<i32>` through the same door, the concrete
 instance still walking the table; 214 the ask the declaration
 never made. 472 green.
+
+And the linker named the last of them: a call however many
+namespaces the name walked fell through the direct-call branch,
+which read one bare segment only, into the value-call path -- the
+address of a symbol, taken for a call through it. A plain fn's
+symbol is its own and the call linked by accident; a generic one
+has no symbol at all, only the instances the checker's picks
+spell, and the linker asked for a fn that never was. The branch
+now walks the namespaces off the name the way every other path
+read does (11-namespaces.md), the prefixed name no local shadows
+-- the walk chose it -- and the checker's pick names its
+instance. 188 calls a generic through the path and bare, a
+second instance two bindings wide, one project's own box.
