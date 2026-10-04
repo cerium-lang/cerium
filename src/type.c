@@ -467,8 +467,9 @@ sbputu(SBuf *b, u64 v)
     *b->p++ = d[--n];
 }
 
-static const char *
-inname(int num)
+const char *
+inname(int num) /* public: the mangler's primitive codes say it too
+                 * (12-projects.md, Symbols) */
 {
   static const char *names[IN_N] = {"i8",  "i16", "i32",  "i64",   "i128",  "u8",  "u16",
                                     "u32", "u64", "u128", "isize", "usize", "f32", "f64"};

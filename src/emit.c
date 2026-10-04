@@ -378,77 +378,42 @@ locbind(Em *em, char *name, char *slot, Type *ty)
 
 /* the fn's symbol: #[extern(C)] and main keep their own name, every
  * other fn is mangled -- overloading, namespaces, and generic
- * instantiation all force it (01-types.md, External functions). A
- * lone fn keeps the short name; an overload carries its whole
- * signature; an instantiation carries its binding (instname, below).
- * qbe's symbols are letters, digits, and underscore -- what tysprint
- * says, folded onto that alphabet, says the name. */
-static char *tymangle(Type *t, char *buf, usize n);
-static void  ovlspell(Sym *s, char *buf, usize n);
-static int   fsymsame(Sym *p, char *buf);
-static usize symns(Sym *s, char *buf, usize n);
-static void  memspell(Sym *m, char *mt, char *buf, usize n);
+ * instantiation all force it (01-types.md, External functions). The
+ * spelling is segments -- a length, then the bytes -- with the
+ * project's own name first and the type codes a closed alphabet, so
+ * two symbols fold the same only by naming the same thing
+ * (12-projects.md, Symbols). */
+static usize segput(char *buf, usize o, usize n, const char *s);
+static usize segnum(char *buf, usize o, usize n, u64 v);
+static usize tymang2(Type *t, char *buf, usize o, usize n);
+static usize projhead(Sym *s, char *buf, usize n);
 
-/* a method's whole spelling: its impl's namespace folded on, the
- * type's own mangle, the member's name (11-namespaces.md) */
-static void
-memspell(Sym *m, char *mt, char *buf, usize n)
-{
-  char  nb[512];
-  usize o = symns(m, nb, sizeof nb);
-
-  if (o + strlen(mt) + strlen(m->name) + 2 >= n)
-    die("a method too wide for the emitter's names");
-  sprintf(buf, "%s%s_%s", nb, mt, m->name);
-}
-
-/* a method's symbol: the impl's type spelled, then the member's own
- * name. Overloading is no method's trouble -- one type, one name --
- * but two impls of one generic type at different bindings are two
- * methods, and a spelling the folding cannot tell apart still gets
- * its index, the same scan the fn mangler runs on its chains. */
+/* a method's symbol: the head, the target type's own code, the
+ * trait's beside it for a trait impl -- an inherent's slot says none
+ * -- then the member's name. The target's code is its whole path and
+ * binding, so two impls of one generic type at different bindings,
+ * or one builtin twice over, are different symbols by construction:
+ * the index the old spelling's twins needed is gone
+ * (12-projects.md, Symbols) */
 static char *
 memname(Sym *s)
 {
-  char  mt[256];
   char  buf[1024];
-  char  b2[1024];
-  usize same, i, j;
+  usize o;
 
-  tymangle(s->impl->ifort ? s->impl->ifort : s->impl->ipath, mt, sizeof mt);
-  memspell(s, mt, buf, sizeof buf);
-  same = 0;
-  for (i = 0; i < chk_nimpls; i++) { /* every impl's methods, in
-                                      * declaration order -- a trait
-                                      * impl's target names it, an
-                                      * inherent's target is it */
-    Sym    *iv = chk_impls[i];
-    Member *ms;
+  o = projhead(s, buf, sizeof buf);
+  o = tymang2(s->impl->ifort ? s->impl->ifort : s->impl->ipath, buf, o, sizeof buf);
+  if (s->impl->ifort) /* a trait impl: the trait names the method's
+                       * other home, an inherent has none */
+    o = tymang2(s->impl->ipath, buf, o, sizeof buf);
+  else
+    buf[o++] = 'z';
+  o = segput(buf, o, sizeof buf, s->name);
+  buf[o] = 0;
+  {
+    char *n = arenaalloc(o + 1);
 
-    ms = iv->members;
-    for (j = 0; j < iv->nmembers; j++) {
-      if (ms[j].kind != Mfn || !ms[j].sym)
-        continue;
-      tymangle(iv->ifort ? iv->ifort : iv->ipath, mt, sizeof mt);
-      memspell(ms[j].sym, mt, b2, sizeof b2);
-      if (strcmp(b2, buf) != 0)
-        continue;
-      if (ms[j].sym == s)
-        goto found; /* this one: the count so far is its index */
-      same++;
-    }
-  }
-found:
-  if (!same) { /* stable: the arena keeps the spelling one name */
-    char *n = arenaalloc(strlen(buf) + 1);
-
-    strcpy(n, buf);
-    return n;
-  }
-  { /* a twin: spell them apart */
-    char *n = arenaalloc(strlen(buf) + 12);
-
-    sprintf(n, "%s_%lu", buf, (unsigned long) same);
+    memcpy(n, buf, o + 1);
     return n;
   }
 }
@@ -457,51 +422,39 @@ static char *
 fsymname(Sym *s, Ast *it)
 {
   char  buf[1024];
-  Sym  *p;
-  usize same;
-  int   multi;
+  usize o, i;
 
   if (attrfind(it->attrs, "extern"))
     return s->name;
   if (s->impl)
-    return memname(s); /* a method: its impl's type, its own name */
+    return memname(s); /* a method: its target, its own name */
   if (strcmp(s->name, "main") == 0)
     return s->name;
-  multi = s->next != 0 || nsitem(s->ownns, s->name) != s; /* its own
-                                                           * namespace's
-                                                           * chain holds
-                                                           * more than
-                                                           * this (11) */
-  if (!multi) {                                           /* the common case: one fn, one name */
-    char  nb[512];
-    char *n;
-    usize o = symns(s, nb, sizeof nb);
-
-    n = arenaalloc(o + strlen(s->name) + 1);
-    sprintf(n, "%s%s", nb, s->name);
-    return n;
+  o = projhead(s, buf, sizeof buf);
+  o = segput(buf, o, sizeof buf, s->name);
+  if (s->next || nsitem(s->ownns, s->name) != s) { /* an overload:
+                                                    * this signature,
+                                                    * the argument
+                                                    * count then each
+                                                    * type then the
+                                                    * return -- the
+                                                    * codes say two
+                                                    * signatures apart
+                                                    * wherever they
+                                                    * differ, and no
+                                                    * declaration
+                                                    * order is in the
+                                                    * spelling */
+    o = segnum(buf, o, sizeof buf, s->fnty->nargs);
+    for (i = 0; i < s->fnty->nargs; i++)
+      o = tymang2(s->fnty->args[i], buf, o, sizeof buf);
+    o = tymang2(s->fnty->t, buf, o, sizeof buf);
   }
-  /* an overload: this signature, and an index among the chain's
-   * same-spelled siblings -- two overloads may differ only where the
-   * mangling cannot see */
-  ovlspell(s, buf, sizeof buf);
-  same = 0;
-  for (p = nsitem(s->ownns, s->name); p && p != s; p = p->next) /* the
-                                                                 * earlier same-spelled ones */
-    if (fsymsame(p, buf))
-      same++;
-  if (same) { /* a twin: spell them apart */
-    char *n;
+  buf[o] = 0;
+  {
+    char *n = arenaalloc(o + 1);
 
-    n = arenaalloc(strlen(buf) + 12);
-    sprintf(n, "%s_%lu", buf, (unsigned long) same);
-    return n;
-  }
-  { /* stable: the arena keeps the spelling one name */
-    char *n;
-
-    n = arenaalloc(strlen(buf) + 1);
-    strcpy(n, buf);
+    memcpy(n, buf, o + 1);
     return n;
   }
 }
@@ -859,172 +812,308 @@ static int    ipass;  /* scratch is 1, the text is 2 */
 static Inst  *icur;   /* the instance being re-checked, its calls'
                        * children (04-generics.md) */
 
-/* qbe's alphabet only: what tysprint says, everything else folded
- * onto '_' -- i32 stays i32, *mut i32 becomes _mut_i32 */
-static char *
-tymangle(Type *t, char *buf, usize n)
-{
-  char  tmp[256];
-  usize i;
+/* -- the symbols' alphabet (12-projects.md, Symbols) --------------------
+ *
+ * Every name the mangler writes is a segment: the byte count in
+ * decimal, then the bytes. A segment's bytes never begin with a
+ * digit -- the identifier's own law -- so the count's digits end
+ * exactly where the name begins and the split is the string's own:
+ * a namespace named my_app and a my holding an app never fold the
+ * same. Counts ride the same way (an arity, an array's length), each
+ * ahead of things a letter begins. Values -- the numbers a const
+ * parameter bakes -- are fixed-width hex instead, a length never
+ * naming a value: decimal lengths next to decimal digits would read
+ * two ways ("1" beside "0" the same string as "10"), and the width
+ * says what the alphabet cannot. */
 
-  tysprint(tmp, sizeof tmp, t);
-  if (strlen(tmp) >= n)
-    die("a type too wide for the emitter's names");
-  for (i = 0; tmp[i]; i++) {
-    char c = tmp[i];
-
-    buf[i] = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ? c : '_';
-  }
-  buf[i] = 0;
-  return buf;
-}
-
-/* a symbol's mangle head: cerium_, its namespace folded on -- each ::
- * a __, so a namespace named net_pool and a net holding a pool
- * never fold the same (11-namespaces.md). The root's own spells the
- * single-file era's bare cerium_. Returns the chars written */
+/* a segment: the byte count, then the bytes. Returns the new offset */
 static usize
-symns(Sym *s, char *buf, usize n)
+segput(char *buf, usize o, usize n, const char *s)
 {
-  Ns   *ns = s->ownns;
-  usize o = 4;
-  char *p;
+  usize l = strlen(s), i;
 
-  if (o >= n)
+  if (o + l + 24 >= n) /* 20 digits of count, the bytes, the NUL */
     die("a name too wide for the emitter's names");
-  strcpy(buf, "cerium_");
-  if (ns && ns->parent) { /* the root's own name is "": nothing folds */
-    char path[512];
-
-    if (strlen(nsname(ns)) >= sizeof path)
-      die("a namespace too wide for the emitter's names");
-    strcpy(path, nsname(ns));
-    for (p = path; *p; p++) {
-      if (*p == ':') { /* the pair one __ -- skip the second */
-        if (p[1] == ':')
-          p++;
-        if (o + 2 >= n)
-          die("a name too wide for the emitter's names");
-        buf[o++] = '_';
-      } else {
-        if (o + 1 >= n)
-          die("a name too wide for the emitter's names");
-        buf[o++] = *p;
-      }
-    }
-    if (o + 2 >= n)
-      die("a name too wide for the emitter's names");
-    buf[o++] = '_'; /* the namespace from the name that follows it */
-    buf[o++] = '_';
-  }
-  buf[o] = 0;
+  o += (usize) sprintf(buf + o, "%lu", (unsigned long) l);
+  for (i = 0; i < l; i++)
+    buf[o++] = s[i];
   return o;
 }
 
-/* an overload's spelling: the name, then the argument types, then
- * the return, folded onto qbe's alphabet */
-static void
-ovlspell(Sym *s, char *buf, usize n)
+/* a count's own segment: its digits, the same law */
+static usize
+segnum(char *buf, usize o, usize n, u64 v)
 {
-  char  tb[256];
-  usize o, i;
+  char tmp[21]; /* 2^64-1 is 20 digits */
 
-  o = symns(s, buf, n);
-  o += sprintf(buf + o, "%s__", s->name);
-  for (i = 0; i < s->fnty->nargs; i++) {
-    tymangle(s->fnty->args[i], tb, sizeof tb);
-    o += sprintf(buf + o, "%s%s", i ? "_" : "", tb);
-    if (o + 256 >= n)
-      die("an overload too wide for the emitter's line");
+  sprintf(tmp, "%lu", (unsigned long) v);
+  return segput(buf, o, n, tmp);
+}
+
+/* a value's bits, w hex digits wide, leading zeros kept -- the
+ * fixed width is the law above: no length names these */
+static usize
+hexput(char *buf, usize o, usize n, u64 v, int w)
+{
+  if (o + (usize) w + 1 >= n)
+    die("a name too wide for the emitter's names");
+  o += (usize) sprintf(buf + o, "%0*lx", w, (unsigned long) v);
+  return o;
+}
+
+/* the namespace chain above ns, one segment each, the root's own
+ * name ("") never said: the chain stops under it */
+static usize
+tymns(Ns *ns, char *buf, usize o, usize n)
+{
+  if (ns->parent && ns->parent->parent) /* the parent carries segments of its own */
+    o = tymns(ns->parent, buf, o, n);
+  return segput(buf, o, n, ns->name);
+}
+
+/* a type's own code -- the closed alphabet the mangler spells types
+ * in. Primitives keep their words, composites take a tag letter and
+ * nest; a named type says its whole path from the root and its
+ * bindings. The words are prefix-free, every tag says what follows,
+ * and the segments carry their own counts, so the code two types
+ * fold onto is the types themselves -- the twins the old folding
+ * numbered off are gone. A generic parameter keeps its name: an
+ * impl's declared target spells one where the instance spells the
+ * binding beside it (instname) */
+static usize
+tymang2(Type *t, char *buf, usize o, usize n)
+{
+  if (!t)
+    die("a type the emitter cannot name");
+  if (o + 16 >= n)
+    die("a name too wide for the emitter's names");
+  switch (t->k) {
+  case Tyunit:
+    buf[o++] = 'z';
+    return o;
+  case Tybool:
+    buf[o++] = 'b';
+    return o;
+  case Tyvoidptr:
+    buf[o++] = 'v';
+    return o;
+  case Tyint: { /* the word itself, bare: i32, u64 -- every one
+                 * starts a letter and no one starts another, so the
+                 * words read apart with nothing before them */
+    const char *w = inname(t->num);
+    usize       l, i;
+
+    if (w[0] == '?')
+      die("an integer width the mangler's alphabet does not carry");
+    l = strlen(w);
+    if (o + l + 1 >= n)
+      die("a name too wide for the emitter's names");
+    for (i = 0; i < l; i++)
+      buf[o++] = w[i];
+    return o;
   }
-  tymangle(s->fnty->t, tb, sizeof tb);
-  sprintf(buf + o, "_%s", tb);
+  case Typtr:
+    if (t->t && t->t->k == Tymut) { /* *mut T: the writable slot's own tag */
+      buf[o++] = 'P';
+      return tymang2(t->t->t, buf, o, n);
+    }
+    buf[o++] = 'p';
+    return tymang2(t->t, buf, o, n);
+  case Tyslice:
+    if (t->t && t->t->k == Tymut) {
+      buf[o++] = 'S';
+      return tymang2(t->t->t, buf, o, n);
+    }
+    buf[o++] = 's';
+    return tymang2(t->t, buf, o, n);
+  case Tyarray:
+    if (t->gp)
+      die("a const generic length has no code: the binding spells the number (08-reflection.md)");
+    buf[o++] = t->t && t->t->k == Tymut ? 'A' : 'a';
+    o = segnum(buf, o, n, t->n);
+    return tymang2(t->t && t->t->k == Tymut ? t->t->t : t->t, buf, o, n);
+  case Tytuple: {
+    usize i;
+
+    buf[o++] = 't';
+    o = segnum(buf, o, n, t->nargs);
+    for (i = 0; i < t->nargs; i++)
+      o = tymang2(t->args[i], buf, o, n);
+    return o;
+  }
+  case Tystruct:
+  case Tyunion:
+  case Tyenum:
+  case Tytrait:
+  case Tydyn: { /* the path from the root, the bindings -- std's own
+                 * types say std in it, a user's cannot: the namespace
+                 * is the library's (11-namespaces.md) */
+    Ns   *ns = t->sym ? t->sym->ownns : 0;
+    Ns   *w;
+    usize d = 0, i;
+
+    for (w = ns; w && w->parent; w = w->parent)
+      d++;
+    buf[o++] = t->k == Tydyn ? (t->mut ? 'D' : 'd') : 'n';
+    o = segnum(buf, o, n, d + 1); /* the namespaces, then the name */
+    if (ns && ns->parent)
+      o = tymns(ns, buf, o, n);
+    o = segput(buf, o, n, t->sym ? t->sym->name : "?");
+    o = segnum(buf, o, n, t->nargs);
+    for (i = 0; i < t->nargs; i++)
+      o = tymang2(t->args[i], buf, o, n);
+    return o;
+  }
+  case Tyfn: {
+    usize i;
+
+    buf[o++] = 'f';
+    o = segnum(buf, o, n, t->nargs);
+    for (i = 0; i < t->nargs; i++)
+      o = tymang2(t->args[i], buf, o, n);
+    return tymang2(t->t, buf, o, n);
+  }
+  case Tytype:
+    buf[o++] = 'q';
+    return o;
+  case Typaram: /* the declared shape: the instance's suffix names the binding */
+    buf[o++] = 'u';
+    return segput(buf, o, n, t->gp && t->gp->v.gp.name ? t->gp->v.gp.name : "?");
+  default:
+    die("a type the mangler's alphabet does not carry");
+  }
+  return o; /* unreachable */
 }
 
-/* does p's signature fold to the same spelling? The chain's twins --
- * overloads a mangling cannot tell apart -- number off */
-static int
-fsymsame(Sym *p, char *buf)
+/* a symbol's head: ceri, the project's own name, then the namespace
+ * path below the project's root. A user project's files stand in
+ * the anonymous root, so the project's name says what the root
+ * cannot; std's stand in the std namespace, which is its project's
+ * root, and the path walks from there (12-projects.md, Symbols).
+ * Returns the new offset */
+static const char *emproj; /* the user project's name, emitfile's say */
+
+static usize
+projhead(Sym *s, char *buf, usize n)
 {
-  char pb[1024];
+  Ns   *chain[64]; /* the named chain, innermost first */
+  Ns   *ns = s->ownns;
+  Ns   *std;
+  usize d = 0, i, o;
 
-  ovlspell(p, pb, sizeof pb);
-  return strcmp(pb, buf) == 0;
+  while (ns && ns->parent) {
+    if (d == 64)
+      die("a namespace nesting too wide for the emitter's names");
+    chain[d++] = ns;
+    ns = ns->parent;
+  }
+  if (5 >= n)
+    die("a name too wide for the emitter's names");
+  memcpy(buf, "ceri", 5);
+  o = 4;
+  std = nschild(nsroot(), "std");
+  if (d && std && chain[d - 1] == std) { /* std's own: the std
+                                          * namespace is the
+                                          * project's root, its
+                                          * name the project's */
+    o = segput(buf, o, n, "std");
+    for (i = d - 1; i-- > 0;) /* the path below it, outermost first */
+      o = segput(buf, o, n, chain[i]->name);
+  } else {
+    o = segput(buf, o, n, emproj);
+    for (i = d; i-- > 0;) /* the whole chain, outermost first */
+      o = segput(buf, o, n, chain[i]->name);
+  }
+  return o;
 }
 
-/* the instance's name: the fn's, its binding's -- g marks it apart
- * from an overload's arg spelling -- the const parameters' values
- * baked in, numbered only if an earlier entry already took the
- * spelling (a pair of twins the key sees apart and the alphabet
- * cannot) */
+/* a baked value's own code -- the numbers a const parameter bakes
+ * into its instance. Fixed-width hex by the alphabet's law above:
+ * the bits an integer holds, a float's through the same cast, a
+ * slice's elements one by one, the enum's tag beside -- so two
+ * values the instance key (cvalsame) sees apart never share a name */
+static usize
+cvalput(char *buf, usize o, usize n, Val *v)
+{
+  if (!v) { /* the slot says: nothing baked here */
+    if (o + 1 >= n)
+      die("a name too wide for the emitter's names");
+    buf[o++] = 'z';
+    return o;
+  }
+  if (o + 24 >= n)
+    die("a name too wide for the emitter's names");
+  if (v->t->k == Tyslice) { /* the bytes, element by element */
+    usize j;
+
+    buf[o++] = 'h';
+    o = hexput(buf, o, n, (u64) v->len, 16);
+    for (j = 0; j < v->len; j++)
+      o = hexput(buf, o, n, v->elems[j].i, 16);
+    return o;
+  }
+  buf[o++] = 'x';
+  if (v->t->k == Tyint &&
+      (v->t->num == IN_F32 || v->t->num == IN_F64)) { /* a float's bits are not its value */
+    double d = v->f;
+    u64    b;
+
+    memcpy(&b, &d, 8);
+    o = hexput(buf, o, n, b, 16);
+  } else
+    o = hexput(buf, o, n, v->i, 16);
+  return hexput(buf, o, n, v->tag, 4);
+}
+
+/* the instance's name: the fn's own mangle -- a method's the
+ * declared target's code with the trait's path beside it, the
+ * generic parameters keeping their names -- then every generic
+ * slot's shape, the const generic slots' numbers, the const
+ * parameters' baked values: everything the instance key
+ * (instensure) sees, the name says too, in codes the folding
+ * cannot blur and no declaration order touches
+ * (04-generics.md, 08-reflection.md) */
 static char *
 instname(Sym *s, Type **tys, Val **cvals, Val **gcvals)
 {
-  char  buf[1024];
-  char  tb[256];
+  char  buf[2048];
   usize o, i;
 
-  o = symns(s, buf, sizeof buf);
-  o += sprintf(buf + o, "%s__g", s->name);
-  for (i = 0; i < s->ngparams; i++) {
-    tymangle(tys[i], tb, sizeof tb);
-    o += sprintf(buf + o, "_%s", tb);
-    if (gcvals && gcvals[i]) /* a const generic's own number beside
-                              * its slot's shape -- usize spells
-                              * every binding the same (08) */
-      o += sprintf(buf + o, "_g%lu", (unsigned long) gcvals[i]->i);
-    if (o + 256 >= sizeof buf)
-      die("an instantiation too wide for the emitter's line");
+  o = projhead(s, buf, sizeof buf);
+  if (s->impl) { /* a method's instance: the impl's own declared
+                  * target, the trait where there is one */
+    o = tymang2(s->impl->ifort ? s->impl->ifort : s->impl->ipath, buf, o, sizeof buf);
+    if (s->impl->ifort)
+      o = tymang2(s->impl->ipath, buf, o, sizeof buf);
+    else
+      buf[o++] = 'z';
   }
-  if (cvals) { /* the baked values, what one instance tells apart
-                * from another the types alone cannot: a number in
-                * its own digits, a string's bytes the alphabet keeps
-                * (08-reflection.md) */
+  o = segput(buf, o, sizeof buf, s->name);
+  o = segnum(buf, o, sizeof buf, s->ngparams);
+  for (i = 0; i < s->ngparams; i++) /* every slot's shape -- a const
+                                     * generic's usize spells every
+                                     * binding the same, the number
+                                     * below tells them apart (08) */
+    o = tymang2(tys[i], buf, o, sizeof buf);
+  if (gcvals) { /* the const generic slots' numbers, the shapes' own */
+    buf[o++] = 'g';
+    for (i = 0; i < s->ngparams; i++) /* a slot without a number says z */
+      o = gcvals[i] ? hexput(buf, o, sizeof buf, gcvals[i]->i, 16) : (buf[o++] = 'z', o);
+  }
+  if (cvals) { /* the const parameters' baked values (08-reflection.md) */
     Ast **ps = s->decl->v.fn.params;
-    usize n = vlen(ps);
+    usize np = vlen(ps);
 
-    for (i = 0; i < n; i++)
-      if (ps[i]->v.param.cnst && cvals[i]) {
-        if (cvals[i]->t->k == Tyslice) { /* []u8, a name's own bytes */
-          usize j;
-
-          o += sprintf(buf + o, "_c");
-          for (j = 0; j < cvals[i]->len && o + 2 < sizeof buf; j++) {
-            int c = (int) cvals[i]->elems[j].i;
-
-            o += sprintf(buf + o, "%c",
-                         (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
-                             ? c
-                             : '_');
-          }
-        } else
-          o += sprintf(buf + o, "_c%lu", (unsigned long) cvals[i]->i);
-        if (o + 256 >= sizeof buf)
-          die("an instantiation too wide for the emitter's line");
-      }
+    buf[o++] = 'c';
+    for (i = 0; i < np; i++)
+      o = cvalput(buf, o, sizeof buf, ps[i]->v.param.cnst ? cvals[i] : 0);
   }
-  { /* a twin: spell them apart -- numbered past every spelling
-     * taken, for a fold or a truncation can make three where the
-     * alphabet saw two */
-    char *n;
-    usize try = 0;
+  buf[o] = 0;
+  {
+    char *nm = arenaalloc(o + 1);
 
-    do {
-      try++;
-      n = arenaalloc(strlen(buf) + 14);
-      sprintf(n, "%s_%lu", buf, (unsigned long) try);
-      for (i = 0; i < vlen(insts); i++)
-        if (strcmp(insts[i]->name, n) == 0)
-          break;
-    } while (i != vlen(insts));
-    return n;
-  }
-  { /* stable: the arena keeps the spelling one name */
-    char *n;
-
-    n = arenaalloc(strlen(buf) + 1);
-    strcpy(n, buf);
-    return n;
+    memcpy(nm, buf, o + 1);
+    return nm;
   }
 }
 
@@ -1582,27 +1671,32 @@ struct Vt
 static Vt   *vts;       /* every pair named, in first-seen order */
 static usize vtprinted; /* how many of them the text already holds */
 
+/* the table's own name: the trait's whole path, the concrete type's
+ * code beside it -- the pair the construction site names, spelled
+ * so two pairs fold the same only by being the same pair (06-dispatch.md) */
 static char *
 vtname(Sym *tr, Type *ty)
 {
-  char  tb[256], buf[512];
-  usize i, same;
+  char  buf[1024];
+  usize i, o;
 
   for (i = 0; i < vlen(vts); i++)
     if (vts[i].tr == tr && vts[i].ty == ty)
       return vts[i].name;
-  tymangle(ty, tb, sizeof tb);
-  sprintf(buf, "vt_%s_%s", tr->name, tb);
-  same = 0;
-  for (i = 0; i < vlen(vts); i++) /* two pairs the folding cannot
-                                   * tell apart: number them off */
-    if (strcmp(vts[i].name, buf) == 0)
-      same++;
-  { /* stable: the arena keeps the spelling one name */
+  if (2 >= sizeof buf)
+    die("a name too wide for the emitter's names");
+  memcpy(buf, "vt", 3);
+  o = 2;
+  if (tr->ownns && tr->ownns->parent)
+    o = tymns(tr->ownns, buf, o, sizeof buf);
+  o = segput(buf, o, sizeof buf, tr->name);
+  o = tymang2(ty, buf, o, sizeof buf);
+  buf[o] = 0;
+  {
     Vt    vt;
-    char *n = arenaalloc(strlen(buf) + 12);
+    char *n = arenaalloc(o + 1);
 
-    sprintf(n, "%s%s%lu", buf, same ? "_" : "", (unsigned long) same);
+    memcpy(n, buf, o + 1);
     vt.tr = tr;
     vt.ty = ty;
     vt.name = n;
@@ -1627,16 +1721,15 @@ printvts(FILE *o)
     Type **tys = 0;
     char  *line;
     char  *p;
-    usize  len = 32;
+    char **nms = vnew(char *, 8); /* the entries' names, spelled
+                                   * ahead of the line: its length
+                                   * is what they say, not a guess
+                                   * a longer mangle outgrows */
+    usize len, nn = 0;
 
     im = implfor(vt->tr, vt->ty, &tys);
     if (!im)
       cerrat(vt->tr->decl, "unreachable: the construction site checked");
-    for (j = 0; j < vt->tr->nmembers; j++)
-      if (vt->tr->members[j].kind == Mfn)
-        len += strlen(vt->tr->members[j].name) + 24;
-    line = arenaalloc(len);
-    p = line + sprintf(line, "data $%s = { ", vt->name);
     for (j = 0; j < vt->tr->nmembers; j++) {
       Member *tm = &vt->tr->members[j];
       Member *fm = 0;
@@ -1657,8 +1750,16 @@ printvts(FILE *o)
                                                     * table names */
       else
         nm = fsymname(fm->sym, fm->sym->decl);
-      p += sprintf(p, "l $%s, ", nm);
+      vappend(&nms, &nm);
+      nn++;
     }
+    len = strlen(vt->name) + 16; /* data $ = { } and the NUL */
+    for (j = 0; j < nn; j++)
+      len += strlen(nms[j]) + 8; /* the entry's own: l $ NAME,  */
+    line = arenaalloc(len);
+    p = line + sprintf(line, "data $%s = { ", vt->name);
+    for (j = 0; j < nn; j++)
+      p += sprintf(p, "l $%s, ", nms[j]);
     sprintf(p, "}");
     if (ipass == 2)
       fprintf(o, "%s\n", line);
@@ -4091,7 +4192,7 @@ emitall(FILE *out, Srcfile **files, usize nfiles)
 }
 
 void
-emitfile(FILE *out, Srcfile **files, usize nfiles, int release)
+emitfile(FILE *out, Srcfile **files, usize nfiles, int release, const char *proj)
 {
   FILE *scratch = tmpfile(); /* pass one names the aggregates and
                               * finds every instantiation; its text
@@ -4102,6 +4203,8 @@ emitfile(FILE *out, Srcfile **files, usize nfiles, int release)
     fprintf(stderr, "cerium: no scratch file for the type pass\n");
     exit(1);
   }
+  emproj = proj; /* the project's name, the symbols' first segment
+                  * (12-projects.md, Symbols) */
   rel = release; /* the runtime checks' own mode: debug inserts
                   * them, release leaves them out (01-types.md) */
   ipass = 1;

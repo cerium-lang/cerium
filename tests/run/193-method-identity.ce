@@ -1,0 +1,19 @@
+/* two generic types, one method name: the old instance mangle
+ * spelled neither type -- only a first-seen number told the
+ * instances apart. The target's own code is in the name now
+ * (12-projects.md, Symbols) */
+struct Pair<T> { a: T, b: T }
+impl<T> Pair<T> {
+  fn half(self: *Self, x: i32) -> i32 { x + 1 }
+}
+
+struct Cell<T> { v: T }
+impl<T> Cell<T> {
+  fn half(self: *Self, x: i32) -> i32 { x + 2 }
+}
+
+fn main() -> i32 {
+  let p = Pair { a: 3, b: 4 };
+  let c = Cell { v: 9 };
+  p.half(40) + c.half(40)
+}

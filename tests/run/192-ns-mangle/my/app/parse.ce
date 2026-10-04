@@ -1,0 +1,4 @@
+/* my::app::parse and my_app::parse: the underscore inside a name
+ * and the one a :: folded onto -- two symbols the old mangle
+ * spelled the same and the assembler refused (12-projects.md) */
+pub fn parse(x: i32) -> i32 { x + 1 }

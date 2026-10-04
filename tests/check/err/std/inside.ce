@@ -1,0 +1,4 @@
+/* the project's own directory is named std: the name is the
+ * library's, and the symbols' first segment belongs to it
+ * (12-projects.md, Symbols) */
+fn main() -> i32 { 0 }

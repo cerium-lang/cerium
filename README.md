@@ -102,7 +102,10 @@ runtime checks out, the wraps a release owns (`01-types.md`).
   evaluation: const and static initializers, plain-fn calls,
   aggregate values, the const `for`, `$$` splices, `@typeinfo` and
   the field walk (`08-reflection.md`)
-- **emit** — qbe `.ssa`, the `cerium_` mangle folding namespaces, the
+- **emit** — qbe `.ssa`, the `ceri` mangle: the project's name the
+  first segment, every name a length plus its bytes, types a closed
+  code — no two things fold the same, no declaration order in a
+  symbol (`12-projects.md`), the
   data segment under const values, `@take` the value out and the
   zero block back, an assignment's destructor after the new value
   is fixed to its own storage — even `x = x` — the scope drops
@@ -131,7 +134,7 @@ split `ok/` against `err/` — a dump must reproduce its `.golden`
 exactly, a rejection must say why — and `tests/run`, where every `.ce`
 compiles to a binary whose exit, stdout and stderr the files beside it
 name, an optional `.release` building it with `-r`
-(`tools/run-tests.sh`). 477 green at the time of writing.
+(`tools/run-tests.sh`). 482 green at the time of writing.
 
 ## The specification
 
