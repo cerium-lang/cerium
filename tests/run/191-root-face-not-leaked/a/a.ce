@@ -1,0 +1,21 @@
+/* this file's own namespace: the glob's collisions read it, not the
+ * root's table -- the root's Option above reaches nothing here. The
+ * bare Err is the root's struct only to a root file; here it is the
+ * sugar's own variant, the declare that shadowed it a file away. */
+
+use std::*;
+
+pub fn go() -> i32 {
+  let r: Result<i32, i32> = Err(1);
+
+  match r {
+    Err(_) => 5,
+    Ok(_)  => 0,
+  }
+}
+
+/* the parameter holds its name: no namespace of the root claims it
+ * from another file (11-namespaces.md) */
+pub fn take(b: i32) -> i32 {
+  b + 1
+}

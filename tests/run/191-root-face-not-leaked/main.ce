@@ -1,0 +1,22 @@
+/* the root's face is the root's files' own: the names its files
+ * declare and its sub-namespaces are theirs to read bare, and
+ * another namespace's file never does -- a sibling is named with no
+ * path at all, everything else absolutely (11-namespaces.md). The
+ * taking here is all on the root's side, and none of it may reach
+ * a/ or b/ bare: the glob's collision reads the use's own
+ * namespace, the bare Err falls to the sugar its own declare never
+ * touched, and the parameter b stands unclaimed by the root's
+ * sub-namespace of the name. */
+
+enum Option { Mine }
+
+struct Err { code: i32 }
+
+fn main() -> i32 {
+  let m = Option::Mine;
+  let g = match m {
+    Option::Mine => a::go(),
+  };
+
+  g + a::take(1) + b::tag()
+}

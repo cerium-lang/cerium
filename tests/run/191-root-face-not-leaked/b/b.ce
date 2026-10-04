@@ -1,0 +1,4 @@
+/* the sub-namespace whose name a parameter elsewhere carries: the
+ * root's files read it bare, everyone else spells it absolutely */
+
+pub fn tag() -> i32 { 3 }

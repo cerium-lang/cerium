@@ -236,15 +236,16 @@ nsopen(const char *path)
 Ns *
 nssubfind(const char *name) /* a sub-namespace by name, the chain the
                              * bare name's own lookup walks: the file's
-                             * own first -- curns is the root's for a
-                             * root file, the same table -- then the
-                             * root's before a use's, a root
-                             * declaration winning (11-namespaces.md) */
+                             * own -- curns is the root's for a root
+                             * file, the same table -- then what a use
+                             * brought in (11-namespaces.md). The root's
+                             * own sub-namespaces stop a root file's
+                             * bare names there: another file names
+                             * them absolutely, ::spelled
+                             * (11-namespaces.md) */
 {
   Ns *sub = nschild(curns ? curns : nsroot(), name);
 
-  if (!sub)
-    sub = nschild(nsroot(), name);
   if (!sub) {
     Use *u = usefindns(name);
 
@@ -340,8 +341,13 @@ Sym *
 symfind(const char *name) /* the namespace being checked first -- its
                            * declarations, then its re-exports, a pub
                            * use's binding binding the namespace
-                           * (11-namespaces.md) -- then the root's
-                           * both, then what a `use` brought in */
+                           * (11-namespaces.md) -- then, for a file the
+                           * root itself holds, the root's own table:
+                           * another namespace's file never reads the
+                           * root's items bare, its own uses first and
+                           * the root reached by path, ::name the one
+                           * spelling that takes an item of the root
+                           * (11-namespaces.md) */
 {
   Sym *s;
   Use *u;
@@ -353,13 +359,17 @@ symfind(const char *name) /* the namespace being checked first -- its
     s = nsreexpfind(curns, name);
     if (s)
       return s;
+  } else { /* the root's own file: its table is its current
+            * namespace's, the declarations of every file the root
+            * holds -- a user's shadow of a prelude name reads here
+            * (12-projects.md), the use's binding behind it */
+    s = nstroot.tbl[probe(nstroot.tbl, nstroot.cap, name)];
+    if (s)
+      return s;
+    s = nsreexpfind(&nstroot, name);
+    if (s)
+      return s;
   }
-  s = nstroot.tbl[probe(nstroot.tbl, nstroot.cap, name)];
-  if (s)
-    return s;
-  s = nsreexpfind(&nstroot, name);
-  if (s)
-    return s;
   u = usefind(name);
   return u ? u->sym : 0;
 }
