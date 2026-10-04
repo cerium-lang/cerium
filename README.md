@@ -85,7 +85,9 @@ runtime checks out, the wraps a release owns (`01-types.md`).
   `T: Add<usize>` answered only by the rows that take them — and
   the call picking the row itself: the rows the receiver fits
   walk in specificity order and the first whose signature takes
-  the arguments answers, spelled or sugar (`07-operators.md`) —
+  the arguments answers, spelled or sugar, a row whose variables
+  the receiver alone cannot land waiting on the arguments the
+  trial binds as it walks (`07-operators.md`) —
   the flow rules — moves, frozen borrows,
   `mut`'s two levels, narrowing, a temporary's `&` its own
   materialised place, reassignment running the old value's
@@ -122,7 +124,7 @@ split `ok/` against `err/` — a dump must reproduce its `.golden`
 exactly, a rejection must say why — and `tests/run`, where every `.ce`
 compiles to a binary whose exit, stdout and stderr the files beside it
 name, an optional `.release` building it with `-r`
-(`tools/run-tests.sh`). 460 green at the time of writing.
+(`tools/run-tests.sh`). 464 green at the time of writing.
 
 ## The specification
 

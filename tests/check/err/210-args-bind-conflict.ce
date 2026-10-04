@@ -1,0 +1,15 @@
+/* two argument positions name one variable and disagree
+ * (07-operators.md): the first lands T, the second cannot ride
+ * it, and the report names what the row already bound -- the
+ * variable's landing in the caller's own words */
+trait Two<Rhs = Self> {
+  fn two(self: Self, a: Rhs, b: Rhs) -> i32;
+}
+
+impl<T> Two<T> for i32 {
+  fn two(self: Self, a: T, b: T) -> i32 { self }
+}
+
+fn main() -> i32 {
+  Two::two(3, 4, @cast<u8>(5))
+}

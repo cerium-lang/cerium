@@ -206,8 +206,10 @@ As a language rule, indexing is uniform and can be checked at compile time.
   bindings at every round's end. An abort runs none, by `03-move.md`'s
   own words.
 - A row whose variables live only in the trait's arguments (`impl<T> Add<T>
-  for S`) is declared legal — ordered under its specific rows — but no call
-  reaches it yet: the candidate walk binds a row's variables from the
-  receiver alone, and this row's `T` waits on the arguments. The spelled
-  call's trial already walks arguments; binding them into the row is the
-  missing half.
+  for S`) joins the walk with its slots open: the receiver lands what it
+  can, the call's own arguments bind the rest — the sugar, the spelled
+  call and the method sugar walk the same rows — a variable no argument
+  rides is the call's error to name, the bounds wait until every slot
+  lands, and a row whose trait argument is a shape (`Add<Wrap<T>>`)
+  binds through the literal's fields, a want's parameters lending their
+  slots without holding them.

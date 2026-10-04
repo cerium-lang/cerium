@@ -885,7 +885,7 @@ hasdrop(Type *t)
  * no impls anywhere -- it is what a type is, read structurally
  * against the exclusion (03-move.md, 04-generics.md) -- so the
  * question is iscopy's; every other trait's is the impl table's. */
-static int
+int
 boundsok(Sym *im, Type **tys)
 {
   Ast **gps = im->decl->v.impl.gparams;
@@ -915,16 +915,18 @@ boundsok(Sym *im, Type **tys)
   return 1;
 }
 
-/* one impl's fit for a type: the target pattern matched, every
- * variable landed, every bound answered (04-generics.md). The
- * binding comes back through *tysp -- impl->ngparams slots, or NULL
- * for an exact target -- for whoever needs the instance. */
+/* one impl's fit for a type, the receiver's binding alone: the
+ * target pattern matched, and whatever it lands comes back through
+ * *tysp -- impl->ngparams slots, or NULL for an exact target. The
+ * slots a pattern's own shape cannot land stay open: a row whose
+ * variables live only in the trait's arguments (07-operators.md)
+ * waits on the call's arguments to finish them. */
 static int
-implfit(Sym *im, Type *t, Type ***tysp)
+implfitp(Sym *im, Type *t, Type ***tysp)
 {
   Type  *pat = im->ifort ? im->ifort : im->ipath;
   Type **tys;
-  usize  j, g;
+  usize  j;
 
   if (im->ngparams) {
     tys = tyargs(im->ngparams);
@@ -932,11 +934,6 @@ implfit(Sym *im, Type *t, Type ***tysp)
       tys[j] = 0;
     if (!implatch(pat, t, im->gparams, tys, im->ngparams))
       return 0;
-    for (g = 0; g < im->ngparams; g++)
-      if (!tys[g])
-        return 0; /* the pattern left a slot open: not this one */
-    if (!boundsok(im, tys))
-      return 0; /* a bound the receiver does not answer */
     if (tysp)
       *tysp = tys;
     return 1;
@@ -945,6 +942,32 @@ implfit(Sym *im, Type *t, Type ***tysp)
     return 0;
   if (tysp)
     *tysp = 0;
+  return 1;
+}
+
+/* the finished question -- the receiver's walk, every variable it
+ * could name landed, every bound answered (04-generics.md): the
+ * finders' own ask, where no arguments follow to bind the rest. */
+static int
+implfit(Sym *im, Type *t, Type ***tysp)
+{
+  Type **tys;
+  usize  g;
+
+  if (!implfitp(im, t, &tys))
+    return 0;
+  if (!tys) {
+    if (tysp)
+      *tysp = 0;
+    return 1;
+  }
+  for (g = 0; g < im->ngparams; g++)
+    if (!tys[g])
+      return 0; /* the pattern left a slot open: not this one */
+  if (!boundsok(im, tys))
+    return 0; /* a bound the receiver does not answer */
+  if (tysp)
+    *tysp = tys;
   return 1;
 }
 
@@ -1107,14 +1130,18 @@ implfind(Sym *trait, Type *t, const char *name, Sym **imp, Type ***tysp)
 }
 
 /* the trait's rows that carry this member and fit this type, the
- * most specific first (07-operators.md). The receiver alone orders
- * them -- implspecific, the declaration check's own total order
- * among one type's rows -- but a row's signature is a claim about
- * the call's other arguments too, and the spelled arguments decide
- * among the rows the receiver could not. The caller walks them in
- * this order: the first row that takes the arguments is the call's,
- * and the specificity order keeps the pick the receiver's own when
- * the arguments fit more than one. */
+ * most specific first (07-operators.md). The receiver orders them
+ * -- implspecific, the declaration check's own total order among
+ * one type's rows -- but a row's signature is a claim about the
+ * call's other arguments too, and the spelled arguments decide
+ * among the rows the receiver could not. A row whose variables
+ * the receiver alone cannot land joins the walk with its slots
+ * open (implfitp): the trial binds them from the arguments, the
+ * same landing a generic fn's own call makes (07-operators.md).
+ * The caller walks them in this order: the first row that takes
+ * the arguments is the call's, and the specificity order keeps
+ * the pick the receiver's own when the arguments fit more than
+ * one. */
 usize
 implcands(Sym *trait, Type *t, const char *name, Implcand *cs, usize cap)
 {
@@ -1137,7 +1164,7 @@ implcands(Sym *trait, Type *t, const char *name, Implcand *cs, usize cap)
       }
     if (!m)
       continue;
-    if (!implfit(im, t, &tys))
+    if (!implfitp(im, t, &tys))
       continue;
     if (nc == cap)
       continue; /* a pathological table: the first rows carry the
@@ -1160,7 +1187,8 @@ implcands(Sym *trait, Type *t, const char *name, Implcand *cs, usize cap)
  * order crosses trait lines: the most specific fit first, and
  * impls incomparable across traits keep the declaration's first --
  * the explicit form is how a crossed sugar is disambiguated
- * (05-traits.md). */
+ * (05-traits.md). Slots the receiver cannot land stay open here
+ * too, for the arguments to finish (implfitp, 07-operators.md). */
 usize
 traitcands(Type *t, const char *name, Implcand *cs, usize cap)
 {
@@ -1183,7 +1211,7 @@ traitcands(Type *t, const char *name, Implcand *cs, usize cap)
       }
     if (!m)
       continue;
-    if (!implfit(im, t, &tys))
+    if (!implfitp(im, t, &tys))
       continue;
     if (nc == cap)
       continue;

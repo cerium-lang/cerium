@@ -1,0 +1,31 @@
+/* a row whose variables live only in the trait's arguments
+ * (07-operators.md): the receiver lands nothing, and the call's
+ * own arguments finish the binding -- the sugar, the spelled
+ * call and the method sugar all walk the same rows, and the
+ * answer names the landing's own type. A row whose trait
+ * argument is a shape (Wrap<T>) stands beside the bare one, the
+ * specificity order handing each call its own: a scalar finds
+ * the bare row, a Wrap finds the shaped one first, and the bare
+ * row would take the Wrap too -- T landing on it whole -- if the
+ * shaped one did not stand above it. */
+use std::ops::Add;
+
+struct S { n: i32 }
+
+struct Wrap<T> { v: T, tag: i32 }
+
+impl<T> Add<T> for S {
+  type Output = T;
+  fn add(self: Self, other: T) -> Self::Output { other }
+}
+
+impl<T> Add<Wrap<T>> for S {
+  type Output = i32;
+  fn add(self: Self, other: Wrap<T>) -> Self::Output { other.tag + 5 }
+}
+
+fn main() -> i32 {
+  let a = S{ n: 1 } + @cast<u8>(7);                             /* the sugar: the bare row, T = u8 */
+  let b = Add::add(S{ n: 2 }, Wrap{ v: @cast<i16>(30), tag: 23 }); /* spelled: the shaped row */
+  let c = (S{ n: 3 }).add(@cast<u32>(41));                      /* the method sugar: the bare row */
+  @cast<i32>(a) + b + @cast<i32>(c) }   /* 7 + (23+5) + 41 = 76 */
