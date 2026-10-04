@@ -6,16 +6,17 @@
  * with abort, deliberately not exit -- a clean exit would flush
  * buffers and run handlers on a state the panic no longer trusts.
  *
- * The write is io's now (std::io): the door both halves of the
- * library share, unmangled the one time it is declared. */
+ * The write is sys's now (std::sys): the platform's own door,
+ * unmangled the one time it is declared, every output in the
+ * library and this abort reaching through it. */
 
-use std::io;
+use std::sys;
 
 #[extern(C)]
 fn abort();
 
 #[noreturn]
 pub fn panic(msg: []u8) {
-  io::write(2, msg.ptr, msg.len);
+  sys::write(2, msg.ptr, msg.len);
   abort();
 }

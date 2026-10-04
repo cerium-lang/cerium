@@ -120,7 +120,9 @@ runtime checks out, the wraps a release owns (`01-types.md`).
   implements to print itself and the `Writer` that joins a sink to
   the typed writes, `std::io` the `Write` anything that takes bytes
   implements, the two the process was born with, and the prints —
-  `print`, `eprint`, the general `fmt_to` (`01-types.md`)
+  `print`, `eprint`, the general `fmt_to`, `std::sys` the
+  platform's own calls, the C `write` the door every output shares
+  (`01-types.md`)
 
 ### Testing
 

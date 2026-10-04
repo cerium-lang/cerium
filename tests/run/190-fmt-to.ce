@@ -1,13 +1,15 @@
 /* the sink's own half: eprint to the process's other door, and
  * fmt_to into a sink of the test's own -- the Write trait open to
- * any taker. The sink forwards to the same door through io::write,
+ * any taker. The sink forwards to the same door through sys::write,
  * the door panic reaches for, so the golden reads the bytes twice:
  * once the print's own path, once the trait's open one. The count
- * rides both, the whole print's own number. */
+ * rides both, the whole print's own number -- the Fmt itself
+ * returns nothing, its work done when its writes are. */
 
-use std::fmt::*;
+use std::fmt::{Fmt, Writer};
 use std::io;
 use std::io::Write; /* the impl head names the trait bare (05-traits.md) */
+use std::sys;
 
 /* Fail, not Err: a user's own Err here would shadow the prelude's
  * variant and leave the bare Err(...) construction below nameless
@@ -15,12 +17,10 @@ use std::io::Write; /* the impl head names the trait bare (05-traits.md) */
 struct Fail { code: i64 }
 
 impl Fmt for Fail {
-  fn fmt(self: *Self, w: *mut Writer) -> Result<usize, io::Error> {
-    let p = "E: ";
-
-    w.write_str(p)?;
+  fn fmt(self: *Self, w: *mut Writer) -> Result<(), io::Error> {
+    w.write_str("E: ")?;
     w.write_i64(self.code)?;
-    w.written()
+    Ok(())
   }
 }
 
@@ -28,10 +28,10 @@ struct Mem { } /* the sink: whatever it is handed, out the door it goes */
 
 impl Write for Mem {
   fn write(self: *mut Self, buf: []u8) -> Result<usize, io::Error> {
-    let r = io::write(2, buf.ptr, buf.len);
+    let r = sys::write(2, buf.ptr, buf.len);
 
     if r < 0 {
-      Err(io::Error::Write(@cast<i32>(r)))
+      Err(io::Error::Errno(@cast<i32>(-r)))
     } else {
       Ok(@cast<usize>(r))
     }

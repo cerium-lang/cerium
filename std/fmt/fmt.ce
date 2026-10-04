@@ -8,15 +8,16 @@
  *
  * The count is the Writer's own bookkeeping: each write returns its
  * own segment's bytes, the ? behind it dropping only that, and the
- * running total stays in n -- an impl's tail reads it with written,
- * the whole print answered in one number no matter how many writes
- * it took. */
+ * running total stays in n. The Fmt itself returns nothing -- its
+ * work is done when its writes are -- and written reads the total
+ * out for whoever owns the Writer, the print's own answer: the
+ * whole print in one number however many writes it took. */
 
-use std::*;
-use std::io::*;
+use std::Result;
+use std::io::{Error, Write};
 
 pub trait Fmt {
-  fn fmt(self: *Self, w: *mut Writer) -> Result<usize, Error>;
+  fn fmt(self: *Self, w: *mut Writer) -> Result<(), Error>;
 }
 
 pub struct Writer {
@@ -42,18 +43,15 @@ impl Writer {
 
   fn write_bool(self: *mut Self, b: bool) -> Result<usize, Error> {
     if b {
-      let s = "true";
-      self.write_str(s)
+      self.write_str("true")
     } else {
-      let s = "false";
-      self.write_str(s)
+      self.write_str("false")
     }
   }
 
   fn write_u64(self: *mut Self, n: u64) -> Result<usize, Error> {
     if n == 0 {
-      let z = "0";
-      self.write_str(z)
+      self.write_str("0")
     } else {
       /* the digits, low end first: a stack block a u64 cannot
        * overflow. They go out high end first, a byte at a time --
@@ -85,9 +83,7 @@ impl Writer {
 
   fn write_i64(self: *mut Self, n: i64) -> Result<usize, Error> {
     if n < 0 {
-      let m = "-";
-
-      self.write_str(m)?;
+      self.write_str("-")?;
       self.write_u64(@cast<u64>(-n))
     } else {
       self.write_u64(@cast<u64>(n))
@@ -103,7 +99,7 @@ impl Writer {
   }
 
   /* the whole print's own number: the running count, every segment
-   * in it -- an impl's tail, the answer the prints hand back */
+   * in it -- the print that owns the Writer answers with it */
   fn written(self: *mut Self) -> Result<usize, Error> {
     Ok(self.n)
   }

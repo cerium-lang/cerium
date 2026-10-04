@@ -1,32 +1,30 @@
-/* std::io -- the sink half: the Write anything that takes bytes
- * implements, the two the process was born with, and the prints that
- * join a Fmt to a sink (fmt_to the general one, print and eprint the
- * two conveniences). The C write is the platform's own door,
- * unmangled so the linker finds libc's -- panic reaches for the same
- * one through here. */
+/* std::io -- the doors the process was born with and the prints
+ * that join a Fmt to them: fmt_to the general one, print and
+ * eprint the two conveniences. The Write they all take lives
+ * beside them (write.ce), the platform's own door under it all
+ * in std::sys. The count is the Writer's own bookkeeping
+ * (std::fmt), and the prints hand back the whole print's number,
+ * however many writes it took. */
 
-use std::*;
-use std::fmt::*;
-
-#[extern(C)]
-pub fn write(fd: i32, buf: *u8, len: usize) -> isize;
+use std::Result;
+use std::fmt::{Fmt, Writer};
+use std::sys;
 
 pub enum Error {
-  Write(i32), /* the C write went negative: its word, carried home */
-}
-
-pub trait Write {
-  fn write(self: *mut Self, buf: []u8) -> Result<usize, Error>;
+  Errno(i32), /* the C write answered negative: its word negated
+               * back, the errno it named -- Linux answers -errno,
+               * and the reading is the Linux one (POSIX promises
+               * only -1) */
 }
 
 pub struct Stdout { }
 
 impl Write for Stdout {
   fn write(self: *mut Self, buf: []u8) -> Result<usize, Error> {
-    let n = write(1, buf.ptr, buf.len);
+    let n = sys::write(1, buf.ptr, buf.len);
 
     if n < 0 {
-      Err(Error::Write(@cast<i32>(n)))
+      Err(Error::Errno(@cast<i32>(-n)))
     } else {
       Ok(@cast<usize>(n))
     }
@@ -37,10 +35,10 @@ pub struct Stderr { }
 
 impl Write for Stderr {
   fn write(self: *mut Self, buf: []u8) -> Result<usize, Error> {
-    let n = write(2, buf.ptr, buf.len);
+    let n = sys::write(2, buf.ptr, buf.len);
 
     if n < 0 {
-      Err(Error::Write(@cast<i32>(n)))
+      Err(Error::Errno(@cast<i32>(-n)))
     } else {
       Ok(@cast<usize>(n))
     }
@@ -50,7 +48,8 @@ impl Write for Stderr {
 pub fn fmt_to<T: Fmt>(v: *T, w: dyn mut Write) -> Result<usize, Error> {
   let mut wr = Writer { w: w };
 
-  v.fmt(&mut wr)
+  v.fmt(&mut wr)?;
+  wr.written()
 }
 
 pub fn print<T: Fmt>(v: *T) -> Result<usize, Error> {

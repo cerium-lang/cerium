@@ -1527,3 +1527,21 @@ door, not the sink. 189 prints pairs and flags and a u64 at its
 twenty digits, the counts asserted bitwise; 190 a Fmt of the
 test's own into a sink of the test's own, stderr golden both
 ways. 477 green.
+
+The review reshaped it, each ask a corner of the same library.
+The glob is gone from std -- a std file names what it takes, the
+brace form where two come from one place -- and what it takes is
+spelled: Result from the root, Error and Write from io. The
+platform's own call moved home, std::sys its own namespace with
+the C write declared the ABI's way, the door every output and
+panic reach through; io keeps the doors the process was born
+with and the prints, the Write they all take a file of its own
+beside them. The Error carries the errno now, the C write's
+negative answer negated back -- Linux answers -errno, and the
+reading is the Linux one. And the Fmt returns nothing: its work
+is done when its writes are, the count the Writer kept all
+along, read out by the print that owns it -- the segments'
+numbers stay with the writes, the whole print's with the print.
+The literals go straight to the writes that take them; a single
+character is a write_u8 away, the byte literal it wants still
+a later milestone (#91). 477 green, the golden bytes the same.
