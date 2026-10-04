@@ -1440,3 +1440,19 @@ bounded one the bounds' own ordering parts, before the read),
 the predicate's read whole through it all; 213 pins the
 conflict the read must still name, two rows for one type
 neither disjoint nor ordered. 470 green.
+
+And the std's own writing asked the question the table could not
+answer: a bound about a type the fn itself holds only as a
+parameter. `print<T: Fmt>` handing its T to `fmt_to<T: Fmt>`
+asked the impl table for T's Fmt, and no row carries a parameter
+-- the ask died as `'T' does not implement 'Fmt'`. The spec's
+own words were the fix's: everything the body does to T must be
+justified by a bound, checked once at the declaration -- and
+passing T on is done by that promise. implsatisfies now reads
+the parameter's own declared bounds when the type is one, the
+spelled arguments matched one for one, the tail falling to the
+defaults the way any ask's does; a bound the declaration never
+made still fails it. 187 chains the asks three deep and hands a
+spelled `Marks<i32>` through the same door, the concrete
+instance still walking the table; 214 the ask the declaration
+never made. 472 green.

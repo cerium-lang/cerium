@@ -1,0 +1,11 @@
+/* the ask the parameter's declaration never made: T promised
+ * Speak, g wants Loud, and no bound T carries names it
+ * (04-generics.md) */
+trait Speak { fn speak(self: Self) -> i32; }
+trait Loud { fn loud(self: Self) -> i32; }
+
+fn g<T: Loud>(v: T) -> i32 { v.loud() }
+
+fn bad<T: Speak>(v: T) -> i32 { g(v) }
+
+fn main() -> i32 { 0 }

@@ -1,0 +1,47 @@
+/* a bound's question about a type the fn itself holds only as a
+ * parameter: the parameter's own declaration is the answer -- the
+ * promise everything the body does to T must be justified by
+ * (04-generics.md), checked once there, not per-instantiation.
+ * Passing T on rides that promise, the chain of asks each reading
+ * the declaration under it; the spelled arguments match one for
+ * one, a bound the declaration never made still failing it (214).
+ * A concrete instance still walks the impl table, the re-check's
+ * own read. */
+
+trait Speak { fn speak(self: Self) -> i32; }
+
+struct Dog { }
+
+impl Speak for Dog {
+  fn speak(self: Self) -> i32 { 7 }
+}
+
+fn echo<T: Speak>(v: T) -> i32 { v.speak() }
+
+fn twice<T: Speak>(v: T) -> i32 {
+  echo(v) * 2
+}
+
+fn thrice<T: Speak>(v: T) -> i32 {
+  twice(v) + 1
+}
+
+trait Marks<Rhs = Self> {
+  fn mark(self: Self, other: Rhs) -> i32;
+}
+
+struct Cat { }
+
+impl Marks<i32> for Cat {
+  fn mark(self: Self, other: i32) -> i32 { 100 }
+}
+
+fn call<T: Marks<i32>>(a: T, n: i32) -> i32 { Marks::mark(a, n) }
+
+fn wrap<T: Marks<i32>>(a: T, n: i32) -> i32 { call(a, n) }
+
+fn main() -> i32 {
+  let d = Dog { };
+  let c = Cat { };
+  thrice(d) + wrap(c, 3) /* 15 + 100: the declaration, then the table */
+}
