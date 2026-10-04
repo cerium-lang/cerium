@@ -192,13 +192,19 @@ As a language rule, indexing is uniform and can be checked at compile time.
 
 ## Open items
 
-- The destructor half's assignment side is written: the left of a store is a
-  place, so a non-Copy `AddAssign` spells its body — `*self = ...` — and
-  reassignment runs the old value's `drop` before the store, `@take` emitted
-  with the zero value written back (`03-move.md`). What stays open is the
-  scope half: a binding that still owns a value at its scope's end runs
-  nothing yet, nor does a bare temporary's statement, an early exit's
-  reachable bindings, or a non-Copy parameter's slot.
+- The destructor half is written whole. The assignment side: the left of a
+  store is a place, so a non-Copy `AddAssign` spells its body — `*self =
+  ...` — and reassignment runs the old value's destructors before the
+  store, `@take` emitted with the zero value written back (`03-move.md`).
+  The scope side: a binding that still owns a value runs its destructors
+  at the closing brace its block reaches on its own — reverse declaration
+  order, structural (a field's, an element's, a row's inherited, an
+  enum's payload behind a match the checker spells) — an early exit
+  (`return`, `break`, `continue`) carries the destructors of the bindings
+  its path owns, a bare temporary dies at its statement's end, a fn's
+  parameters at the return its body reaches, and a `for`'s pattern
+  bindings at every round's end. An abort runs none, by `03-move.md`'s
+  own words.
 - A row whose variables live only in the trait's arguments (`impl<T> Add<T>
   for S`) is declared legal — ordered under its specific rows — but no call
   reaches it yet: the candidate walk binds a row's variables from the

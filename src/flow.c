@@ -153,7 +153,7 @@ movrestore(Fenv *fe, int *snap)
 
 /* -- copy and drop (03-move.md) ------------------------------------------ */
 
-static int hasdrop(Type *t); /* the exclusion's other half, below */
+int        hasdrop(Type *t); /* the exclusion's other half, below */
 static int iscopy1(Type *t); /* the walk itself, iscopy's memoized core */
 
 /* is a value of this type duplicated by an assignment rather than
@@ -840,7 +840,7 @@ implatch(Type *pat, Type *ty, Ast **gps, Type **tys, usize n)
  * inherited (03-move.md)? The exclusion's other half: what iscopy is
  * not. A parameter's is its instantiation's business; the
  * monomorphized re-check reads the real type. */
-static int
+int
 hasdrop(Type *t)
 {
   usize i, j;

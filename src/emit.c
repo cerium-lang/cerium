@@ -1124,11 +1124,15 @@ found:
 
 static char *emaexpr(Em *em, Ast *e);
 static char *emablockval(Em *em, Ast *body, int *reached);
-int          mustexit(Ast *st); /* flow.c's syntactic judgement, body.h's own:
-                                 * the emit's dead-path marking rides it. The
-                                 * header itself stays unwelcome here -- its
-                                 * locfind is the checker's, this file's its
-                                 * own (10-iteration.md) */
+static void  emdrops(Em *em, Ast **drops); /* the pre-made
+                                            * destructors, spelled in
+                                            * the checker's own order
+                                            * (03-move.md) */
+int mustexit(Ast *st);                     /* flow.c's syntactic judgement, body.h's own:
+                                            * the emit's dead-path marking rides it. The
+                                            * header itself stays unwelcome here -- its
+                                            * locfind is the checker's, this file's its
+                                            * own (10-iteration.md) */
 
 /* the end of the text a diverging statement writes, read for what
  * closed it: the ret or jump the walk itself wrote -- a return, a
@@ -2380,8 +2384,12 @@ emafor(Em *em, Ast *st)
     fprintf(em->o, "\tjnz %s, %s, %s\n", c, lb, lx);
     fprintf(em->o, "%s\n", lb);
     emablockval(em, body, &reached);
-    if (reached)
+    if (reached) { /* the round reached its end: the pattern's own
+                    * bindings die with it -- this shape has none, a
+                    * condition's loop, so the array is empty */
+      emdrops(em, st->v.forx.drops);
       jump(em, lc);
+    }
     em->nloops--;
     fprintf(em->o, "%s\n", lx);
     return;
@@ -2405,6 +2413,9 @@ emafor(Em *em, Ast *st)
     nbase = em->nlocs;
     emapat(em, st->v.forx.a, et, agg ? v : 0, agg ? 0 : v, lx);
     emablockval(em, body, &reached);
+    if (reached) /* the round reached its end: the pattern's
+                  * bindings die with it (03-move.md, 10) */
+      emdrops(em, st->v.forx.drops);
     em->nlocs = nbase;
     if (reached)
       jump(em, lc);
@@ -2459,6 +2470,8 @@ emafor(Em *em, Ast *st)
         emapat(em, st->v.forx.a, pt, sa, svv, lx);
       }
       emablockval(em, body, &reached);
+      if (reached) /* the one round's bindings, its end reached */
+        emdrops(em, st->v.forx.drops);
       em->nlocs = nbase;
       em->nloops--;
       fprintf(em->o, "%s\n", lx);
@@ -2513,6 +2526,12 @@ emafor(Em *em, Ast *st)
           emapat(em, st->v.forx.a, typtr(it), 0, ea, lx);
       }
       emablockval(em, body, &reached);
+      if (reached) /* the round reached its end: the element's own
+                    * bindings die with it -- a slice lends a
+                    * pointer, which owns nothing, an owned array
+                    * yields the element, which the round drops
+                    * (03-move.md, 10-iteration.md) */
+        emdrops(em, st->v.forx.drops);
       em->nlocs = nbase;
       fprintf(em->o, "%s\n", lcont); /* the step: continue lands here */
       {
@@ -3685,16 +3704,16 @@ emastmt(Em *em, Ast *st)
       fprintf(em->o, "\t%s %s, %s\n", stins(lhs->ty), nv, p);
       return;
     }
-    if (st->v.bin.drop) { /* the old value's destructor (03): the
+    if (st->v.bin.drop) { /* the old value's destructors (03): the
                            * new value in hand first, fixed to its own
                            * storage -- `x = x` would hand the
                            * destructor the very place it reads -- then
-                           * the drop, then the store over what died */
+                           * the drops, then the store over what died */
       char *v = emaexpr(em, st->v.bin.r);
       char *tmp = stackslot(em, sizeof_(lhs->ty));
 
       fprintf(em->o, "\tblit %s, %s, %lu\n", v, tmp, (unsigned long) sizeof_(lhs->ty));
-      emaexpr(em, st->v.bin.drop);
+      emdrops(em, st->v.bin.drop);
       fprintf(em->o, "\tblit %s, %s, %lu\n", tmp, p, (unsigned long) sizeof_(lhs->ty));
       return;
     }
@@ -3718,23 +3737,34 @@ emastmt(Em *em, Ast *st)
                        * one pointer, loaded out to its 'l' (M3d) */
       char *v = nicheout(em, st->v.n1.e->ty, emaexpr(em, st->v.n1.e));
 
+      emdrops(em, st->v.n1.drops); /* the frame's own bindings, the
+                                    * value home before them (03) */
       fprintf(em->o, "\tret %s\n", v);
-    } else
+    } else {
+      emdrops(em, st->v.n1.drops);
       fputs("\tret 0\n", em->o); /* (): the w carries nothing */
+    }
     return;
   }
   case Nexprstmt:
     emaexpr(em, st->v.n1.e);
+    emdrops(em, st->v.n1.drops); /* a temporary no one owns: the
+                                  * statement's end is its scope
+                                  * (03-move.md) */
     return;
   case Nbreak: {
     if (em->nloops <= 0)
       cerrat(st, "this break is not in a for");
+    emdrops(em, st->v.n1.drops); /* the round's bindings, the loop's
+                                  * own (03-move.md) */
     jump(em, em->loops[em->nloops - 1].brk);
     return;
   }
   case Ncontinue: {
     if (em->nloops <= 0)
       cerrat(st, "this continue is not in a for");
+    emdrops(em, st->v.n1.drops); /* the round ends here as surely as
+                                  * at its body's closing brace (03) */
     jump(em, em->loops[em->nloops - 1].cont);
     return;
   }
@@ -3755,6 +3785,17 @@ emastmt(Em *em, Ast *st)
   default: /* if, match, blocks: expressions in statement position */
     emaexpr(em, st);
   }
+}
+
+/* the destructors the checker pre-made -- the calls and the matches
+ * it spelled, sent in the order it spelled them (03-move.md) */
+static void
+emdrops(Em *em, Ast **drops)
+{
+  usize i;
+
+  for (i = 0; i < vlen(drops); i++)
+    emaexpr(em, drops[i]);
 }
 
 /* a block as a value: its statements, then its tail as its value.
@@ -3792,6 +3833,10 @@ emablockval(Em *em, Ast *body, int *reached)
   } else
     v = 0; /* "{}": the unit */
 out:
+  if (*reached) /* the closing brace the block reached on its own:
+                 * the bindings die here. A way out that left carries
+                 * its own destructors; an abort runs none (03) */
+    emdrops(em, body->v.blk.drops);
   em->nlocs = nbase;
   return v;
 }
@@ -3874,6 +3919,9 @@ emitfn(FILE *o, Sym *s, Ast *it, char *name, Type **ats, Type *ret)
     if (reached) { /* a niche returns as its one pointer, an
                     * aggregate as the address the :type names */
       v = nicheout(&em, ret, v);
+      emdrops(&em, it->v.fn.drops); /* the parameters' own slots, the
+                                     * body's value home before them
+                                     * (03-move.md) */
       fprintf(em.o, "\tret %s\n", v ? v : "0");
     } else if (em.openend) /* the body ended in the call the abort
                             * never returns from: qbe wants its

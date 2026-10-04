@@ -1,0 +1,48 @@
+/* an enum's destructor is a match: the tag decides, each arm its own
+ * (03-move.md) -- a Some runs its payload's destructor, a None runs
+ * nothing, and the tag the emitter reads is the value's own shape,
+ * not a "was this moved?" flag. A for-let's payload binding dies at
+ * every round's end (10-iteration.md). */
+
+#[extern(C)]
+fn write(fd: i32, buf: *u8, len: usize) -> usize;
+
+struct D { n: i32 }
+
+impl Drop for D {
+  fn drop(mut self: Self) {
+    let ds = "0123456789";
+
+    write(1, ds.ptr + @cast<usize>(self.n), 1);
+  }
+}
+
+fn tagged() {
+  let some: ?D = Some(D { n: 1 });
+  let none: ?D = None;
+  some;
+  none;
+}              /* 1: the Some's payload; the None runs nothing */
+
+fn next(i: *mut i32) -> ?D {
+  if *i < 2 {
+    *i = *i + 1;
+    Some(D { n: 1 + *i })
+  } else {
+    None()
+  }
+}
+
+fn rounds() {
+  let mut i = 0;
+
+  for let Some(d) = next(&mut i) {
+    d;         /* the payload binding, the round's own */
+  }            /* 2 3: each round's end; the None round binds nothing */
+}
+
+fn main() -> i32 {
+  tagged();    /* 1 */
+  rounds();    /* 23 */
+  0
+}

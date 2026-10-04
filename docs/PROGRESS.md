@@ -1243,3 +1243,64 @@ is user-visible, and the probe that declared its own trait
 chased "no 'AddAssign' for D" through two Syms of one name
 before the three-segment path in the rewrite said what it was
 doing.
+
+The scope half of the destructor story, and 07's operators
+milestone closes. Spec 03's Timing section is written whole: a
+binding's destructor runs where its scope ends, reverse
+declaration order (a later binding may point into an earlier
+one's storage, so the earlier outlives); a moved-from binding
+runs nothing -- the move check's rejection is what buys the
+insertion's purity, no "was this moved?" flag at runtime; the
+early exits -- return, break, continue -- reach a scope's end
+as surely as the closing brace does; a bare temporary on its
+own statement drops at that statement's end; a panic aborts
+and runs none of it.
+
+The discovery that shaped the implementation: hasdrop already
+existed, whole. The iscopy rejection had carried the full
+judgment since the move milestone -- a struct's own row or any
+field's, recursed through generic substitution, enums, tuples,
+arrays; unions, scalars, pointers, slices never -- so the
+scope half needed no new judgment, only the expansion of the
+answer into the calls themselves. dropcalls does that: a type
+with its own row answers one pre-made call; a struct without
+one walks its fields in reverse; an array of N drops N indexed
+places; a tuple drops the rows it has; and an enum -- the
+interesting one -- hands back a match the checker built, one
+arm per variant, the payload bound to an invisible `.v` name
+whose own drops ride the arm's block, so Option<Option<File>>
+recurses for free and the emitter runs the whole thing through
+the machinery matches already have: the niche test, the tag
+read, the payload addressing -- no new emit at all.
+
+Three fears the exploration dissolved, each by a mechanism
+already there. A match arm's fail path skips its drops --
+emapat jumps before any binding is established, so a
+scrutinee that matches nothing leaks nothing. The enum's own
+storage cannot double-drop -- the arm's binding takes the
+scrutinee over with the dead flag patterns have always set,
+and the block's drops filter on it. And a generic drop
+instantiates -- the pre-made call carries its type arguments,
+so instensure queues the instance the way any spelled call
+does.
+
+The calls hang at every ending a value has: a block's close,
+the three early exits, a statement's bare temporary, a `for`'s
+pattern bindings once a round, the function's own parameters
+before the ret. The `for` splits deliberately -- the body's
+block owns the bindings inside it, the loop owns the
+pattern's, and break's early exit carries both, the paths
+never overlapping because the block's exit is the path break
+never takes. The assignment's pre-drop grew the same
+expansion: 07a dropped only a type's own row, so a struct
+with fields that had rows and no row of its own dropped
+nothing on reassignment -- now the store walks the fields a
+scope's end would.
+
+Five run tests hold it up -- scope ordering and moved-from,
+the early exits, temporaries and parameter slots, the
+structural walks (fields, arrays, tuples, the assignment's own
+upgrade), and the enum's conditional rows -- and 175's stdout
+grew a fifth character: main's close now drops the binding the
+assignment test had left alive, which is the new semantics
+arriving, not a regression.
