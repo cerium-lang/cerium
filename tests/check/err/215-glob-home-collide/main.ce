@@ -1,0 +1,7 @@
+/* the fix read the use's own namespace, not the root's -- the
+ * collision it still owes is with the taker's own: a namespace that
+ * declares an Option and globs std in takes the whole use down
+ * (11-namespaces.md), whichever file's declaration it was that held
+ * the name. */
+
+fn main() -> i32 { 0 }

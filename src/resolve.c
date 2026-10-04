@@ -2000,7 +2000,7 @@ resolveuse1(Ast *it, Ast **head, usize nhead, int pub, Ns *home) /* one use
 
       if (!s->pub)
         continue;
-      if (nsitem(nsroot(), s->name))
+      if (nsitem(home, s->name) || nsreexpfind(home, s->name))
         cerrat(it, "'%s' is already declared; the glob cannot bring it in (11-namespaces.md)",
                s->name);
       if (usebind(s->name, s, 0, it))
@@ -2013,7 +2013,7 @@ resolveuse1(Ast *it, Ast **head, usize nhead, int pub, Ns *home) /* one use
                                              * name (11-namespaces.md) */
       Rexp *r = ns->reexp[i];
 
-      if (nsitem(nsroot(), r->name))
+      if (nsitem(home, r->name) || nsreexpfind(home, r->name))
         cerrat(it, "'%s' is already declared; the glob cannot bring it in (11-namespaces.md)",
                r->name);
       if (usebind(r->name, r->target, 0, it))
@@ -2038,7 +2038,7 @@ resolveuse1(Ast *it, Ast **head, usize nhead, int pub, Ns *home) /* one use
     if (asns) {
       if (pub) /* the namespace is not an item: nothing to re-export */
         cerrat(it, "a pub use re-exports an item, not a namespace (11-namespaces.md)");
-      if (nsitem(nsroot(), nm))
+      if (nsitem(home, nm) || nsreexpfind(home, nm))
         cerrat(it, "'%s' is already declared; reach it by its path (11-namespaces.md)", nm);
       if (usebind(nm, 0, asns, it))
         cerrat(it, "'%s' is brought in twice (11-namespaces.md)", nm);
@@ -2070,7 +2070,7 @@ resolveuse1(Ast *it, Ast **head, usize nhead, int pub, Ns *home) /* one use
           cerrat(it, "'%s' is already in %s; a pub use cannot re-export it (11-namespaces.md)", nm,
                  nsname(home));
         nsreexp(home, nm, s, it);
-      } else if (nsitem(nsroot(), nm))
+      } else if (nsitem(home, nm) || nsreexpfind(home, nm))
         cerrat(it, "'%s' is already declared; reach it by its path (11-namespaces.md)", nm);
       if (usebind(nm, s, 0, it)) /* the file's own binding, pub or not */
         cerrat(it, "'%s' is brought in twice (11-namespaces.md)", nm);

@@ -1469,3 +1469,27 @@ read does (11-namespaces.md), the prefixed name no local shadows
 -- the walk chose it -- and the checker's pick names its
 instance. 188 calls a generic through the path and bare, a
 second instance two bindings wide, one project's own box.
+
+And the leaks the uses named. std's own files had never written
+one -- panic a prefixed call, the traits nothing -- and fmt and
+io arrived with theirs, and every project that took a name the
+root's way fell over files it never wrote. Three reads held the
+root's face open to anyone: symfind's table unconditionally,
+nssubfind's sub-namespaces the same, and the use's own collision
+check, which asked the root's table whether a glob could bind --
+a user's Option reached std::fmt's `use std::*` and the project
+died in the library. The spec's model was always the other one:
+a name is looked up in the current namespace, then what a use
+brought in, and the root's own items and sub-namespaces are the
+root's own files' bare names -- a sibling is named with no path
+at all, everything else absolutely, `::name` the one spelling
+(11-namespaces.md) -- and a glob's collision is with the use's
+own namespace, the shape the pub use's check already had. All
+three reads close the way the spec reads: the root's face is the
+root's files' own, whichever of the three tables it lives in.
+191 takes every name the root's way and reads them from a
+namespace below -- the glob binds, the bare Err falls to the
+sugar a declare a file away never shadowed, and a parameter b
+stands unclaimed by the root's sub-namespace of the name; 215
+the collision the check still owes, a namespace's own declare
+taking its glob down, the check moved, not removed. 475 green.
