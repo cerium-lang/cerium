@@ -1,0 +1,26 @@
+/* a value no one owns dies at its statement's end -- the expression
+ * itself the place, by value -- and a fn's parameters die at the
+ * return the body reaches on its own: the value home first, then the
+ * slots (03-move.md). */
+
+#[extern(C)]
+fn write(fd: i32, buf: *u8, len: usize) -> usize;
+
+struct D { n: i32 }
+
+impl Drop for D {
+  fn drop(mut self: Self) {
+    let ds = "0123456789";
+
+    write(1, ds.ptr + @cast<usize>(self.n), 1);
+  }
+}
+
+fn takes(d: D) -> i32 {
+  d.n         /* the tail's value fixed in its word, then the slot */
+}             /* 2: the parameter, at the return the body reached */
+
+fn main() -> i32 {
+  D { n: 1 }; /* 1: the bare temporary, its statement's end */
+  takes(D { n: 2 }) + 0
+}             /* nothing: the argument moved, the frame's slots done */

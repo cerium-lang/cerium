@@ -89,8 +89,13 @@ runtime checks out, the wraps a release owns (`01-types.md`).
   the flow rules — moves, frozen borrows,
   `mut`'s two levels, narrowing, a temporary's `&` its own
   materialised place, reassignment running the old value's
-  destructor before the store, `@take` the sanctioned move-out —
-  the value out, the zero value back (`03-move.md`) — and
+  destructor before the store — structural, the rows a type
+  inherits walked in reverse — `@take` the sanctioned move-out —
+  the value out, the zero value back — a scope's close running
+  its live bindings' destructors in reverse declaration order,
+  the early exits carrying theirs, a bare temporary's at its
+  statement's end, a `for`'s pattern bindings once a round,
+  panic running none (`03-move.md`) — and
   compile-time
   evaluation: const and static initializers, plain-fn calls,
   aggregate values, the const `for`, `$$` splices, `@typeinfo` and
@@ -98,7 +103,10 @@ runtime checks out, the wraps a release owns (`01-types.md`).
 - **emit** — qbe `.ssa`, the `cerium_` mangle folding namespaces, the
   data segment under const values, `@take` the value out and the
   zero block back, an assignment's destructor after the new value
-  is fixed to its own storage — even `x = x` — and a debug build's four runtime
+  is fixed to its own storage — even `x = x` — the scope drops
+  the checker pre-made — a block's close, the early exits, a
+  temporary's statement end, an enum's rows through a pre-built
+  `match` (`03-move.md`) — and a debug build's four runtime
   checks — index, arithmetic overflow, shift, cast — every failure one
   call into std's panic (`01-types.md`)
 - **std** — a directory the compiler reads as the project's first
@@ -114,7 +122,7 @@ split `ok/` against `err/` — a dump must reproduce its `.golden`
 exactly, a rejection must say why — and `tests/run`, where every `.ce`
 compiles to a binary whose exit, stdout and stderr the files beside it
 name, an optional `.release` building it with `-r`
-(`tools/run-tests.sh`). 455 green at the time of writing.
+(`tools/run-tests.sh`). 460 green at the time of writing.
 
 ## The specification
 

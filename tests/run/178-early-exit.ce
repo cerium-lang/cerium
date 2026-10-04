@@ -1,0 +1,46 @@
+/* an early exit -- return, break, continue -- counts as reaching the
+ * end of the scope (03-move.md): the destructors run on the way out,
+ * the bindings the path owns, innermost first. */
+
+#[extern(C)]
+fn write(fd: i32, buf: *u8, len: usize) -> usize;
+
+struct D { n: i32 }
+
+impl Drop for D {
+  fn drop(mut self: Self) {
+    let ds = "0123456789";
+
+    write(1, ds.ptr + @cast<usize>(self.n), 1);
+  }
+}
+
+fn through() -> i32 {
+  let a = D { n: 1 };
+  let b = D { n: 2 };
+
+  return b.n;   /* 2 1: the return's own way out, both of the frame */
+}
+
+fn main() -> i32 {
+  through();    /* 21 */
+
+  for true {
+    let c = D { n: 3 };
+
+    if true {
+      let inner = D { n: 6 };
+
+      break;    /* 6 3: the inner block's own, then the round's */
+    }
+  }
+
+  let mut go = true;
+  for go {
+    let d = D { n: 4 };
+
+    go = false; /* the next round does not run */
+    continue;   /* 4: the continue's way out, the round's end */
+  }
+  0
+}

@@ -1,0 +1,46 @@
+/* destructors are structural (03-move.md): a type whose field
+ * implements Drop inherits a destructor for that field, an array of
+ * dropping values drops every element, a tuple every row -- spelled
+ * whole at the scope's end, reverse order all the way down. */
+
+#[extern(C)]
+fn write(fd: i32, buf: *u8, len: usize) -> usize;
+
+struct D { n: i32 }
+
+impl Drop for D {
+  fn drop(mut self: Self) {
+    let ds = "0123456789";
+
+    write(1, ds.ptr + @cast<usize>(self.n), 1);
+  }
+}
+
+struct Pair { second: D, first: D }  /* no row of its own: the fields' */
+
+fn fields() {
+  let p = Pair { second: D { n: 1 }, first: D { n: 2 } };
+}              /* 2 1: the later field dies first, the binding's order */
+
+fn elements() {
+  let a = [3]D{ D { n: 3 }, D { n: 4 }, D { n: 5 } };
+}              /* 5 4 3: every element, statically spelled */
+
+fn rows() {
+  let t = (D { n: 6 }, 7, D { n: 8 });
+}              /* 8 6: the rows that drop, the middle one nothing */
+
+fn reassigned() {
+  let mut p = Pair { second: D { n: 9 }, first: D { n: 8 } };
+
+  p = Pair { second: D { n: 1 }, first: D { n: 0 } };
+}              /* 8 9: the old fields, reverse, before the store --
+                * 0 1: the new ones, at the scope's own end */
+
+fn main() -> i32 {
+  fields();    /* 21 */
+  elements();  /* 543 */
+  rows();      /* 86 */
+  reassigned();/* 8901 */
+  0
+}

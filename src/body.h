@@ -34,16 +34,23 @@ struct Local
 typedef struct Fenv Fenv;
 struct Fenv
 {
-  Local *ls;       /* the bindings, innermost last */
-  usize  n;        /* their count */
-  Env    env;      /* the type-level names: Self, generics (sym.h) */
-  int    loopd;    /* for's depth: break/continue, moves in a loop */
-  usize  loopbase; /* bindings alive when the outermost loop began: a
-                    * move of one of those repeats every round (03) */
-  Type *fnret;     /* the enclosing fn's return, for return and ? */
-  int   nofreeze;  /* an inline borrow the deref below is spending
-                    * whole: it reserves nothing past the expression,
-                    * so freeze holds its hand (01-types.md) */
+  Local *ls;        /* the bindings, innermost last */
+  usize  n;         /* their count */
+  Env    env;       /* the type-level names: Self, generics (sym.h) */
+  int    loopd;     /* for's depth: break/continue, moves in a loop */
+  usize  loopbase;  /* bindings alive when the outermost loop began: a
+                     * move of one of those repeats every round (03) */
+  usize loopbs[32]; /* each for's own base, innermost last: what a
+                     * break or a continue's destructors cover, the
+                     * pattern's bindings with the body's (03) */
+  int   nloopbs;
+  usize fnbase;   /* the bindings the fn's own frame owns: a return's
+                   * destructors cover these, nothing above them -- a
+                   * closure returns out of its own frame only (03) */
+  Type *fnret;    /* the enclosing fn's return, for return and ? */
+  int   nofreeze; /* an inline borrow the deref below is spending
+                   * whole: it reserves nothing past the expression,
+                   * so freeze holds its hand (01-types.md) */
 };
 
 /* what a call's receiver borrow displaced, and its way back */
@@ -66,6 +73,9 @@ void   locnarrow(Fenv *fe, char *name, Type *t);
 
 /* copy and drop (03-move.md) */
 int iscopy(Type *t);
+int hasdrop(Type *t); /* a destructor the type owns, its own row or a
+                       * field's inherited: what a scope's end runs
+                       * and what Copy's exclusion reads (03) */
 
 /* diagnostics */
 void  berr(Ast *a, const char *fmt, ...);

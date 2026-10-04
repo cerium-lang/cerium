@@ -3089,6 +3089,245 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
 
 /* -- blocks, closures, statements ------------------------------------------ */
 
+/* one pre-made drop call: the row's own fn spelled std::Drop::drop,
+ * its argument the place -- the sym the emitter's handle, the path
+ * what a dump says, the bindings what a generic row instantiates
+ * (03-move.md, 07-operators.md). NULL when the type owns no row. */
+static Ast *
+mkdropcall(Ast *place, Type *ty, Ast *at)
+{
+  Sym    *imp;
+  Type  **tys;
+  Member *m = implfind(sym_drop, ty, "drop", &imp, &tys);
+  Ast    *f, *c;
+
+  if (!m)
+    return 0;
+  f = opnode(Npath, at);
+  f->v.path.segs = vnew(Ast *, 3);
+  opvpush(&f->v.path.segs, opseg("std", at));
+  opvpush(&f->v.path.segs, opseg("Drop", at));
+  opvpush(&f->v.path.segs, opseg("drop", at));
+  c = opnode(Ncall, at);
+  c->v.call.f = f;
+  c->v.call.args = vnew(Ast *, 1);
+  opvpush(&c->v.call.args, place);
+  c->v.call.sym = m->sym;
+  c->v.call.tys = tys && imp->ngparams ? tys : 0;
+  c->ty = tyunit();
+  return c;
+}
+
+/* an enum's own destructor is a match the checker spells whole: one
+ * arm a variant, the payload's bindings destructed at the arm's end
+ * -- the emitter's match its own, the tag it reads the value's
+ * shape, not a "was this moved?" flag (03-move.md, Static
+ * insertion). The bindings' names carry a dot: no lexer spells one,
+ * so nothing a program declared can meet them. */
+static void dropcalls(Ast *place, Type *t, Ast ***out, Ast *at);
+
+static Ast *
+mkdropmatch(Ast *place, Type *t, Ast *at)
+{
+  Sym  *es = t->sym;
+  Ast  *m = opnode(Nmatch, at);
+  Ast **arms = vnew(Ast *, (usize) es->nvariants);
+  usize i;
+
+  for (i = 0; i < (usize) es->nvariants; i++) {
+    Variant *v = &es->variants[i];
+    Ast     *arm = opnode(Narm, at);
+    Ast     *pat = opnode(Nppath, at);
+    Ast     *body = opnode(Nblock, at);
+    Ast     *head = opnode(Npath, at);
+    char   **nms;
+    Type   **tys;
+    usize    nb = 0, j;
+
+    head->v.path.segs = vnew(Ast *, 2);
+    opvpush(&head->v.path.segs, opseg(es->name, at));
+    opvpush(&head->v.path.segs, opseg(v->name, at));
+    pat->v.ppath.path = head;
+    nms = vnew(char *, (usize) (v->payload ? v->npayload : v->nfields) + 1);
+    tys = vnew(Type *, (usize) (v->payload ? v->npayload : v->nfields) + 1);
+    if (v->payload && v->named) { /* the struct-shaped variant: a
+                                   * field a name, mirroring the
+                                   * declaration (09-match.md) */
+      pat->v.ppath.named = 1;
+      pat->v.ppath.payload = vnew(Ast *, (usize) v->nfields);
+      for (j = 0; j < (usize) v->nfields; j++) {
+        Ast  *pf = opnode(Npfield, at);
+        Ast  *bp = opnode(Npath, at);
+        char *nm = arenaalloc(16);
+
+        sprintf(nm, ".v%lu", (unsigned long) j);
+        bp->v.path.segs = vnew(Ast *, 1);
+        opvpush(&bp->v.path.segs, opseg(nm, at));
+        pf->v.init.name = v->fields[j].name;
+        pf->v.init.e = bp;
+        opvpush(&pat->v.ppath.payload, pf);
+        if (t->nargs == (usize) es->ngparams /* the variant's field
+                                              * under the instance */
+            && hasdrop(gsubst(v->fields[j].ty, es->gparams, t->args, t->nargs))) {
+          bp->ty = gsubst(v->fields[j].ty, es->gparams, t->args, t->nargs);
+          nms[nb] = nm;
+          tys[nb] = bp->ty;
+          nb++;
+        }
+      }
+    } else if (v->payload) { /* positional: a binding a position */
+      pat->v.ppath.payload = vnew(Ast *, (usize) v->npayload);
+      for (j = 0; j < (usize) v->npayload; j++) {
+        Ast  *bp = opnode(Npath, at);
+        char *nm = arenaalloc(16);
+        Type *pt = gsubst(v->payload[j], es->gparams, t->args, t->nargs);
+
+        sprintf(nm, ".v%lu", (unsigned long) j);
+        bp->v.path.segs = vnew(Ast *, 1);
+        opvpush(&bp->v.path.segs, opseg(nm, at));
+        opvpush(&pat->v.ppath.payload, bp);
+        if (hasdrop(pt)) {
+          bp->ty = pt;
+          nms[nb] = nm;
+          tys[nb] = pt;
+          nb++;
+        }
+      }
+    }
+    for (j = 0; j < nb; j++) { /* the payload's own destructors, the
+                                * arm's block end (03-move.md): a
+                                * binding the arm pattern made, its
+                                * place the name itself */
+      Ast *bp = opnode(Npath, at);
+
+      bp->v.path.segs = vnew(Ast *, 1);
+      opvpush(&bp->v.path.segs, opseg(nms[j], at));
+      bp->ty = tys[j];
+      dropcalls(bp, tys[j], &body->v.blk.drops, at);
+    }
+    arm->v.n2.a = pat;
+    arm->v.n2.b = body;
+    opvpush(&arms, arm);
+  }
+  m->v.call.f = place;
+  m->v.call.args = arms;
+  m->ty = tyunit();
+  return m;
+}
+
+/* the destructors a place owns, spelled whole (03-move.md): a row of
+ * its own answers whole, the fields' -- the elements', the payload's
+ * -- is the no-row case, structural. A union forgets: nothing stored
+ * in one is destructed, ever. The calls go out pre-made, the
+ * emitter sends them; the array's own order is the order they run. */
+static void
+dropcalls(Ast *place, Type *t, Ast ***out, Ast *at)
+{
+  usize i;
+
+  if (!t)
+    return;
+  if (!*out) /* opvpush will not begin a vector on its own */
+    *out = vnew(Ast *, 4);
+  {
+    Ast *c = mkdropcall(place, t, at);
+
+    if (c) { /* the type's own row: it answers for everything inside */
+      opvpush(out, c);
+      return;
+    }
+  }
+  switch (t->k) {
+  case Tystruct: {
+    Sym *s = t->sym;
+
+    for (i = s->nfields; i > 0; i--) { /* reverse: the later field
+                                        * dies first, a binding's own
+                                        * order (03-move.md) */
+      Type *ft = s->fields[i - 1].ty;
+      Ast  *fp;
+
+      if (t->nargs == (usize) s->ngparams) /* the field under the
+                                            * instance (04) */
+        ft = gsubst(ft, s->gparams, t->args, t->nargs);
+      if (!hasdrop(ft))
+        continue;
+      fp = opnode(Naccess, at);
+      fp->v.fld.e = place;
+      fp->v.fld.name = s->fields[i - 1].name;
+      fp->ty = ft;
+      dropcalls(fp, ft, out, at);
+    }
+    return;
+  }
+  case Tyarray: { /* every element, statically spelled: the length is
+                   * the declaration's own, a compile-time thing */
+    Type *et = t->t;
+
+    while (et && et->k == Tymut) /* a mut element's permission layer */
+      et = et->t;
+    for (i = t->n; i > 0; i--) {
+      Ast *ip;
+
+      if (!hasdrop(et))
+        return;
+      ip = opnode(Nindex, at);
+      ip->v.n2.a = place;
+      ip->v.n2.b = opnode(Nint, at);
+      ip->v.n2.b->v.i.num = i - 1;
+      ip->ty = et;
+      dropcalls(ip, et, out, at);
+    }
+    return;
+  }
+  case Tytuple:
+    for (i = t->nargs; i > 0; i--) {
+      Type *et = t->args[i - 1];
+      Ast  *ip;
+
+      if (!hasdrop(et))
+        continue;
+      ip = opnode(Ntupidx, at);
+      ip->v.tup.e = place;
+      ip->v.tup.idx = i - 1;
+      ip->ty = et;
+      dropcalls(ip, et, out, at);
+    }
+    return;
+  case Tyenum: /* a match: the tag decides, each arm its own */
+    opvpush(out, mkdropmatch(place, t, at));
+    return;
+  default: /* scalars, pointers, slices, unions: nothing to destruct */
+    return;
+  }
+}
+
+/* the destructors a scope's bindings owe, innermost first: a
+ * binding the move killed owes nothing -- its destructor went with
+ * the value (03-move.md) -- and a const parameter is a compile-time
+ * thing, no slot to destruct. */
+static Ast **
+scopedrops(Fenv *fe, usize from, Ast *at)
+{
+  Ast **out = 0;
+  usize i;
+
+  for (i = fe->n; i > from; i--) {
+    Local *l = &fe->ls[i - 1];
+    Ast   *p;
+
+    if (l->dead || l->isconst || !hasdrop(l->ty))
+      continue;
+    p = opnode(Npath, at); /* the binding's own place: a plain name,
+                            * its slot the emitter's own */
+    p->v.path.segs = vnew(Ast *, 1);
+    opvpush(&p->v.path.segs, opseg(l->name, at));
+    p->ty = l->ty;
+    dropcalls(p, l->ty, &out, at);
+  }
+  return out;
+}
+
 Type *
 rblock(Ast *b, Fenv *fe, Type *want)
 {
@@ -3108,10 +3347,16 @@ rblock(Ast *b, Fenv *fe, Type *want)
                * the errors still errors, the value no value */
     if (b->v.blk.tail)
       rexpr(b->v.blk.tail, fe, 0);
-    locpop(fe, nbase);
+    locpop(fe, nbase); /* no drops: the tail left on its own way out,
+                        * and that way carries them (03-move.md) */
     return want ? want : tyunit();
   }
   t = b->v.blk.tail ? rexpr(b->v.blk.tail, fe, want) : tyunit();
+  b->v.blk.drops = scopedrops(fe, nbase, b); /* the closing brace the
+                                              * block reached on its
+                                              * own: the bindings
+                                              * die here, innermost
+                                              * first (03-move.md) */
   locpop(fe, nbase);
   return t;
 }
@@ -3144,6 +3389,10 @@ rclosure(Ast *c, Fenv *fe)
   }
   for (i = 0; i < np; i++)
     locpush(&fb, ps[i]->v.param.name, ts[i], ps[i]->v.param.mut);
+  fb.fnbase = fb.n; /* a closure's return leaves its own frame only:
+                     * the captures and the world above them stay
+                     * (03-move.md) -- their destructors are their
+                     * own scope's */
   rblock(c->v.clos.body, &fb, ret);
   return tyfn(ts, np, ret);
 }
@@ -3442,35 +3691,13 @@ rstmt(Ast *st, Fenv *fe)
                                      * (03-move.md) */
         opunmove(st->v.bin.l, fe);
       { /* the old value's destructor, when the type owns one
-         * (03-move.md): the store runs it first, a row the place's
-         * own type picks -- the call pre-made, its argument the
-         * place itself, so the emitter drops what it overwrites.
-         * A type with no row of its own drops nothing here --
-         * a field's inherited destructor arrives with the scope
-         * half. */
-        Sym    *imp;
-        Type  **tys;
-        Member *m = implfind(sym_drop, lt, "drop", &imp, &tys);
-
-        if (m) {
-          Ast *f = opnode(Npath, st); /* std::Drop::drop, the row's
-                                       * own home spelled -- the sym
-                                       * is the emitter's handle, the
-                                       * path what a dump says */
-          Ast *c = opnode(Ncall, st);
-
-          f->v.path.segs = vnew(Ast *, 3);
-          opvpush(&f->v.path.segs, opseg("std", st));
-          opvpush(&f->v.path.segs, opseg("Drop", st));
-          opvpush(&f->v.path.segs, opseg("drop", st));
-          c->v.call.f = f;
-          c->v.call.args = vnew(Ast *, 1);
-          opvpush(&c->v.call.args, st->v.bin.l);
-          c->v.call.sym = m->sym;
-          c->v.call.tys = tys && imp->ngparams ? tys : 0;
-          c->ty = tyunit();
-          st->v.bin.drop = c;
-        }
+         * (03-move.md): the store runs it first -- a row of its own,
+         * or the fields it inherited, spelled whole the same way a
+         * scope's end spells them -- the calls pre-made, their
+         * place the place itself, so the emitter drops what it
+         * overwrites. */
+        if (hasdrop(lt))
+          dropcalls(st->v.bin.l, lt, &st->v.bin.drop, st);
       }
       return;
     }
@@ -3566,21 +3793,41 @@ rstmt(Ast *st, Fenv *fe)
       berr(
           st->v.n1.e,
           "this slice views the fn's own storage; return the array by value instead (01-types.md)");
+    st->v.n1.drops = scopedrops(fe, fe->fnbase, st); /* the early
+                                                      * exit: every
+                                                      * binding the
+                                                      * frame owns,
+                                                      * innermost
+                                                      * first, the
+                                                      * value home
+                                                      * first of all
+                                                      * (03-move.md) */
     return;
   }
   case Nbreak:
   case Ncontinue:
     if (fe->loopd <= 0)
       berr(st, "%s outside a for", st->k == Nbreak ? "break" : "continue");
+    st->v.n1.drops =
+        scopedrops(fe, fe->loopbs[fe->nloopbs - 1], st); /* the loop's
+                                                          * own base: the pattern's bindings with
+                                                          * the body's, the round that never
+                                                          * reached its end (03-move.md) */
     return;
   case Nfor: {
     Ast  *body = st->v.forx.body;
     Fenv  fb = fefork(fe);
     usize nbase = fb.n;
+    usize nbody;
 
     /* the loop marks: moves of bindings from before the outermost
      * loop repeat every round (03-move.md) */
     fb.loopbase = fe->loopd > 0 ? fe->loopbase : fb.n;
+    if (fb.nloopbs >= (int) (sizeof fb.loopbs / sizeof fb.loopbs[0]))
+      berr(st, "loops nest deeper than the checker carries");
+    fb.loopbs[fb.nloopbs++] = nbase; /* the innermost base: what a
+                                      * break or a continue's own
+                                      * destructors cover (03) */
     fb.loopd++;
     switch (st->v.forx.shape) {
     case FCOND: {
@@ -3626,7 +3873,13 @@ rstmt(Ast *st, Fenv *fe)
     default:
       berr(st, "this for shape is not one of the three");
     }
+    nbody = fb.n; /* past the pattern: the body's own block ends its
+                   * own bindings, this loop's end the pattern's */
     rblock(body, &fb, 0);
+    st->v.forx.drops = scopedrops(&fb, nbody, st); /* the pattern's
+                                                    * bindings, every
+                                                    * round at its
+                                                    * end (03, 10) */
     locpop(&fb, nbase); /* what the round bound -- and froze -- ends here */
     return;
   }
@@ -3665,6 +3918,15 @@ rstmt(Ast *st, Fenv *fe)
   }
   case Nexprstmt:
     rexpr(st->v.n1.e, fe, 0);
+    if (st->v.n1.e->ty && hasdrop(st->v.n1.e->ty)) /* a value no
+                                                    * one owns dies at
+                                                    * its statement's
+                                                    * end: the
+                                                    * expression
+                                                    * itself the
+                                                    * place, by
+                                                    * value (03-move.md) */
+      dropcalls(st->v.n1.e, st->v.n1.e->ty, &st->v.n1.drops, st);
     return;
   default: /* if, match, blocks: expressions in statement position */
     rexpr(st, fe, 0);
@@ -3743,6 +4005,13 @@ runbody(Ast *it, Env env, Type **argtys, Type *ret, Val **cvals, Ast **gparams, 
     berr(it->v.fn.body->v.blk.tail,
          "this slice views the fn's own storage; return the array by value instead (01-types.md)");
   rblock(it->v.fn.body, &fe, ret);
+  it->v.fn.drops = scopedrops(&fe, 0, it); /* the parameters' own
+                                            * slots: the return the
+                                            * body reaches on its
+                                            * own runs them before it
+                                            * leaves, an early one
+                                            * carries its own
+                                            * (03-move.md) */
   cparamclear();
 }
 

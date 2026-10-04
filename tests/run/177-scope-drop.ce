@@ -1,0 +1,46 @@
+/* a binding that still owns its value is destructed when its scope
+ * ends, in reverse declaration order (03-move.md): a later binding
+ * may hold a pointer to an earlier one, so the earlier one must
+ * outlive it. A moved-from binding owns nothing and runs nothing --
+ * its destructor went with the value -- and an inner block's
+ * bindings die at its own closing brace, before the outer one's
+ * later bindings. */
+
+#[extern(C)]
+fn write(fd: i32, buf: *u8, len: usize) -> usize;
+
+struct D { n: i32 }
+
+impl Drop for D {
+  fn drop(mut self: Self) {
+    let ds = "0123456789";
+
+    write(1, ds.ptr + @cast<usize>(self.n), 1);
+  }
+}
+
+fn ordered() {
+  let a = D { n: 1 };
+  let b = D { n: 2 };
+  let c = D { n: 3 };
+}              /* 3 2 1: reverse, the closing brace they reached */
+
+fn moved() {
+  let m = D { n: 4 };
+  let n = m;   /* m moved: dead, nothing runs for it */
+  let p = D { n: 5 };
+}              /* 5 4: n keeps the destructor m gave up */
+
+fn inner() {
+  let o = D { n: 6 };
+  if true {
+    let i = D { n: 7 };
+  }            /* 7: the if's own block, before o's own end */
+}              /* 6 */
+
+fn main() -> i32 {
+  ordered();   /* 321 */
+  moved();     /* 54 */
+  inner();     /* 76 */
+  0
+}

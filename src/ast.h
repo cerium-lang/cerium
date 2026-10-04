@@ -131,11 +131,11 @@ struct Ast
     } seg;        /* Nseg, Nattr */
     struct
     {
-      Ast *l, *r;
-      Tok  op;   /* Nbin, Nassign; unused for Nrange */
-      Ast *drop; /* Nassign only: the destructor the old value runs
-                  * before the store, a pre-made call -- or NULL
-                  * when the type owns none (03-move.md) */
+      Ast  *l, *r;
+      Tok   op;   /* Nbin, Nassign; unused for Nrange */
+      Ast **drop; /* Nassign only: the destructors the old value
+                     runs before the store, pre-made calls -- or NULL
+                     when the type owns none (03-move.md) */
     } bin;
     struct
     {
@@ -176,8 +176,13 @@ struct Ast
     } n2;
     struct
     {
-      Ast *e; /* Ntry, Nreturn, Nexprstmt, Ntopt, Ninit's value,
-                  Npfield's sub-pattern */
+      Ast *e;      /* Ntry, Nreturn, Nexprstmt, Ntopt, Ninit's value,
+                      Npfield's sub-pattern */
+      Ast **drops; /* the destructors an early exit runs before it
+                      takes its way out -- Nreturn, Nbreak,
+                      Ncontinue -- or a bare temporary at its
+                      statement's end -- Nexprstmt; pre-made calls
+                      the checker spelled, the emitter sends (03) */
     } n1;
     /* Ntdyn lives in v.tdyn (below) */
     struct
@@ -200,7 +205,11 @@ struct Ast
     struct
     {
       Ast **stmts;
-      Ast  *tail; /* the block's value, or NULL */
+      Ast  *tail;  /* the block's value, or NULL */
+      Ast **drops; /* the bindings' destructors, innermost first,
+                      run at the closing brace the block reaches on
+                      its own -- an early exit carries its own
+                      (03-move.md) */
     } blk;
     struct
     {
@@ -235,6 +244,10 @@ struct Ast
       Ast **params;  /* Nparam vector, or NULL */
       Ast  *ret;     /* or NULL */
       Ast  *body;    /* Nblock, or NULL for the ";" form */
+      Ast **drops;   /* Nfn only: the parameters' own destructors,
+                        run at the return the body reaches on its
+                        own -- an early return carries its own
+                        (03-move.md) */
     } fn;
     struct
     {
@@ -327,6 +340,9 @@ struct Ast
                      * the passes write what they walk (the builtins'
                      * rewrites answer per round), and what one round
                      * wrote the next must not read (10-iteration.md) */
+      Ast **drops;  /* the pattern's own bindings, destructed every
+                       round at its end -- the body's block did its
+                       own before this (03-move.md) */
     } forx;
     struct
     {

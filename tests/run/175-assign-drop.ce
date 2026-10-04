@@ -4,7 +4,8 @@
  * new value aside first, so what the store writes back survives the
  * destructor's read. A compound's own body store runs it too: the
  * left is borrowed for the write, the row's *self = ... the same
- * assignment under the same rule. */
+ * assignment under the same rule. The fourth drop is the scope's
+ * own: a dies at main's closing brace, the value it last held. */
 #[extern(C)]
 fn write(fd: i32, buf: *u8, len: usize) -> usize;
 
