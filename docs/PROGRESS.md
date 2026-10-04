@@ -1304,3 +1304,68 @@ upgrade), and the enum's conditional rows -- and 175's stdout
 grew a fifth character: main's close now drops the binding the
 assignment test had left alive, which is the new semantics
 arriving, not a regression.
+
+The last open item of 07, and the milestone's close: a row whose
+variables live only in the trait's arguments -- `impl<T> Add<T>
+for S` -- was declared legal and ordered under its specific rows
+since the specificity work, but no call reached it. implfit
+matched its pattern with every slot demanded landed, and a `T`
+the receiver cannot land failed the row before the candidate
+table ever saw it. The fix is a split: implfitp matches the
+pattern alone and returns with the slots open, implfit keeps the
+old whole judgment for the walks that follow no arguments --
+inherent lookup, impl satisfaction, the bound side -- where a
+half-landed row would be a lie. The trial owns the landing now:
+each row joins the walk with its binding copied to a local
+buffer (the candidate's own slots must not hear a failed row's
+pollution), the arguments unify against both families at once --
+the member's and the row's, gunify already blind to parameters
+not its own -- and the row's words stand until every slot lands,
+because gsubst through a NULL slot builds a NULL type. What the
+receiver lands and what the arguments land meet in one check of
+the bounds, once, after.
+
+Two bugs of the change's own making, each caught by a test
+already there. The first reversed argfit's rule: a signature
+with no family to bind -- the specific row of 173's disjoint
+probe -- let a mismatch through, because "both families unified"
+was written as "no family failed". No family is the old rule's
+rejection: nothing rides the arguments, nothing can save it.
+The second mutated the signature the row shares with every other
+call -- `t->t = gsubst(...)` in the trial -- and the first
+instance's return type fixed itself into the shared node, the
+second call's recheck reading the pollution. The row's
+substitution is a local walk now; the shared signature never
+hears it.
+
+And one gap the change opened, closed in the same breath: a row
+whose trait argument is a shape (`impl<T> Add<Wrap<T>> for S`)
+hands the literal a want carrying the row's own parameter, and
+the literal's instantiation took that borrowed parameter for a
+binding -- the field value then failing against a slot it should
+have owned. The want lends; it does not bind: where a lent
+parameter stands in a value's way, the value's word outranks it,
+the slot returns to the open and the fields bind it. The phantom
+case -- a want naming a parameter no field mentions -- keeps its
+lending, as ever: the fields never ask.
+
+And a confession the probe earned the hard way. The change's
+first expect said 1437, the binary exited 130, and the
+arithmetic that explained the 130 -- 1410, the sum under the
+body the rewrite had just changed, mod 256 -- cracked a colder
+case open: the "emit bug" an earlier chase had convicted, a fn
+returning an aggregate whose field read back as 400-turned-144,
+ten experiments and a clean-main reproduction deep, was no bug
+at all. An exit code carries eight bits; 400's low byte is 144,
+and every "garbage value" in that probe's table was a true
+sum's mod 256. No issue to open, the aggregate return was right
+all along -- the lesson being to read an exit code as an exit
+code before reading it as a value.
+
+Four tests: 182 walks the sugar, the spelled call and the method
+sugar over one pair of rows -- the bare `Add<T>` beside the
+shaped `Add<Wrap<T>>`, the specificity order handing each call
+its own; 183 races a generic row against a specific one through
+the method sugar; 209 names the variable no argument rides; 210
+catches two arguments binding one variable to different types.
+464 green, and 07 is closed.

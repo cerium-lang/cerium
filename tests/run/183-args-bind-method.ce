@@ -1,0 +1,24 @@
+/* the method sugar walks the same rows (07-operators.md): a row
+ * the receiver alone cannot bind finds its slots at the call's
+ * own arguments, and the specific row still answers first where
+ * one stands under it -- the receiver's order holds, the
+ * arguments only finish what it started. */
+struct S { n: i32 }
+
+trait Combine<Rhs = Self> {
+  fn combine(self: Self, other: Rhs) -> i32;
+}
+
+impl<T> Combine<T> for S {
+  fn combine(self: Self, other: T) -> i32 { self.n }
+}
+
+impl Combine<usize> for S {
+  fn combine(self: Self, other: usize) -> i32 { self.n + @cast<i32>(other) }
+}
+
+fn main() -> i32 {
+  let s = S{ n: 10 };
+  s.combine(@cast<u8>(5))        /* the generic row: no concrete one takes a u8 */
+    + s.combine(@cast<usize>(7)) /* the concrete row, first in the order */
+}

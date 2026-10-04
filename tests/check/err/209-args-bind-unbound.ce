@@ -1,0 +1,17 @@
+/* a row whose variables the call cannot reach (07-operators.md):
+ * T rides no argument this call passes -- the receiver lands
+ * nothing, the signature names nothing the arguments can bind,
+ * and the row stays out of reach with its slot open */
+use std::ops::Add;
+
+struct S { n: i32 }
+
+impl<T> Add<T> for S {
+  type Output = S;
+  fn add(self: Self, other: u32) -> Self::Output { S{ n: @cast<i32>(other) } }
+}
+
+fn main() -> i32 {
+  let a = Add::add(S{ n: 1 }, @cast<u32>(2));
+  a.n
+}

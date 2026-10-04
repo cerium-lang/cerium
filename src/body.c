@@ -33,6 +33,8 @@
  * the face the four share. This file is the walk itself.
  */
 
+#define _POSIX_C_SOURCE 200809L /* snprintf: c89 hides it */
+
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -497,23 +499,45 @@ membergps(Member *m, usize *np)
   return m->decl->v.fn.gparams;
 }
 
+/* the report's own view of a parameter: a variable the call already
+ * bound names what it bound to -- the row's claim in the caller's
+ * own words, not its declaration's (07-operators.md) */
+static Type *
+boundty(Type *pt, Ast **g1, Type **t1, usize n1, Ast **g2, Type **t2, usize n2)
+{
+  usize g;
+
+  if (!pt || pt->k != Typaram)
+    return pt;
+  for (g = 0; g < n1; g++)
+    if (pt->gp == g1[g] && t1[g])
+      return t1[g];
+  for (g = 0; g < n2; g++)
+    if (pt->gp == g2[g] && t2[g])
+      return t2[g];
+  return pt;
+}
+
 /* one argument against its parameter: the check the call always
- * ran, plus the binding when the parameter names one of the
- * member's own variables. A pass-through stands for itself -- the
- * re-check binds it for real, exactly as a generic fn's recursive
- * call inside a generic body (04-generics.md). Soft is the row
- * trial's own ask (07-operators.md): a mismatch the caller can
- * walk away from -- another row may take the argument -- answers 0
- * instead of the report. */
+ * ran, plus the binding when the parameter names a variable -- the
+ * member's own or the row's, whichever family the trial carries.
+ * A pass-through stands for itself -- the re-check binds it for
+ * real, exactly as a generic fn's recursive call inside a generic
+ * body (04-generics.md). Soft is the row trial's own ask
+ * (07-operators.md): a mismatch the caller can walk away from --
+ * another row may take the argument -- answers 0 instead of the
+ * report. */
 static int
-argfit(Ast *a, Type *pt, Type *at, Ast **mg, Type **mtys, usize nm, Fenv *fe, const char *who,
-       int soft)
+argfit(Ast *a, Type *pt, Type *at, Ast **mg, Type **mtys, usize nm, Ast **ig, Type **itys, usize ni,
+       Fenv *fe, const char *who, int soft)
 {
   if (!at || !pt)
     return 1;
   if (tysame(at, pt)) {
     if (mtys)
       gunify(pt, at, mg, mtys, nm);
+    if (itys)
+      gunify(pt, at, ig, itys, ni);
     return 1;
   }
   {
@@ -522,11 +546,29 @@ argfit(Ast *a, Type *pt, Type *at, Ast **mg, Type **mtys, usize nm, Fenv *fe, co
     if (c)
       return 1;
   }
-  if (!mtys || !gunify(pt, at, mg, mtys, nm)) {
-    if (soft)
-      return 0;
-    berr(a, "'%s' wants %s here, this is %s", who, btys(pt), btys(at));
+  { /* the mismatch no conversion answers: a variable can still
+     * take it -- any family the trial carries, every family it
+     * carries -- and no family at all leaves the mismatch the
+     * row's own to answer for */
+    int any = 0, ok = 1;
+
+    if (mtys) {
+      any = 1;
+      if (!gunify(pt, at, mg, mtys, nm))
+        ok = 0;
+    }
+    if (itys) {
+      any = 1;
+      if (!gunify(pt, at, ig, itys, ni))
+        ok = 0;
+    }
+    if (any && ok)
+      return 1;
   }
+  if (soft)
+    return 0;
+  berr(a, "'%s' wants %s here, this is %s", who, btys(boundty(pt, mg, mtys, nm, ig, itys, ni)),
+       btys(at));
   return 1;
 }
 
@@ -563,6 +605,43 @@ memberdone(Ast *e, Ast **mg, Type **mtys, usize nm, const char *who, int soft)
     }
   }
   return 1;
+}
+
+/* the row's own shape for a report: the trait with its arguments,
+ * the for-type after it -- `Add<T> for S`, the declaration's own
+ * words (07-operators.md) */
+static const char *
+rowname(Sym *imp)
+{
+  static char     bufs[2][192];
+  static unsigned which;
+  char           *b = bufs[which++ & 1u];
+
+  snprintf(b, sizeof bufs[0], "%s for %s", btys(imp->ipath), btys(imp->ifort));
+  return b;
+}
+
+/* the row's own bounds, once the arguments landed its slots: the
+ * same report the member's own walk gives, the row named
+ * (07-operators.md). The ask ran already in its silent shape --
+ * boundsok -- the hard round is the only caller. */
+static void
+rowbounds(Sym *imp, Type **tys, Ast *at)
+{
+  usize g, bi;
+
+  for (g = 0; g < imp->ngparams; g++) {
+    Ast **bs = imp->gparams[g]->v.gp.bounds;
+
+    for (bi = 0; bi < vlen(bs); bi++) {
+      Sym   *tr = bs[bi]->v.path.sym; /* the bound's own cache (04) */
+      Type **ta;
+
+      if (!boundsatisfies(bs[bi], tys[g], imp->gparams, tys, imp->ngparams, &ta))
+        berr(at, "'%s' does not implement '%s'; the row cannot take it", btys(tys[g]),
+             btys(tysym(tr, ta, tr->ngparams)));
+    }
+  }
 }
 
 /* the instance the call writes back: the impl's binding -- from the
@@ -2022,7 +2101,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                     for (i = 1; i < n; i++) {
                       Type *at = rexpr(args[i], fe, t->args[i]);
 
-                      argfit(args[i], t->args[i], at, mg, mtys, nmg, fe, nm1, 0);
+                      argfit(args[i], t->args[i], at, mg, mtys, nmg, 0, 0, 0, fe, nm1, 0);
                     }
                     thawargs(svs, n); /* the call is done; its borrows ended with it */
                   }
@@ -2036,12 +2115,18 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                  * the pointer's own row both wait under the borrowed
                  * row's narrower one. The call walks the rows itself,
                  * the most specific first, and the first that takes
-                 * its arguments is the call's. A row that did not
-                 * take them unwinds what its walk froze and moved --
-                 * the overload chain's own discipline (04) -- and the
-                 * report, when none takes them, is the first row's:
-                 * the pick the receiver would have made alone
-                 * (07-operators.md). */
+                 * its arguments is the call's. A row whose slots the
+                 * receiver alone cannot land reads its own words here
+                 * -- the variables stand in the signature, and the
+                 * arguments bind them, the landing a generic fn's
+                 * call makes (07-operators.md); the binding runs on a
+                 * copy, so a row the trial walks away from leaves the
+                 * candidate's slots as open as it found them. A row
+                 * that did not take unwinds what its walk froze and
+                 * moved -- the overload chain's own discipline (04)
+                 * -- and the report, when none takes them, is the
+                 * first row's: the pick the receiver would have made
+                 * alone (07-operators.md). */
                 Implcand cs[64];
                 usize    nc = implcands(s, self, nm1, cs, 64);
                 int      soft = 1;
@@ -2056,10 +2141,26 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                   berr(args[0], "no '%s' for %s", s->name, btys(self));
               trial:
                 for (ci = 0; ci < nc; ci++) {
+                  Type **rtys; /* the row's binding, worked on a copy */
+                  int    part = 0;
+
                   im = cs[ci].m;
                   imp = cs[ci].imp;
                   tys = cs[ci].tys;
-                  t = tys ? gsubst(im->ty, imp->gparams, tys, imp->ngparams) : im->ty;
+                  if (tys) {
+                    usize g;
+
+                    rtys = tyargs(imp->ngparams);
+                    memcpy(rtys, tys, imp->ngparams * sizeof *tys);
+                    for (g = 0; g < imp->ngparams; g++)
+                      if (!rtys[g])
+                        part = 1;
+                  } else
+                    rtys = 0;
+                  /* a partial binding keeps the row's own words: the
+                   * variables stand, the arguments land them below */
+                  t = part ? im->ty
+                           : (rtys ? gsubst(im->ty, imp->gparams, rtys, imp->ngparams) : im->ty);
                   mg = membergps(im, &nmg);
                   if (nmg) {
                     mtys = tyargs(nmg);
@@ -2090,10 +2191,33 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                   ok = 1;
                   for (i = 1; ok && i < n; i++) {
                     at = rexpr(args[i], fe, t->args[i]);
-                    ok = argfit(args[i], t->args[i], at, mg, mtys, nmg, fe, nm1, soft);
+                    ok = argfit(args[i], t->args[i], at, mg, mtys, nmg, imp->gparams, rtys,
+                                imp->ngparams, fe, nm1, soft);
                   }
                   if (ok)
                     ok = memberdone(e, mg, mtys, nmg, nm1, soft);
+                  if (ok && rtys) { /* the row's own slots: the
+                                     * receiver's landing and the
+                                     * arguments' together, the bounds
+                                     * with them (07-operators.md) */
+                    usize g;
+
+                    for (g = 0; g < imp->ngparams; g++)
+                      if (!rtys[g]) {
+                        if (soft) {
+                          ok = 0;
+                          break;
+                        }
+                        berr(e, "cannot infer '%s' for '%s': it rides no argument this call passes",
+                             imp->gparams[g]->v.gp.name, rowname(imp));
+                      }
+                    if (ok && !boundsok(imp, rtys)) {
+                      if (soft)
+                        ok = 0;
+                      else
+                        rowbounds(imp, rtys, e);
+                    }
+                  }
                   if (!ok) { /* this row did not take: its freezes
                               * unwound, its moves with them */
                     thawargs(svs, n);
@@ -2102,8 +2226,17 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                   }
                   e->v.call.sym = im->sym; /* the row's member: the body that runs */
                   thawargs(svs, n);        /* the call is done; its borrows ended with it */
-                  e->v.call.tys = insttys(imp, tys, mg, mtys, nmg);
-                  return projopen(nmg ? gsubst(t->t, mg, mtys, nmg) : t->t, e);
+                  e->v.call.tys = insttys(imp, rtys, mg, mtys, nmg);
+                  /* the answer under both landings -- the row's own
+                   * slots first (a no-op where the receiver landed
+                   * them whole), the member's own after. A local
+                   * walk: the signature the row shares with every
+                   * other call must not hear it */
+                  {
+                    Type *rt = gsubst(t->t, imp->gparams, rtys, imp->ngparams);
+
+                    return projopen(nmg ? gsubst(rt, mg, mtys, nmg) : rt, e);
+                  }
                 }
                 if (soft) {
                   soft = 0;
@@ -2176,7 +2309,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                 for (i = 0; i < n; i++) {
                   Type *at = rexpr(args[i], fe, t->args[i]);
 
-                  argfit(args[i], t->args[i], at, mg, mtys, nmg, fe, nm1, 0);
+                  argfit(args[i], t->args[i], at, mg, mtys, nmg, 0, 0, 0, fe, nm1, 0);
                 }
               }
               thawargs(svs, n); /* the call is done; its borrows ended with it */
@@ -2332,10 +2465,26 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
           }
         row:
           for (zi = 0; zi < nc; zi++) {
+            Type **rtys; /* the row's binding, worked on a copy */
+            int    part = 0;
+
             m = cs[zi].m;
             imp = cs[zi].imp;
             tys = cs[zi].tys;
-            t = tys ? gsubst(m->ty, imp->gparams, tys, imp->ngparams) : m->ty;
+            if (tys) {
+              usize g;
+
+              rtys = tyargs(imp->ngparams);
+              memcpy(rtys, tys, imp->ngparams * sizeof *tys);
+              for (g = 0; g < imp->ngparams; g++)
+                if (!rtys[g])
+                  part = 1;
+            } else
+              rtys = 0;
+            /* a partial binding keeps the row's own words: the
+             * variables stand, the arguments land them
+             * (07-operators.md) */
+            t = part ? m->ty : (rtys ? gsubst(m->ty, imp->gparams, rtys, imp->ngparams) : m->ty);
             mg = membergps(m, &nmg);
             if (nmg) {
               mtys = tyargs(nmg);
@@ -2360,10 +2509,32 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
               }
               for (i = 0; ok && i < n; i++) {
                 at = rexpr(args[i], fe, t->args[i + 1]);
-                ok = argfit(args[i], t->args[i + 1], at, mg, mtys, nmg, fe, f->v.fld.name, soft);
+                ok = argfit(args[i], t->args[i + 1], at, mg, mtys, nmg, imp->gparams, rtys,
+                            imp->ngparams, fe, f->v.fld.name, soft);
               }
               if (ok)
                 ok = memberdone(f, mg, mtys, nmg, f->v.fld.name, soft);
+              if (ok && rtys) { /* the row's own slots and their
+                                 * bounds, the arguments' landing with
+                                 * the receiver's (07-operators.md) */
+                usize g;
+
+                for (g = 0; g < imp->ngparams; g++)
+                  if (!rtys[g]) {
+                    if (soft) {
+                      ok = 0;
+                      break;
+                    }
+                    berr(e, "cannot infer '%s' for '%s': it rides no argument this call passes",
+                         imp->gparams[g]->v.gp.name, rowname(imp));
+                  }
+                if (ok && !boundsok(imp, rtys)) {
+                  if (soft)
+                    ok = 0;
+                  else
+                    rowbounds(imp, rtys, e);
+                }
+              }
               if (!ok) { /* this row did not take: its freezes
                           * unwound, its moves with them */
                 thawargs(svs, n);
@@ -2372,12 +2543,16 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                 continue;
               }
               e->v.call.sym = m->sym; /* the row's member: the body that runs */
-              e->v.call.tys = tys;    /* the impl's binding; the member's
-                                       * own joins it below */
               thawargs(svs, n);       /* the explicit arguments' borrows, LIFO */
               frzrestore(&sv);        /* the receiver's borrow ends with the call */
-              e->v.call.tys = insttys(imp, tys, mg, mtys, nmg);
-              return nmg ? gsubst(t->t, mg, mtys, nmg) : t->t;
+              e->v.call.tys = insttys(imp, rtys, mg, mtys, nmg);
+              /* the answer under both landings -- a local walk, the
+               * row's shared signature left as it stood */
+              {
+                Type *rt = gsubst(t->t, imp->gparams, rtys, imp->ngparams);
+
+                return nmg ? gsubst(rt, mg, mtys, nmg) : rt;
+              }
             }
           }
           if (soft) {
@@ -2447,7 +2622,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
               for (i = 0; i < n; i++) {
                 Type *at = rexpr(args[i], fe, t->args[i + 1]);
 
-                argfit(args[i], t->args[i + 1], at, mg, mtys, nmg, fe, f->v.fld.name, 0);
+                argfit(args[i], t->args[i + 1], at, mg, mtys, nmg, 0, 0, 0, fe, f->v.fld.name, 0);
               }
             }
             thawargs(svs, n); /* the explicit arguments' borrows, LIFO */
@@ -3032,8 +3207,24 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
             if (c && tysame(c, ft))
               continue;
           }
-          if (!at || !tys || !gunify(f->ty, at, s->gparams, tys, s->ngparams))
-            berr(in->v.init.e, "field '%s' is %s, this is %s", f->name, btys(ft), btys(at));
+          if (!at || !tys || !gunify(f->ty, at, s->gparams, tys, s->ngparams)) {
+            /* a slot may hold a parameter the want lent -- a
+             * caller's, a row's -- not a binding the fields made:
+             * where it stands in the value's way the value's word
+             * outranks it, and the fields bind what the want only
+             * lent (04-generics.md) */
+            int   lent = 0;
+            usize g;
+
+            if (at && tys)
+              for (g = 0; g < s->ngparams; g++)
+                if (tys[g] && tys[g]->k == Typaram) {
+                  tys[g] = 0;
+                  lent = 1;
+                }
+            if (!(lent && gunify(f->ty, at, s->gparams, tys, s->ngparams)))
+              berr(in->v.init.e, "field '%s' is %s, this is %s", f->name, btys(ft), btys(at));
+          }
         }
       }
     }
