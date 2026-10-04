@@ -116,7 +116,11 @@ runtime checks out, the wraps a release owns (`01-types.md`).
   files (`CERIUM_SYSROOT` names where it lives), the prelude —
   `Option`, `Result`, `Copy`, `Drop`, `panic` — bound without a use,
   `pub use` the re-export (`11-namespaces.md`), `std::ops` the
-  operator traits (`07-operators.md`)
+  operator traits (`07-operators.md`), `std::fmt` the `Fmt` a type
+  implements to print itself and the `Writer` that joins a sink to
+  the typed writes, `std::io` the `Write` anything that takes bytes
+  implements, the two the process was born with, and the prints —
+  `print`, `eprint`, the general `fmt_to` (`01-types.md`)
 
 ### Testing
 
@@ -125,7 +129,7 @@ split `ok/` against `err/` — a dump must reproduce its `.golden`
 exactly, a rejection must say why — and `tests/run`, where every `.ce`
 compiles to a binary whose exit, stdout and stderr the files beside it
 name, an optional `.release` building it with `-r`
-(`tools/run-tests.sh`). 468 green at the time of writing.
+(`tools/run-tests.sh`). 477 green at the time of writing.
 
 ## The specification
 

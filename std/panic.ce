@@ -2,22 +2,20 @@
  * (01-types.md, Panic): a plain fn, an attribute like any other --
  * the diverge judgement #[noreturn] feeds is syntactic
  * (10-iteration.md) -- and the platform's own door #[extern(C)] for
- * the two calls the abort needs. No unwind, no destructors: the
- * process ends with abort, deliberately not exit -- a clean exit
- * would flush buffers and run handlers on a state the panic no
- * longer trusts.
+ * the abort it needs. No unwind, no destructors: the process ends
+ * with abort, deliberately not exit -- a clean exit would flush
+ * buffers and run handlers on a state the panic no longer trusts.
  *
- * write's signature is POSIX's own: ssize_t on the platforms v0
- * carries, the value nobody here reads. */
+ * The write is io's now (std::io): the door both halves of the
+ * library share, unmangled the one time it is declared. */
 
-#[extern(C)]
-fn write(fd: i32, buf: *u8, len: usize) -> isize;
+use std::io;
 
 #[extern(C)]
 fn abort();
 
 #[noreturn]
 pub fn panic(msg: []u8) {
-  write(2, msg.ptr, msg.len);
+  io::write(2, msg.ptr, msg.len);
   abort();
 }

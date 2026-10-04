@@ -1,0 +1,66 @@
+/* std::io -- the sink half: the Write anything that takes bytes
+ * implements, the two the process was born with, and the prints that
+ * join a Fmt to a sink (fmt_to the general one, print and eprint the
+ * two conveniences). The C write is the platform's own door,
+ * unmangled so the linker finds libc's -- panic reaches for the same
+ * one through here. */
+
+use std::*;
+use std::fmt::*;
+
+#[extern(C)]
+pub fn write(fd: i32, buf: *u8, len: usize) -> isize;
+
+pub enum Error {
+  Write(i32), /* the C write went negative: its word, carried home */
+}
+
+pub trait Write {
+  fn write(self: *mut Self, buf: []u8) -> Result<usize, Error>;
+}
+
+pub struct Stdout { }
+
+impl Write for Stdout {
+  fn write(self: *mut Self, buf: []u8) -> Result<usize, Error> {
+    let n = write(1, buf.ptr, buf.len);
+
+    if n < 0 {
+      Err(Error::Write(@cast<i32>(n)))
+    } else {
+      Ok(@cast<usize>(n))
+    }
+  }
+}
+
+pub struct Stderr { }
+
+impl Write for Stderr {
+  fn write(self: *mut Self, buf: []u8) -> Result<usize, Error> {
+    let n = write(2, buf.ptr, buf.len);
+
+    if n < 0 {
+      Err(Error::Write(@cast<i32>(n)))
+    } else {
+      Ok(@cast<usize>(n))
+    }
+  }
+}
+
+pub fn fmt_to<T: Fmt>(v: *T, w: dyn mut Write) -> Result<usize, Error> {
+  let mut wr = Writer { w: w };
+
+  v.fmt(&mut wr)
+}
+
+pub fn print<T: Fmt>(v: *T) -> Result<usize, Error> {
+  let mut out = Stdout { };
+
+  fmt_to(v, &mut dyn out)
+}
+
+pub fn eprint<T: Fmt>(v: *T) -> Result<usize, Error> {
+  let mut out = Stderr { };
+
+  fmt_to(v, &mut dyn out)
+}

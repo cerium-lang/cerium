@@ -1493,3 +1493,37 @@ sugar a declare a file away never shadowed, and a parameter b
 stands unclaimed by the root's sub-namespace of the name; 215
 the collision the check still owes, a namespace's own declare
 taking its glob down, the check moved, not removed. 475 green.
+
+And with the name space whole, the library itself: std::fmt and
+std::io, the language's first print. The Write trait takes the
+bytes -- the process's two doors behind it, the C write the
+unmangled door both halves and panic reach for -- and the Fmt a
+type implements to say itself, composed from the Writer's typed
+writes: str, bool, u8, and the u64 the digits live in once, the
+signs and the narrow widths widened on the way in. Every write
+hands its Result back -- ? the composition, the trait's own
+shape the propagation's -- and the count is the Writer's own
+bookkeeping: a write answers its own segment's bytes, the running
+total kept in n, and written() reads it out, an impl's tail and
+the prints' own answer, the whole print in one number however
+many writes it took. fmt_to joins any Fmt to any Write, print
+and eprint the two doors.
+
+Writing it was the point: the library is the features' first
+consumer, and the compiler broke where nothing had walked.
+An inherent impl alongside a generic one took the process down
+(#85); a bound's ask about a parameter the table could not
+answer (#86); a call however many namespaces the name walked
+fell to the value path (#87); and the root's face stood open to
+every file's read (#88) -- a user's names reaching into std's
+own, the project dying in a file it never wrote. Three gaps
+stayed open, each named and left for its issue: a mutable
+slice does not yet hand itself to an immutable parameter
+(01-types.md), so the digits go out a byte at a time; the byte
+literal lexes and parses but no body reads it, so 48 casts its
+way to '0'; and a &mut dyn borrow never thaws, so the tests
+count from the prints' own answers and read the bytes from the
+door, not the sink. 189 prints pairs and flags and a u64 at its
+twenty digits, the counts asserted bitwise; 190 a Fmt of the
+test's own into a sink of the test's own, stderr golden both
+ways. 477 green.

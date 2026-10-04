@@ -1,0 +1,54 @@
+/* std::fmt and std::io joined, end to end: a type's own Fmt, the
+ * Writer's typed writes composed with ? (01-types.md), the whole
+ * print's count the Writer kept -- every segment in it, the ?
+ * dropping only its own. The Pair reads the signed widths apart,
+ * the Flag the bool and the u64's own edges: zero, and the widest
+ * a u64 can be, all twenty digits. */
+
+use std::fmt::*;
+use std::io;
+
+struct Pair { a: i32, b: i64 }
+
+impl Fmt for Pair {
+  fn fmt(self: *Self, w: *mut Writer) -> Result<usize, io::Error> {
+    let o = "(";
+    let s = " ";
+    let c = ")";
+
+    w.write_str(o)?;
+    w.write_i32(self.a)?;
+    w.write_str(s)?;
+    w.write_i64(self.b)?;
+    w.write_str(c)?;
+    w.written()
+  }
+}
+
+struct Flag { on: bool, n: u64 }
+
+impl Fmt for Flag {
+  fn fmt(self: *Self, w: *mut Writer) -> Result<usize, io::Error> {
+    let s = " ";
+
+    w.write_bool(self.on)?;
+    w.write_str(s)?;
+    w.write_u64(self.n)?;
+    w.written()
+  }
+}
+
+fn bit<T: Fmt>(v: *T, want: usize) -> i32 {
+  match io::print(v) {
+    Ok(n)  => @cast<i32>(n == want),
+    Err(e) => 0,
+  }
+}
+
+fn main() -> i32 {
+  let p = Pair { a: -42, b: 123456789 };
+  let t = Flag { on: true, n: 18446744073709551615 };
+  let z = Flag { on: false, n: 0 };
+
+  bit(&p, 15) + bit(&t, 25) * 2 + bit(&z, 7) * 4 /* 0b111: 7 */
+}
