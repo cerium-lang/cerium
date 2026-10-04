@@ -1,0 +1,9 @@
+enum E1 { A }
+enum E2 { B }
+
+fn f(r: E1?i32) -> E2?i32 {
+  let v = r?;
+  Ok(v)
+}
+
+fn main() -> i32 { 0 }

@@ -1369,3 +1369,50 @@ its own; 183 races a generic row against a specific one through
 the method sugar; 209 names the variable no argument rides; 210
 catches two arguments binding one variable to different types.
 464 green, and 07 is closed.
+
+The 12-projects list named ?'s propagation, and the change that
+landed it owns no emitter line at all. `f()?` *is* the match the
+spec spells it as (01-types.md) -- the value through, the error
+handed back the way a return hands anything -- so once the E?T
+checks pass, the checker says so in place: the Ntry node becomes
+an Nmatch, the operand its scrutinee, the arms synthesized with
+bindings no lexer can spell (`.ok` and `.err`, the dot keeping
+anything a program declared from meeting them), the Err arm's
+body a block whose return the frame's drops ride out on
+(03-move.md). Everything downstream was already there -- a
+non-Copy scrutinee's take is the match's own move-out, the early
+exit's drops are the return's, the Err arm's construction takes
+its want from the fn's return -- the enum constructor's rewrite
+and mkdropmatch the two precedents for a node changing kind
+under the checker. The emitter never learned a thing.
+
+The first cut earned a bug worth its paragraph: a double walk.
+The old case read its operand once for the checks, value-wise;
+the rewritten match reads its scrutinee again, place first --
+and a value read of a non-Copy binding marks it moved, so the
+second read reported `'r' has been moved` in every generic fn:
+a black-box T is no Copy, `Error?T` moves on the read, while
+the concrete `Error?i32` copies and hid the whole thing from
+the non-generic smoke. The fix divides by shape. A place operand
+lends its type as a place (rplace reads, nothing moves -- the
+match's own walk is the one move, its scrutinee take the ?'s);
+a computed operand -- `pass(r)?` -- is left to the match, whose
+rplace-then-rexpr fallback is the only value walk it gets, the
+checks running behind on the type that walk left on the node.
+
+And a gap the probing tripped on the way, older than the change
+and left for its own issue: a fn's tail expression is never
+reconciled with the return it declares. The explicit return
+reconciles ("the fn returns %s, this is %s"); the tail does not
+-- `fn f() -> i32 { true }` compiles, the want only a hint to
+inference, and a mismatched shape rides through to emit where
+the assembler rejects what it finds. The nested `?` type sugar
+(`Error?Error?i32`) does not parse either, one more for the
+list.
+
+Four tests: 184 walks the value through, the short circuit, the
+computed operand, a generic chain and two tries sharing one fn;
+185 pins the drops, the short circuit's own against the closing
+brace's, one digit on stdout either way; 211 catches the error
+the fn does not hand back; 212 the second take of a moved black
+box. 468 green.

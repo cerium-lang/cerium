@@ -1,0 +1,57 @@
+/* ?'s propagation is the match it spells (01-types.md): the value
+ * through, the error handed back the way a return hands anything.
+ * The operand may be a place the match takes, or a computed value
+ * the match's own walk reads once; a generic fn's black-box T takes
+ * without copying, and the fn's own return carries the half the Err
+ * road hands back. */
+
+enum Error { No, Bad }
+
+fn add(r: Error?i32, n: i32) -> Error?i32 {
+  let v = r?;
+  Ok(v + n)
+}
+
+fn pass<T>(r: Error?T) -> Error?T { r }
+
+fn chain<T>(r: Error?T) -> Error?T {
+  let v = pass(r)?; /* the computed operand */
+  Ok(v)
+}
+
+fn both(a: Error?i32, b: Error?i32) -> Error?i32 {
+  let x = a?;   /* the second rides the same fn's return */
+  let y = b?;
+  Ok(x * 10 + y)
+}
+
+fn apply(r: Error?i32) -> Error?i32 {
+  let v = r?;   /* a plain fn: the same shape a closure will carry
+                 * when its milestone lands */
+  Ok(v * 2)
+}
+
+fn main() -> i32 {
+  let a = match add(Ok(2), 3) {
+    Ok(v)  => v,
+    Err(e) => 99,
+  };
+  let b = match add(Err(Error::Bad), 3) {
+    Ok(v)  => v,
+    Err(e) => 50,   /* the short circuit answers */
+  };
+  let okc: Error?i32 = Ok(10);
+  let c = match chain(okc) {
+    Ok(v)  => v,
+    Err(e) => 60,
+  };
+  let d = match both(Ok(2), Ok(4)) {
+    Ok(v)  => v,
+    Err(e) => 70,
+  };
+  let e = match apply(Ok(10)) {
+    Ok(v)  => v,
+    Err(e) => 80,
+  };
+  a + b + c + d + e
+}

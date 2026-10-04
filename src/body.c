@@ -1379,6 +1379,27 @@ rexprpath1(Ast *e, Fenv *fe, char *name, Type *want, Ns *ns)
   return 0; /* unreachable */
 }
 
+/* ?'s own half of the check: the operand a Result, the error the
+ * hands-back one -- the arms the rewrite spells carry the rest (the
+ * fn's return is the shape the Err half answers in). t is the
+ * operand's type, the caller having read it out one way or another. */
+static void
+trychk(Ast *e, Fenv *fe, Type *t)
+{
+  Type *ok = 0;
+  Type *err = reschild(t, &ok);
+
+  if (!err)
+    berr(e, "'?' wants an E?T, this is %s", btys(t));
+  {
+    Type *rok = 0;
+    Type *rerr = reschild(fe->fnret, &rok);
+
+    if (!rerr || !tysame(rerr, err))
+      berr(e, "'?' hands back %s, the fn returns %s", btys(err), btys(fe->fnret));
+  }
+}
+
 /* the wrappers that write the type back: every expression the
  * checker walks leaves its verdict on the node, so the emitter
  * reads instead of deriving. rplace's chain writes too -- a field
@@ -2883,24 +2904,101 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
     }
   }
   case Ntry: {
-    Type *t = rexpr(e->v.n1.e, fe, 0);
-    Type *ok = 0, *err = 0;
+    Type *t = rplace(e->v.n1.e, fe); /* the operand, read as a place:
+                                      * the move ?'s match takes is
+                                      * rmatch's own scrutinee walk
+                                      * (09-match.md), and a value
+                                      * pre-walk would take it twice
+                                      * -- the second reading a
+                                      * binding the first moved. A
+                                      * computed operand is no place:
+                                      * its type is the match's own
+                                      * walk's to have, the check
+                                      * waits behind it */
+    int early = t != 0;
 
-    if (!t)
-      return 0;
-    err = reschild(t, &ok);
-    if (!err)
-      berr(e, "'?' wants an E?T, this is %s", btys(t));
     if (!fe->fnret)
       berr(e, "'?' outside a fn");
-    {
-      Type *rok = 0;
-      Type *rerr = reschild(fe->fnret, &rok);
+    if (early)
+      trychk(e, fe, t);
+    { /* the propagation spelled the match it is (01-types.md): the
+       * value through, the error handed back the way a return hands
+       * anything, the frame's bindings' destructors riding it out
+       * (03-move.md) -- the return's own walk hangs them. The arms'
+       * names carry a dot: nothing a program declared can meet them,
+       * the enum's own match the pattern (03-move.md). */
+      Ast  *op = e->v.n1.e;
+      Ast **arms = vnew(Ast *, 2);
+      Ast  *okarm = opnode(Narm, e);
+      Ast  *erarm = opnode(Narm, e);
+      Ast  *okpat = opnode(Nppath, e);
+      Ast  *erpat = opnode(Nppath, e);
 
-      if (!rerr || !tysame(rerr, err))
-        berr(e, "'?' hands back %s, the fn returns %s", btys(err), btys(fe->fnret));
+      okpat->v.ppath.path = opnode(Npath, e);
+      okpat->v.ppath.path->v.path.segs = vnew(Ast *, 1);
+      opvpush(&okpat->v.ppath.path->v.path.segs, opseg("Ok", e));
+      okpat->v.ppath.payload = vnew(Ast *, 1);
+      { /* Ok(.ok): the binding, the arm's value the name itself */
+        Ast *b = opnode(Npath, e);
+
+        b->v.path.segs = vnew(Ast *, 1);
+        opvpush(&b->v.path.segs, opseg(".ok", e));
+        opvpush(&okpat->v.ppath.payload, b);
+      }
+      okarm->v.n2.a = okpat;
+      okarm->v.n2.b = opnode(Npath, e);
+      okarm->v.n2.b->v.path.segs = vnew(Ast *, 1);
+      opvpush(&okarm->v.n2.b->v.path.segs, opseg(".ok", e));
+      erpat->v.ppath.path = opnode(Npath, e);
+      erpat->v.ppath.path->v.path.segs = vnew(Ast *, 1);
+      opvpush(&erpat->v.ppath.path->v.path.segs, opseg("Err", e));
+      erpat->v.ppath.payload = vnew(Ast *, 1);
+      { /* Err(.err): the binding, the arm's body the return */
+        Ast *b = opnode(Npath, e);
+
+        b->v.path.segs = vnew(Ast *, 1);
+        opvpush(&b->v.path.segs, opseg(".err", e));
+        opvpush(&erpat->v.ppath.payload, b);
+      }
+      { /* return Err(.err), the fn's own shape answering: the
+         * construction's want is the fn's return, the error type
+         * the same one both sides of the check above already
+         * agreed on (01-types.md) */
+        Ast *blk = opnode(Nblock, e);
+        Ast *ret = opnode(Nreturn, e);
+        Ast *call = opnode(Ncall, e);
+        Ast *f = opnode(Npath, e);
+        Ast *v = opnode(Npath, e);
+
+        f->v.path.segs = vnew(Ast *, 2);
+        opvpush(&f->v.path.segs, opseg("Result", e));
+        opvpush(&f->v.path.segs, opseg("Err", e));
+        v->v.path.segs = vnew(Ast *, 1);
+        opvpush(&v->v.path.segs, opseg(".err", e));
+        call->v.call.f = f;
+        call->v.call.args = vnew(Ast *, 1);
+        opvpush(&call->v.call.args, v);
+        ret->v.n1.e = call;
+        blk->v.blk.stmts = vnew(Ast *, 1);
+        opvpush(&blk->v.blk.stmts, ret);
+        erarm->v.n2.a = erpat;
+        erarm->v.n2.b = blk;
+      }
+      opvpush(&arms, okarm);
+      opvpush(&arms, erarm);
+      memset(&e->v, 0, sizeof e->v);
+      e->k = Nmatch;
+      e->v.call.f = op;
+      e->v.call.args = arms;
     }
-    return ok;
+    {
+      Type *rt = rmatch(e, fe, want);
+
+      if (!early && rt) /* the computed operand's type, the match's
+                         * own walk the only one that had it */
+        trychk(e, fe, e->v.call.f->ty);
+      return rt;
+    }
   }
   case Nif: {
     Type *ct = rexpr(e->v.ifx.cond, fe, 0);

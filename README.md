@@ -108,7 +108,8 @@ runtime checks out, the wraps a release owns (`01-types.md`).
   is fixed to its own storage — even `x = x` — the scope drops
   the checker pre-made — a block's close, the early exits, a
   temporary's statement end, an enum's rows through a pre-built
-  `match` (`03-move.md`) — and a debug build's four runtime
+  `match`, a `?`'s propagation spelled the same way
+  (`03-move.md`) — and a debug build's four runtime
   checks — index, arithmetic overflow, shift, cast — every failure one
   call into std's panic (`01-types.md`)
 - **std** — a directory the compiler reads as the project's first
@@ -124,7 +125,7 @@ split `ok/` against `err/` — a dump must reproduce its `.golden`
 exactly, a rejection must say why — and `tests/run`, where every `.ce`
 compiles to a binary whose exit, stdout and stderr the files beside it
 name, an optional `.release` building it with `-r`
-(`tools/run-tests.sh`). 464 green at the time of writing.
+(`tools/run-tests.sh`). 468 green at the time of writing.
 
 ## The specification
 
@@ -136,8 +137,9 @@ review, `review-YYYYMMDD-NN.md`.
 
 ## Status
 
-v0, end to end and moving: `?` propagation, main's `E?()` and Err's
-printing are next (`12-projects.md`), the test runner behind them
-(`13-testing.md`). How the compiler got here — one stretch a milestone,
-in the order they landed — is
+v0, end to end and moving: `?` propagation landed — the checker
+spells the match it is, the emitter none the wiser — and main's
+`E?()` with Err's printing are next (`12-projects.md`), the test
+runner behind them (`13-testing.md`). How the compiler got here — one
+stretch a milestone, in the order they landed — is
 [docs/PROGRESS.md](./docs/PROGRESS.md).
