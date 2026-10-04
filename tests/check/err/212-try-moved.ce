@@ -1,0 +1,10 @@
+enum Error { No }
+
+fn f<T>(r: Error?T) -> Error?T {
+  let v = r?;  /* the match takes what the binding holds: a black-box
+                * T is no Copy, the take is a move */
+  let w = r?;  /* the second takes what the first moved */
+  Ok(v)
+}
+
+fn main() -> i32 { 0 }
