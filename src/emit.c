@@ -3097,47 +3097,61 @@ emaexpr(Em *em, Ast *e)
                    * (08-reflection.md) */
         as[i] = "0";
     }
-    if (!nm && f->k == Npath && vlen(f->v.path.segs) == 1 &&
-        !locfind(em, f->v.path.segs[0]->v.seg.name)) {
-      s = symfind(f->v.path.segs[0]->v.seg.name);
-      if (!s || s->kind != Sfn)
-        cerrat(f, "'%s' is not a fn", f->v.path.segs[0]->v.seg.name);
-      if (e->v.call.sym) { /* the checker's pick: which overload, and
-                            * which instantiation -- the latter names
-                            * its own copy (04-generics.md). A const
-                            * parameter's baked value rides the pick
-                            * with the types: one instantiation per
-                            * value, the call site's own words
-                            * (08-reflection.md) */
-        Ast **ps;
-        usize np, ci;
+    if (!nm && f->k == Npath) { /* a plain call, the name however many
+                                 * namespaces it walked (11): the walk
+                                 * falls away, the one name under it
+                                 * the fn. A prefixed name no local
+                                 * shadows -- the walk chose it -- a
+                                 * bare one a local may, and then this
+                                 * is a call through the local's value */
+      Ast **segs = f->v.path.segs;
+      usize nsegs = vlen(segs);
+      Ns   *ns;
+      usize k = nshead(segs, nsegs, &ns, f->v.path.root);
 
-        s = e->v.call.sym;
-        ps = s->decl->v.fn.params;
-        np = vlen(ps);
-        for (ci = 0; ci < np; ci++)
-          if (ps[ci]->v.param.cnst && (!e->v.call.cvals || !e->v.call.cvals[ci]))
-            cerrat(e, "the const argument did not land: the re-check under the binding "
-                      "fills it, and this tree is not the clone it filled");
-        { /* the const generic parameters ride the same pick: a
-           * black-box length means the same thing -- the re-check
-           * under the outer binding binds it (08-reflection.md) */
-          Ast **gps = s->decl->v.fn.gparams;
-          usize ng = vlen(gps);
+      segs += k;
+      nsegs -= k;
+      if (nsegs == 1 && (k || !locfind(em, segs[0]->v.seg.name))) {
+        s = k ? nsitem(ns, segs[0]->v.seg.name) : symfind(segs[0]->v.seg.name);
+        if (!s || s->kind != Sfn)
+          cerrat(f, "'%s' is not a fn", segs[0]->v.seg.name);
+        if (e->v.call.sym) { /* the checker's pick: which overload, and
+                              * which instantiation -- the latter names
+                              * its own copy (04-generics.md). A const
+                              * parameter's baked value rides the pick
+                              * with the types: one instantiation per
+                              * value, the call site's own words
+                              * (08-reflection.md) */
+          Ast **ps;
+          usize np, ci;
 
-          for (ci = 0; ci < ng; ci++)
-            if (gps[ci]->v.gp.cnst && (!e->v.call.gcvals || !e->v.call.gcvals[ci]))
-              cerrat(e, "the const generic argument did not land: the re-check under the binding "
+          s = e->v.call.sym;
+          ps = s->decl->v.fn.params;
+          np = vlen(ps);
+          for (ci = 0; ci < np; ci++)
+            if (ps[ci]->v.param.cnst && (!e->v.call.cvals || !e->v.call.cvals[ci]))
+              cerrat(e, "the const argument did not land: the re-check under the binding "
                         "fills it, and this tree is not the clone it filled");
-        }
-        if (e->v.call.tys || e->v.call.cvals || e->v.call.gcvals)
-          nm = instensure(s, e->v.call.tys, e->v.call.cvals, e->v.call.gcvals)->name;
-        else
+          { /* the const generic parameters ride the same pick: a
+             * black-box length means the same thing -- the re-check
+             * under the outer binding binds it (08-reflection.md) */
+            Ast **gps = s->decl->v.fn.gparams;
+            usize ng = vlen(gps);
+
+            for (ci = 0; ci < ng; ci++)
+              if (gps[ci]->v.gp.cnst && (!e->v.call.gcvals || !e->v.call.gcvals[ci]))
+                cerrat(e, "the const generic argument did not land: the re-check under the binding "
+                          "fills it, and this tree is not the clone it filled");
+          }
+          if (e->v.call.tys || e->v.call.cvals || e->v.call.gcvals)
+            nm = instensure(s, e->v.call.tys, e->v.call.cvals, e->v.call.gcvals)->name;
+          else
+            nm = fsymname(s, s->decl);
+        } else {
+          if (s->next)
+            cerrat(f, "overload resolution at emit time arrives with M3d");
           nm = fsymname(s, s->decl);
-      } else {
-        if (s->next)
-          cerrat(f, "overload resolution at emit time arrives with M3d");
-        nm = fsymname(s, s->decl);
+        }
       }
     }
     if (nm)

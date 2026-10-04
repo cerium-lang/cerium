@@ -1,0 +1,15 @@
+/* a call however many namespaces the name walked (11): the direct
+ * call takes the prefixed name as it takes the bare one, the
+ * instantiation the checker picked for it named as its own -- before
+ * the fix a prefixed name fell through to the value-call path and
+ * asked the linker for a generic fn's bare symbol, a fn that never
+ * was (04-generics.md). */
+
+use box::*;
+
+fn main() -> i32 {
+  let v = box::twice(7);        /* the prefixed generic, one instance */
+  let w = twice(11);            /* the bare one the glob brought */
+  let n = box::count(&v, 4);    /* a second instance, two bindings */
+  v + w + @cast<i32>(n)         /* 7 + 11 + 4: 22 */
+}
