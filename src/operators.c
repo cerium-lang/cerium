@@ -47,7 +47,18 @@ rbuiltin(Ast *e, Fenv *fe, Type *want)
 
     if (nt != 0 || na != 1)
       berr(e, "@take takes one place");
-    pt = rexpr(args[0], fe, 0);
+    {
+      int spent = spentborrow(args[0]);
+
+      if (spent) /* the take spends the borrow whole, as a deref does:
+                  * the pointer dies the moment it is made -- take(x)
+                  * is @take(&mut x), and the sugar is useless if the
+                  * borrow outlives it (01, 03) */
+        fe->nofreeze++;
+      pt = rexpr(args[0], fe, 0);
+      if (spent)
+        fe->nofreeze--;
+    }
     if (!pt || pt->k != Typtr || pt->t->k != Tymut)
       berr(args[0], "@take wants a *mut T place, this is %s", btys(pt));
     return pt->t->t;

@@ -132,7 +132,10 @@ struct Ast
     struct
     {
       Ast *l, *r;
-      Tok  op; /* Nbin, Nassign; unused for Nrange */
+      Tok  op;   /* Nbin, Nassign; unused for Nrange */
+      Ast *drop; /* Nassign only: the destructor the old value runs
+                  * before the store, a pre-made call -- or NULL
+                  * when the type owns none (03-move.md) */
     } bin;
     struct
     {

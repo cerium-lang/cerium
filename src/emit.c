@@ -3299,6 +3299,33 @@ emaexpr(Em *em, Ast *e)
       fprintf(em->o, "\t%s =l copy %s\n", t, slot);
       return t;
     }
+    if (strcmp(nm, "take") == 0) { /* the value out, the zero value
+                                    * back (03-move.md): the place keeps
+                                    * something whoever owns it can
+                                    * still destruct, and the taken
+                                    * value is the expression's own */
+      Ast **args = e->v.blt.args;
+      Type *t = e->ty;
+      usize sz = sizeof_(t);
+      char *p = emaexpr(em, args[0]);
+      char *v = stackslot(em, sz ? sz : 1);
+
+      if (sz) { /* a ZST moves no bits: the zero is itself */
+        char *z = zeroblk(em, sz);
+
+        fprintf(em->o, "\tblit %s, %s, %lu\n", p, v, (unsigned long) sz);
+        fprintf(em->o, "\tblit %s, %s, %lu\n", z, p, (unsigned long) sz);
+        return slotload(em, t, e, v);
+      }
+      if (isagg(t))
+        return v; /* the empty slot: a ZST aggregate's address */
+      {
+        char *z = newtmp(em);
+
+        fprintf(em->o, "\t%s =w copy 0\n", z);
+        return z;
+      }
+    }
     cerrat(e, "this builtin arrives with a later milestone");
     return 0; /* unreachable */
   }
@@ -3656,6 +3683,19 @@ emastmt(Em *em, Ast *st)
       if (i == sizeof ops / sizeof ops[0])
         cerrat(st, "this compound assignment arrives with a later milestone");
       fprintf(em->o, "\t%s %s, %s\n", stins(lhs->ty), nv, p);
+      return;
+    }
+    if (st->v.bin.drop) { /* the old value's destructor (03): the
+                           * new value in hand first, fixed to its own
+                           * storage -- `x = x` would hand the
+                           * destructor the very place it reads -- then
+                           * the drop, then the store over what died */
+      char *v = emaexpr(em, st->v.bin.r);
+      char *tmp = stackslot(em, sizeof_(lhs->ty));
+
+      fprintf(em->o, "\tblit %s, %s, %lu\n", v, tmp, (unsigned long) sizeof_(lhs->ty));
+      emaexpr(em, st->v.bin.drop);
+      fprintf(em->o, "\tblit %s, %s, %lu\n", tmp, p, (unsigned long) sizeof_(lhs->ty));
       return;
     }
     if (isagg(lhs->ty)) { /* an aggregate's copy is a blit */

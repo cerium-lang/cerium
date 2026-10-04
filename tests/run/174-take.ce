@@ -1,0 +1,16 @@
+/* @take (03-move.md): the value out, the zero value back -- the one
+ * sanctioned way around the move-out restriction. The pointer form
+ * leaves *p holding the zero value whoever owns the place can still
+ * destruct; the sugar @take(&mut x) spends the borrow whole, so x
+ * stays writable after. */
+struct Box { n: i32 }
+
+fn main() -> i32 {
+  let mut a = Box { n: 7 };
+  let p: *mut Box = &mut a;
+  let v = @take(p);        /* v owns 7; *p -- and so a -- holds zero */
+  let mut x = Box { n: 5 };
+  let w = @take(&mut x);   /* the sugar: the borrow dies in the take */
+  x = Box { n: 1 };        /* so the store after it is no one's conflict */
+  v.n + (*p).n + w.n + x.n   /* 7 + 0 + 5 + 1 */
+}

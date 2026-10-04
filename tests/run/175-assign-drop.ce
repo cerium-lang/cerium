@@ -1,0 +1,35 @@
+/* reassignment destructs the old value at the assignment, before the
+ * new value is moved in (03-move.md): the destructor reads the value
+ * it is handed -- the OLD one -- and even a self-assignment holds the
+ * new value aside first, so what the store writes back survives the
+ * destructor's read. A compound's own body store runs it too: the
+ * left is borrowed for the write, the row's *self = ... the same
+ * assignment under the same rule. */
+#[extern(C)]
+fn write(fd: i32, buf: *u8, len: usize) -> usize;
+
+use std::ops::AddAssign;
+
+struct D { n: i32 }
+
+impl Drop for D {
+  fn drop(mut self: Self) {
+    let ds = "0123456789";   /* '0'+n: the value the destructor is handed */
+
+    write(1, ds.ptr + @cast<usize>(self.n), 1);
+  }
+}
+
+impl AddAssign<D> for D {
+  fn add_assign(self: *mut Self, other: D) -> () {
+    *self = D { n: (*self).n + other.n };
+  }
+}
+
+fn main() -> i32 {
+  let mut a = D { n: 1 };
+  a = D { n: 2 };   /* prints 1: the old value, whole */
+  a += D { n: 3 };  /* prints 2: the body's own store, the old value again */
+  a = a;            /* prints 5, keeps 5: the new value held aside */
+  a.n
+}
