@@ -1251,7 +1251,41 @@ implsatisfies(Sym *trait, Type *t, Type **targs, usize ntargs)
   if (!t)
     return 0;
   if (trait == sym_copy)
-    return iscopy(t); /* structural: what the type is, not what it impls */
+    return iscopy(t);    /* structural: what the type is, not what it impls */
+  if (t->k == Typaram) { /* the type is a parameter of the fn that
+                          * asked: its own declaration's bounds are
+                          * the answer. Everything the body does to T
+                          * must be justified by a bound, checked once
+                          * at the declaration, not per-instantiation
+                          * (04-generics.md) -- and passing T on is
+                          * done by that promise. A bound that spells
+                          * the trait's arguments answers only the ask
+                          * that spells the same ones, the tail
+                          * falling to the defaults the way any ask's
+                          * does, Self the parameter under the bound */
+    Ast **bs = t->gp->v.gp.bounds;
+    usize bi, nb = vlen(bs);
+
+    for (bi = 0; bi < nb; bi++) {
+      Ast   *bnd = bs[bi];
+      Type **btys = bnd->v.path.tys;
+      usize  nn = vlen(bnd->v.path.segs[0]->v.seg.args);
+      usize  j;
+
+      if (bnd->v.path.sym != trait)
+        continue;
+      if (nn < trait->ngparams) {
+        btys = dflttail(trait, btys, nn, 0, t, bnd);
+        nn = trait->ngparams;
+      }
+      for (j = 0; j < nn && j < ntargs; j++)
+        if (!tysame(btys[j], targs[j]))
+          break;
+      if (j == nn && j == ntargs)
+        return 1;
+    }
+    return 0;
+  }
   for (i = 0; i < satn; i++)
     if (satq[i].tr == trait && tysame(satq[i].ty, t))
       return 0; /* asked again under itself: this impl is not the answer */
