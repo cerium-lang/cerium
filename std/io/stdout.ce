@@ -1,0 +1,21 @@
+/* std::io::Stdout -- the process's first door, fd 1, born open.
+ * A door, not a buffer: what write hands it goes out, the count
+ * the platform took the answer, and when the platform takes
+ * nothing back the errno is (error.ce, std::sys). */
+
+use std::Result;
+use std::sys;
+
+pub struct Stdout { }
+
+impl Write for Stdout {
+  fn write(self: *mut Self, buf: []u8) -> Result<usize, Error> {
+    let n = sys::write(1, buf.ptr, buf.len);
+
+    if n < 0 {
+      Err(Error::Sys(sys::errno()))
+    } else {
+      Ok(@cast<usize>(n))
+    }
+  }
+}
