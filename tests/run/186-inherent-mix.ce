@@ -1,0 +1,31 @@
+/* an inherent row's arguments are its type's own count, and the
+ * rows of a project meet in every mix: std::meta's is_same pairs
+ * carry two, Box's row one, Pair's none. The declaration's overlap
+ * read (04-generics.md) must survive the pairing -- before the fix
+ * it walked one row's count against another's missing half, a bare
+ * row's NULL args indexed, and any file with an inherent impl of
+ * its own died in the read against the predicate's rows. The
+ * predicate's own read stays whole through it all. */
+
+use std::meta::is_same;
+
+struct Pair { a: i32, b: i32 }
+
+impl Pair {
+  fn sum(self: Self) -> i32 { self.a + self.b }
+}
+
+struct Box<T> { v: T }
+
+impl<T> Box<T> { /* unbounded: the row meets its pairs in the read's
+                  * own terms, the bounds' ordering (04-generics.md)
+                  * not the one that parts them */
+  fn tag(self: Self) -> i32 { 30 }
+}
+
+fn main() -> i32 {
+  let p = Pair { a: 3, b: 4 };
+  let b = Box { v: 0 };
+  let same = @cast<i32>(is_same<i32, i32>::value); /* 1, the pair */
+  p.sum() * b.tag() + same                         /* 211 */
+}

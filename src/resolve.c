@@ -1664,15 +1664,21 @@ rowspec(Sym *a, Sym *b)
 /* two rows, provably disjoint: a call the two cannot both take --
  * the trait's arguments or the for-type itself, whichever already
  * disagrees. A variable in either place matches anything, so rows
- * that meet only through one stay unproven (04-generics.md) */
+ * that meet only through one stay unproven (04-generics.md). The
+ * arguments pair only where both rows carry the same count of
+ * them -- a trait's rows all take the trait's own count (the
+ * defaults filling the tail), an inherent row its type's -- and
+ * rows that disagree on the count can only meet through their
+ * types, which the last line reads. */
 static int
 rowdisjoint(Sym *a, Sym *b)
 {
   usize i;
 
-  for (i = 0; i < a->ipath->nargs; i++)
-    if (disjoint(a->ipath->args[i], b->ipath->args[i]))
-      return 1;
+  if (a->ipath->nargs == b->ipath->nargs)
+    for (i = 0; i < a->ipath->nargs; i++)
+      if (disjoint(a->ipath->args[i], b->ipath->args[i]))
+        return 1;
   return disjoint(a->ifort ? a->ifort : a->ipath, b->ifort ? b->ifort : b->ipath);
 }
 

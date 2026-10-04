@@ -1416,3 +1416,27 @@ computed operand, a generic chain and two tries sharing one fn;
 brace's, one digit on stdout either way; 211 catches the error
 the fn does not hand back; 212 the second take of a moved black
 box. 468 green.
+
+The overlap read met its first mixed pair and fell over. An
+inherent row's arguments are its type's own count -- a trait's
+rows all take the trait's (the defaults filling the tail), an
+inherent row's its type's, and a bare `impl Pair` carries none
+at all, its args a NULL. The read walked one row's count against
+the other's half, indexing that NULL: any file writing an
+inherent impl of its own died in rowdisjoint against
+std::meta's is_same, the library's two generic rows riding in
+every project. No test had ever written the shape -- the
+library's own is_same pairs both carry two, equal, and equal
+counts pair safely.
+
+The fix takes the count from the pairing itself: the arguments
+compare only where both rows carry the same count of them, the
+way disjoint's own struct case already reads ("resolve already
+shaped them; stay unproven"), and rows that disagree on the
+count can only meet through their types -- the read's last
+line, which a differing type name answers outright. 186 writes
+the mix into a golden: a bare row, a generic one unbounded (a
+bounded one the bounds' own ordering parts, before the read),
+the predicate's read whole through it all; 213 pins the
+conflict the read must still name, two rows for one type
+neither disjoint nor ordered. 470 green.
