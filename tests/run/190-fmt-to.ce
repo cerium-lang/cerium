@@ -1,0 +1,59 @@
+/* the sink's own half: eprint to the process's other door, and
+ * fmt_to into a sink of the test's own -- the Write trait open to
+ * any taker. The sink forwards to the same door through sys::write,
+ * the door panic reaches for, so the golden reads the bytes twice:
+ * once the print's own path, once the trait's open one. The count
+ * rides both, the whole print's own number -- the Fmt itself
+ * returns nothing, its work done when its writes are. */
+
+use std::fmt::{Fmt, Writer};
+use std::io;
+use std::io::Write; /* the impl head names the trait bare (05-traits.md) */
+use std::sys;
+
+/* Fail, not Err: a user's own Err here would shadow the prelude's
+ * variant and leave the bare Err(...) construction below nameless
+ * (12-projects.md) -- the name reads its half plainly. */
+struct Fail { code: i64 }
+
+impl Fmt for Fail {
+  fn fmt(self: *Self, w: *mut Writer) -> Result<(), io::Error> {
+    w.write_str("E: ")?;
+    w.write_i64(self.code)?;
+    Ok(())
+  }
+}
+
+struct Mem { } /* the sink: whatever it is handed, out the door it goes */
+
+impl Write for Mem {
+  fn write(self: *mut Self, buf: []u8) -> Result<usize, io::Error> {
+    let r = sys::write(2, buf.ptr, buf.len);
+
+    if r < 0 {
+      Err(io::Error::Sys(sys::errno()))
+    } else {
+      Ok(@cast<usize>(r))
+    }
+  }
+}
+
+fn main() -> i32 {
+  let e = Fail { code: -98765 };
+
+  /* the other door: E: -98765, nine bytes -- the prefix three among
+   * them */
+  let a = match io::eprint(&e) {
+    Ok(n)  => @cast<i32>(n == 9),
+    Err(r) => 0,
+  };
+  /* a sink of the test's own: the same nine again, the trait's open
+   * door */
+  let mut m = Mem { };
+  let b = match io::fmt_to(&e, &mut dyn m) {
+    Ok(n)  => @cast<i32>(n == 9),
+    Err(r) => 0,
+  };
+
+  a + b * 4 /* 0b101: 5 */
+}

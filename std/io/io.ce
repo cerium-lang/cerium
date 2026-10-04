@@ -1,0 +1,63 @@
+/* std::io -- the doors the process was born with and the prints
+ * that join a Fmt to them: fmt_to the general one, print and
+ * eprint the two conveniences. The Write they all take lives
+ * beside them (write.ce), the platform's own door under it all
+ * in std::sys. The count is the Writer's own bookkeeping
+ * (std::fmt), and the prints hand back the whole print's number,
+ * however many writes it took. */
+
+use std::Result;
+use std::fmt::{Fmt, Writer};
+use std::sys;
+
+pub enum Error {
+  Sys(i32), /* a system call failed: the errno it set, read from
+             * the platform's own thread-local word (std::sys) */
+}
+
+pub struct Stdout { }
+
+impl Write for Stdout {
+  fn write(self: *mut Self, buf: []u8) -> Result<usize, Error> {
+    let n = sys::write(1, buf.ptr, buf.len);
+
+    if n < 0 {
+      Err(Error::Sys(sys::errno()))
+    } else {
+      Ok(@cast<usize>(n))
+    }
+  }
+}
+
+pub struct Stderr { }
+
+impl Write for Stderr {
+  fn write(self: *mut Self, buf: []u8) -> Result<usize, Error> {
+    let n = sys::write(2, buf.ptr, buf.len);
+
+    if n < 0 {
+      Err(Error::Sys(sys::errno()))
+    } else {
+      Ok(@cast<usize>(n))
+    }
+  }
+}
+
+pub fn fmt_to<T: Fmt>(v: *T, w: dyn mut Write) -> Result<usize, Error> {
+  let mut wr = Writer { w: w };
+
+  v.fmt(&mut wr)?;
+  wr.written()
+}
+
+pub fn print<T: Fmt>(v: *T) -> Result<usize, Error> {
+  let mut out = Stdout { };
+
+  fmt_to(v, &mut dyn out)
+}
+
+pub fn eprint<T: Fmt>(v: *T) -> Result<usize, Error> {
+  let mut out = Stderr { };
+
+  fmt_to(v, &mut dyn out)
+}

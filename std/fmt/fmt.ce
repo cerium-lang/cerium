@@ -1,0 +1,14 @@
+/* std::fmt -- the Fmt a type implements to print itself, composed
+ * from the Writer's typed writes (writer.ce, the join of a sink
+ * to them). Every write hands its Result back, so an impl
+ * composes with ? (01-types.md): the trait's own shape is the
+ * propagation's. The Fmt itself returns nothing -- its work is
+ * done when its writes are; the count is the Writer's own, and
+ * the print that owns the Writer answers with it. */
+
+use std::Result;
+use std::io::Error;
+
+pub trait Fmt {
+  fn fmt(self: *Self, w: *mut Writer) -> Result<(), Error>;
+}
