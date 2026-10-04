@@ -1,0 +1,14 @@
+/* two inherent rows for one type: the declaration's own conflict,
+ * neither disjoint nor ordered (04-generics.md) -- the overlap read
+ * must name it, whatever the rows carry as arguments */
+struct Pair { a: i32 }
+
+impl Pair {
+  fn one(self: Self) -> i32 { self.a }
+}
+
+impl Pair {
+  fn two(self: Self) -> i32 { self.a * 2 }
+}
+
+fn main() -> i32 { 0 }
