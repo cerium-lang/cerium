@@ -1620,3 +1620,63 @@ finding its own; 195 the fold family -- a `*mut i32` beside a
 type named `mut_i32`, an array, a slice, a tuple, a pointer, two
 arguments -- seven overloads of one `pick`; and a project named
 std refused at the door, the name the library's own. 482 green.
+
+The built-ins' own Fmt came next, m9's second step. The rows live
+in std/fmt/builtin.ce, apart from the trait's own file -- ops'
+rows sit beside their traits (an operator's row is the operator's
+meaning, too close to move), but a default format is a
+convention the language picks, and the file's own head says so.
+Nine rows: the signed and unsigned integers their digits, usize
+its own, bool its words, a str its text, a u8 the number it is
+-- not the byte -- and the two floats handing themselves to the
+Writer's own writes, an f32 widened first, printed as the double
+it becomes: 0.1 as f32 says 0.100000001490116, its window honest
+about the bits it was.
+
+The floats were the step's own weight. The language has no bit
+reinterpretation -- @cast converts, it does not transmute -- so
+the specials read off the arithmetic's own face: NaN is n != n,
+the infinities n - n != 0. Below 2^63 the fixed form, the
+integer part exact and the fraction a window of digits; above,
+or below 1e-15, the exponent form, the mantissa carried into
+[1, 10) by decade ladders -- each rung a comparison, the
+composed power never past the value it measured, nothing
+overflowing -- and past 1e-308 the subnormals, where no composed
+power fits, the decades counted a multiplication at a time.
+
+The first window took fifteen fraction digits and truncated
+them -- and the probe's first run caught it. The ladders compose
+their power from four roundings, the division a fifth, and a
+mantissa that means to land on one lands a few parts in 1e15
+under it: 1e300 printed as 9.999999999999998e299, wrong to the
+eye where %.15g says 1e+300. The fix took %.15g's semantics
+whole: the window fifteen significant digits, the integer part's
+own count eating into it (three integer digits leave twelve, an
+exponent's mantissa always fourteen), the digits rounded with
+the carry moving the integer (999.9995 the next integer, not a
+string of nines), and the mantissa pulled to the decade it meant
+to land on -- one within 1e-14 of an edge belongs to the edge,
+the pull wider than the ladders' noise, wider than the window's
+own rounding, so a carry it would make never reaches a mantissa
+of ten. DBL_MAX prints 1.79769313486232e308, glibc's %.15g word
+for word; the least subnormal 4.94065645841247e-324, the same.
+
+The writing learned the language's own edges on the way. An if
+is an expression and nothing else -- in statement position it
+takes its semicolon (97's own shape), and a for, a statement,
+takes none: the ladders first went without the ones they wanted,
+the rewrite added them where they did not belong. A float
+literal is an f32 until something tells it otherwise: p * 1.0e256
+is fine, the literal widening to p, but 10.0 - 1.0e-14, two
+literals alone, meet as f32s first and the f64 comparison
+refuses them; and an if's arms do not adapt to each other, 1.0
+one arm and m the other, f32 against f64. @cast<f64>(1.0)
+spells the arm that means the double, and the pull's reach
+lives in a binding of its own.
+
+The tests hold the rows: 196 prints all nine through the
+generic door, then walks every path the floats own -- the
+rounding (0.1+0.2 a clean 0.3, the repeating third), the
+specials, the ladders both ways, the decade's pull (1e300 on
+one, 1e-16 the same), the subnormal dust -- the .stdout the
+words, the exit four counts of bytes, a bit each. 483 green.

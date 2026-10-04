@@ -1,0 +1,109 @@
+/* the builtins' own Fmt, every row through the generic door --
+ * the bound the only thing main knows, the .stdout the words.
+ * The floats walk every path the Writer owns: the fixed window
+ * (its rounding honest -- 0.1+0.2 a clean 0.3 -- its repeating
+ * third, its fifteen-significant shape at the edge), the
+ * specials, the big ladder with the decade's pull (1e300 lands
+ * on one, not a string of nines), the tiny ladder mirrored, the
+ * subnormal dust. The exit counts four prints' own bytes: NaN
+ * three and its newline, 1e300 five, -inf four, the f32's
+ * widened seventeen -- a bit each, 0b1111 when all agree. */
+
+use std::fmt::Fmt;
+use std::io;
+
+fn show<T: Fmt>(v: *T) -> i32 {
+  let nl = "\n";
+  let a = match io::print(v) {
+    Ok(n) => @cast<i32>(n),
+    Err(r) => 0 - 100,
+  };
+  let b = match io::print(&nl) {
+    Ok(n) => @cast<i32>(n),
+    Err(r) => 0 - 100,
+  };
+
+  a + b
+}
+
+fn main() -> i32 {
+  /* the nine rows, builtin.ce's own order */
+  let a: i32 = -42;
+  let b: i64 = 123456789;
+  let c: u64 = 18446744073709551615;
+  let d: usize = 7;
+  let e = true;
+  let f = "hello";
+  let g: u8 = 99;
+  let h: f32 = 0.1;
+  let i: f64 = 3.14;
+
+  show(&a);
+  show(&b);
+  show(&c);
+  show(&d);
+  show(&e);
+  show(&f);
+  show(&g);
+  let s4 = show(&h); /* an f32's widened truth, eighteen with the newline */
+  show(&i);
+
+  /* the fixed window: the rounding, the repeating third, the
+   * sign, the zero, fifteen nines at the window's own edge */
+  let o: f64 = 0.1;
+  let t: f64 = 0.2;
+  let one: f64 = 1.0;
+  let three: f64 = 3.0;
+  let zero: f64 = 0.0;
+  let twohalf: f64 = 2.5;
+  let full: f64 = 999999999999999.0;
+
+  show(&(o + t));
+  show(&(one / three));
+  show(&(zero - twohalf));
+  show(&zero);
+  show(&full);
+
+  /* the specials */
+  let s1 = show(&(zero / zero)); /* NaN: four with the newline */
+  show(&(one / zero));
+  let s3 = show(&((zero - one) / zero)); /* -inf: five with the newline */
+
+  /* the big ladder: the decade's pull, the rounding 2.5 keeps,
+   * the boundary 9.99e307, DBL_MAX in %.15g's own words, and
+   * 2^63 the fixed form's ceiling */
+  let e300: f64 = 1.0e300;
+  let e300b: f64 = 2.5e300;
+  let e307: f64 = 9.99e307;
+  let e308: f64 = 1.0e308;
+  let max: f64 = 1.7976931348623157e308;
+  let two63: f64 = 9223372036854775808.0;
+
+  let s2 = show(&e300); /* 1e300: six with the newline */
+  show(&e300b);
+  show(&e307);
+  show(&e308);
+  show(&max);
+  show(&two63);
+
+  /* the tiny ladder, mirrored: 1e-20 clean, 1e-16 pulled to
+   * one, 2.5e-300 the rounding again, 1e-308 at the floor */
+  let m20: f64 = 1.0e-20;
+  let m16: f64 = 1.0e-16;
+  let m300: f64 = 2.5e-300;
+  let m308: f64 = 1.0e-308;
+
+  show(&m20);
+  show(&m16);
+  show(&m300);
+  show(&m308);
+
+  /* the subnormal dust: the least a double owns, its decades
+   * counted a multiplication at a time */
+  let dust: f64 = 5.0e-324;
+
+  show(&dust);
+
+  /* the counts, a bit each: four, six, five, eighteen */
+  @cast<i32>(s1 == 4) + @cast<i32>(s2 == 6) * 2 + @cast<i32>(s3 == 5) * 4 + @cast<i32>(s4 == 18) * 8
+}
