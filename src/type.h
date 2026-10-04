@@ -145,4 +145,8 @@ Type *derefthrough(Type *t);
 char *tysprint(char *buf, usize n, Type *t);
 void  tyfmt(Type *t);
 
+/* an IN_* number's own word -- i8, u64, f32 -- the mangler's code for
+ * a primitive says the same thing (12-projects.md, Symbols) */
+const char *inname(int num);
+
 #endif

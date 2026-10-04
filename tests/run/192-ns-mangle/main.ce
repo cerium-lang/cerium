@@ -1,0 +1,4 @@
+use my::app;
+use my_app;
+
+fn main() -> i32 { app::parse(40) + my_app::parse(40) }

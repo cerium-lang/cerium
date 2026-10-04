@@ -30,6 +30,9 @@
 #define _POSIX_C_SOURCE                                                                            \
   200809L /* getopt, popen, mkstemp, snprintf, dirent, stat;                                       \
            * c89 hides them all */
+#define _XOPEN_SOURCE                                                                              \
+  700 /* realpath -- the library's own guard is XSI's,                                             \
+       * a POSIX call behind a POSIX-shaped door */
 
 #include <dirent.h>
 #include <stdio.h>
@@ -164,6 +167,71 @@ dirjoin(const char *dir, const char *name) /* "dir/name", the
 
   sprintf(p, "%s/%s", dir, name);
   return p;
+}
+
+/* the project's own name: its directory's -- a single file's parent
+ * too, for a file is a project of one and the directory it stands
+ * in the project it grows into, the symbols steady across the
+ * growth. The directory is taken however the path spells it: a
+ * bare file and a `.` the shell's own, a `..` and a link what
+ * they stand in, one directory one name. The name folds onto the
+ * identifier's alphabet (a my-app and a my_app share a symbol's
+ * word -- accepted, for a directory is not a declaration); std is
+ * refused outright, the name being the library's own. What the
+ * directory says, every mangled symbol says first
+ * (12-projects.md, Symbols) */
+static const char *
+projectname(const char *path)
+{
+  static char buf[256];
+  char       *dir, *r;
+  const char *src;
+  usize       n = strlen(path), e, i, j;
+
+  while (n > 1 && path[n - 1] == '/')
+    n--;              /* the shell's own trailing slash, out of the way */
+  if (!isdir(path)) { /* a file: its parent's name */
+    while (n > 0 && path[n - 1] != '/')
+      n--;
+    if (n > 0)
+      n--; /* past the slash */
+  }
+  dir = arenaalloc(n + 1);
+  memcpy(dir, path, n);
+  dir[n] = 0;
+  r = realpath(dir[0] ? dir : ".", NULL);
+  if (r) {
+    src = r;
+    e = strlen(r);
+  } else {
+    src = dir; /* no such directory to resolve: the spelling
+                * itself, the best the path said */
+    e = n;
+  }
+  while (e > 0 && src[e - 1] == '/')
+    e--; /* the root's own slash, a name it has none of */
+  j = e;
+  while (j > 0 && src[j - 1] != '/')
+    j--; /* the name itself: src[j..e) */
+  for (i = j, j = 0; i < e && j < sizeof buf - 1; i++) {
+    char c = src[i];
+
+    buf[j++] =
+        (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'
+            ? c
+            : '_';
+  }
+  if (!j)
+    buf[j++] = '_'; /* the directory said nothing a symbol can say */
+  buf[j] = 0;
+  if (strcmp(buf, "std") == 0) {
+    fprintf(stderr,
+            "cerium: %s: 'std' is reserved for the standard library"
+            " -- the project's own name is the library's (12-projects.md)\n",
+            path);
+    exit(1);
+  }
+  return buf;
 }
 
 /* a directory walked: every .ce under it a file of the project,
@@ -352,7 +420,10 @@ stdwalk(Srcfile ***filesp)
  * passes -- a rejection dies before any output, like -a. The table
  * and the hand pair stand before any walk; std's files come ahead
  * of the project's own, *nstd of them, and -T's dump starts past
- * them (12-projects.md) */
+ * them (12-projects.md). The project's name lands here too: every
+ * mode that reads a project reads it, the std refusal with it */
+static const char *projname; /* checked's own say, the emitters' read */
+
 static Srcfile **
 checked(const char *path, usize *np, usize *nstdp)
 {
@@ -360,6 +431,7 @@ checked(const char *path, usize *np, usize *nstdp)
   Srcfile **user;
   usize     nu, i;
 
+  projname = projectname(path);
   checkinit();
   stdwalk(&files);
   *nstdp = vlen(files);
@@ -400,7 +472,7 @@ emitssa_project(const char *path, int release)
                   * panic included, like -c's own */
   Srcfile **files = checked(path, &n, &nstd);
 
-  emitfile(stdout, files, n, release);
+  emitfile(stdout, files, n, release, projname);
   return 0;
 }
 
@@ -442,7 +514,7 @@ compile(const char *path, const char *out, int release)
                     * panic included */
     Srcfile **files = checked(path, &n, &nstd);
 
-    emitfile(p, files, n, release);
+    emitfile(p, files, n, release, projname);
   }
   if (pclose(p) != 0) {
     fprintf(stderr, "cerium: %s rejected the .ssa\n", qbebin);

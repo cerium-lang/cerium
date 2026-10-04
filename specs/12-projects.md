@@ -90,12 +90,63 @@ model is opted into by its own `use` — and the sugar's variants
 
 `std` is the library's own name, reserved: a project whose tree carries a
 `std/` directory is rejected — the namespace is the library's, and no
-project may write into it (`11-namespaces.md`).
+project may write into it (`11-namespaces.md`) — and a project whose own
+directory is named `std` is refused with it, the first segment of every
+symbol being the library's.
 
 The compiler and its sysroot move together — the checker reads
 `std::meta` to check, so the two cannot drift apart — and a sysroot
 without `meta::TypeInfo` is a broken one, said at the first compile,
 not at the first `@typeinfo`.
+
+## Symbols
+
+Every declaration the emitter writes carries a mangled name: the `ceri`
+prefix, then each name a count of its bytes, then the bytes — the
+project's own name first, the namespace path, the declaration's. A
+segment's bytes never begin with a digit — the identifier's own law —
+so the count's digits end exactly where the name begins and the split
+is the string's own: a namespace named `my_app` and a `my` holding an
+`app` never fold the same, and no `_` the alphabet holds is asked to
+say a boundary the bytes themselves do not.
+
+The project's name is its directory's — a single file's parent too,
+for a file is a project of one and the directory it stands in the
+project it grows into, the symbols steady across the growth. However
+the path spells that directory — a bare file and a `.` the shell's
+own, a `..` or a link standing somewhere else — it is resolved to the
+directory itself: one directory names the project one way. A user
+project's files stand in the anonymous root, so the name says what the
+root cannot; std's stand in the `std` namespace, which is its project's
+root, and the path walks from there: `std::io::print` spells
+`ceri3std2io5print`, a root `fn fail` in a project named `web` spells
+`ceri3web4fail`, and `my::app::parse` and `my_app::parse` — the pair
+the underscore's two meanings once folded together — spell
+`ceri3web2my3app5parse` and `ceri3web6my_app5parse`.
+
+Types ride the same law in a closed code: the primitives their own
+words (`i32` stays `i32`; no word begins another), the composites a tag
+letter and their parts — `p`/`P` a pointer and its writable slot,
+`s`/`S` a slice, `a`/`A` an array and its count, `t` a tuple and its
+rows, `n` a named type's whole path from the root and its bindings,
+`d`/`D` a dyn, `f` a fn's own signature, `u` a generic parameter
+keeping its name where a declared shape is spelled. An overload says
+its signature after its name — the argument count, each argument, the
+return; an instantiation says its binding after the fn's own mangle,
+and the numbers a const parameter bakes are fixed-width hex, for a
+length never names a value: decimal lengths beside decimal digits read
+two ways. A method says its target type's code, the trait's beside it
+for a trait impl, then its own name — so `impl Tag for i32` and
+`impl Tag for i64` are symbols apart by the words themselves, and a
+generic type's methods carry the type, not the count of their arrival.
+
+The whole is a code no two different spellings fold onto: no twin a
+declaration order numbered off, no instance named by when it was first
+seen. `#[extern(C)]` keeps the C name and `main` the platform's door
+(`01-types.md`); everything else meets the mangler. Two compilations
+of the same project say the same symbols — a library the linker can
+meet; two projects say them apart, the project's name each one's first
+segment.
 
 ## What v0 does not carry
 
@@ -125,4 +176,8 @@ signatures are ordinary declarations — and one day will be.
 - External libraries, and how their paths enter the root. They will distribute
   as source — the compiler has to read a library to check against it — but how
   a dependency is declared, and what happens when two want different versions
-  of the same library, waits for a manifest to exist.
+  of the same library, waits for a manifest to exist. The symbols are ready
+  for the day: a project's name is every one of its first segment, and what
+  a named type's code still lacks — the project's own segment beside the
+  path, for a type of one project named inside another's — is one segment,
+  added then, the law already written.

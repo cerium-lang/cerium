@@ -1556,3 +1556,67 @@ agrees the word lives, the errno macro in C the same call spelled
 carries it as Sys(i32), the system call's own failure, whichever
 call it was; the write's own answer is only the -1 that said it
 failed. 477 green, the golden bytes the same.
+
+The mangle got words of its own. The old one folded names
+together -- a namespace's `_`, a fn's `__` -- and the fold held
+ambiguity the identifiers themselves never had: `my::app::parse`
+and `my_app::parse` spelled one symbol, the collision told apart
+by a twin numbered off the declaration order; an instance named
+itself by its arrival -- `Pair<T>` and `Cell<T>`, one method name
+between them, instantiated to `ceriwarm__g_i32_1` and `_2`, the
+type nowhere in the name, a line moved flipping it. The new one
+says every name as a count of its bytes and the bytes themselves
+(`12-projects.md`, Symbols): a payload never opens with a digit,
+so the count's digits end exactly where the name begins, and the
+split is the string's own.
+
+The project's own name is the first segment -- a single file's
+project the directory it stands in, however the path spells it: a
+bare file and a `.` the shell's own directory, a `..` or a link
+what they stand in, resolved to the directory itself, one
+directory one name. (The bare filename first said `_` -- the
+spelling carried no directory to name -- and sampling the fresh
+symbols caught it; realpath is the resolution, a POSIX call glibc
+still hides behind an XSI guard, `_XOPEN_SOURCE 700` the door.)
+std's root is the std segment itself, the paths below it spelled
+from there.
+
+Types ride the same law in a closed code: the primitives their
+own bare words -- no one of them another's prefix -- the
+composites a tag letter and their parts, a named type its whole
+path from the root and its bindings, so `Pair<i32>` and
+`Cell<i32>` can never spell the same. And a law the writing
+itself found: a length never names a value. Decimal lengths
+beside decimal digits read two ways -- `1` `0` and `10` the same
+bytes -- so a count (an arity, an array's length) takes a segment
+and a value (the const generics) fixed-width hex, the bits as the
+machine holds them, a float memcpy'd to its u64, the enum's tag
+beside it.
+
+A method's symbol is its target's code, the trait's or the empty
+slot, then its own name: `impl Tag for i32` and `impl Tag for
+i64` apart by the words themselves, an inherent and a trait impl
+of one name apart the same way. The overload is its signature
+after the name -- the argument count, each argument, the return --
+no twin, no declaration order in a symbol; the instance is its
+bindings spelled out, no try-counter, no first-seen. The vtable
+data carries the code too, the fourth producer -- the build
+itself found it, the first three walked by hand.
+
+The road had its lessons. The encoder never wrote its NUL -- the
+arena strings carried a byte of garbage, qbe reading characters
+of its own. printvts sized its line by the old names' length --
+the new ones half again longer, the heap corrupted, the segfault
+at 84-dyn-dispatch's door; the entries are collected and the
+length summed before the allocation now. And the primitives first
+came out segments of themselves, `3i32` -- the word says itself
+better alone.
+
+The tests hold the shape: 192 the namespace pair that once
+folded, `my::app::parse` and `my_app::parse` both called, 83 the
+answer; 193 the method identity pair, `Pair` and `Cell` sharing
+one `half`; 194 a trait answered for i32 and for i64, each call
+finding its own; 195 the fold family -- a `*mut i32` beside a
+type named `mut_i32`, an array, a slice, a tuple, a pointer, two
+arguments -- seven overloads of one `pick`; and a project named
+std refused at the door, the name the library's own. 482 green.

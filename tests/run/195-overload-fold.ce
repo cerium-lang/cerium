@@ -1,0 +1,25 @@
+/* the overload chain the old folding could not tell apart: *mut i32
+ * and a type named mut_i32 fold onto the same underscores, and the
+ * twins numbered off in declaration order. The codes say the
+ * pointer and the path apart now, and no order is in the name
+ * (12-projects.md, Symbols) */
+struct mut_i32 { mut v: i32 }
+
+fn pick(x: *mut i32) -> i32 { 1 }
+fn pick(x: mut_i32) -> i32 { 2 }
+fn pick(x: [3]u8) -> i32 { 3 }
+fn pick(x: []u8) -> i32 { 4 }
+fn pick(x: (i32, u8)) -> i32 { 5 }
+fn pick(x: *u8) -> i32 { 6 }
+fn pick(x: i32, y: u8) -> i32 { 7 }
+
+fn main() -> i32 {
+  let m = mut_i32 { v: 0 };
+  let n = mut_i32 { v: 0 };
+  let arr: [3]u8 = [3]u8{1, 2, 3};
+  let sl: []u8 = "xy";
+  let tup: (i32, u8) = (0, 0);
+  let p: *u8 = &arr[0];
+  let q: *mut i32 = &mut n.v;
+  pick(q) + pick(m) + pick(arr) + pick(sl) + pick(tup) + pick(p) + pick(0, 0)
+}

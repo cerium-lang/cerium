@@ -1,0 +1,12 @@
+/* one trait, two builtin targets: the targets' own codes -- i32,
+ * i64 as themselves -- name the methods apart; the old spelling
+ * held only the method's name */
+trait Tag { fn tag(self: *Self) -> i32; }
+impl Tag for i32 { fn tag(self: *Self) -> i32 { 7 } }
+impl Tag for i64 { fn tag(self: *Self) -> i32 { 11 } }
+
+fn main() -> i32 {
+  let a: i32 = 1;
+  let b: i64 = 2;
+  a.tag() + b.tag()
+}
