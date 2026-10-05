@@ -1,4 +1,4 @@
-fn main() -> u8 {
+fn main() -> i32 {
   let a: u8 = 200;
   let b: u8 = 100;
   let c = a + b;

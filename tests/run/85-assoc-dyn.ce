@@ -33,7 +33,7 @@ fn drain(i: dyn mut Iterator<Item = u32>) -> u32 { /* the binding
   }
   return t;
 }
-fn main() -> u32 {
+fn main() -> i32 {
   let mut c = Counter{ n: 0, top: 4 };
   let first = drain(&mut dyn c);       /* 1+2+3+4: made at the call */
   let z: Counter::Item = 6;            /* the impl's supply, read outside (05) */
@@ -43,5 +43,5 @@ fn main() -> u32 {
   for let Some(v) = g.next() {         /* 3+2+1+0: through the table */
     t = t + v;
   }
-  return first + t + z;
+  first + t + z
 }

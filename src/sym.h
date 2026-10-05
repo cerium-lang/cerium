@@ -314,6 +314,12 @@ extern Sym *sym_panic;
  * compiler's wrapper calls with the ending */
 extern Sym *sym_fmt, *sym_exit;
 
+/* std::entry's three, one per ending a main has (prelude.c,
+ * 12-projects.md): the wrapper the compiler arranges picks the one
+ * the project's main answers, its own fn by address the first
+ * argument, the platform's own two beside it */
+extern Sym *sym_entry_unit, *sym_entry_i32, *sym_entry_err;
+
 /* a variant by name; the enum a bare variant name belongs to --
  * the checker's patterns and the emitter's construction share them */
 Variant *symvarfind(Sym *s, const char *name);

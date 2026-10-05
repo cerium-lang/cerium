@@ -1,3 +1,3 @@
 #[packed]
 struct P { a: u8, b: u32 }
-fn main() -> usize { @alignof<P>() }
+fn main() -> i32 { @alignof<P>() }

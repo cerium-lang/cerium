@@ -1746,3 +1746,23 @@ them: the face it takes back names Copy and Drop in std::ops now,
 and the sysroot check that guards the family counts them among its
 must-be-there. 489 green, the same count with twenty-three tests
 newly spelling their uses and one golden grown a line.
+
+The door thinned to one call. main's ending had been the wrapper's
+own work -- three shapes of call spelled in the emitter, the integer
+one even reading a u64's low half -- and the exit code is an i32,
+the platform's own word for it, nothing's low half: the contract
+tightened to (), i32, E?(), the wide door a cast's own law now,
+spelled where it happens. The work itself moved home to std::entry
+-- three runs, one per ending, and the wrapper one call whole: the
+main by address, the platform's own two beside it, the entry saving
+the two for sys::args, calling the main, answering the ending
+(fmt's exit for the E?() one, the Err half printed through its own
+words there). fn values as arguments the ABI already had -- a
+wrapper handing a fn by address is a call like any other. The words
+themselves arrived with the door: sys::args(), one iterator the
+asking, a []u8 per word into the platform's own table -- the table
+lives as long as the process does, the slice borrows what cannot
+die -- next a hand-rolled match, for-let the loop over it, the
+Iterator trait's own desugar a later milestone's (10-iteration.md).
+The forty-two tests that answered a wider word than i32 now say the
+code itself, their expects the same numbers. 491 green.

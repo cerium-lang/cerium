@@ -1,4 +1,4 @@
-fn main() -> i64 {
+fn main() -> i32 {
   let a: u16 = 40000;
   let b = @cast<i64>(a);
   let c: i32 = -1;

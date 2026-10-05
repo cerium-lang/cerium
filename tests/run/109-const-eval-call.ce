@@ -8,6 +8,6 @@ fn off(const name: []u8) -> usize {
 }
 const OFFY: usize = off("y");
 const OFFX: usize = off("x");
-fn main() -> u32 {
+fn main() -> i32 {
   @cast<u32>(OFFY * 10 + OFFX)   /* 4*10 + 0 = 40 */
 }

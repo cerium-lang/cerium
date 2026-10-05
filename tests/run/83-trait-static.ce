@@ -22,7 +22,7 @@ impl<T: Copy> Box<T> {
 fn announce<T: Show>(a: *T) -> u32 {
   Show::show(a)
 }
-fn main() -> u32 {
+fn main() -> i32 {
   let p = Point{ x: 3, y: 4 };
   let w: Wrap<u32> = Wrap{ v: 1 };
   let mut b: Box<u32> = Box{ v: 30 };
@@ -34,5 +34,5 @@ fn main() -> u32 {
     + announce(&p)           /* a bound: Point answers for T */
     + announce(&w)           /* and Wrap<u32> does too */
     + b.v;                   /* the pattern impl wrote through its mut self */
-  return r;
+  r
 }

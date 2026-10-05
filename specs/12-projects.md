@@ -21,9 +21,10 @@ both, and there is no manifest and no target list.
 
 `main` is a name, not a keyword and not an attribute: the compiler looks for
 `fn main` in the root namespace, in any file of it. It may return `()`, or it
-may return an integer — `i32` the usual one — and the program exits with that
-code, or it may return `E?()` for an error type of the program's choosing —
-the sugar that makes `?` usable in `main` itself:
+may return an `i32` — the exit code is one, the platform's own word for it,
+and no wider integer answers the parent's read — or it may return `E?()` for
+an error type of the program's choosing — the sugar that makes `?` usable in
+`main` itself:
 
 ```rust
 // src/main.ce — the root namespace
@@ -33,15 +34,21 @@ fn main() -> io::Error?() {
 }
 ```
 
-The compiler arranges the platform's entry — an injected `#[extern(C)] fn main`
-that calls this one — and `main` itself mangles like any other name, a root fn
-the project's own first segment spells. How the program ends follows from how
-`main` ends:
+The compiler arranges the platform's door — an injected `#[extern(C)] fn
+main` that hands this one to `std::entry`, by address with the platform's
+own two, the count and the table of words — and `main` itself mangles like
+any other name, a root fn the project's own first segment spells. One entry
+fn per ending: `run_unit` calls the main and answers a clean zero, `run_i32`
+answers the code itself, `run_err` hands the ending to `fmt`'s `exit`, the
+`Err` half printed through the error type's own words first. Each saves the
+platform's two for `sys::args` (`std::sys`), the program's own words one
+iterator the asking, a `[]u8` per word into the platform's own table. How
+the program ends follows from how `main` ends:
 
 | `main` ends | the program |
 | --- | --- |
 | returns `()`, or `Ok` | exits with code 0 |
-| returns an integer, `i32` the usual one | exits with that code |
+| returns an `i32` | exits with that code |
 | returns `Err(e)` | prints `e` and a newline to stderr, exits with code 1 — a clean exit, not an abort: the error path is a normal one, and the state is trusted |
 | panics | aborts (`01-types.md`, Panic) |
 
@@ -68,10 +75,14 @@ cannot turn it off. What it holds today is small — the language's citizens
 and `E?T` read by pointer, `01-types.md` and `03-move.md`; `std::panic.ce`:
 the one fn every runtime check fails into, `01-types.md`, Panic),
 `std::meta`, the reflection model the checker itself reads against
-(`08-reflection.md`), and `std::ops` — the operator family, the sugar's
+(`08-reflection.md`), `std::ops` — the operator family, the sugar's
 own traits (`07-operators.md`) with `Copy` and `Drop` beside them, the two
 the compiler calls on its own, at a move and at a scope's end
-(`03-move.md`) — each file in the namespace its path names, every item
+(`03-move.md`) — `std::io` and `std::fmt`, the doors and the words
+(`std::fmt`'s `exit` the ending an `E?()` main has), `std::sys`, the
+platform's own calls, the arguments among them (`args` the iterator the
+door fills), and `std::entry`, the door's own helpers the wrapper picks
+among — each file in the namespace its path names, every item
 `pub`, reached by path or by use like any namespace's (`11-namespaces.md`).
 
 The citizens live in std as source, and the names the language once

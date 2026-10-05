@@ -67,4 +67,4 @@ fn walk() -> u64 { /* the two walks 6*100 + 30 = 630; the offset 4;
   sumf(p) * 100 + sumf(q) + offs(p) + shape(p) * 10 + shape(n) + scaled(p)
 }
 
-fn main() -> u64 { walk() }   /* 1667 */
+fn main() -> i32 { walk() }   /* 1667 */

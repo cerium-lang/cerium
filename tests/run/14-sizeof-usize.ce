@@ -1,1 +1,1 @@
-fn main() -> usize { @sizeof<usize>() }
+fn main() -> i32 { @sizeof<usize>() }

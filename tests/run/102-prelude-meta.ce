@@ -54,7 +54,7 @@ fn attrarg() -> u32 { /* an attribute's argument, positional: 16 */
 
   match a { AttrArg::Int(n) => @cast<u32>(n), _ => 99, }
 }
-fn main() -> u32 { /* 16 + 1 + 4 + 21 + 16 + 32 = 90 */
+fn main() -> i32 { /* 16 + 1 + 4 + 21 + 16 + 32 = 90 */
   intback() + pointer() + passthrough() + optional() + attrarg() + (match CI {
     TypeInfo::Int { bits, .. } => @cast<u32>(bits),
     _ => 99,

@@ -1,8 +1,9 @@
 /* main's own door, the Ok half: the compiler's wrapper hands the
- * ending to std::fmt's exit and the program answers a clean zero.
- * The main prints first -- the door the ending leaves open -- and
- * its Done carries its own Fmt anyway, the bound the declaration
- * itself is checked against, Ok half or not. */
+ * main to std::entry's run_err, the ending to fmt's exit there,
+ * and the program answers a clean zero. The main prints first --
+ * the door the ending leaves open -- and its Done carries its own
+ * Fmt anyway, the bound the declaration itself is checked against,
+ * Ok half or not. */
 
 use std::fmt::{Fmt, Writer, print_one};
 use std::io::Error;

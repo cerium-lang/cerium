@@ -1,8 +1,0 @@
-/* the integer ending wider than the platform's own word: the exit
- * code is an int, and a long's low half is the answer the copy
- * hands the C door -- 4294967301 the word reads 5, the same law a
- * narrowing cast keeps (01-types.md, 12-projects.md). */
-
-fn main() -> i64 {
-  4294967301
-}

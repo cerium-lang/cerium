@@ -1,2 +1,2 @@
 struct E {}
-fn main() -> usize { @sizeof<E>() }
+fn main() -> i32 { @sizeof<E>() }

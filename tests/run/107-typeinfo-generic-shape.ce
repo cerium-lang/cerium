@@ -11,4 +11,4 @@ fn width<T>() -> u32 {
     _ => 0,
   }
 }
-fn main() -> u32 { width<u32>() * 10 + width<bool>() }   /* 2*10 + 1 = 21 */
+fn main() -> i32 { width<u32>() * 10 + width<bool>() }   /* 2*10 + 1 = 21 */
