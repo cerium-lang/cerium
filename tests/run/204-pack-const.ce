@@ -1,0 +1,31 @@
+/* the pack behind a const: the tail any count, the head a baked
+ * []u8 -- the arity the const spelling matches on is the head's
+ * own, and the bake reaches every count the pack takes
+ * (04-generics.md, 08-reflection.md). */
+
+use std::fmt::Fmt;
+
+fn holes(const fmt: []u8) -> usize {
+  let mut n: usize = 0;
+  let mut i: usize = 0;
+
+  for i < fmt.len {
+    if fmt[i] == 123 { /* '{' */
+      n = n + 1;
+    };
+    i = i + 1;
+  }
+  n
+}
+
+fn tally<...T: Fmt>(const fmt: []u8, args: ...T) -> usize {
+  const if holes(fmt) != @count(...T) { /* the two counts, one walk */
+    @compileError("the format asks a count of values the arguments do not give")
+  } else {
+    holes(fmt) + @count(...T)
+  }
+}
+
+fn main() -> i32 {
+  @cast<i32>(tally("") + tally("{}", 1) + tally("{} {}", 1, "x") + tally("{}{}{}", 1, 2, 3))
+}

@@ -1,0 +1,33 @@
+/* a const []u8 is a compile-time string the whole way: the len
+ * folds, an index folds, and the walk under a binding -- a const
+ * parameter's own read -- folds the bake back to the literal it
+ * spelled, every read after it on the literal's own ground
+ * (08-reflection.md). No separate compile-time language: the bytes
+ * were always inputs; the walks read them now. */
+
+fn holes(const fmt: []u8) -> usize {
+  let mut n: usize = 0;
+  let mut i: usize = 0;
+
+  for i < fmt.len {
+    if fmt[i] == 123 { /* '{' */
+      n = n + 1;
+    };
+    i = i + 1;
+  }
+  n
+}
+
+const OUTSIDE: usize = holes("{} and {}"); /* 2: no binding at all */
+
+fn inside(const fmt: []u8) -> usize {
+  const if fmt.len == 5 { /* the re-check's own fold, the branch picked there */
+    holes(fmt) * 10
+  } else {
+    holes(fmt) + 100
+  }
+}
+
+fn main() -> i32 {
+  @cast<i32>(OUTSIDE + inside("{} {}"))
+}
