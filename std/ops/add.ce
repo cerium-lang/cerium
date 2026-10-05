@@ -10,11 +10,9 @@
  * (04-generics.md), so `impl Add for V3` is Add<V3> for V3; the
  * answer is the `Output` associated type (05-traits.md), the
  * rows here answering with themselves. The borrowed rows below
- * name Copy: a library does not read its own face
- * (12-projects.md), so the marker arrives by use, the file's own
- * binding. */
+ * name Copy: the marker beside them in std::ops now, a bare
+ * name away (12-projects.md). */
 
-use std::Copy;
 
 pub trait Add<Rhs = Self> {
   type Output;

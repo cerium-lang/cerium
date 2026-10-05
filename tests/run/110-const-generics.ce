@@ -5,6 +5,9 @@
  * where they stand under the binding -- v[N-1] the re-check's own,
  * @sizeof<[N]T> its number, a pass through another generic's length
  * the black box the outer binding answers (08-reflection.md) */
+
+use std::ops::Copy;
+
 fn first<T: Copy, const N: usize>(v: [N]T) -> T { v[0] }
 fn last<T: Copy, const N: usize>(v: [N]T) -> T { v[N-1] }
 fn sz<T, const N: usize>(v: [N]T) -> usize { @sizeof<[N]T>() }

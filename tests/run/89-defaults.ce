@@ -3,6 +3,9 @@
  * impl's head. A default names the parameters before it, and a
  * trait's may be Self: impl Add for V3 is Add<V3> for V3, and the
  * member's Rhs is that argument (04-generics.md, 07-operators.md) */
+
+use std::ops::Copy;
+
 trait Add<Rhs = Self> {
   fn add(self: *Self, o: *Rhs) -> i32;
 }

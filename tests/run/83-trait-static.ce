@@ -1,6 +1,9 @@
 /* the static trait dispatch: the sugar, the explicit form, a
  * pattern impl bound by the receiver, and a bound checked at the
  * call (05-traits.md, 06-dispatch.md) */
+
+use std::ops::Copy;
+
 trait Show {
   fn show(self: *Self) -> u32;
 }

@@ -2,6 +2,7 @@
  * out of a shared borrow is not a thing to write, so the generic
  * row's Copy bound says no and the call is refused -- a type of its
  * own spells its fields, or takes the values. */
+use std::ops::Drop;
 use std::ops::Add;
 struct W { n: i32 }
 impl Drop for W { fn drop(mut self: Self) { } }

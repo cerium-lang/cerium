@@ -3,7 +3,6 @@
  * the platform took the answer, and when the platform takes
  * nothing back the errno is (error.ce, std::sys). */
 
-use std::Result;
 use std::sys;
 
 pub struct Stdout { }

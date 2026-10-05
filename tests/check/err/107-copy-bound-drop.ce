@@ -1,5 +1,8 @@
 /* a Copy-bounded generic fn takes only Copy types: the exclusion
  * reads the structure, and a Drop impl is in it (03-move.md) */
+
+use std::ops::{Copy, Drop};
+
 fn once<T: Copy>(x: T) -> u32 {
   let a = x;
   return 1;

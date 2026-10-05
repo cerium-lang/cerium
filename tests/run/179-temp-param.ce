@@ -3,6 +3,9 @@
  * return the body reaches on its own: the value home first, then the
  * slots (03-move.md). */
 
+use std::ops::Drop;
+
+
 #[extern(C)]
 fn write(fd: i32, buf: *u8, len: usize) -> usize;
 

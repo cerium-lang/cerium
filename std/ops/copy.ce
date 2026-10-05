@@ -1,0 +1,10 @@
+/* std::ops::Copy -- the copy marker (03-move.md): a type that impls
+ * it copies instead of moving. No members: the impl is the whole
+ * declaration, and the exclusion checks read the Sym by pointer
+ * (04-generics.md). One of the operator family: the compiler's own
+ * call, at a move -- and out of the prelude with the rest of the
+ * family's names, for a copy is a privilege a type opts into, the
+ * use that names it the file's own word that it does
+ * (12-projects.md). */
+
+pub trait Copy { }

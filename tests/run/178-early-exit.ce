@@ -2,6 +2,9 @@
  * end of the scope (03-move.md): the destructors run on the way out,
  * the bindings the path owns, innermost first. */
 
+use std::ops::Drop;
+
+
 #[extern(C)]
 fn write(fd: i32, buf: *u8, len: usize) -> usize;
 

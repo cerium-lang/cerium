@@ -12,9 +12,8 @@
  * comparing bools. The floats stay out: a NaN orders against
  * nothing, itself included, so the law Ord assumes does not
  * hold over them, the calls refused, the operators answering as
- * the language always did. The borrowed rows below name Copy:
- * a library does not read its own face (12-projects.md), so the
- * marker arrives by use, the file's own binding. */
+ * the language always did. The borrowed rows below name Copy: the marker beside them in
+ * std::ops now, a bare name away (12-projects.md). */
 
 pub enum Ordering {
   Less,
@@ -22,7 +21,6 @@ pub enum Ordering {
   Greater,
 }
 
-use std::Copy;
 
 pub trait Ord {
   fn cmp(self: Self, other: Self) -> Ordering;

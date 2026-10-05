@@ -3,6 +3,9 @@
  * dropping values drops every element, a tuple every row -- spelled
  * whole at the scope's end, reverse order all the way down. */
 
+use std::ops::Drop;
+
+
 #[extern(C)]
 fn write(fd: i32, buf: *u8, len: usize) -> usize;
 

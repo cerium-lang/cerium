@@ -7,9 +7,7 @@
  * number beside the namespace's name, so a main that hands it
  * back prints something a reader can act on. */
 
-use std::Result;
 use std::fmt::{Fmt, Writer};
-use std::sys;
 
 pub enum Error {
   Sys(i32), /* a system call failed: the errno it set, read from

@@ -3,7 +3,6 @@
  * go out. The same plain answer -- the count the platform took,
  * the errno when it takes none (error.ce, std::sys). */
 
-use std::Result;
 use std::sys;
 
 pub struct Stderr { }

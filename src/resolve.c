@@ -2078,14 +2078,16 @@ resolveuse1(Ast *it, Ast **head, usize nhead, int pub, Ns *home) /* one use
   }
 }
 
-/* the prelude: std's flat pub face, bound into every user file after
- * its own uses -- the injected names yield to everything declared
+/* the prelude: std's flat pub face, bound into every file after its
+ * own uses -- the injected names yield to everything declared
  * (the tables the bare name reads first) and everything a use brought
- * in (a binding made first is kept, usebind's own rule). The
- * variants Some/None/Ok/Err ride their sugar, not a use
- * (01-types.md); std::meta is not in the face, a glob is not
- * recursive (11-namespaces.md) -- the reflection model is opted into
- * by its own use */
+ * in (a binding made first is kept, usebind's own rule). std's own
+ * files read the face like anyone's: the declares-all pass made it
+ * whole before any read, and a face file's own names meet it at its
+ * table first anyway. The variants Some/None/Ok/Err ride their sugar,
+ * not a use (01-types.md); std::meta is not in the face, a glob is
+ * not recursive (11-namespaces.md) -- the reflection model is opted
+ * into by its own use */
 static void
 injectstd(void)
 {
@@ -2113,8 +2115,10 @@ injectstd(void)
  * context, the impl table built for all, and the bodies checked
  * back in their files. A single-file compilation is the degenerate
  * shape: one Srcfile, the root's. nstd of the files are the sysroot
- * walk's, std's own: they check like any file, but the prelude is
- * not injected into them -- a library does not read its own face. */
+ * walk's, std's own: they check like any file, and the prelude is
+ * injected into them like anyone's -- a library reads its own face,
+ * the declares-all pass having made it whole before any read
+ * (12-projects.md). */
 void
 checkproject(Srcfile **files, usize nfiles, usize nstd)
 {
@@ -2158,9 +2162,9 @@ checkproject(Srcfile **files, usize nfiles, usize nstd)
   }
 
   { /* std's own face, taken back from the tree the walks filled: the
-     * sugar's four -- Option, Result, Copy, Drop, every ?T and every
-     * exclusion check reading them by pointer (01, 03, 05) --
-     * std::meta's TypeInfo, what every @typeinfo answers with
+     * language's citizens -- Option and Result, every ?T and every
+     * E?T reading them by pointer (01, 03, 05) -- std::meta's
+     * TypeInfo, what every @typeinfo answers with
      * (08-reflection.md), and std's panic, the door every runtime
      * check fails into (01-types.md). A sysroot without one of them
      * is a broken one -- said here, not at the first sugar */
@@ -2168,8 +2172,6 @@ checkproject(Srcfile **files, usize nfiles, usize nstd)
 
     sym_option = nsitem(std, "Option");
     sym_result = nsitem(std, "Result");
-    sym_copy = nsitem(std, "Copy");
-    sym_drop = nsitem(std, "Drop");
     sym_typeinfo = nsitem(nsopen("std::meta"), "TypeInfo");
     sym_panic = nsitem(std, "panic");
     { /* fmt's two, the ends an E?() main has: the Fmt its Err half
@@ -2180,15 +2182,20 @@ checkproject(Srcfile **files, usize nfiles, usize nstd)
       sym_fmt = nsitem(fns, "Fmt");
       sym_exit = nsitem(fns, "exit");
     }
-    { /* the operator traits, the sugar's own (07-operators.md): the
-       * rewrite spells their paths, so the names never enter a scope
-       * -- but the traits themselves must be there */
-      static const char *const ops[] = {"Add",       "Sub",    "Mul", "Div",     "Rem", "BitAnd",
-                                        "BitOr",     "BitXor", "Shl", "Shr",     "Neg", "ShlAssign",
-                                        "ShrAssign", "Ord",    "Eq",  "Ordering"};
-      Ns                      *ons = nsopen("std::ops");
-      usize                    oi;
+    { /* the operator traits, the sugar's own (07-operators.md), and
+       * the two the compiler calls on its own -- Copy at a move,
+       * Drop at a scope's end (03-move.md): the rewrite spells the
+       * operators' paths, so those names never enter a scope, and
+       * the two ride no prelude either -- a file that impls one
+       * names it (12-projects.md) */
+      static const char *const ops[] = {
+          "Add", "Sub", "Mul",       "Div",       "Rem", "BitAnd", "BitOr",    "BitXor", "Shl",
+          "Shr", "Neg", "ShlAssign", "ShrAssign", "Ord", "Eq",     "Ordering", "Copy",   "Drop"};
+      Ns   *ons = nsopen("std::ops");
+      usize oi;
 
+      sym_copy = nsitem(ons, "Copy");
+      sym_drop = nsitem(ons, "Drop");
       for (oi = 0; oi < sizeof ops / sizeof ops[0]; oi++)
         if (!ons || !nsitem(ons, ops[oi])) {
           fprintf(stderr,
@@ -2236,9 +2243,10 @@ checkproject(Srcfile **files, usize nfiles, usize nstd)
     for (j = 0; j < m; j++)
       if (sf->items[j]->k == Nuse && !sf->items[j]->pub)
         resolveuse1(sf->items[j], 0, 0, 0, sf->ns);
-    if (f >= nstd) /* the prelude, after the file's own uses: the
-                    * injected names yield to them (12-projects.md) */
-      injectstd();
+    injectstd(); /* the prelude, after the file's own uses: the
+                  * injected names yield to them -- std's own files
+                  * too, the declares-all pass having made the face
+                  * whole before any read (12-projects.md) */
     resolveitems(sf->items, sf->syms);
   }
   { /* main's own return, resolved now: (), an integer the exit code

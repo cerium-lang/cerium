@@ -9,6 +9,7 @@
 #[extern(C)]
 fn write(fd: i32, buf: *u8, len: usize) -> usize;
 
+use std::ops::Drop;
 use std::ops::AddAssign;
 
 struct D { n: i32 }

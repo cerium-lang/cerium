@@ -3,6 +3,7 @@
  * left enters by value too, moving where its type is not Copy --
  * the trait's own words -- so the place is dead after, and only
  * the answer holds what the call made. */
+use std::ops::Drop;
 use std::ops::Add;
 struct V3 { x: i32 }
 impl Drop for V3 { fn drop(mut self: Self) { } }

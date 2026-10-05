@@ -1726,3 +1726,23 @@ niche its one pointer is, waits on a method-resolution fix (the
 receiver a generic hands a pointer impl); the tests hold the
 rest: the Ok half clean, the Err half printed, the errno said,
 the wide integer cut to the platform's word. 489 green.
+
+And the prelude, re-cut. The declares-all pass had always made std's
+face whole before any read -- the reason a user file's bare Result
+resolves -- so "a library does not read its own face" was a stance,
+not a necessity, and the stance is gone: the prelude is bound into
+every file, std's own among them, the eight `use std::Result;` lines
+that decorated io and fmt deleted with it. The face itself is
+smaller and truer: the language's citizens -- Option, Result, panic,
+what the sugar and the runtime checks spell -- and nothing else.
+Copy and Drop moved home to std::ops, the operator family, where the
+traits the compiler calls on its own belong: Add at a `+`, Copy at a
+move, Drop at a scope's end. They ride no prelude -- a copy is a
+privilege a type opts into, the use that names it the file's own
+word that it does -- so the thirteen ops files meet Copy as a bare
+neighbour and the tests that impl or bound it say `use
+std::ops::Copy` like anyone. The checker's own reads moved with
+them: the face it takes back names Copy and Drop in std::ops now,
+and the sysroot check that guards the family counts them among its
+must-be-there. 489 green, the same count with twenty-three tests
+newly spelling their uses and one golden grown a line.

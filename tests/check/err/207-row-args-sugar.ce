@@ -1,6 +1,9 @@
 /* the sugar's rows answer the same way (07-operators.md): neither
  * W row takes a bool for its second argument, and the report is
  * the first row's own -- the receiver's pick alone */
+
+use std::ops::{Copy, Drop};
+
 struct D { x: i32 }
 impl Drop for D { fn drop(mut self: D) -> () { } }
 struct W<T> { v: T }
