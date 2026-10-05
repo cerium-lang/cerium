@@ -1,0 +1,12 @@
+/* a slice's own two slots read for every ABI that hands a pair to C,
+ * written never: two written halves would leave a view pointing one
+ * way and counting another. @slice builds a view whole
+ * (01-types.md). */
+
+fn main() -> i32 {
+  let a = [4]u8{1, 2, 3, 4};
+  let mut s: []u8 = "abcd";
+
+  s.ptr = &a[0];
+  @cast<i32>(s.len)
+}

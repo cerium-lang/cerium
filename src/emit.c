@@ -3458,6 +3458,22 @@ emaexpr(Em *em, Ast *e)
         return z;
       }
     }
+    if (strcmp(nm, "slice") == 0) { /* the two words written together,
+                                     * the view whole from its first
+                                     * instruction: no half-built
+                                     * slice ever runs (01-types.md) */
+      Ast **args = e->v.blt.args;
+      char *p = emaexpr(em, args[0]); /* the reach: a *T, its own
+                                       * word */
+      char *n = emaexpr(em, args[1]); /* the length: a usize word */
+      char *t = stackslot(em, 16);
+      char *w = newtmp(em);
+
+      fprintf(em->o, "\tstorel %s, %s\n", p, t);
+      fprintf(em->o, "\t%s =l add %s, 8\n", w, t);
+      fprintf(em->o, "\tstorel %s, %s\n", n, w);
+      return t;
+    }
     cerrat(e, "this builtin arrives with a later milestone");
     return 0; /* unreachable */
   }

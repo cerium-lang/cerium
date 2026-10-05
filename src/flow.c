@@ -349,7 +349,8 @@ fitsv(u64 v, Type *t)
 
 /* a slice's two named slots (01-types.md): s.ptr is *T -- *mut T
  * for a []mut T, which is the Tymut child -- and s.len a usize.
- * Both behave like mut struct fields. */
+ * Both read for every ABI that hands a pair to C; neither writes --
+ * @slice builds the view whole. */
 Type *
 slicefield(Type *t, char *name)
 {

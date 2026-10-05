@@ -3819,8 +3819,9 @@ placewritable(Ast *p, Fenv *fe)
     if (!bt)
       return 0;
     if (bt->k == Tyslice)
-      return slicefield(bt, p->v.fld.name) != 0; /* the two are mut
-                                                  * fields (01-types.md) */
+      return 0; /* the two slots read, never write: @slice builds
+                 * the view whole, and no half-built slice ever
+                 * stands between two writes (01-types.md) */
     if (bt->k != Tystruct && bt->k != Tyunion)
       return 0;
     for (i = 0; i < bt->sym->nfields; i++)
@@ -3964,8 +3965,22 @@ rstmt(Ast *st, Fenv *fe)
       opunmove(st->v.bin.l, fe);
     if (!isplace(st->v.bin.l))
       berr(st->v.bin.l, "assignment needs a place on the left");
-    if (!placewritable(st->v.bin.l, fe))
+    if (!placewritable(st->v.bin.l, fe)) {
+      if (st->v.bin.l->k == Naccess) { /* a slice's own two slots:
+                                        * read for the ABI they hand
+                                        * C, written never -- @slice
+                                        * is the one step that builds
+                                        * a view (01-types.md) */
+        Type *bt = derefthrough(st->v.bin.l->v.fld.e->ty);
+
+        if (bt && bt->k == Tyslice && slicefield(bt, st->v.bin.l->v.fld.name))
+          berr(st->v.bin.l,
+               "'%s' is one of a slice's own two slots, read-only: "
+               "@slice builds a view whole (01-types.md)",
+               st->v.bin.l->v.fld.name);
+      }
       berr(st->v.bin.l, "this place is not a mut slot (01-types.md)");
+    }
     if (touchconflict(st->v.bin.l, fe, 1))
       berr(st->v.bin.l, "this place is borrowed (01-types.md)");
     while (lt && lt->k == Tymut) /* the place's mut layer is the

@@ -109,9 +109,12 @@ assert(a[2] == 3);
 
 `[]T` is a fat pointer: a pointer to the first element plus a length. It borrows
 elements owned by something else, so it never allocates. The two parts are
-named — `s.ptr` is `*T` (`*mut T` for `[]mut T`) and `s.len` is a `usize`. They
-behave like `mut` struct fields, so both can be written; the way to advance the
-view, though, is to slice it — `s[1..]`, below. Neither touches the elements
+named — `s.ptr` is `*T` (`*mut T` for `[]mut T`) and `s.len` is a `usize` — and
+both read, for every ABI that hands a pair to C; neither writes, for two
+written halves would leave a view pointing one way and counting another. A
+slice is built whole: `@slice(p, n)` from a `*T` and a length — a `*mut T`
+answers a `[]mut T` — or made by a borrow, `a[..]` and `s[1..]` below.
+Neither the build nor a slice touches the elements
 the slice borrows, so a `[]T` whose elements cannot be written may still be
 advanced. Writing the slice itself — `s = ...` — is governed by the binding's
 `mut`, exactly as `p = ...` is.

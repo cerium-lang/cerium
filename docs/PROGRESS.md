@@ -1784,3 +1784,19 @@ The Iterator family found its home too: std::iter, the trait itself,
 and sys::args' cursor its first library impl -- impl Iterator for
 Args, a []u8 a word, next a hand-rolled match until the desugar
 lands (10-iteration.md). 493 green, two of them the privacy's own.
+
+The review's second round. The three entry assignments sat in a
+block of their own at the face-taking, and a block no story owed:
+they are three more of the same kind as the four around them, and
+they sit in the row now, the comment beside each its own.
+
+And the hand-rolled slice next built -- two slots written a step
+apart, a view pointing one way and counting another between them --
+was the last writer the language had: the slots read for every ABI
+that hands a pair to C (std's own write the busiest reader), and
+from here they write never. @slice is the way a view is born, the
+eleventh @: the pointer's reach and the length together, one step,
+a *mut T answering a []mut T whole (01-types.md). args' next asks
+it now, and the spec's own Iterators -- whose ptr-and-len literals
+were a shape the language never grew -- spell it too. 495 green,
+two of them @slice's own.

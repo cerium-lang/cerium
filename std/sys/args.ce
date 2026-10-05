@@ -45,11 +45,7 @@ impl Iterator for Args {
           }
           self.n = self.n - 1;
           self.p = Some(p + 1);
-          let mut s: []u8 = "";
-
-          s.ptr = w;
-          s.len = len;
-          Some(s)
+          Some(@slice(w, len))
         },
         None => None,
       }

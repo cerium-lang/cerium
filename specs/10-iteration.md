@@ -161,7 +161,7 @@ impl<T, const N: usize> IntoIterator for *[N]T {
   type Item = *T;
   type IntoIter = []T;
   fn into_iter(self: Self) -> []T {
-    []T { ptr: &(*self)[0], len: N }
+    @slice(&(*self)[0], N)
   }
 }
 
@@ -169,13 +169,14 @@ impl<T, const N: usize> IntoIterator for *mut [N]mut T {
   type Item = *mut T;
   type IntoIter = []mut T;
   fn into_iter(self: Self) -> []mut T {
-    []mut T { ptr: &mut (*self)[0], len: N }
+    @slice(&(*self)[0], N)
   }
 }
 ```
 
 The length comes from the type: `N` is a `const` value parameter
-(`08-reflection.md`), and `ptr` and `len` are a slice's two fields
+(`08-reflection.md`), and `@slice` builds the view whole — the pointer's reach
+and the length one step, never a half-built view between two writes
 (`01-types.md`).
 
 ## For
