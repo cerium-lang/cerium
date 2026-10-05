@@ -1597,8 +1597,33 @@ constsym(Em *em, Sym *s)
       conspass[i] = ipass;
       return conssyms[i];
     }
-  base = arenaalloc(strlen(s->name) + 16);
-  sprintf(base, "$%s.%s", s->kind == Sconst ? "const" : "static", s->name);
+  /* the symbol: the kind, the namespace's own path, then the
+   * name -- the same chain a fn's mangle walks (projhead),
+   * spelled in dots, for the identifier's own law keeps a dot
+   * out of a name. The path a fn carries and this once did not
+   * was the bug: two namespaces' same-named slots met at the
+   * assembler, one symbol for two values. A root slot keeps the
+   * old shape -- the path nothing, the dots none */
+  {
+    Ns   *chain[64];
+    Ns   *ns = s->ownns;
+    usize d = 0, len;
+
+    while (ns && ns->parent) {
+      if (d == 64)
+        die("a namespace nesting too wide for the emitter's names");
+      chain[d++] = ns;
+      ns = ns->parent;
+    }
+    len = strlen(s->name) + 16;
+    for (i = 0; i < d; i++)
+      len += strlen(chain[i]->name) + 1;
+    base = arenaalloc(len);
+    p = base + sprintf(base, "$%s.", s->kind == Sconst ? "const" : "static");
+    for (i = d; i-- > 0;) /* outermost first, the path's own order */
+      p += sprintf(p, "%s.", chain[i]->name);
+    sprintf(p, "%s", s->name);
+  }
   sz = sizeof_(s->cty);
   line = arenaalloc(dsleaves(s->cty) * 32 + 2 * 32 + 64);
   p = line + sprintf(line, "data %s = { ", base);

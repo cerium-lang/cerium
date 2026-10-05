@@ -1966,3 +1966,17 @@ order still the only binder -- that one the language's own doors
 to open, a runtime fn that cannot carry a const parameter
 (08-reflection.md), a pack whose rows are their own types, no heap
 to hold a reorder.
+
+And a compiler bug gives itself up. The static's data symbol
+carried its name alone -- `$static.N`, no namespace in it -- where
+a fn's mangle walks the whole path; two namespaces' same-named
+slots met at the assembler, one symbol for two values, the
+linker's own refusal the only report. The fix the fn's law
+brought across: the kind, the namespace's path in dots, then the
+name -- `$static.std.sys.arg_count` now, a root's `$static.N` the
+old shape kept, the dots safe by the identifier's own law. The
+const rides the same door and the same fix. 235 the directory
+project that pins it: two namespaces, the same names, the statics
+and the array consts (a scalar const folds to nothing, its data
+line never asked for) each their own symbol, 53 the answer. The
+spec's Symbols section says the data symbols' law now too.
