@@ -1,0 +1,9 @@
+/* the fill is the byte the alignment follows: without the
+ * alignment behind it, the byte is not one, and the spec it spells
+ * is refused where the call is written (12-projects.md) */
+use std::fmt::print;
+
+fn main() -> i32 {
+  print("{:*}", "x");
+  0
+}

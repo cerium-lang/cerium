@@ -1877,3 +1877,33 @@ the same walk to stderr, and the three refusals -- a count that
 disagrees, a `{` that opens neither a hole nor a brace, a `{`
 that stands alone at the end.
 
+
+And the holes learned their own words. A `{:...}` between the
+braces -- a fill, an alignment, a width, in that order: the fill
+the byte the alignment follows (`{:<<6}`, the first `<` a fill,
+the second behind it the alignment), the width a decimal run and
+a floor, a longer value left whole, never cut. Where the spec
+names no alignment the type's own answer stands, asked at the
+run: `@typeinfo<V>()` routing -- the integers, the floats and
+the pointers right, everything else left, the three languages'
+own consensus. The pad carries no heap -- std has none, and a
+buffer would cap a str's own length: a counting walk first
+(`Count`, a sink that only counts), the fill written around the
+value's second walk as the alignment asks, the Fmt protocol
+itself never touched, the Rust road taken -- the pad held above
+the shape, not {fmt}'s parse/format split below it. The spec
+read where the walk stops, a handful of ASCII bytes the grammar
+door already asked -- lifting them to the compile time would
+thread a const depth through the peel, an order of complexity
+for nanoseconds. The round's finds: the first `holes` ate a bare
+hole's `}` and the hole behind it (a skip to the close, run
+after a two-byte hop already past it -- both cases one rule now:
+onto the byte behind the `{`, then to the `}`, the bare hole's
+at once); a `for` body may not wear the `;` an `if` body may;
+and a struct field answers assignment only where the field
+itself says `mut` -- the mutability the field's own, not the
+binding's alone. 506 green, three of them the round's: the
+twelve lines through the doors -- the width, the three
+alignments, a fill, the floor a longer value walks over, the
+types' own answers -- and the two refusals: a fill the alignment
+does not follow, a width that runs into what it should not hold.
