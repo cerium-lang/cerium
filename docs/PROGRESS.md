@@ -1941,3 +1941,28 @@ the boundary now a test that says so. 509 green, two of them the
 close's. What remains is written where later milestones live --
 `{N}` and its kin, a precision, a base -- the order still the
 only binder, the doors still the compiler's own two.
+
+And two of the later milestones give themselves up. The precision
+first, a spec's fourth word: a float held to the fraction digits it
+asks -- write_fixed_prec, the dot always, the window zero-filled,
+the carry the next integer -- and a str cut to the bytes it asks,
+the cut the value's own (builtin.ce, not write_str: the specials
+would lose their names to a truncating write, "NaN" half gone at
+two). The asking rides the Writer's state, both of the pad's
+walks, the counting no less, so the width measures the cut value;
+`.0` spells no asking, the width's own zero the same way; the
+exponent roads unchanged, a wider asking cut to the fifteen a
+stack block holds. Then the base, the spec's last word: x o b the
+letters, the digits lowercase, the integers' asking alone --
+write_int and write_uint read it where the integers are spelled,
+the floats' windows decimal's own whatever a hole asks, a negative
+its magnitude and its sign. The x an alignment follows is a fill,
+the x a `}` follows the base, the grammar's own order the answer;
+228's refusing shape moved with the letters, `{:>z}` the letter
+that is none. 232 the precision's behaviors, 233 the dot that
+names nothing, 234 the base's. 512 green, three of them the
+round's. And the later list is down to one: `{0}` and its kin, the
+order still the only binder -- that one the language's own doors
+to open, a runtime fn that cannot carry a const parameter
+(08-reflection.md), a pack whose rows are their own types, no heap
+to hold a reorder.
