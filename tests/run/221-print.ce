@@ -1,0 +1,18 @@
+/* the print: each value where a {} stands, the escapes the
+ * braces themselves, a } alone the byte it is, and the count
+ * handed back the whole print's own (12-projects.md) */
+use std::fmt::print;
+
+fn main() -> i32 {
+  print("hello, {}!\n", "world");
+  print("{} + {} = {}\n", 2, 3, 5);
+  print("flag: {}, half: {}\n", true, 0.5);
+  print("{{}} and }} and {{\n");
+  print("} alone\n");
+  print("");
+  print("the end\n");
+  match print("count: {}", 42) {
+    Ok(n)  => @cast<i32>(n),
+    Err(e) => 1,
+  }
+}

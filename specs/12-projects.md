@@ -64,6 +64,20 @@ rows give an integer its digits, a str its text, a float the arithmetic's own
 words in `%.15g`'s shape, and `std::io::Error` its errno — so the plain
 shapes work unadorned, and a program's own say themselves.
 
+The prints take a string of words and many values:
+`print<...T: Fmt>(const fmt: []u8, args: ...T)` writes each value where the
+string's `{}` stands, the pack's order the string's own, `{{` and `}}` the
+braces themselves, a `}` alone the byte it is. The string is const, and the
+compiler reads it whole: the holes counted against the pack's rows, a call
+that disagrees refused (`@count(...T)`, `04-generics.md`); a `{` that opens
+neither a `{}` nor a `{{` refused with it — a format error cannot reach a
+running program, the grammar itself a const fn the instance's re-check runs
+(`08-reflection.md`). The numbered holes, `{0}` and its kin, are a later
+milestone's — the order is the only binder today. `eprint` is the same walk
+to the stderr door. The walk is the pack's own peel, one unfolding a value,
+the pack's depth cap its own (`04-generics.md`), and the count handed back
+is the whole print's, however many writes it took.
+
 ## std, the project's first files
 
 The standard library is a directory the compiler reads like the project's
@@ -82,7 +96,8 @@ the one fn every runtime check fails into, `01-types.md`, Panic),
 own traits (`07-operators.md`) with `Copy` and `Drop` beside them, the two
 the compiler calls on its own, at a move and at a scope's end
 (`03-move.md`) — `std::io` and `std::fmt`, the doors and the words
-(`std::fmt`'s `exit` the ending an `E?()` main has), `std::sys`, the
+(`std::fmt`'s `print` the string of words, `exit` the ending an `E?()`
+main has), `std::sys`, the
 platform's own calls, the arguments among them (`args` the iterator the
 door fills), and `std::iter`, the `Iterator` family itself
 (`10-iteration.md`) — each file in the namespace its path names, every

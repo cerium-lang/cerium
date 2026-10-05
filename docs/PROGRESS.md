@@ -1846,3 +1846,34 @@ instance's re-check reports, an .expect of ! in the run suite
 where the pack's truths already live (115, 116). 498 green, three
 of them this round's.
 
+And the print itself, arrived. `print<...T: Fmt>(const fmt: []u8,
+args: ...T)` and `eprint` beside it: a value where each `{}`
+stands, `{{` and `}}` the braces themselves, a `}` alone the byte
+it is, the count handed back the whole print's. Four private
+pieces under the two doors: `shaped` and `holes` the compiler's
+reads of the const string, `lit` the runtime walk of a literal
+run -- the cursor a value the peel threads, not a pointer it
+holds: `lit` answers the index it stopped at, the next unfolding
+starting past the hole -- and `runs` the pack's own peel, one
+unfolding a value, the depth cap the pack's (04-generics.md). A
+method on a pack row (`args[0].fmt(w)`, the receiver a pointer
+impl) and the whole pack forwarded through a second generic both
+proved out on the first probe -- the method-resolution fix the
+door round thought owed did not bite here.
+
+The round's find is a rule the spec had already told. The first
+shape held the grammar's words inside the counting fn itself --
+`@compileError` behind a plain if -- and every compile of std
+fell at it: an `@compileError` is a report at a body's own walk
+unless the evaluator has run that body (92's guard lives because
+a const initializer runs it before the walk; std holds no call
+that runs the counter ahead of its walk). The words moved into
+the doors themselves -- const ifs in the prints, the shape a
+bool, the count a number, the two reads pure -- and the nesting
+proves out: the shape taken, the count taken, neither taken,
+each branch its own report, the untaken never walked. 503 green,
+five of them the print's own: the bytes through the stdout door,
+the same walk to stderr, and the three refusals -- a count that
+disagrees, a `{` that opens neither a hole nor a brace, a `{`
+that stands alone at the end.
+

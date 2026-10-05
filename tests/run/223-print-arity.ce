@@ -1,0 +1,10 @@
+/* the arity door on the print itself: the format's holes a
+ * compile-time count, the pack's rows another, a call that
+ * disagrees refused before any program runs (12-projects.md,
+ * 04-generics.md) */
+use std::fmt::print;
+
+fn main() -> i32 {
+  print("{} {}", 1);
+  0
+}
