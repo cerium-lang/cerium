@@ -1907,3 +1907,22 @@ twelve lines through the doors -- the width, the three
 alignments, a fill, the floor a longer value walks over, the
 types' own answers -- and the two refusals: a fill the alignment
 does not follow, a width that runs into what it should not hold.
+
+Two rearrangements while the ground is quiet. The Iter family:
+`Iterator` the trait's own name shortened to `Iter`, `IntoIter`
+the same road -- and the trait's associated type with it, for the
+trait renamed would have worn its own name (`type IntoIter:
+Iter<...>`); the cursor a container yields is named for what it
+is, `type Iter: Iter<...>`, the path `I::Iter`. std::iter's own
+trait and sys::args' impl the only code it touched; the specs and
+the README walked along, and the tests' own local traits kept
+theirs -- a name a project may take, like Option's. And the exit
+found its home: out of fmt, where it lived only for the eprint it
+made, into entry.ce beside the run it serves -- pub in std's root,
+beside panic, the two program-level verbs, for a program may call
+it itself. The compiler's asking moved with it (`nsitem(std,
+"exit")`, the error message's own words), and the two eprint_one
+writes became one eprint -- the string of words the better door,
+now that it is. 229 the direct call: the Ok half a zero, the Err
+half one with its words on the err door, the code itself the
+answer's arithmetic. 507 green, one of them the round's.

@@ -397,7 +397,7 @@ prefixtype(void)
       }
       n->v.tdyn.e = p;
     }
-    if (peek() == Tlt) { /* dyn Iterator<Item = u32>: the associated
+    if (peek() == Tlt) { /* dyn Iter<Item = u32>: the associated
                           * types given, an Ninit list (06-dispatch.md) */
       next();
       for (;;) {

@@ -9,7 +9,7 @@
  * platform's own table -- the words live as long as the process
  * does, so the slice borrows what cannot die and no copy is made. */
 
-use std::iter::Iterator;
+use std::iter::Iter;
 
 static mut arg_count: i32 = 0;
 static mut arg_table: Option<**u8> = None;
@@ -28,7 +28,7 @@ pub fn args() -> Args {
   Args { n: arg_count, p: arg_table }
 }
 
-impl Iterator for Args {
+impl Iter for Args {
   type Item = []u8;
 
   fn next(self: *mut Self) -> ?[]u8 {

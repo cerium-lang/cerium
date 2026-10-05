@@ -31,7 +31,7 @@ its type like any other parameter; there is no bare `self`:
 ```rust
 fn show(self: *Self) -> ();
 fn next(self: *mut Self) -> ?Self::Item;
-fn into_iter(self: Self) -> Self::IntoIter;
+fn into_iter(self: Self) -> Self::Iter;
 ```
 
 A method call is sugar: the receiver is adapted to the `self` the method
@@ -54,18 +54,18 @@ A trait declares associated types and constants, which an impl supplies
 alongside the functions:
 
 ```rust
-trait Iterator {
+trait Iter {
   type Item;                          // associated type
   fn next(self: *mut Self) -> ?Self::Item;
 }
 
-impl<T> Iterator for []mut T {
+impl<T> Iter for []mut T {
   type Item = T;                      // impl supplies the type
   fn next(self: *mut Self) -> ?T { ... }
 }
 ```
 
-`Self::Item` names it inside the trait; outside, `Iterator::Item` names it for
+`Self::Item` names it inside the trait; outside, `Iter::Item` names it for
 the trait as a whole, and `It::Item` for a type `It` that implements it.
 
 The same `type` keyword names a type at the top level — a transparent type
