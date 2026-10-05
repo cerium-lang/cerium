@@ -2114,13 +2114,12 @@ injectstd(void)
  * file's uses bound and its declarations resolved in its own
  * context, the impl table built for all, and the bodies checked
  * back in their files. A single-file compilation is the degenerate
- * shape: one Srcfile, the root's. nstd of the files are the sysroot
- * walk's, std's own: they check like any file, and the prelude is
- * injected into them like anyone's -- a library reads its own face,
- * the declares-all pass having made it whole before any read
- * (12-projects.md). */
+ * shape: one Srcfile, the root's. The sysroot's own files check
+ * like any file, and the prelude is injected into them like
+ * anyone's -- a library reads its own face, the declares-all pass
+ * having made it whole before any read (12-projects.md). */
 void
-checkproject(Srcfile **files, usize nfiles, usize nstd)
+checkproject(Srcfile **files, usize nfiles)
 {
   usize     i, f, nimpls;
   Sym     **impls;
@@ -2184,12 +2183,12 @@ checkproject(Srcfile **files, usize nfiles, usize nstd)
     }
     { /* the entry fns, one per ending a main has: the wrapper hands
        * the project's main to one of them by address, the
-       * platform's own two beside it (12-projects.md) */
-      Ns *ens = nsopen("std::entry");
-
-      sym_entry_unit = nsitem(ens, "run_unit");
-      sym_entry_i32 = nsitem(ens, "run_i32");
-      sym_entry_err = nsitem(ens, "run_err");
+       * platform's own two beside it (12-projects.md). Private to
+       * std -- the wrapper alone calls them, the face-taking here
+       * the one door in (11-namespaces.md) */
+      sym_entry_unit = nsitem(std, "run_unit");
+      sym_entry_i32 = nsitem(std, "run_i32");
+      sym_entry_err = nsitem(std, "run_err");
     }
     { /* the operator traits, the sugar's own (07-operators.md), and
        * the two the compiler calls on its own -- Copy at a move,

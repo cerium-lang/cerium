@@ -35,15 +35,18 @@ fn main() -> io::Error?() {
 ```
 
 The compiler arranges the platform's door — an injected `#[extern(C)] fn
-main` that hands this one to `std::entry`, by address with the platform's
-own two, the count and the table of words — and `main` itself mangles like
-any other name, a root fn the project's own first segment spells. One entry
-fn per ending: `run_unit` calls the main and answers a clean zero, `run_i32`
+main` that hands this one to std, by address with the platform's own two,
+the count and the table of words — and `main` itself mangles like any other
+name, a root fn the project's own first segment spells. One entry fn per
+ending: `run_unit` calls the main and answers a clean zero, `run_i32`
 answers the code itself, `run_err` hands the ending to `fmt`'s `exit`, the
 `Err` half printed through the error type's own words first. Each saves the
 platform's two for `sys::args` (`std::sys`), the program's own words one
-iterator the asking, a `[]u8` per word into the platform's own table. How
-the program ends follows from how `main` ends:
+iterator the asking, a `[]u8` per word into the platform's own table. The
+three are private to std, the wrapper alone their caller — a use or a
+qualified path from a project's file is turned away (`11-namespaces.md`);
+the compiler takes their Syms at its own face-taking, the private face
+among them. How the program ends follows from how `main` ends:
 
 | `main` ends | the program |
 | --- | --- |
@@ -81,9 +84,13 @@ the compiler calls on its own, at a move and at a scope's end
 (`03-move.md`) — `std::io` and `std::fmt`, the doors and the words
 (`std::fmt`'s `exit` the ending an `E?()` main has), `std::sys`, the
 platform's own calls, the arguments among them (`args` the iterator the
-door fills), and `std::entry`, the door's own helpers the wrapper picks
-among — each file in the namespace its path names, every item
-`pub`, reached by path or by use like any namespace's (`11-namespaces.md`).
+door fills), and `std::iter`, the `Iterator` family itself
+(`10-iteration.md`) — each file in the namespace its path names, every
+item `pub`, reached by path or by use like any namespace's
+(`11-namespaces.md`). The one exception lives in the root beside the
+citizens: the entry fns, `run_unit` and `run_i32` and `run_err`, private
+to std — the wrapper the compiler arranges is their one caller, said
+above.
 
 The citizens live in std as source, and the names the language once
 held for them are free: a project may declare its own `Option`, its own

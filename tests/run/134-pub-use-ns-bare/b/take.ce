@@ -2,4 +2,4 @@
  * re-export transparent (11-namespaces.md) */
 use a::TypeInfo;
 
-fn take(t: TypeInfo) -> i32 { 1 }
+pub fn take(t: TypeInfo) -> i32 { 1 }

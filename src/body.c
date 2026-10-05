@@ -1302,6 +1302,10 @@ rexprpath1(Ast *e, Fenv *fe, char *name, Type *want, Ns *ns)
     s = variantowner(name); /* Some, None, Ok, Err: bare (01-types.md) */
   if (!s)
     berr(e, "unknown name '%s'", name);
+  if (ns && !s->pub) /* a qualified read crosses namespaces: a
+                      * private item stays its own namespace's
+                      * (11-namespaces.md) */
+    berr(e, "'%s' is private to %s (11-namespaces.md)", name, nsname(ns));
   switch (s->kind) {
   case Sconst:
   case Sstatic:
@@ -1996,6 +2000,10 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
         }
         if (!s)
           berr(e, "unknown name '%s'", nm);
+        if (k && !s->pub) /* a qualified call crosses namespaces: a
+                           * private item stays its own namespace's
+                           * (11-namespaces.md) */
+          berr(e, "'%s' is private to %s (11-namespaces.md)", nm, nsname(ns));
         if (s->kind == Sfn)
           return callfn(s, e, args, n, fe);
         berr(e, "'%s' is not callable", nm);

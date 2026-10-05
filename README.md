@@ -133,10 +133,11 @@ runtime checks out, the wraps a release owns (`01-types.md`).
   the process was born with, `std::sys` the
   platform's own calls, the C `write` the door every output shares,
   `args` the program's own words, one iterator the asking, a `[]u8`
-  per word into the platform's own table, and `std::entry` the
-  door's own helpers — `run_unit`, `run_i32`, `run_err`, one per
-  ending a main has, the wrapper the compiler arranges picking
-  among them (`12-projects.md`)
+  per word into the platform's own table, `std::iter` the `Iterator`
+  family itself (`10-iteration.md`), and in the root beside the
+  citizens the entry fns — `run_unit`, `run_i32`, `run_err`, one per
+  ending a main has — private to std, the wrapper the compiler
+  arranges their one caller (`12-projects.md`)
 
 ### Testing
 
@@ -158,11 +159,11 @@ review, `review-YYYYMMDD-NN.md`.
 ## Status
 
 v0, end to end and moving: the platform's door is std's own work now
-— the wrapper hands the main's address to one of `std::entry`'s
-three runs, `()` a clean zero, `i32` the code itself, `E?()` the
-`Err` half printed through its own words, the exit code an `i32`
-the platform's own word — and the words the platform handed the
-door, `sys::args`, one iterator the asking (`12-projects.md`). How
+— the wrapper hands the main's address to one of std's three entry
+fns, `()` a clean zero, `i32` the code itself, `E?()` the `Err`
+half printed through its own words, the exit code an `i32` the
+platform's own word — and the words the platform handed the door,
+`sys::args`, one iterator the asking (`12-projects.md`). How
 the compiler got here — one
 stretch a milestone, in the order they landed — is
 [docs/PROGRESS.md](./docs/PROGRESS.md).

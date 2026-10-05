@@ -1766,3 +1766,21 @@ die -- next a hand-rolled match, for-let the loop over it, the
 Iterator trait's own desugar a later milestone's (10-iteration.md).
 The forty-two tests that answered a wider word than i32 now say the
 code itself, their expects the same numbers. 491 green.
+
+The review's two asks. The entry fns had a namespace of their own,
+and no namespace was owed them: they are three fns and a story, and
+the story lives in std's root now (std/entry.ce), beside panic -- no
+std::entry to spell. And they are no one else's to call: private to
+std, which the language already had a word for -- the use was turned
+away all along, the glob never brought them in, but a qualified path
+read the table and never asked pub, an openness the spec never
+promised (11-namespaces.md: private is the directory's own). The
+path asks now, a call and a value alike -- 134's two fns, written
+against the openness by accident, say pub and mean it -- and the
+wrapper is the three's one caller: the compiler takes the Syms at
+its own face-taking, the private face among them.
+
+The Iterator family found its home too: std::iter, the trait itself,
+and sys::args' cursor its first library impl -- impl Iterator for
+Args, a []u8 a word, next a hand-rolled match until the desugar
+lands (10-iteration.md). 493 green, two of them the privacy's own.

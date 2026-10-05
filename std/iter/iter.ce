@@ -1,0 +1,12 @@
+/* std::iter -- the Iterator family (10-iteration.md): one trait,
+ * the sequence's own shape. The associated type says what it
+ * yields, the one method advances and yields it, None the
+ * sequence's end -- a loop over one a match on its answer, `for
+ * let` the shape the sugar will one day ride. A slice is an
+ * iterator over its elements the compiler itself spells; every
+ * other type says so here, an impl a piece of ordinary code. */
+
+pub trait Iterator {
+  type Item;
+  fn next(self: *mut Self) -> ?Self::Item;   /* None ends the sequence */
+}
