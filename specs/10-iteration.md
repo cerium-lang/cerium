@@ -1,16 +1,16 @@
 # Iteration
 
 This chapter continues `05-traits.md` (traits and associated items) and
-`09-match.md` (match). It defines the `Iterator` and `IntoIterator` traits and
+`09-match.md` (match). It defines the `Iter` and `IntoIter` traits and
 the loops built on them.
 
-## Iterator
+## Iter
 
 An iterator yields a sequence of values. The trait carries one associated
 type — what it yields — and one method — advance and yield the next value:
 
 ```rust
-trait Iterator {
+trait Iter {
   type Item;
   fn next(self: *mut Self) -> ?Self::Item;   // None ends the sequence
 }
@@ -18,7 +18,7 @@ trait Iterator {
 
 `next` borrows `self` mutably (`*mut Self`): advancing the iterator moves its
 position, so the borrow must be mutable. It returns `?Self::Item` —
-`Option<Self::Item>` — and `None` marks the end. `Iterator` pairs with `match`
+`Option<Self::Item>` — and `None` marks the end. `Iter` pairs with `match`
 (`09-match.md`): every loop is a `match` on `next`'s result.
 
 A slice is an iterator over its elements. A slice borrows what it points at
@@ -36,7 +36,7 @@ fn sum(s: []u32) -> u32 {          // a slice, straight from the parameter
 ```
 
 ```rust
-impl<T> Iterator for []T {
+impl<T> Iter for []T {
   type Item = *T;
   fn next(self: *mut Self) -> ?*T {
     if self.len == 0 {
@@ -59,7 +59,7 @@ fn zero(s: []mut u32) {
   }
 }
 
-impl<T> Iterator for []mut T {
+impl<T> Iter for []mut T {
   type Item = *mut T;
   fn next(self: *mut Self) -> ?*mut T {
     if self.len == 0 {
@@ -83,32 +83,32 @@ win over `T` (`04-generics.md`).
 Because a slice only borrows, `T` needs no `Copy`: nothing is moved or copied,
 only pointed at.
 
-## IntoIterator
+## IntoIter
 
 A container is not itself an iterator: it may be iterated several ways, and
-iterating needs a cursor. `IntoIterator` turns a value into its iterator,
+iterating needs a cursor. `IntoIter` turns a value into its iterator,
 consuming it:
 
 ```rust
-trait IntoIterator {
+trait IntoIter {
   type Item;
-  type IntoIter: Iterator<Item = Self::Item>;
-  fn into_iter(self: Self) -> Self::IntoIter;
+  type Iter: Iter<Item = Self::Item>;
+  fn into_iter(self: Self) -> Self::Iter;
 }
 ```
 
-The bound `Iterator<Item = Self::Item>` ties the two associated types: what
-the iterator yields is exactly what the container holds. `Iterator<Item = T>`
-is an associated-type equality bound — `IntoIter` implements `Iterator`, and
+The bound `Iter<Item = Self::Item>` ties the two associated types: what
+the iterator yields is exactly what the container holds. `Iter<Item = T>`
+is an associated-type equality bound — `IntoIter` implements `Iter`, and
 its `Item` is `T`.
 
-An iterator is its own `IntoIterator`, so `for` over a slice needs no
+An iterator is its own `IntoIter`, so `for` over a slice needs no
 conversion:
 
 ```rust
-impl<I: Iterator> IntoIterator for I {
+impl<I: Iter> IntoIter for I {
   type Item = I::Item;
-  type IntoIter = I;
+  type Iter = I;
   fn into_iter(self: Self) -> I { self }
 }
 ```
@@ -124,15 +124,15 @@ struct ArrayIter<T, const N: usize> {
   mut index: usize,
 }
 
-impl<T, const N: usize> IntoIterator for [N]T {
+impl<T, const N: usize> IntoIter for [N]T {
   type Item = T;
-  type IntoIter = ArrayIter<T, N>;
+  type Iter = ArrayIter<T, N>;
   fn into_iter(self: Self) -> ArrayIter<T, N> {
     ArrayIter<T, N>{ arr: self, index: 0 }
   }
 }
 
-impl<T, const N: usize> Iterator for ArrayIter<T, N> {
+impl<T, const N: usize> Iter for ArrayIter<T, N> {
   type Item = T;
   fn next(self: *mut Self) -> ?T {
     if self.index == N {
@@ -157,17 +157,17 @@ what `&arr` is, since an array never decays (`01-types.md`). The iterator is
 then a slice over the array's own storage, so nothing moves:
 
 ```rust
-impl<T, const N: usize> IntoIterator for *[N]T {
+impl<T, const N: usize> IntoIter for *[N]T {
   type Item = *T;
-  type IntoIter = []T;
+  type Iter = []T;
   fn into_iter(self: Self) -> []T {
     @slice(&(*self)[0], N)
   }
 }
 
-impl<T, const N: usize> IntoIterator for *mut [N]mut T {
+impl<T, const N: usize> IntoIter for *mut [N]mut T {
   type Item = *mut T;
-  type IntoIter = []mut T;
+  type Iter = []mut T;
   fn into_iter(self: Self) -> []mut T {
     @slice(&(*self)[0], N)
   }
@@ -223,7 +223,7 @@ for cond {
 too, so a loop that steps at its tail (`for node != None { ...; node =
 next(node); }`) does not step when a path through the body ends in
 `continue`. This is the `while` bargain of C, not a new trap; a loop whose
-rhythm is that intricate is an `Iterator` (`09-match.md`, `04-generics.md`)
+rhythm is that intricate is an `Iter` (`09-match.md`, `04-generics.md`)
 — that is what the shape is for, and why the language does not carry a
 third loop.
 
@@ -328,7 +328,7 @@ and its value is a `Range<T>` for the integer type of the ends:
 // in std
 struct Range<T> { start: T, end: T }
 
-impl<T: Copy> Iterator for Range<T> {
+impl<T: Copy> Iter for Range<T> {
   type Item = T;
   fn next(self: *mut Self) -> ?T {
     if self.start < self.end {
@@ -467,7 +467,7 @@ function, and nothing deeper.
 ## Adapters
 
 An adapter wraps an iterator in an ordinary struct — nothing about it needs
-language support beyond `Iterator` itself. A library is expected to provide at
+language support beyond `Iter` itself. A library is expected to provide at
 least:
 
 | adapter | yields |
@@ -482,12 +482,12 @@ They compose: `zip` over `enumerate`, and so on. Each is a struct holding the
 inner iterator plus whatever state it needs, whose `next` calls the inner one:
 
 ```rust
-struct Enumerate<I: Iterator> {
+struct Enumerate<I: Iter> {
   mut iter: I,
   mut count: usize,
 }
 
-impl<I: Iterator> Iterator for Enumerate<I> {
+impl<I: Iter> Iter for Enumerate<I> {
   type Item = (usize, I::Item);
 
   fn next(self: *mut Self) -> ?(usize, I::Item) {

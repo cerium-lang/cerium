@@ -89,7 +89,7 @@ trait. On a type parameter list it marks a *value* parameter: one that has to be
 a compile-time value rather than a type, which is what an array length is:
 
 ```rust
-impl<T, const N: usize> IntoIterator for [N]T { ... }
+impl<T, const N: usize> IntoIter for [N]T { ... }
 ```
 
 An ordinary `if` or `for` whose input happens to be compile-time known is
@@ -122,7 +122,7 @@ A `const` parameter also carries a value that is part of a type — an array
 length, say:
 
 ```rust
-impl<T, const N: usize> IntoIterator for [N]T { ... }   // 10-iteration.md
+impl<T, const N: usize> IntoIter for [N]T { ... }   // 10-iteration.md
 ```
 
 A function with a `const` parameter is a compile-time tool and cannot be used

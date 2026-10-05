@@ -73,7 +73,7 @@ without knowing `Self`:
   not left open
 
 ```rust
-let it: dyn Iterator<Item = u32> = &mut dyn iter;
+let it: dyn Iter<Item = u32> = &mut dyn iter;
 ```
 
 ## Layout

@@ -133,7 +133,7 @@ runtime checks out, the wraps a release owns (`01-types.md`).
   the process was born with, `std::sys` the
   platform's own calls, the C `write` the door every output shares,
   `args` the program's own words, one iterator the asking, a `[]u8`
-  per word into the platform's own table, `std::iter` the `Iterator`
+  per word into the platform's own table, `std::iter` the `Iter`
   family itself (`10-iteration.md`), and in the root beside the
   citizens the entry fns — `run_unit`, `run_i32`, `run_err`, one per
   ending a main has — private to std, the wrapper the compiler

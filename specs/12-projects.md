@@ -106,7 +106,7 @@ the compiler calls on its own, at a move and at a scope's end
 (`std::fmt`'s `print` the string of words, `exit` the ending an `E?()`
 main has), `std::sys`, the
 platform's own calls, the arguments among them (`args` the iterator the
-door fills), and `std::iter`, the `Iterator` family itself
+door fills), and `std::iter`, the `Iter` family itself
 (`10-iteration.md`) — each file in the namespace its path names, every
 item `pub`, reached by path or by use like any namespace's
 (`11-namespaces.md`). The one exception lives in the root beside the
