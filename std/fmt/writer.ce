@@ -8,13 +8,22 @@
  * its own segment's bytes, the ? behind it dropping only that,
  * and the running total stays in n. written reads the total out
  * for whoever owns the Writer, the print's own answer: the whole
- * print in one number however many writes it took. */
+ * print in one number however many writes it took.
+ *
+ * The precision is the hole's own asking, held here for the
+ * value's walk (print.ce's pad sets it and clears it, the
+ * counting walk no less): a float held to its fraction digits
+ * (write_fixed_prec); the str's own cut is the value's own --
+ * builtin.ce reads the asking where the str is spelled, the
+ * other writes take no notice of it, an integer's digits its
+ * own (12-projects.md) */
 
 use std::io::{Error, Write};
 
 pub struct Writer {
   w: dyn mut Write,
-  mut n: usize, /* the running count: every segment's bytes, kept as they land */
+  mut n: usize,    /* the running count: every segment's bytes, kept as they land */
+  mut prec: usize, /* the precision a hole asked, 0: none */
 }
 
 impl Writer {
@@ -121,11 +130,17 @@ impl Writer {
       let a = if n < 0.0 { 0.0 - n } else { n };
 
       if a == 0.0 {
-        self.write_str("0")
-      } else if a >= 9223372036854775808.0 { /* 2^63: past i64 */
+        if self.prec > 0 {
+          self.write_fixed_prec(a, self.prec)
+        } else {
+          self.write_str("0")
+        }
+      } else if a >= 9223372036854775808.0 { /* 2^63: past i64 -- the exponent roads unchanged by the asking */
         self.write_f64_big(a)
       } else if a < 0.000000000000001 { /* 1e-15: the window empty */
         self.write_f64_tiny(a)
+      } else if self.prec > 0 {
+        self.write_fixed_prec(a, self.prec)
       } else {
         /* the fixed form's window: the integer part whole, the
          * fraction the digits fifteen significant leave it --
@@ -205,6 +220,62 @@ impl Writer {
       } else {
         Ok(r1)
       }
+    }
+  }
+
+  /* the precision's own fixed form: the window asked, held
+   * exactly -- the dot always, the fraction zero-filled to the
+   * window's own width, the carry the rounding makes the next
+   * integer whole. The default's economy -- the trailing trim,
+   * the dotless round -- is write_fixed's own, not the asking's.
+   * The window caps at fifteen, the digits the block holds: a
+   * wider asking cut to it, the honest edge of a stack-only std
+   * (12-projects.md) */
+  fn write_fixed_prec(self: *mut Self, m: f64, w: usize) -> Result<usize, Error> {
+    let win = if w > 15 {
+      @cast<usize>(15)
+    } else {
+      w
+    };
+    let ip = @cast<u64>(m);
+
+    if win == 0 {
+      self.write_u64(ip)
+    } else {
+      let mut p: f64 = 1.0; /* 10^win, exact -- win fifteen at the widest */
+      let mut j: usize = 0;
+
+      for j < win {
+        p = p * 10.0;
+        j = j + 1;
+      }
+      let d = @cast<u64>((m - @cast<f64>(ip)) * p + 0.5); /* the window, rounded */
+      let carried = d == @cast<u64>(p);
+      let ip2 = if carried { ip + 1 } else { ip };
+      let fr = if carried { @cast<u64>(0) } else { d };
+
+      let r1 = self.write_u64(ip2)?;
+      let ds = [15]mut u8 { };
+      let mut i: usize = 0;
+      let mut v = fr;
+
+      i = win;
+      for v != 0 {
+        i = i - 1;
+        ds[i] = @cast<u8>(48 + v % 10);
+        v = v / 10;
+      }
+      for i > 0 {
+        i = i - 1;
+        ds[i] = 48; /* the zero-fill the window's own width asks */
+      }
+      self.write_str(".")?;
+      i = 0;
+      for i < win {
+        self.write_u8(ds[i])?;
+        i = i + 1;
+      }
+      Ok(r1 + win + 1)
     }
   }
 

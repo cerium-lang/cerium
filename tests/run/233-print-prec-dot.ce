@@ -1,0 +1,9 @@
+/* the precision a dot and the decimal run behind it: a dot
+ * that names nothing is not a precision, and the spec it spells
+ * is refused where the call is written (12-projects.md) */
+use std::fmt::print;
+
+fn main() -> i32 {
+  print("{:.}", "x");
+  0
+}

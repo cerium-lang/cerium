@@ -68,19 +68,25 @@ The prints take a string of words and many values:
 `print<...T: Fmt>(const fmt: []u8, args: ...T)` writes each value where the
 string's `{}` stands, the pack's order the string's own, `{{` and `}}` the
 braces themselves, a `}` alone the byte it is. A hole may carry its own
-words between its braces, `{:...}`: a fill, an alignment, a width, in that
-order — `<` `^` `>` the three alignments, the fill the byte the alignment
-follows (`{:*^6}`, the `*`), the width a decimal run and a floor: a longer
-value left whole, never cut. Where the spec names no alignment, the type's
-own answer stands — the integers, the floats and the pointers right,
-everything else left. The string is const, and the
-compiler reads it whole: the holes counted against the pack's rows, a call
-that disagrees refused (`@count(...T)`, `04-generics.md`); a `{` that opens
-neither a hole, a brace, nor a well-formed spec refused with it — a format
-error cannot reach a running program, the grammar itself a const fn the
-instance's re-check runs (`08-reflection.md`). The numbered holes, `{0}` and
-its kin, and the words a spec does not spell yet — a precision, a base — are
-later milestones': the order is the only binder today. `eprint` is the same
+words between its braces, `{:...}`: a fill, an alignment, a width, a
+precision, in that order — `<` `^` `>` the three alignments, the fill
+the byte the alignment follows (`{:*^6}`, the `*`), the width a decimal
+run and a floor: a longer value left whole, never cut; the precision a
+dot and the decimal run behind it (`{:.3}`): a float held to the
+fraction digits it asks — the dot always, the window zero-filled, the
+rounding's carry the next integer — and a str cut to the bytes it
+asks; the other values take no notice, and `.0` spells no asking at
+all, the width's own zero the same way. Where the spec names no
+alignment, the type's own answer stands — the integers, the floats
+and the pointers right, everything else left. The string is const,
+and the compiler reads it whole: the holes counted against the pack's
+rows, a call that disagrees refused (`@count(...T)`, `04-generics.md`);
+a `{` that opens neither a hole, a brace, nor a well-formed spec
+refused with it — a format error cannot reach a running program, the
+grammar itself a const fn the instance's re-check runs
+(`08-reflection.md`). The numbered holes, `{0}` and its kin, and the
+words a spec does not spell yet — a base — are later milestones': the
+order is the only binder today. `eprint` is the same
 walk to the stderr door. The walk is the pack's own peel, one unfolding a
 value, the pack's depth cap its own (`04-generics.md`), and the count handed
 back is the whole print's, however many writes it took.

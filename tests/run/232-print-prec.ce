@@ -1,0 +1,22 @@
+/* the precision, a spec's fourth word: a float held to the
+ * fraction digits it asks -- the dot always, the zero-fill the
+ * window's own width, the carry the next integer -- and a str
+ * cut to its bytes; the integers and the specials take no
+ * notice, and .0 spells no asking at all (12-projects.md) */
+use std::fmt::print;
+
+fn main() -> i32 {
+  print("[{:.2}]\n", 0.5);
+  print("[{:.3}]\n", 3.14159);
+  print("[{:.1}]\n", 9.99);
+  print("[{:.2}]\n", 3.0);
+  print("[{:.2}]\n", 0.0);
+  print("[{:.3}]\n", "hello");
+  print("[{:8.3}]\n", "hello");
+  print("[{:6.2}]\n", 0.0 - 3.14159);
+  print("{:.2} {:.0}\n", 42, 0.5);
+  match print("[{:.2}]\n", 3.0) {
+    Ok(n)  => @cast<i32>(n),
+    Err(e) => 1,
+  }
+}
