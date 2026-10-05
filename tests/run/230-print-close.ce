@@ -1,0 +1,17 @@
+/* the close of the print's own line: two spec'd holes the one
+ * format (the peel's cursor threaded through a spec's end), the
+ * empty spec the bare hole it spells, the width two digits wide,
+ * bare and spec'd holes interleaved -- and the count the whole
+ * print's own (12-projects.md) */
+use std::fmt::print;
+
+fn main() -> i32 {
+  print("[{:>4}]-[{:<4}]\n", 42, "x");
+  print("[{:}]\n", "y");
+  print("[{:12}]\n", "hello");
+  print("{}/{:>3}/{:^5}\n", 1, 2, 3);
+  match print("[{:>4}]\n", 7) {
+    Ok(n)  => @cast<i32>(n),
+    Err(e) => 1,
+  }
+}

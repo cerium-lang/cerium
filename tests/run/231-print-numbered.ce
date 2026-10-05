@@ -1,0 +1,10 @@
+/* the numbered hole, {0} and its kin: a later milestone's
+ * (12-projects.md) -- the order the only binder today, and a
+ * number behind the '{' refused where the call is written, the
+ * boundary itself a test */
+use std::fmt::print;
+
+fn main() -> i32 {
+  print("{0}", "x");
+  0
+}

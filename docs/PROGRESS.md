@@ -1926,3 +1926,18 @@ writes became one eprint -- the string of words the better door,
 now that it is. 229 the direct call: the Ok half a zero, the Err
 half one with its words on the err door, the code itself the
 answer's arithmetic. 507 green, one of them the round's.
+
+And the print's own line closes. Five PRs the arc -- #100 the
+groundwork (const strings read at compile time, the const word
+and the pack met), #101 the print itself, #102 and #103 the
+holes' own words, #104 the exit home and the Iter family -- and
+the close is two tests. 230 the boundaries no single line had
+asked: two spec'd holes the one format, the peel's cursor
+threaded through a spec's end; the empty spec `{:}` the bare hole
+it spells; the width two digits wide; bare and spec'd holes
+interleaved, the one walk serving both. And 231 the numbered hole
+refused -- `{0}` a later milestone's, the spec's own words, and
+the boundary now a test that says so. 509 green, two of them the
+close's. What remains is written where later milestones live --
+`{N}` and its kin, a precision, a base -- the order still the
+only binder, the doors still the compiler's own two.
