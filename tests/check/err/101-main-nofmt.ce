@@ -1,0 +1,9 @@
+/* the Err half prints through the error type's own words: no
+ * Fmt, no print -- said where the ending itself is declared
+ * (12-projects.md). */
+
+struct Plain { n: i64 }
+
+fn main() -> Plain?() {
+  Ok(())
+}

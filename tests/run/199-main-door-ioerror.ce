@@ -1,0 +1,10 @@
+/* the doors' own failure handed back: io::Error, the errno's
+ * number beside the namespace's name -- the shape the spec's own
+ * example spells, a main that hands the doors' own errors to the
+ * platform instead of stopping for them (12-projects.md). */
+
+use std::io::Error;
+
+fn main() -> Error?() {
+  Err(Error::Sys(13))
+}

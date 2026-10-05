@@ -308,6 +308,12 @@ Type       *typeinfoty(void);
  * it is a broken one, said at checkproject's own face-taking */
 extern Sym *sym_panic;
 
+/* std::fmt's two, read by pointer wherever an E?() main meets its
+ * ends (prelude.c, 12-projects.md): the Fmt its error type must
+ * implement -- the Err half prints through it -- and the exit the
+ * compiler's wrapper calls with the ending */
+extern Sym *sym_fmt, *sym_exit;
+
 /* a variant by name; the enum a bare variant name belongs to --
  * the checker's patterns and the emitter's construction share them */
 Variant *symvarfind(Sym *s, const char *name);

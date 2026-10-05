@@ -124,7 +124,8 @@ runtime checks out, the wraps a release owns (`01-types.md`).
   the typed writes, the built-ins' own rows — an integer its
   digits, a str its text, a float the arithmetic's own words in
   %.15g's shape — and the prints that join them to a door —
-  `print_one`, `eprint_one`, the general `fmt_to`, `std::io` the
+  `print_one`, `eprint_one`, the general `fmt_to`, `exit` an E?()
+  ending answered as the platform takes it, `std::io` the
   `Write` anything that takes bytes implements and the two doors
   the process was born with, `std::sys` the
   platform's own calls, the C `write` the door every output shares
@@ -137,7 +138,7 @@ split `ok/` against `err/` — a dump must reproduce its `.golden`
 exactly, a rejection must say why — and `tests/run`, where every `.ce`
 compiles to a binary whose exit, stdout and stderr the files beside it
 name, an optional `.release` building it with `-r`
-(`tools/run-tests.sh`). 483 green at the time of writing.
+(`tools/run-tests.sh`). 489 green at the time of writing.
 
 ## The specification
 

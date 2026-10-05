@@ -1,0 +1,23 @@
+/* main's own door, the Ok half: the compiler's wrapper hands the
+ * ending to std::fmt's exit and the program answers a clean zero.
+ * The main prints first -- the door the ending leaves open -- and
+ * its Done carries its own Fmt anyway, the bound the declaration
+ * itself is checked against, Ok half or not. */
+
+use std::fmt::{Fmt, Writer, print_one};
+use std::io::Error;
+use std::Result;
+
+struct Done { n: i64 }
+
+impl Fmt for Done {
+  fn fmt(self: *Self, w: *mut Writer) -> Result<(), Error> {
+    w.write_str("done ")?;
+    w.write_i64(self.n)
+  }
+}
+
+fn main() -> Done?() {
+  print_one(&("the ok half\n"));
+  Ok(())
+}

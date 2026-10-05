@@ -33,23 +33,26 @@ fn main() -> io::Error?() {
 }
 ```
 
-The compiler arranges the platform's entry — an unmangled C `main` that calls
-this one — so the name never meets the mangler. How the program ends follows
-from how `main` ends:
+The compiler arranges the platform's entry — an injected `#[extern(C)] fn main`
+that calls this one — and `main` itself mangles like any other name, a root fn
+the project's own first segment spells. How the program ends follows from how
+`main` ends:
 
 | `main` ends | the program |
 | --- | --- |
 | returns `()`, or `Ok` | exits with code 0 |
 | returns an integer, `i32` the usual one | exits with that code |
-| returns `Err(e)` | prints `e`, exits with code 1 — a clean exit, not an abort: the error path is a normal one, and the state is trusted |
+| returns `Err(e)` | prints `e` and a newline to stderr, exits with code 1 — a clean exit, not an abort: the error path is a normal one, and the state is trusted |
 | panics | aborts (`01-types.md`, Panic) |
 
 These three are the whole contract: a `main` returning anything else is
 rejected where it is declared.
 
-Printing an `Err` needs no trait: the runtime prints through reflection — the
-variant name for an enum, field by field for a struct — so any error type works
-without a derive.
+Printing an `Err` wants the error type's own words: `E` must implement `Fmt`
+(`std::fmt`), checked where `main` declares its ending. The built-ins' own
+rows give an integer its digits, a str its text, a float the arithmetic's own
+words in `%.15g`'s shape, and `std::io::Error` its errno — so the plain
+shapes work unadorned, and a program's own say themselves.
 
 ## std, the project's first files
 
@@ -142,8 +145,9 @@ generic type's methods carry the type, not the count of their arrival.
 
 The whole is a code no two different spellings fold onto: no twin a
 declaration order numbered off, no instance named by when it was first
-seen. `#[extern(C)]` keeps the C name and `main` the platform's door
-(`01-types.md`); everything else meets the mangler. Two compilations
+seen. `#[extern(C)]` keeps the C name and nothing else does; `main` meets the
+mangler like any name, the platform's door the wrapper the compiler arranges
+(`01-types.md`, and above). Two compilations
 of the same project say the same symbols — a library the linker can
 meet; two projects say them apart, the project's name each one's first
 segment.

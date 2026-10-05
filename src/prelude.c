@@ -1,10 +1,11 @@
 /* prelude.c -- the Syms the language itself reads by pointer.
  *
  * Option, Result, Copy, Drop -- the sugar's four -- std::meta's
- * TypeInfo, and std's panic, the door every runtime check fails
- * into (01-types.md). Nothing is declared here anymore: std's own
+ * TypeInfo, std's panic, the door every runtime check fails into
+ * (01-types.md), and std::fmt's two, the ends an E?() main has
+ * (12-projects.md). Nothing is declared here anymore: std's own
  * source holds them (std/option.ce, std/result.ce, std/copy.ce,
- * std/drop.ce, std/meta/meta.ce, std/panic.ce), and
+ * std/drop.ce, std/meta/meta.ce, std/panic.ce, std/fmt/), and
  * checkproject takes the Syms back from the tree the walks fill,
  * after pass 1 (12-projects.md). What remains is the storage and
  * the one lazy type -- the value's own derivation reads it, the
@@ -27,6 +28,12 @@ Sym *sym_typeinfo; /* std::meta's reflection model, set from the
 Sym *sym_panic;    /* std's one runtime fn, the checks' failure door
                     * -- the emitter reads it by pointer
                     * (01-types.md) */
+Sym *sym_fmt;      /* std::fmt's Fmt, the Err half's own words: an
+                    * E?() main's error type is checked against it
+                    * where the ending is declared (12-projects.md) */
+Sym *sym_exit;     /* std::fmt's exit, the ending answered as the
+                    * platform takes it -- the compiler's wrapper
+                    * calls it, the emitter reads it by pointer */
 
 /* TypeInfo itself, the type every @typeinfo answers with: one
  * instance, cached */
