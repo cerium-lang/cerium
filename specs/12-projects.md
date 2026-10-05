@@ -103,16 +103,17 @@ the one fn every runtime check fails into, `01-types.md`, Panic),
 own traits (`07-operators.md`) with `Copy` and `Drop` beside them, the two
 the compiler calls on its own, at a move and at a scope's end
 (`03-move.md`) — `std::io` and `std::fmt`, the doors and the words
-(`std::fmt`'s `print` the string of words, `exit` the ending an `E?()`
-main has), `std::sys`, the
+(`std::fmt`'s `print` the string of words), `std::sys`, the
 platform's own calls, the arguments among them (`args` the iterator the
 door fills), and `std::iter`, the `Iter` family itself
 (`10-iteration.md`) — each file in the namespace its path names, every
 item `pub`, reached by path or by use like any namespace's
-(`11-namespaces.md`). The one exception lives in the root beside the
-citizens: the entry fns, `run_unit` and `run_i32` and `run_err`, private
-to std — the wrapper the compiler arranges is their one caller, said
-above.
+(`11-namespaces.md`). In the root beside the citizens live two more
+kinds: `exit`, the ending an `E?()` main has answered as the platform
+takes it — pub like any citizen, run_err's own arm, a program free to
+call it itself — and the one exception: the entry fns, `run_unit` and
+`run_i32` and `run_err`, private to std — the wrapper the compiler
+arranges is their one caller, said above.
 
 The citizens live in std as source, and the names the language once
 held for them are free: a project may declare its own `Option`, its own

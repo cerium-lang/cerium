@@ -305,21 +305,3 @@ pub fn eprint<...T: Fmt>(const fmt: []u8, args: ...T) -> Result<usize, Error> {
     }
   }
 }
-
-/* the program's own ending, answered as the platform takes it: the
- * Ok half a clean zero, the Err half one -- the value eprinted
- * first, through the error type's own words, the newline after it
- * the line's own end, so the code alone does not have to say what
- * failed. The compiler's wrapper calls this with a main's ending
- * (12-projects.md); a program may call it itself, the door no less
- * open for being arranged. */
-pub fn exit<E: Fmt>(r: Result<(), E>) -> i32 {
-  match r {
-    Ok(n)  => 0,
-    Err(e) => {
-      eprint_one(&e);
-      eprint_one(&("\n"));
-      1
-    },
-  }
-}

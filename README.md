@@ -127,15 +127,15 @@ runtime checks out, the wraps a release owns (`01-types.md`).
   the typed writes, the built-ins' own rows — an integer its
   digits, a str its text, a float the arithmetic's own words in
   %.15g's shape — and the prints that join them to a door —
-  `print_one`, `eprint_one`, the general `fmt_to`, `exit` an E?()
-  ending answered as the platform takes it, `std::io` the
+  `print_one`, `eprint_one`, the general `fmt_to`, `std::io` the
   `Write` anything that takes bytes implements and the two doors
   the process was born with, `std::sys` the
   platform's own calls, the C `write` the door every output shares,
   `args` the program's own words, one iterator the asking, a `[]u8`
   per word into the platform's own table, `std::iter` the `Iter`
   family itself (`10-iteration.md`), and in the root beside the
-  citizens the entry fns — `run_unit`, `run_i32`, `run_err`, one per
+  citizens `exit` an E?() ending answered as the platform takes it
+  and the entry fns — `run_unit`, `run_i32`, `run_err`, one per
   ending a main has — private to std, the wrapper the compiler
   arranges their one caller (`12-projects.md`)
 

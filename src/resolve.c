@@ -2179,14 +2179,14 @@ checkproject(Srcfile **files, usize nfiles)
     sym_entry_unit = nsitem(std, "run_unit");
     sym_entry_i32 = nsitem(std, "run_i32");
     sym_entry_err = nsitem(std, "run_err");
-    { /* fmt's two, the ends an E?() main has: the Fmt its Err half
-       * prints through, and the exit an entry fn hands the ending
-       * to (12-projects.md) */
-      Ns *fns = nsopen("std::fmt");
-
-      sym_fmt = nsitem(fns, "Fmt");
-      sym_exit = nsitem(fns, "exit");
-    }
+    sym_exit = nsitem(std, "exit"); /* the ending an E?() main has,
+                                     * run_err's own arm, a program
+                                     * free to call it itself
+                                     * (entry.ce, 12-projects.md) */
+    /* the Err half's own words: an E?() main's error type is
+     * checked against it where the ending is declared
+     * (12-projects.md) */
+    sym_fmt = nsitem(nsopen("std::fmt"), "Fmt");
     { /* the operator traits, the sugar's own (07-operators.md), and
        * the two the compiler calls on its own -- Copy at a move,
        * Drop at a scope's end (03-move.md): the rewrite spells the
@@ -2213,7 +2213,7 @@ checkproject(Srcfile **files, usize nfiles)
     if (!sym_option || !sym_result || !sym_copy || !sym_drop || !sym_typeinfo || !sym_panic ||
         !sym_fmt || !sym_exit || !sym_entry_unit || !sym_entry_i32 || !sym_entry_err) {
       fprintf(stderr, "cerium: the standard library is incomplete: Option, Result, Copy, Drop,"
-                      " meta::TypeInfo, panic, fmt's Fmt and exit, entry's three runs -- one is"
+                      " meta::TypeInfo, panic, fmt's Fmt, exit, entry's three runs -- one is"
                       " missing from the sysroot (12-projects.md)\n");
       exit(1);
     }

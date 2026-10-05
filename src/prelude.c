@@ -31,9 +31,9 @@ Sym *sym_panic;    /* std's one runtime fn, the checks' failure door
 Sym *sym_fmt;      /* std::fmt's Fmt, the Err half's own words: an
                     * E?() main's error type is checked against it
                     * where the ending is declared (12-projects.md) */
-Sym *sym_exit;     /* std::fmt's exit, the ending answered as the
-                    * platform takes it -- an entry fn hands it the
-                    * ending, the emitter reads it by pointer */
+Sym *sym_exit;     /* std's exit (entry.ce), the ending answered as
+                    * the platform takes it -- run_err hands it the
+                    * ending; the prelude asks only that it stands */
 Sym *sym_entry_unit, *sym_entry_i32,
     *sym_entry_err; /* std::entry's
                      * three runs, one per ending a main has: the

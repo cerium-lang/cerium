@@ -5,8 +5,7 @@
  * every entry does the same three things: the two saved for sys's
  * own asking (sys/args.ce, the iterator they walk), the main
  * called, the ending answered -- a unit a clean zero, an i32 the
- * code itself, an E?() handed to fmt's exit, the Err half printed
- * through its own words there.
+ * code itself, an E?() handed to the exit below.
  *
  * The three are no one else's to call -- private to std, the use
  * and the qualified path both turned away (11-namespaces.md) -- for
@@ -14,9 +13,19 @@
  * call the main twice, a program's shape no program has. The
  * compiler takes the Syms by pointer at its own face-taking, the
  * private face among them, an arrangement like Copy's and Drop's
- * (the checker reads std::ops no less). */
+ * (the checker reads std::ops no less).
+ *
+ * The exit beside them is the other thing: the program's own
+ * ending, answered as the platform takes it -- the Ok half a clean
+ * zero, the Err half one, the value eprinted first through the
+ * error type's own words, the newline after it the line's own end,
+ * so the code alone does not have to say what failed. run_err's
+ * own arm, and a program may call it itself, the door no less open
+ * for being arranged. It lives here and not in fmt -- the words
+ * are fmt's, the ending the door's own -- and pub in std's root,
+ * beside panic: the two program-level verbs. */
 
-use std::fmt::{Fmt, exit};
+use std::fmt::{Fmt, eprint};
 use std::sys;
 
 fn run_unit(m: fn() -> (), n: i32, v: **u8) -> i32 {
@@ -33,4 +42,14 @@ fn run_i32(m: fn() -> i32, n: i32, v: **u8) -> i32 {
 fn run_err<E: Fmt>(m: fn() -> E?(), n: i32, v: **u8) -> i32 {
   sys::set_args(n, v);
   exit(m())
+}
+
+pub fn exit<E: Fmt>(r: Result<(), E>) -> i32 {
+  match r {
+    Ok(n)  => 0,
+    Err(e) => {
+      eprint("{}\n", e);
+      1
+    },
+  }
 }
