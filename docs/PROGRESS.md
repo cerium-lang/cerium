@@ -1800,3 +1800,49 @@ a *mut T answering a []mut T whole (01-types.md). args' next asks
 it now, and the spec's own Iterators -- whose ptr-and-len literals
 were a shape the language never grew -- spell it too. 495 green,
 two of them @slice's own.
+
+The groundwork under a print. A format string is a const []u8 the
+compiler itself must read, a byte at a time, and the evaluator
+knew only an array's elements -- a slice's were "a borrow of its
+storage", its len the same refusal. Both are the walk's own now:
+an index reads a slice's bytes the way a literal's are read, the
+bounds the len the view carries, and the len itself folds where a
+field read finds it -- the ptr alone stays a borrow, no address
+names it at compile time (08-reflection.md). The bytes were in the
+Val all along; only the asking had been refused.
+
+Reading them inside a generic asked one thing more. A const slice
+argument reached the instance's re-walk as a runtime slot -- the
+integer's own fold to an Nint an earlier round spelled, but a
+string sat in memory and every read of it was a black box's -- so
+the counting body, holes(fmt), never ran. A const []u8 parameter
+now folds to the Nstr it spelled, on the value walk and the place
+walk alike (fmt.len's fmt is a place), and a runtime position
+takes the fold for the literal it is, the data segment its home.
+
+And the counting asked for a fn the two shapes had never met: a
+const word with a pack behind it, tally(const fmt: []u8, ...T).
+The const-mode test demanded the argument count equal the declared
+count, and a pack absorbs any tail -- three arguments, two
+parameters, tally never const at all. The test reads a pack's tail
+now. The deeper cut sat under it: cvals was sized by the argument
+count while the instantiator reads the bake by the declaration's
+own -- an empty pack, tally("") with nothing behind it, read past
+the array's end and handed the instance a garbage pointer, a
+segfault whose cut-short qbe IL named an iterator's instance, the
+corruption's nearest neighbour, not its home. The array holds the
+chain's widest declaration now, and the empty pack is a row of
+none like any other.
+
+The spec owes none of this a word: 08-reflection.md promised a
+compile time that is not a separate language -- a value the
+compiler knows and a body without side effects is the run itself
+-- and this is the implementation arriving. The tests hold the
+three: 203 a const string read a byte at a time, 204 a const word
+before a pack, and 220 the print's own contract -- the format's
+holes a compile-time count, the pack's rows another, a call that
+disagrees refused before any program runs, the @compileError the
+instance's re-check reports, an .expect of ! in the run suite
+where the pack's truths already live (115, 116). 498 green, three
+of them this round's.
+

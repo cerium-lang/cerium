@@ -1526,19 +1526,25 @@ ceval(Ast *e, Env env, Type *want)
     r.len = 0;
     return r;
   }
-  case Nindex: { /* an element of a known array: the index checked
-                  * against the length, the read against the element's
-                  * own type (01-types.md) */
-    Val b = ceval(e->v.n2.a, env, 0);
-    Val ix = ceval(e->v.n2.b, env, 0);
+  case Nindex: { /* an element of a known array or slice: the index
+                  * checked against the length, the read against the
+                  * element's own type (01-types.md). A slice's bytes
+                  * the walk holds the way a literal's own do -- a
+                  * const fn reads a const []u8 a byte at a time, the
+                  * print's format the first asking */
+    Val   b = ceval(e->v.n2.a, env, 0);
+    Val   ix = ceval(e->v.n2.b, env, 0);
+    usize n;
 
-    if (b.t->k != Tyarray)
+    if (b.t->k != Tyarray && b.t->k != Tyslice)
       cerrat(e->v.n2.a,
-             "only an array's elements are known at compile time: %s is not one (08-reflection.md)",
+             "only an array's or a slice's elements are known at compile time: %s is neither "
+             "(08-reflection.md)",
              tnm(b.t));
     if (ix.t->k != Tyint || isfloatty(ix.t))
       cerrat(e->v.n2.b, "an index is an integer, this is %s (01-types.md)", tnm(ix.t));
-    if ((i64) ix.i < 0 || ix.i >= b.t->n)
+    n = b.t->k == Tyarray ? b.t->n : b.len;
+    if ((i64) ix.i < 0 || ix.i >= n)
       cerrat(e->v.n2.b, "index %ld out of range for %s (01-types.md)", (long) (i64) ix.i, tnm(b.t));
     return b.elems[ix.i];
   }
@@ -1671,15 +1677,22 @@ ceval(Ast *e, Env env, Type *want)
   }
   case Naccess: { /* a field by name: the struct's rows in their
                    * declaration order, the union's one, the slice's
-                   * two a borrow the evaluation does not take (01) */
+                   * two -- the len a number the walk holds (a
+                   * literal's own, a const's, a call's: the bytes and
+                   * the count ride together, 08-reflection.md), the
+                   * ptr a borrow of storage no address names at
+                   * compile time (01) */
     Val   b = ceval(e->v.fld.e, env, 0);
     char *nm = e->v.fld.name;
     usize i;
 
-    if (b.t->k == Tyslice)
+    if (b.t->k == Tyslice) {
+      if (strcmp(nm, "len") == 0)
+        return valint(b.len, tyint(IN_USIZE));
       cerrat(e,
              "'%s' of a slice is a borrow of its storage: evaluation takes none (08-reflection.md)",
              nm);
+    }
     if (b.t->k != Tystruct && b.t->k != Tyunion)
       cerrat(e, "%s has no fields (01-types.md)", tnm(b.t));
     if (b.t->nargs != (usize) b.t->sym->ngparams) /* a generic's rows

@@ -62,6 +62,34 @@ Sym *bodyfn;
 
 static Type *rplace1(Ast *e, Fenv *fe);
 
+/* a const []u8 parameter's bake, held by name: is it one -- the
+ * shape the literal spells, no wider slice (08-reflection.md) */
+static int
+isconststr(Val *cv)
+{
+  return cv->t->k == Tyslice && cv->t->t->k == Tyint && cv->t->t->num == IN_U8;
+}
+
+/* the bake's bytes back as the literal they spelled: every read
+ * after them folds -- the len, an index, another const fn's own
+ * argument -- and a runtime position takes it for the literal it
+ * is, the data segment its home (08-reflection.md) */
+static void
+foldconststr(Ast *e, Val *cv)
+{
+  char *b = cv->len ? arenaalloc(cv->len + 1) : 0;
+  usize i;
+
+  for (i = 0; i < cv->len; i++)
+    b[i] = (char) cv->elems[i].i;
+  if (b)
+    b[cv->len] = 0; /* the NUL the data segment's line wants */
+  memset(&e->v, 0, sizeof e->v);
+  e->k = Nstr;
+  e->v.s.s = b;
+  e->v.s.len = cv->len;
+}
+
 /* a place, read: the base chain is checked, nothing moves -- reads
  * of fields and elements do not take what they read (03-move.md).
  * NULL when e is not a place at all. */
@@ -92,6 +120,13 @@ rplace1(Ast *e, Fenv *fe)
         berr(e, "'%s' has been moved", root->name);
       if (touchconflict(e, fe, 0))
         berr(e, "'%s' is borrowed (01-types.md)", root->name);
+      /* a const []u8's only place is the literal it folds to -- the
+       * value walk's own fold, here for a place walk the value walk
+       * reads the base of: fmt.len's fmt is a place, and without
+       * the fold the len reads a runtime slot the bake never gave
+       * it (08-reflection.md) */
+      if (root->isconst && root->cv && isconststr(root->cv))
+        foldconststr(e, root->cv);
       return root->cur;
     }
     return 0; /* a global path: rexpr's own ground */
@@ -1090,11 +1125,32 @@ callfn(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe)
                   * compile-time-known argument picks it first
                   * (08-reflection.md) */
   for (q = head; q; q = q->next)
-    if (vlen(q->decl->v.fn.params) == n && fnconstparams(q))
-      constmode = 1;
-  cvals = constmode && n ? arenaalloc(n * sizeof *cvals) : 0;
-  if (cvals)
-    memset(cvals, 0, n * sizeof *cvals);
+    if (fnconstparams(q)) { /* the pack takes the tail whole, its
+                             * rows any count: the arity the plain
+                             * spellings match on is the head's own
+                             * (04-generics.md) */
+      usize qn = vlen(q->decl->v.fn.params);
+
+      if (n == qn || (qn && q->decl->v.fn.params[qn - 1]->v.param.t->k == Ntpack && n + 1 >= qn))
+        constmode = 1;
+    }
+  {
+    usize mx = n; /* the folded view: the pack's own tuple is an
+                   * argument the count here does not see, and the
+                   * emitter reads the bake by the declaration's own
+                   * count -- the array holds both (08) */
+
+    for (q = head; q; q = q->next)
+      if (fnconstparams(q)) {
+        usize qn = vlen(q->decl->v.fn.params);
+
+        if (qn > mx)
+          mx = qn;
+      }
+    cvals = constmode && mx ? arenaalloc(mx * sizeof *cvals) : 0;
+    if (cvals)
+      memset(cvals, 0, mx * sizeof *cvals);
+  }
   runtime = 0;
   if (constmode) {
     for (; s; s = s->next) {
@@ -1276,18 +1332,24 @@ rexprpath1(Ast *e, Fenv *fe, char *name, Type *want, Ns *ns)
                                                   * (01-types.md) */
       berr(e, "'%s' is borrowed (01-types.md)", name);
     }
+    /* a const parameter this walk holds an integer for: the read
+     * folds where it stands -- a const generic parameter has no
+     * runtime slot of its own, and the number is the instance's
+     * (08-reflection.md) */
     if (l->isconst && l->cv && l->cv->t->k == Tyint && l->cv->t->num != IN_F32 &&
-        l->cv->t->num != IN_F64) { /* a const
-                                    * parameter this walk holds an integer
-                                    * for: the read folds where it stands --
-                                    * a const generic parameter has no
-                                    * runtime slot of its own, and the
-                                    * number is the instance's. A slice's
-                                    * bytes ride their parameter's own
-                                    * slot, as ever (08-reflection.md) */
+        l->cv->t->num != IN_F64) {
       memset(&e->v, 0, sizeof e->v);
       e->k = Nint;
       e->v.i.num = l->cv->i;
+      return l->cur;
+    }
+    /* a const []u8 parameter the bake holds a string for: the read
+     * folds to the literal it spelled, and every read after it
+     * folds too -- the len, an index, another const fn's own
+     * argument -- while a runtime position takes it for the literal
+     * it is, the data segment its home (08-reflection.md) */
+    if (l->isconst && l->cv && isconststr(l->cv)) {
+      foldconststr(e, l->cv);
       return l->cur;
     }
     if (!iscopy(l->cur)) { /* assignment moves by default (03-move.md) */

@@ -1,0 +1,31 @@
+/* the ask and the giving, counted apart: the format's holes a
+ * compile-time count, the pack's rows another, and a call that
+ * disagrees is refused before any program runs (08-reflection.md,
+ * 04-generics.md). */
+
+use std::fmt::Fmt;
+
+fn holes(const fmt: []u8) -> usize {
+  let mut n: usize = 0;
+  let mut i: usize = 0;
+
+  for i < fmt.len {
+    if fmt[i] == 123 { /* '{' */
+      n = n + 1;
+    };
+    i = i + 1;
+  }
+  n
+}
+
+fn tally<...T: Fmt>(const fmt: []u8, args: ...T) -> usize {
+  const if holes(fmt) != @count(...T) {
+    @compileError("the format asks a count of values the arguments do not give")
+  } else {
+    holes(fmt)
+  }
+}
+
+fn main() -> i32 {
+  @cast<i32>(tally("{}", 1, 2))
+}
