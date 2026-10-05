@@ -1,6 +1,0 @@
-/* std::Copy -- the copy marker (03-move.md): a type that impls it
- * copies instead of moving. No members: the impl is the whole
- * declaration, and the exclusion checks read the Sym by pointer
- * (04-generics.md). */
-
-pub trait Copy { }

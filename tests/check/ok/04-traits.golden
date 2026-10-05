@@ -1,4 +1,5 @@
 (file
+  (use std::ops)
   (trait Iterator
     (type Item)
     (fn next fn(*mut Self) -> ?Self::Item))

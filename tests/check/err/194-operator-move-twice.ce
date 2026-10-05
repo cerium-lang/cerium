@@ -2,6 +2,7 @@
  * the left one moves into the call, and the second read of the
  * same place finds it dead -- the words the trait's own
  * signature says, the same one a spelled call answers with */
+use std::ops::Drop;
 use std::ops::Add;
 
 struct W { n: i32 }

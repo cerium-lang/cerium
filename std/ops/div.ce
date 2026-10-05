@@ -9,7 +9,6 @@
  * not read its own face (12-projects.md), so the marker arrives
  * by use, the file's own binding. */
 
-use std::Copy;
 
 pub trait Div<Rhs = Self> {
   type Output;

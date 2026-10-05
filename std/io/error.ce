@@ -7,7 +7,6 @@
  * number beside the namespace's name, so a main that hands it
  * back prints something a reader can act on. */
 
-use std::Result;
 use std::fmt::{Fmt, Writer};
 
 pub enum Error {

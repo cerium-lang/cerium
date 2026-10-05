@@ -9,7 +9,6 @@
  * count handed back is the whole print's own, however many
  * writes it took. */
 
-use std::Result;
 use std::io::{Error, Stdout, Stderr, Write};
 
 pub fn fmt_to<T: Fmt>(v: *T, w: dyn mut Write) -> Result<usize, Error> {

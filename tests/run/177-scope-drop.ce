@@ -6,6 +6,9 @@
  * bindings die at its own closing brace, before the outer one's
  * later bindings. */
 
+use std::ops::Drop;
+
+
 #[extern(C)]
 fn write(fd: i32, buf: *u8, len: usize) -> usize;
 

@@ -1,5 +1,8 @@
 /* a pattern impl whose bound the receiver cannot answer: the impl
  * is not a fit, and with no other, no impl at all (04-generics.md) */
+
+use std::ops::{Copy, Drop};
+
 trait Show {
   fn show(self: *Self) -> u32;
 }

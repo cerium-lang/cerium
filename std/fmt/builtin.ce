@@ -8,7 +8,6 @@
  * table -- a cast the caller's way into these rows, their own a
  * later milestone's. */
 
-use std::Result;
 use std::io::Error;
 
 impl Fmt for i32 {

@@ -7,7 +7,7 @@
     (fn scale fn(P, P) -> P))
   (fn main fn() -> i32))
 (file
-  (use std::Copy)
+  (use std::ops::Copy)
   (trait Scale<Rhs>
     (type Output)
     (fn scale fn(Self, Rhs) -> Self::Output))

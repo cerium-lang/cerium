@@ -6,7 +6,6 @@
  * done when its writes are; the count is the Writer's own, and
  * the print that owns the Writer answers with it. */
 
-use std::Result;
 use std::io::Error;
 
 pub trait Fmt {

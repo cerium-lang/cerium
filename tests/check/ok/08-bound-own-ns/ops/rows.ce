@@ -2,7 +2,7 @@
  * naming it: the coherence walks read the bound back in this
  * file's context, whatever file the checker served last
  * (11-namespaces.md). */
-use std::Copy;
+use std::ops::Copy;
 
 pub trait Scale<Rhs = Self> {
   type Output;

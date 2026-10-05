@@ -10,11 +10,10 @@
  * difference a bool's own idea, the row here the spelling
  * (07-operators.md). No `BitXorAssign`: the language carries no
  * `^=` to sugar it, and a trait without its operator is a trait
- * nobody calls (07-operators.md). The borrowed rows below name
- * Copy: a library does not read its own face (12-projects.md),
- * so the marker arrives by use, the file's own binding. */
+ * nobody calls (07-operators.md). The borrowed rows below
+ * name Copy: the marker beside them in std::ops now, a bare
+ * name away (12-projects.md). */
 
-use std::Copy;
 
 pub trait BitXor<Rhs = Self> {
   type Output;

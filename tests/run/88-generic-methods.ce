@@ -3,6 +3,9 @@
  * a member -- the impl's parameters and the method's own bound
  * together at the call, re-checked where a bound carried them
  * (04-generics.md) */
+
+use std::ops::Copy;
+
 trait Store {
   fn get<K>(self: *mut Self, k: *K) -> ?u32;
 }

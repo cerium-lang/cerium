@@ -1,3 +1,5 @@
+use std::ops::{Copy, Drop};
+
 trait Iterator {
   type Item;
   fn next(self: *mut Self) -> ?Self::Item;

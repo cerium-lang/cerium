@@ -9,6 +9,7 @@
  * the first row's own: the pick the receiver would have made
  * alone. The sugar walks the same rows; the generic's re-check
  * lands on them too. */
+use std::ops::{Copy, Drop};
 use std::ops::Add;
 
 struct D { x: i32 }

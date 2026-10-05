@@ -10,7 +10,6 @@
  * for whoever owns the Writer, the print's own answer: the whole
  * print in one number however many writes it took. */
 
-use std::Result;
 use std::io::{Error, Write};
 
 pub struct Writer {

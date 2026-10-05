@@ -6,7 +6,6 @@
  * in std::fmt, the join drawn from that side so the arrow
  * between the two namespaces points one way. */
 
-use std::Result;
 
 pub trait Write {
   fn write(self: *mut Self, buf: []u8) -> Result<usize, Error>;

@@ -8,11 +8,9 @@
  * case -- the rows here answering with themselves. The floats
  * ride along: negating one is its own arithmetic, nothing like
  * the remainder's integer idea (rem.ce). The borrowed row below
- * names Copy: a library does not read its own face
- * (12-projects.md), so the marker arrives by use, the file's own
- * binding. */
+ * names Copy: the marker beside them in std::ops now, a bare
+ * name away (12-projects.md). */
 
-use std::Copy;
 
 pub trait Neg {
   type Output;

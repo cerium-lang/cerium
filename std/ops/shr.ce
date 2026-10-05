@@ -8,11 +8,9 @@
  * rows here, all Rhs = Self, are for the types the table does
  * not take. `Rhs` defaults to Self (04-generics.md); the answer
  * is the `Output` associated type (05-traits.md), the rows here
- * answering with themselves. The borrowed rows below name Copy:
- * a library does not read its own face (12-projects.md), so the
- * marker arrives by use, the file's own binding. */
+ * answering with themselves. The borrowed rows below name Copy: the marker beside them in
+ * std::ops now, a bare name away (12-projects.md). */
 
-use std::Copy;
 
 pub trait Shr<Rhs = Self> {
   type Output;

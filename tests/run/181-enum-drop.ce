@@ -4,6 +4,9 @@
  * not a "was this moved?" flag. A for-let's payload binding dies at
  * every round's end (10-iteration.md). */
 
+use std::ops::Drop;
+
+
 #[extern(C)]
 fn write(fd: i32, buf: *u8, len: usize) -> usize;
 

@@ -9,11 +9,10 @@
  * built-in table does not take. The floats stay out: a NaN
  * equals nothing, itself included, so the law Eq assumes does
  * not hold over them, the calls refused, the operators answering
- * as the language always did. The borrowed rows below name Copy:
- * a library does not read its own face (12-projects.md), so the
- * marker arrives by use, the file's own binding. */
+ * as the language always did. The borrowed rows below
+ * name Copy: the marker beside them in std::ops now, a bare
+ * name away (12-projects.md). */
 
-use std::Copy;
 
 pub trait Eq {
   fn eq(self: Self, other: Self) -> bool;

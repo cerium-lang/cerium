@@ -119,7 +119,7 @@ moves is what you wrote.
 
 A type that owns a resource implements `Drop`: its destructor runs when the
 binding that owns the value reaches the end of its scope. `Copy` and `Drop`
-are std's own — `std::copy.ce` and `std::drop.ce`, read by pointer — so the
+are std's own — in `std::ops`, the operator family, read by pointer — so the
 exclusion below holds whatever the project declares under either name
 (`12-projects.md`). The running example is
 a file handle:

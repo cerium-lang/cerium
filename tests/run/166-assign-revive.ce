@@ -4,6 +4,7 @@
  * holding the value it was given, alive again (03-move.md). Three
  * answers: the plain store, the call that moves the left out and
  * stores the answer back, and the self-assignment. */
+use std::ops::Drop;
 use std::ops::Add;
 
 struct W { n: i32 }

@@ -9,11 +9,9 @@
  * own idea, and the language's answer for them is the answer
  * here. No `RemAssign`: the language carries no `%=` to sugar
  * it, and a trait without its operator is a trait nobody calls
- * (07-operators.md). The borrowed rows below name Copy: a
- * library does not read its own face (12-projects.md), so the
- * marker arrives by use, the file's own binding. */
+ * (07-operators.md). The borrowed rows below name Copy: the marker beside them in
+ * std::ops now, a bare name away (12-projects.md). */
 
-use std::Copy;
 
 pub trait Rem<Rhs = Self> {
   type Output;

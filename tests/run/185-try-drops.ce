@@ -2,6 +2,9 @@
  * owns runs its destructor on the way (03-move.md) -- the early exit
  * carrying its own, the landing one the closing brace's. */
 
+use std::ops::Drop;
+
+
 #[extern(C)]
 fn write(fd: i32, buf: *u8, len: usize) -> usize;
 

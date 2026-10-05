@@ -117,9 +117,12 @@ runtime checks out, the wraps a release owns (`01-types.md`).
   call into std's panic (`01-types.md`)
 - **std** — a directory the compiler reads as the project's first
   files (`CERIUM_SYSROOT` names where it lives), the prelude —
-  `Option`, `Result`, `Copy`, `Drop`, `panic` — bound without a use,
+  `Option`, `Result`, `panic`, the language's citizens — bound
+  without a use into every file, std's own reading it like anyone,
   `pub use` the re-export (`11-namespaces.md`), `std::ops` the
-  operator traits (`07-operators.md`), `std::fmt` the `Fmt` a type
+  operator traits with `Copy` and `Drop` beside them — the two the
+  compiler calls on its own, riding no prelude (`07-operators.md`),
+  `std::fmt` the `Fmt` a type
   implements to print itself, the `Writer` that joins a sink to
   the typed writes, the built-ins' own rows — an integer its
   digits, a str its text, a float the arithmetic's own words in

@@ -3,6 +3,9 @@
  * conditional's own, the untaken discarded before checking, so it
  * may hold code that only compiles for some instantiations
  * (04-generics.md) */
+
+use std::ops::Copy;
+
 static mut S: u32 = 0;
 
 /* the generic's own length decides: the declaration defers, each

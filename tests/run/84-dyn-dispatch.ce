@@ -1,5 +1,8 @@
 /* the fat handle: made where the impl is known, called where it is
  * not -- the vtable carries the choice (06-dispatch.md) */
+
+use std::ops::Copy;
+
 trait Show {
   fn show(self: *Self) -> u32;
 }

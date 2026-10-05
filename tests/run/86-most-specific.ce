@@ -3,6 +3,9 @@
  * receiver cannot answer keeping its impl out of the running -- the
  * sugar, the explicit form, a handle's table, and a bound's
  * instantiation all pick the same one */
+
+use std::ops::{Copy, Drop};
+
 trait Show {
   fn show(self: *Self) -> u32;
 }

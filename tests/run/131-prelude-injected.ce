@@ -1,8 +1,10 @@
-/* the prelude, injected: Option, Result, Copy, Drop bound into
- * every user file without a use (12-projects.md) -- the injected
- * names yield to everything declared, everything a use brought in.
- * Some and None are std::Option's variants, not names in scope: a
- * bare Some rides the sugar's owner lookup (01-types.md). */
+/* the prelude, injected: Option, Result and panic bound into every
+ * file without a use, std's own files reading the face like anyone
+ * (12-projects.md) -- the injected names yield to everything
+ * declared, everything a use brought in. Copy and Drop ride no
+ * prelude: std::ops names them by use. Some and None are
+ * std::Option's variants, not names in scope: a bare Some rides the
+ * sugar's owner lookup (01-types.md). */
 
 fn main() -> i32 {
   let x: Option<i32> = Some(3);
