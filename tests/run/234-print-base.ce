@@ -1,0 +1,22 @@
+/* the base, a spec's fifth word: x o b the letters, the digits
+ * lowercase, the integers' asking alone -- the floats and the
+ * strs take no notice; a negative its magnitude and its sign, a
+ * two's complement its bits; the x an alignment follows is a
+ * fill, the x a '}' follows the base (12-projects.md) */
+use std::fmt::print;
+
+fn main() -> i32 {
+  print("[{:x}]\n", 255);
+  print("[{:o}]\n", 8);
+  print("[{:b}]\n", 5);
+  print("[{:>6x}]\n", 255);
+  print("[{:x}]\n", -255);
+  print("[{:b}]\n", 0);
+  print("[{:x}]\n", 123456789);
+  print("[{:x}] [{:x}]\n", 2.5, "hi");
+  print("[{:x>8}]\n", 42);
+  match print("[{:8b}]\n", 5) {
+    Ok(n)  => @cast<i32>(n),
+    Err(e) => 1,
+  }
+}

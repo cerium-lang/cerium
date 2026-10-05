@@ -4,36 +4,39 @@
  * file is it: a u8 prints as the number it is, not the byte; a
  * str as the text it holds; a float in the arithmetic's own
  * words (writer.ce), an f32 honest about the double it widens
- * into. The narrow integers (i8, i16, u16, u32) stay off the
- * table -- a cast the caller's way into these rows, their own a
- * later milestone's. */
+ * into. The integers go through write_int and write_uint, the
+ * base a hole asks theirs (writer.ce again); the str's own cut
+ * is the precision's, read below where the str is spelled. The
+ * narrow integers (i8, i16, u16, u32) stay off the table -- a
+ * cast the caller's way into these rows, their own a later
+ * milestone's. */
 
 use std::io::Error;
 
 impl Fmt for i32 {
   fn fmt(self: *Self, w: *mut Writer) -> Result<(), Error> {
-    w.write_i32(*self)?;
+    w.write_int(@cast<i64>(*self))?;
     Ok(())
   }
 }
 
 impl Fmt for i64 {
   fn fmt(self: *Self, w: *mut Writer) -> Result<(), Error> {
-    w.write_i64(*self)?;
+    w.write_int(*self)?;
     Ok(())
   }
 }
 
 impl Fmt for u64 {
   fn fmt(self: *Self, w: *mut Writer) -> Result<(), Error> {
-    w.write_u64(*self)?;
+    w.write_uint(*self)?;
     Ok(())
   }
 }
 
 impl Fmt for usize {
   fn fmt(self: *Self, w: *mut Writer) -> Result<(), Error> {
-    w.write_usize(*self)?;
+    w.write_uint(@cast<u64>(*self))?;
     Ok(())
   }
 }
@@ -47,14 +50,21 @@ impl Fmt for bool {
 
 impl Fmt for []u8 {
   fn fmt(self: *Self, w: *mut Writer) -> Result<(), Error> {
-    w.write_str(*self)?;
+    let s = *self;
+    let end = if w.prec > 0 && s.len > w.prec {
+      w.prec /* the asking cuts the str to its own bytes; the other values take no notice */
+    } else {
+      s.len
+    };
+
+    w.write_str(s[..end])?;
     Ok(())
   }
 }
 
 impl Fmt for u8 {
   fn fmt(self: *Self, w: *mut Writer) -> Result<(), Error> {
-    w.write_i64(@cast<i64>(*self))?;
+    w.write_int(@cast<i64>(*self))?;
     Ok(())
   }
 }
