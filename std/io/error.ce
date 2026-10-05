@@ -1,0 +1,13 @@
+/* std::io::Error -- a system call failed: the errno it set,
+ * read from the platform's own thread-local word (std::sys).
+ * The doors' own answer when the platform takes the bytes back
+ * (stdout.ce, stderr.ce), and every sink's after them --
+ * wherever bytes go, this is the error that names the
+ * failure. */
+
+use std::sys;
+
+pub enum Error {
+  Sys(i32), /* a system call failed: the errno it set, read from
+             * the platform's own thread-local word (std::sys) */
+}

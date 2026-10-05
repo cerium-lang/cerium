@@ -7,7 +7,7 @@
  * the u64's own edges: zero, and the widest a u64 can be, all
  * twenty digits. */
 
-use std::fmt::{Fmt, Writer};
+use std::fmt::{Fmt, Writer, print_one};
 use std::io;
 
 struct Pair { a: i32, b: i64 }
@@ -35,7 +35,7 @@ impl Fmt for Flag {
 }
 
 fn bit<T: Fmt>(v: *T, want: usize) -> i32 {
-  match io::print(v) {
+  match print_one(v) {
     Ok(n)  => @cast<i32>(n == want),
     Err(e) => 0,
   }

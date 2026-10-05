@@ -1,0 +1,32 @@
+/* std::fmt's prints -- the join of a Fmt to a door, made from
+ * this side so the two namespaces do not hold each other: io
+ * owns the doors and the sink's contract (std::io), fmt owns
+ * the shapes, and only fmt reaches across, one way. fmt_to the
+ * general one, any sink; print_one and eprint_one the two
+ * conveniences, the process's own doors. The _one is honest and
+ * held-for: a print is coming that takes a string of words for
+ * many values, and the plain print and eprint wait for it. The
+ * count handed back is the whole print's own, however many
+ * writes it took. */
+
+use std::Result;
+use std::io::{Error, Stdout, Stderr, Write};
+
+pub fn fmt_to<T: Fmt>(v: *T, w: dyn mut Write) -> Result<usize, Error> {
+  let mut wr = Writer { w: w };
+
+  v.fmt(&mut wr)?;
+  wr.written()
+}
+
+pub fn print_one<T: Fmt>(v: *T) -> Result<usize, Error> {
+  let mut out = Stdout { };
+
+  fmt_to(v, &mut dyn out)
+}
+
+pub fn eprint_one<T: Fmt>(v: *T) -> Result<usize, Error> {
+  let mut out = Stderr { };
+
+  fmt_to(v, &mut dyn out)
+}

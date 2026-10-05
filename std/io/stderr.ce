@@ -1,0 +1,21 @@
+/* std::io::Stderr -- the process's other door, fd 2, born open
+ * like its sibling (stdout.ce): where the wrong and the failing
+ * go out. The same plain answer -- the count the platform took,
+ * the errno when it takes none (error.ce, std::sys). */
+
+use std::Result;
+use std::sys;
+
+pub struct Stderr { }
+
+impl Write for Stderr {
+  fn write(self: *mut Self, buf: []u8) -> Result<usize, Error> {
+    let n = sys::write(2, buf.ptr, buf.len);
+
+    if n < 0 {
+      Err(Error::Sys(sys::errno()))
+    } else {
+      Ok(@cast<usize>(n))
+    }
+  }
+}

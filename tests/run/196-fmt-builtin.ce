@@ -9,16 +9,15 @@
  * three and its newline, 1e300 five, -inf four, the f32's
  * widened seventeen -- a bit each, 0b1111 when all agree. */
 
-use std::fmt::Fmt;
-use std::io;
+use std::fmt::{Fmt, print_one};
 
 fn show<T: Fmt>(v: *T) -> i32 {
   let nl = "\n";
-  let a = match io::print(v) {
+  let a = match print_one(v) {
     Ok(n) => @cast<i32>(n),
     Err(r) => 0 - 100,
   };
-  let b = match io::print(&nl) {
+  let b = match print_one(&nl) {
     Ok(n) => @cast<i32>(n),
     Err(r) => 0 - 100,
   };

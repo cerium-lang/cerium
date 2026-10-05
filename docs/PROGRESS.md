@@ -1680,3 +1680,21 @@ rounding (0.1+0.2 a clean 0.3, the repeating third), the
 specials, the ladders both ways, the decade's pull (1e300 on
 one, 1e-16 the same), the subnormal dust -- the .stdout the
 words, the exit four counts of bytes, a bit each. 483 green.
+
+The prints began in std::io, and the map of the namespaces turned
+a circle: io reached across for Fmt and the Writer to print with,
+fmt reached back for io's Error and Write everywhere a shape was
+spelled, and the two held each other. Nothing broke -- std walks
+the whole tree in one parse, no unit waiting on another -- but
+the map was wrong, and the wrong was worth fixing before anything
+grew on it. The three prints moved across: fmt_to, print_one and
+eprint_one now live in std::fmt (print.ce), io a door-keeper's
+namespace again -- Write, Error, Stdout, Stderr, each its own
+file now, io.ce gone -- and the arrow between the two points one
+way, fmt to io, the way Rust draws it. The names changed on the
+road: print and eprint are held for the print to come, a string
+of a value's own words for many values at once, and printing one
+value gets its own honest name -- print_one, eprint_one; fmt_to,
+the general join to any sink, keeps the name it already answered
+to. The tests read the new names through the same doors: 189,
+190 and 196 print as before, 483 green.

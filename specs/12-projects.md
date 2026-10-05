@@ -118,8 +118,8 @@ own, a `..` or a link standing somewhere else — it is resolved to the
 directory itself: one directory names the project one way. A user
 project's files stand in the anonymous root, so the name says what the
 root cannot; std's stand in the `std` namespace, which is its project's
-root, and the path walks from there: `std::io::print` spells
-`ceri3std2io5print`, a root `fn fail` in a project named `web` spells
+root, and the path walks from there: `std::fmt::print_one` spells
+`ceri3std3fmt9print_one`, a root `fn fail` in a project named `web` spells
 `ceri3web4fail`, and `my::app::parse` and `my_app::parse` — the pair
 the underscore's two meanings once folded together — spell
 `ceri3web2my3app5parse` and `ceri3web6my_app5parse`.

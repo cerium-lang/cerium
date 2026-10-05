@@ -14,13 +14,14 @@ trait Show {
 
 impl Show for Point {
   fn show(self: *Self) -> () {
-    print(@cast<voidptr>(self));
+    print_one(@cast<voidptr>(self));
   }
 }
 ```
 
-`print` and `close` below are ordinary functions from `std::io`, brought into
-scope with `use std::io;` (`11-namespaces.md`) — not `@` builtins, which are
+`print_one` and `close` below are ordinary functions from `std::fmt` and
+`std::io`, brought into scope with `use std::fmt;` / `use std::io;`
+(`11-namespaces.md`) — not `@` builtins, which are
 listed in `08-reflection.md`.
 
 `self` is an ordinary parameter — `*Self` for a read-only method, `*mut Self`
