@@ -935,14 +935,14 @@ closure(void) /* the "fn" is peeked */
   return n;
 }
 
-/* the ten the language provides (08-reflection.md) -- a misspelling
+/* the eleven the language provides (08-reflection.md) -- a misspelling
  * parses silently otherwise, and a golden test froze one for a week */
 static int
 isbuiltin(const char *name)
 {
   static const char *const names[] = {"sizeof",   "alignof",      "offset", "cast",
                                       "typeinfo", "typeof",       "field",  "count",
-                                      "take",     "compileError", 0};
+                                      "take",     "compileError", "slice",  0};
   usize                    i;
 
   for (i = 0; names[i]; i++)
@@ -959,7 +959,7 @@ builtin(void) /* the "@" is peeked */
   next(); /* @ */
   n->v.blt.name = wantident("a builtin name");
   if (!isbuiltin(n->v.blt.name))
-    perr("unknown builtin '@%s' (08-reflection.md lists the ten)", n->v.blt.name);
+    perr("unknown builtin '@%s' (08-reflection.md lists them)", n->v.blt.name);
   if (peek() == Tlt) {
     next();
     for (;;) {

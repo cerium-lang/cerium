@@ -1,0 +1,9 @@
+/* the entry fns are the wrapper's alone: private to std, the use
+ * turned away with the path alike (11-namespaces.md) -- a hand
+ * inside would set the words twice and call the main twice, a
+ * program's shape no program has. The compiler takes the Syms by
+ * pointer at its own face-taking, the private face among them. */
+
+use std::run_unit;
+
+fn main() -> i32 { 0 }

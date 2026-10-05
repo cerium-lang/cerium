@@ -439,7 +439,7 @@ checked(const char *path, usize *np, usize *nstdp)
   for (i = 0; i < nu; i++)
     vappend(&files, &user[i]);
   *np = vlen(files);
-  checkproject(files, *np, *nstdp);
+  checkproject(files, *np);
   return files;
 }
 

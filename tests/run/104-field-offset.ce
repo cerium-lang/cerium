@@ -55,6 +55,6 @@ fn walk() -> u32 { /* the const for's rounds: each name resolves in
   r
 }
 
-fn main() -> u32 {
+fn main() -> i32 {
   offsets() + fieldrw() + handrw() + unionread() + walk()
 }

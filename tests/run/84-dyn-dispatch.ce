@@ -23,7 +23,7 @@ impl Reset for Point {
 fn run(a: dyn Show) -> u32 {
   a.show()
 }
-fn main() -> u32 {
+fn main() -> i32 {
   let mut p = Point{ x: 3, y: 4 };
   let mut q = Point{ x: 30, y: 40 };
   let mut w: Wrap<u32> = Wrap{ v: 50 };
@@ -32,5 +32,5 @@ fn main() -> u32 {
   let was = p.x + p.y;         /* read before the mut handle freezes it */
   let m: dyn mut Reset = &mut dyn p;
   m.reset();                   /* through the handle, the write lands */
-  return run(a) + run(b) + was;  /* p stays frozen with its handle */
+  run(a) + run(b) + was  /* p stays frozen with its handle */
 }

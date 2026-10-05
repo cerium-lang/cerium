@@ -1,0 +1,36 @@
+/* the door's own helpers, one per ending a main has
+ * (12-projects.md): the compiler's wrapper picks the one the
+ * project's main answers, hands it the main by address with the
+ * platform's own two -- the count and the table of words -- and
+ * every entry does the same three things: the two saved for sys's
+ * own asking (sys/args.ce, the iterator they walk), the main
+ * called, the ending answered -- a unit a clean zero, an i32 the
+ * code itself, an E?() handed to fmt's exit, the Err half printed
+ * through its own words there.
+ *
+ * The three are no one else's to call -- private to std, the use
+ * and the qualified path both turned away (11-namespaces.md) -- for
+ * the wrapper alone: a hand inside would set the words twice and
+ * call the main twice, a program's shape no program has. The
+ * compiler takes the Syms by pointer at its own face-taking, the
+ * private face among them, an arrangement like Copy's and Drop's
+ * (the checker reads std::ops no less). */
+
+use std::fmt::{Fmt, exit};
+use std::sys;
+
+fn run_unit(m: fn() -> (), n: i32, v: **u8) -> i32 {
+  sys::set_args(n, v);
+  m();
+  0
+}
+
+fn run_i32(m: fn() -> i32, n: i32, v: **u8) -> i32 {
+  sys::set_args(n, v);
+  m()
+}
+
+fn run_err<E: Fmt>(m: fn() -> E?(), n: i32, v: **u8) -> i32 {
+  sys::set_args(n, v);
+  exit(m())
+}

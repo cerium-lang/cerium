@@ -63,6 +63,26 @@ rbuiltin(Ast *e, Fenv *fe, Type *want)
       berr(args[0], "@take wants a *mut T place, this is %s", btys(pt));
     return pt->t->t;
   }
+  if (strcmp(nm, "slice") == 0) { /* the way a slice is born: the
+                                   * pointer's reach and the length
+                                   * together, one step -- no
+                                   * half-built view ever stands
+                                   * (01-types.md). The pointee goes
+                                   * in whole: a *mut T, whose pointee
+                                   * is the mut slot itself, answers
+                                   * a []mut T */
+    Type *pt;
+
+    if (nt != 0 || na != 2)
+      berr(e, "@slice takes a pointer and a length");
+    pt = rexpr(args[0], fe, 0);
+    if (!pt || pt->k != Typtr)
+      berr(args[0], "@slice wants a *T here, this is %s", btys(pt));
+    rexpr(args[1], fe, tyint(IN_USIZE)); /* the length a usize, a
+                                          * literal coerced where it
+                                          * stands */
+    return tyslice(pt->t);
+  }
   if (strcmp(nm, "compileError") == 0) {
     Type *st;
 

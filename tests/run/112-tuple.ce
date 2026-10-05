@@ -16,7 +16,7 @@ fn one() -> u32 { 1 }
 const CT: (u32, u32) = (7, 8);                   /* the compile-time */
 const CS: u32 = add3(9, ...CT) % 10;             /* ... and its spread */
 
-fn main() -> u32 {
+fn main() -> i32 {
   let t: (u32, u32, u32) = (1, 2, 3);
   let (a, _, c) = t;                /* the pattern, _ skipping */
   let q = match pair() { (x, y) => x * 10 + y, };

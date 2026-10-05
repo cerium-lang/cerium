@@ -1746,3 +1746,57 @@ them: the face it takes back names Copy and Drop in std::ops now,
 and the sysroot check that guards the family counts them among its
 must-be-there. 489 green, the same count with twenty-three tests
 newly spelling their uses and one golden grown a line.
+
+The door thinned to one call. main's ending had been the wrapper's
+own work -- three shapes of call spelled in the emitter, the integer
+one even reading a u64's low half -- and the exit code is an i32,
+the platform's own word for it, nothing's low half: the contract
+tightened to (), i32, E?(), the wide door a cast's own law now,
+spelled where it happens. The work itself moved home to std::entry
+-- three runs, one per ending, and the wrapper one call whole: the
+main by address, the platform's own two beside it, the entry saving
+the two for sys::args, calling the main, answering the ending
+(fmt's exit for the E?() one, the Err half printed through its own
+words there). fn values as arguments the ABI already had -- a
+wrapper handing a fn by address is a call like any other. The words
+themselves arrived with the door: sys::args(), one iterator the
+asking, a []u8 per word into the platform's own table -- the table
+lives as long as the process does, the slice borrows what cannot
+die -- next a hand-rolled match, for-let the loop over it, the
+Iterator trait's own desugar a later milestone's (10-iteration.md).
+The forty-two tests that answered a wider word than i32 now say the
+code itself, their expects the same numbers. 491 green.
+
+The review's two asks. The entry fns had a namespace of their own,
+and no namespace was owed them: they are three fns and a story, and
+the story lives in std's root now (std/entry.ce), beside panic -- no
+std::entry to spell. And they are no one else's to call: private to
+std, which the language already had a word for -- the use was turned
+away all along, the glob never brought them in, but a qualified path
+read the table and never asked pub, an openness the spec never
+promised (11-namespaces.md: private is the directory's own). The
+path asks now, a call and a value alike -- 134's two fns, written
+against the openness by accident, say pub and mean it -- and the
+wrapper is the three's one caller: the compiler takes the Syms at
+its own face-taking, the private face among them.
+
+The Iterator family found its home too: std::iter, the trait itself,
+and sys::args' cursor its first library impl -- impl Iterator for
+Args, a []u8 a word, next a hand-rolled match until the desugar
+lands (10-iteration.md). 493 green, two of them the privacy's own.
+
+The review's second round. The three entry assignments sat in a
+block of their own at the face-taking, and a block no story owed:
+they are three more of the same kind as the four around them, and
+they sit in the row now, the comment beside each its own.
+
+And the hand-rolled slice next built -- two slots written a step
+apart, a view pointing one way and counting another between them --
+was the last writer the language had: the slots read for every ABI
+that hands a pair to C (std's own write the busiest reader), and
+from here they write never. @slice is the way a view is born, the
+eleventh @: the pointer's reach and the length together, one step,
+a *mut T answering a []mut T whole (01-types.md). args' next asks
+it now, and the spec's own Iterators -- whose ptr-and-len literals
+were a shape the language never grew -- spell it too. 495 green,
+two of them @slice's own.

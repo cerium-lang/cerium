@@ -1,0 +1,7 @@
+/* the integer ending: the code is an i32, the platform's own word
+ * for it, and the door hands it through whole -- 77 the program
+ * answers, 77 the parent reads (12-projects.md). */
+
+fn main() -> i32 {
+  77
+}

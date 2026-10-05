@@ -1,0 +1,54 @@
+/* std::sys -- the program's own arguments: the words the platform
+ * handed the door, one iterator the asking. The two slots are the
+ * door's own to fill -- set_args the entry's first call (std's
+ * entry.ce), a program reaching it itself a hand around the door,
+ * not through it -- and args() answers a fresh cursor over what
+ * they hold, the slots themselves this file's own. The initial
+ * values are the honest compile-time ones: the door not yet
+ * entered, no count, no table. What next yields is a []u8 into the
+ * platform's own table -- the words live as long as the process
+ * does, so the slice borrows what cannot die and no copy is made. */
+
+use std::iter::Iterator;
+
+static mut arg_count: i32 = 0;
+static mut arg_table: Option<**u8> = None;
+
+pub struct Args {
+  mut n: i32,
+  mut p: Option<**u8>,
+}
+
+pub fn set_args(n: i32, v: **u8) {
+  arg_count = n;
+  arg_table = Some(v);
+}
+
+pub fn args() -> Args {
+  Args { n: arg_count, p: arg_table }
+}
+
+impl Iterator for Args {
+  type Item = []u8;
+
+  fn next(self: *mut Self) -> ?[]u8 {
+    if self.n == 0 {
+      None
+    } else {
+      match self.p {
+        Some(p) => {
+          let w: *u8 = *p;
+          let mut len: usize = 0;
+
+          for *(w + len) != 0 {
+            len = len + 1;
+          }
+          self.n = self.n - 1;
+          self.p = Some(p + 1);
+          Some(@slice(w, len))
+        },
+        None => None,
+      }
+    }
+  }
+}

@@ -2114,13 +2114,12 @@ injectstd(void)
  * file's uses bound and its declarations resolved in its own
  * context, the impl table built for all, and the bodies checked
  * back in their files. A single-file compilation is the degenerate
- * shape: one Srcfile, the root's. nstd of the files are the sysroot
- * walk's, std's own: they check like any file, and the prelude is
- * injected into them like anyone's -- a library reads its own face,
- * the declares-all pass having made it whole before any read
- * (12-projects.md). */
+ * shape: one Srcfile, the root's. The sysroot's own files check
+ * like any file, and the prelude is injected into them like
+ * anyone's -- a library reads its own face, the declares-all pass
+ * having made it whole before any read (12-projects.md). */
 void
-checkproject(Srcfile **files, usize nfiles, usize nstd)
+checkproject(Srcfile **files, usize nfiles)
 {
   usize     i, f, nimpls;
   Sym     **impls;
@@ -2174,9 +2173,15 @@ checkproject(Srcfile **files, usize nfiles, usize nstd)
     sym_result = nsitem(std, "Result");
     sym_typeinfo = nsitem(nsopen("std::meta"), "TypeInfo");
     sym_panic = nsitem(std, "panic");
+    /* the entry fns, one per ending a main has, private to std: the
+     * wrapper alone calls them, the face-taking here the one door in
+     * (12-projects.md, 11-namespaces.md) */
+    sym_entry_unit = nsitem(std, "run_unit");
+    sym_entry_i32 = nsitem(std, "run_i32");
+    sym_entry_err = nsitem(std, "run_err");
     { /* fmt's two, the ends an E?() main has: the Fmt its Err half
-       * prints through, and the exit the compiler's wrapper hands
-       * the ending to (12-projects.md) */
+       * prints through, and the exit an entry fn hands the ending
+       * to (12-projects.md) */
       Ns *fns = nsopen("std::fmt");
 
       sym_fmt = nsitem(fns, "Fmt");
@@ -2206,10 +2211,10 @@ checkproject(Srcfile **files, usize nfiles, usize nstd)
         }
     }
     if (!sym_option || !sym_result || !sym_copy || !sym_drop || !sym_typeinfo || !sym_panic ||
-        !sym_fmt || !sym_exit) {
+        !sym_fmt || !sym_exit || !sym_entry_unit || !sym_entry_i32 || !sym_entry_err) {
       fprintf(stderr, "cerium: the standard library is incomplete: Option, Result, Copy, Drop,"
-                      " meta::TypeInfo, panic, fmt's Fmt and exit -- one is missing from the"
-                      " sysroot (12-projects.md)\n");
+                      " meta::TypeInfo, panic, fmt's Fmt and exit, entry's three runs -- one is"
+                      " missing from the sysroot (12-projects.md)\n");
       exit(1);
     }
   }
@@ -2249,8 +2254,9 @@ checkproject(Srcfile **files, usize nfiles, usize nstd)
                   * whole before any read (12-projects.md) */
     resolveitems(sf->items, sf->syms);
   }
-  { /* main's own return, resolved now: (), an integer the exit code
-     * takes whole, or E?() -- the program's end follows it
+  { /* main's own return, resolved now: (), the i32 the exit code
+     * is -- the platform's own word, the only one the parent reads
+     * -- or E?() -- the program's end follows it
      * (12-projects.md). The Err half's reflection print is a later
      * milestone's; the shapes are taken now. */
     Sym *m = nsitem(nsroot(), "main");
@@ -2260,12 +2266,12 @@ checkproject(Srcfile **files, usize nfiles, usize nstd)
                                  * met it already, resolveitems just
                                  * did, either way the same answer */
 
-      if (rt->k == Tyunit || (rt->k == Tyint && rt->num < IN_F32) ||
+      if (rt->k == Tyunit || (rt->k == Tyint && rt->num == IN_I32) ||
           (rt->k == Tyenum && rt->sym == sym_result))
         ;
       else
-        cerrat(m->decl, "main returns (), an integer, or E?() -- the shapes the exit code reads "
-                        "(12-projects.md)");
+        cerrat(m->decl, "main returns (), i32, or E?() -- the exit code is an i32, the platform's"
+                        " own word (12-projects.md)");
     }
   }
 

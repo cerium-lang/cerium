@@ -30,7 +30,7 @@ impl<T> Show for Wrap<T> { /* a shape pattern: above the fallbacks */
 fn announce<T: Show>(a: *T) -> u32 { /* the re-check picks per instance */
   Show::show(a)
 }
-fn main() -> u32 {
+fn main() -> i32 {
   let p = Point{ x: 3, y: 4 };
   let n: u32 = 7;
   let w: Wrap<u32> = Wrap{ v: 5 };
@@ -45,5 +45,5 @@ fn main() -> u32 {
     + w.show()          /* 4: the Wrap<T> pattern beats the fallbacks */
     + announce(&f)      /* 1: File answers only the plain fallback */
     + Show::show(&f);   /* 1 */
-  return r;
+  r
 }

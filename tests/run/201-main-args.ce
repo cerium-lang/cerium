@@ -1,0 +1,17 @@
+/* the platform's own two, one iterator the asking: the wrapper
+ * hands them to the entry, the entry to sys's slots, and the
+ * program walks them back -- each word a []u8 into the platform's
+ * own table, the first the program's own name, the count the words
+ * walked (std::sys, 12-projects.md). */
+
+use std::sys;
+
+fn main() -> i32 {
+  let mut a = sys::args();
+  let mut n: i32 = 0;
+
+  for let Some(w) = a.next() {
+    n = n + 1;
+  }
+  n
+}

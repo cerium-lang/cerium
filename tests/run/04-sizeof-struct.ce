@@ -1,2 +1,2 @@
 struct S { a: u8, b: u32, c: u16 }
-fn main() -> usize { @sizeof<S>() }
+fn main() -> i32 { @sizeof<S>() }

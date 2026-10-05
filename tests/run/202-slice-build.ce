@@ -1,0 +1,28 @@
+/* @slice: the one step a view is built by -- the pointer's reach and
+ * the length together, no half-built slice between two writes. The
+ * value rides whole both ways (60's ABI), and a *mut T's pointee
+ * being the mut slot itself, the answer is a []mut T whose writes
+ * reach through the view into the array it borrows (01-types.md). */
+
+fn sum(s: []u8) -> i32 { /* passed whole, two words */
+  let mut n: i32 = 0;
+
+  for b in s {
+    n = n + @cast<i32>(*b);
+  }
+  n
+}
+
+fn make(p: *u8, n: usize) -> []u8 { /* built in the callee, rides back */
+  @slice(p, n)
+}
+
+fn main() -> i32 {
+  let a = [4]u8{10, 20, 30, 40};
+  let s: []u8 = @slice(&a[0], 3); /* 10+20+30 */
+  let m = [3]mut u32{1, 2, 3};
+  let w: []mut u32 = @slice(&m[0], 2);
+
+  w[1] = 20; /* through the view, into the array */
+  sum(s) + @cast<i32>(s.len) + @cast<i32>(make(&a[1], 2).len) + @cast<i32>(m[1])
+}

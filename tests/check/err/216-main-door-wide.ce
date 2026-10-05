@@ -1,0 +1,9 @@
+/* the integer ending wider than the platform's own word: the exit
+ * code is an i32 -- what the parent reads, nothing's low half --
+ * and a long is not one. The narrowing a C door once did in
+ * silence is a cast's own law now, spelled where it happens
+ * (01-types.md, 12-projects.md). */
+
+fn main() -> i64 {
+  4294967301
+}

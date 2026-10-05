@@ -14,7 +14,7 @@ fn sz<T, const N: usize>(v: [N]T) -> usize { @sizeof<[N]T>() }
 fn wrap<T: Copy, const N: usize>(v: [N]T) -> T { first(v) }
 fn dup<T: Copy, const N: usize>(v: [N]T) -> [N]T { v }
 
-fn main() -> u32 {
+fn main() -> i32 {
   let a = [3]u32{7, 8, 9};
   let b = [4]u32{1, 2, 3, 4};
   first(a)                  /* 7: N = 3 from the argument's own type */

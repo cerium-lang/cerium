@@ -32,7 +32,7 @@ static mut CELL: u32 = 7;   /* a runtime source: its read is no
                              * compile-time value, and the plain
                              * half of the overload takes it */
 
-fn main() -> u32 {
+fn main() -> i32 {
   let p = P{x: 1, y: 2};
   let r = CELL;
   @cast<u32>(field_offset<P>("y") * 10   /* 40: the "y" instance, y past x */

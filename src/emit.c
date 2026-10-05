@@ -3458,6 +3458,22 @@ emaexpr(Em *em, Ast *e)
         return z;
       }
     }
+    if (strcmp(nm, "slice") == 0) { /* the two words written together,
+                                     * the view whole from its first
+                                     * instruction: no half-built
+                                     * slice ever runs (01-types.md) */
+      Ast **args = e->v.blt.args;
+      char *p = emaexpr(em, args[0]); /* the reach: a *T, its own
+                                       * word */
+      char *n = emaexpr(em, args[1]); /* the length: a usize word */
+      char *t = stackslot(em, 16);
+      char *w = newtmp(em);
+
+      fprintf(em->o, "\tstorel %s, %s\n", p, t);
+      fprintf(em->o, "\t%s =l add %s, 8\n", w, t);
+      fprintf(em->o, "\tstorel %s, %s\n", n, w);
+      return t;
+    }
     cerrat(e, "this builtin arrives with a later milestone");
     return 0; /* unreachable */
   }
@@ -4190,76 +4206,47 @@ emitall(FILE *out, Srcfile **files, usize nfiles)
 }
 
 /* the platform's door: the wrapper the compiler arranges -- an
- * unmangled C main that calls the project's own, the ending
- * answered per its shape (12-projects.md). The project's main
- * mangles like any other name; this one alone keeps the platform's
- * own, and the linker hands it the program. A library has none to
- * arrange. */
+ * unmangled C main that hands the project's own main to one of
+ * std::entry's runs, by address with the platform's own two, the
+ * count and the table of words (12-projects.md). The project's
+ * main mangles like any other name; this one alone keeps the
+ * platform's own, and the linker hands it the program. The ending
+ * is the entry's own work -- a unit a clean zero, an i32 the code
+ * itself, an E?() printed through its error's words and answered
+ * -- and the wrapper says none of it: one call the whole door. A
+ * library has none to arrange. */
 static void
 emitmain(FILE *o)
 {
   Sym  *m = nsitem(nsroot(), "main");
   Type *rt;
+  char *en;
 
   if (!m || m->kind != Sfn)
     return; /* a library: no door to arrange */
   rt = m->fnty->t;
-  if (rt->k == Tyunit) { /* the ending says nothing: the platform's
-                          * own zero the answer */
-    fprintf(o,
-            "export function w $main() {\n@start\n"
-            "\tcall $%s()\n"
-            "\tret 0\n"
-            "}\n\n",
-            fsymname(m, m->decl));
-    return;
-  }
-  if (rt->k == Tyint) { /* the ending is the code itself: a word's
-                         * own the answer, a long's low half the
-                         * copy the C door takes (the cast's own
-                         * law, a w consumer's read) */
-    if (intwidth(rt) < 8)
-      fprintf(o,
-              "export function w $main() {\n@start\n"
-              "\t%%r =w call $%s()\n"
-              "\tret %%r\n"
-              "}\n\n",
-              fsymname(m, m->decl));
-    else
-      fprintf(o,
-              "export function w $main() {\n@start\n"
-              "\t%%r =l call $%s()\n"
-              "\t%%e =w copy %%r\n"
-              "\tret %%e\n"
-              "}\n\n",
-              fsymname(m, m->decl));
-    return;
-  }
-  {                         /* E?(): the ending handed to std::fmt's exit, the Err half
-                             * printed through the error type's own words, the code answered
-                             * there -- one call's ending the next call's argument, the
-                             * niche a pointer and the aggregate its own type, sigty's word
-                             * the same on both sides */
-    Type **tys = tyargs(1); /* the E the Err half carries (01-types.md:
-                             * E?T is Result<T, E>) -- arena-held, the
-                             * instance keeps the pointer, and this
-                             * frame's own would dangle under the
-                             * drain it queues */
-    char *en, *st;
+  if (rt->k == Tyenum) { /* E?(): the entry is a generic fn over the E
+                          * the Err half carries (01-types.md: E?T is
+                          * Result<T, E>) -- an instance per error
+                          * type, the args arena-held the instance
+                          * keeps, this frame's own would dangle under
+                          * the drain it queues */
+    Type **tys = tyargs(1);
 
     tys[0] = rt->args[1];
-    en = instensure(sym_exit, tys, 0, 0)->name;
-    st = sigty(rt, m->decl); /* after instensure: nothing it
-                              * runs overwrites the word */
+    en = instensure(sym_entry_err, tys, 0, 0)->name;
+  } else { /* () or i32: the plain fn, no instance to make */
+    Sym *e = rt->k == Tyunit ? sym_entry_unit : sym_entry_i32;
 
-    fprintf(o,
-            "export function w $main() {\n@start\n"
-            "\t%%r =%s call $%s()\n"
-            "\t%%e =w call $%s(%s %%r)\n"
-            "\tret %%e\n"
-            "}\n\n",
-            st, fsymname(m, m->decl), en, st);
+    en = fsymname(e, e->decl);
   }
+  fprintf(o,
+          "export function w $main(w %%argc, l %%argv) {\n@start\n"
+          "\t%%m =l copy $%s\n"
+          "\t%%r =w call $%s(l %%m, w %%argc, l %%argv)\n"
+          "\tret %%r\n"
+          "}\n\n",
+          fsymname(m, m->decl), en);
 }
 
 void

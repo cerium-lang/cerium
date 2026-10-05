@@ -1,5 +1,5 @@
-/* main's return is the exit code's own reading -- (), an integer, or
- * E?() -- and nothing else declares (12-projects.md). */
+/* main's return is the exit code's own reading -- (), the i32 the
+ * code is, or E?() -- and nothing else declares (12-projects.md). */
 fn main() -> bool {
   false
 }

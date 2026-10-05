@@ -2,7 +2,7 @@
  * out at the entry, once -- the rounds of a long loop reuse the
  * slots they were given, or the frame walks itself off the guard
  * page, a round at a time (the emitter's entry discipline) */
-fn main() -> u32 {
+fn main() -> i32 {
   let mut t: u32 = 0;
   let mut i: u32 = 0;
   for i < 500000 {           /* a fresh binding each round */
@@ -33,5 +33,5 @@ fn main() -> u32 {
     let w = v;
     s = s + w;
   }
-  return t % 100 + u + s + q % 10;  /* 0 + 0 + 12 + 0 */
+  t % 100 + u + s + q % 10  /* 0 + 0 + 12 + 0 */
 }

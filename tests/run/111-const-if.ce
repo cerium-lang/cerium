@@ -44,7 +44,7 @@ fn pick<const N: usize>(v: [N]u32) -> u32 {
   x + 1
 }
 
-fn main() -> u32 {
+fn main() -> i32 {
   let a = [3]u32{7, 8, 9};
   let b = [1]u32{5};
   mid(a) + mid(b) * 2 + bump(a) + S * 2 + band(9) + band(3) * 10 + band(0)

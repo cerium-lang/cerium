@@ -377,7 +377,7 @@ Predicate structs are `snake_case`, ordinary structs are `PascalCase`:
 ## Builtins
 
 `@xxx` is a builtin — a function the language provides, not one written in it.
-There are ten, and each is defined where it belongs:
+There are eleven, and each is defined where it belongs:
 
 | builtin | what it does | defined in |
 | --- | --- | --- |
@@ -385,6 +385,7 @@ There are ten, and each is defined where it belongs:
 | `@alignof<T>()`, `@alignof(a)` | alignment in bytes | `02-layout.md` |
 | `@offset<T>("field")` | field offset in bytes | `02-layout.md` |
 | `@cast<T>(a)` | a well-defined conversion | `01-types.md` |
+| `@slice(p, n)` | build a `[]T` from a pointer and a length | `01-types.md` |
 | `@typeinfo<T>()`, `@typeinfo(a)` | the `TypeInfo` of a type | this chapter |
 | `@typeof(a)` | the type of a value, as a reference | this chapter |
 | `@field(v, "name")` | the address of field `name` | this chapter |
@@ -393,9 +394,9 @@ There are ten, and each is defined where it belongs:
 | `@compileError(msg)` | report a compile error | this chapter |
 
 Grouped by what they are for: layout — `@sizeof`, `@alignof`, `@offset`;
-conversion — `@cast`; reflection — `@typeinfo`, `@typeof`, `@field`; packs —
-`@count`; ownership — `@take`; const — `@compileError`. A conditional is
-ordinary `if` (`10-iteration.md`), not a builtin.
+conversion — `@cast`; slices — `@slice`; reflection — `@typeinfo`, `@typeof`,
+`@field`; packs — `@count`; ownership — `@take`; const — `@compileError`. A
+conditional is ordinary `if` (`10-iteration.md`), not a builtin.
 
 What the standard library provides is not a builtin: `print` and `close` are
 ordinary functions reached through an ordinary path (`11-namespaces.md`).

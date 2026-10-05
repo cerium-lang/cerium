@@ -31,7 +31,7 @@ struct Pair { mut a: u32, mut b: u32 }
 impl Pair {
   fn pick<T: Copy>(self: *Pair, v: T, w: T) -> T { return v; }
 }
-fn main() -> u32 {
+fn main() -> i32 {
   let mut m = Map{ v: 9, n: 3 };
   let k1: u32 = 1;
   let k2: u64 = 2;
@@ -46,5 +46,5 @@ fn main() -> u32 {
   let p = Pair{ a: 1, b: 2 };
   let n: u32 = 5;
   t = t + p.pick(n, n);                                     /* an inherent family, Copy answered: 5 */
-  return t;  /* 27 + 42 + 5 = 74 */
+  t  /* 27 + 42 + 5 = 74 */
 }

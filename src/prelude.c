@@ -32,8 +32,13 @@ Sym *sym_fmt;      /* std::fmt's Fmt, the Err half's own words: an
                     * E?() main's error type is checked against it
                     * where the ending is declared (12-projects.md) */
 Sym *sym_exit;     /* std::fmt's exit, the ending answered as the
-                    * platform takes it -- the compiler's wrapper
-                    * calls it, the emitter reads it by pointer */
+                    * platform takes it -- an entry fn hands it the
+                    * ending, the emitter reads it by pointer */
+Sym *sym_entry_unit, *sym_entry_i32,
+    *sym_entry_err; /* std::entry's
+                     * three runs, one per ending a main has: the
+                     * wrapper the compiler arranges picks the one the
+                     * project's main answers (12-projects.md) */
 
 /* TypeInfo itself, the type every @typeinfo answers with: one
  * instance, cached */

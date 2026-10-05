@@ -1,0 +1,11 @@
+/* the entry fns are the wrapper's alone: private to std, the path
+ * no door around the use (11-namespaces.md) -- a qualified call
+ * crosses namespaces all the same, and what is private to one
+ * stays its own. */
+
+fn unit() { }
+
+fn main() -> i32 {
+  std::run_unit(unit, 0, 0);
+  0
+}

@@ -1,2 +1,2 @@
 enum X(u32) { A, B }
-fn main() -> usize { @sizeof<X>() }
+fn main() -> i32 { @sizeof<X>() }
