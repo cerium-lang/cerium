@@ -45,5 +45,5 @@ fn main() -> i32 {
     + w.show()          /* 4: the Wrap<T> pattern beats the fallbacks */
     + announce(&f)      /* 1: File answers only the plain fallback */
     + Show::show(&f);   /* 1 */
-  r
+  @cast<i32>(r)
 }

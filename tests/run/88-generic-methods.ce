@@ -46,5 +46,5 @@ fn main() -> i32 {
   let p = Pair{ a: 1, b: 2 };
   let n: u32 = 5;
   t = t + p.pick(n, n);                                     /* an inherent family, Copy answered: 5 */
-  t  /* 27 + 42 + 5 = 74 */
+  @cast<i32>(t)  /* 27 + 42 + 5 = 74 */
 }

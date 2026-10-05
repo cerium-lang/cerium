@@ -7,8 +7,8 @@ use std::meta::TypeInfo;
 fn width<T>() -> u32 {
   match @typeinfo<T>() {
     TypeInfo::Bool => 1,
-    TypeInfo::Int { bits, .. } => bits / 16,   /* u32: 2 */
+    TypeInfo::Int { bits, .. } => @cast<u32>(bits) / 16,   /* u32: 2 */
     _ => 0,
   }
 }
-fn main() -> i32 { width<u32>() * 10 + width<bool>() }   /* 2*10 + 1 = 21 */
+fn main() -> i32 { @cast<i32>(width<u32>() * 10 + width<bool>()) }   /* 2*10 + 1 = 21 */

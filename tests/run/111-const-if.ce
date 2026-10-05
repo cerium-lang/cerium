@@ -47,7 +47,7 @@ fn pick<const N: usize>(v: [N]u32) -> u32 {
 fn main() -> i32 {
   let a = [3]u32{7, 8, 9};
   let b = [1]u32{5};
-  mid(a) + mid(b) * 2 + bump(a) + S * 2 + band(9) + band(3) * 10 + band(0)
+  @cast<i32>(mid(a) + mid(b) * 2 + bump(a) + S * 2 + band(9) + band(3) * 10 + band(0)
     + mix([5]u32{1, 9, 9, 9, 9}) + mix([3]u32{1, 2, 3}) + A + B * 2 + pick(a)
-    + @cast<u32>(const if @sizeof<u32>() > 2 { 1 } else { 0 })
+    + @cast<u32>(const if @sizeof<u32>() > 2 { 1 } else { 0 }))
 }   /* 9 + 10 + 7 + 20 + 3 + 20 + 1 + 1 + 9 + 5 + 14 + 10 + 1 = 110 */

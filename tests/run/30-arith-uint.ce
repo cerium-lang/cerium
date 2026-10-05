@@ -4,5 +4,5 @@ fn main() -> i32 {
   let c = a + b;
   let d: u16 = 0xffff;
   let e = d >> 4;
-  @cast<u8>(c + @cast<u8>(e))
+  @cast<i32>(@cast<u8>(c + @cast<u8>(e)))
 }

@@ -17,11 +17,11 @@ fn dup<T: Copy, const N: usize>(v: [N]T) -> [N]T { v }
 fn main() -> i32 {
   let a = [3]u32{7, 8, 9};
   let b = [4]u32{1, 2, 3, 4};
-  first(a)                  /* 7: N = 3 from the argument's own type */
+  @cast<i32>(first(a)                  /* 7: N = 3 from the argument's own type */
     + last(a) * 10          /* 90: N folds, v[N-1] the re-check's own */
     + last(b)               /* 4: its own instance, N = 4 */
     + @cast<u32>(sz(a)) * 2 /* 24: [3]u32 folded where it stands */
     + @cast<u32>(sz([4]u64{1, 2, 3, 4})) /* 32: the [4]u64 instance */
     + wrap(a)               /* 7: the black-box pass, bound in the re-check */
-    + dup(a)[1]             /* 8: [N]T through and back */
+    + dup(a)[1])             /* 8: [N]T through and back */
 }

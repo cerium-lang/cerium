@@ -43,5 +43,5 @@ fn main() -> i32 {
   for let Some(v) = g.next() {         /* 3+2+1+0: through the table */
     t = t + v;
   }
-  first + t + z
+  @cast<i32>(first + t + z)
 }

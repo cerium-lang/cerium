@@ -3694,11 +3694,16 @@ rblock(Ast *b, Fenv *fe, Type *want)
   Ast **ss = b->v.blk.stmts;
   usize n = vlen(ss), i;
   Type *t;
-  int   dive = n && mustexit(ss[n - 1]); /* the last statement leaves:
-                                          * the block never lands, its
-                                          * value the shape the world
-                                          * asked for
-                                          * (10-iteration.md) */
+  int   dive = (n && mustexit(ss[n - 1])) ||
+             (b->v.blk.tail && mustexit(b->v.blk.tail)); /* the
+                                                          * last statement leaves,
+                                                          * or the tail itself is
+                                                          * a call that never lands
+                                                          * -- a panic's own shape
+                                                          * (10-iteration.md): the
+                                                          * block never lands, its
+                                                          * value the shape the
+                                                          * world asked for */
 
   for (i = 0; i < n; i++)
     rstmt(ss[i], fe);
@@ -3752,7 +3757,19 @@ rclosure(Ast *c, Fenv *fe)
                      * the captures and the world above them stay
                      * (03-move.md) -- their destructors are their
                      * own scope's */
-  rblock(c->v.clos.body, &fb, ret);
+  {                 /* the same check a fn's body walks: the closure's own tail
+                     * against its declared return (10-iteration.md) */
+    Type *t = rblock(c->v.clos.body, &fb, ret);
+    Ast  *tail = c->v.clos.body->v.blk.tail;
+
+    if (!tysame(t, ret)) {
+      Type *c2 = tail ? recoerce(tail, ret, &fb) : 0;
+
+      if (!c2 || !tysame(c2, ret))
+        berr(tail ? tail : c->v.clos.body, "the closure returns %s, this is %s", btys(ret),
+             btys(t));
+    }
+  }
   return tyfn(ts, np, ret);
 }
 
@@ -4378,7 +4395,22 @@ runbody(Ast *it, Env env, Type **argtys, Type *ret, Val **cvals, Ast **gparams, 
                                                   * dies with the frame (01) */
     berr(it->v.fn.body->v.blk.tail,
          "this slice views the fn's own storage; return the array by value instead (01-types.md)");
-  rblock(it->v.fn.body, &fe, ret);
+  { /* the body's value against the declared return: the return
+     * statement's own rule, walked the tail's way around -- a
+     * value that is not the declared type, or no value where one
+     * is declared, is the error either door reports
+     * (10-iteration.md). A dive's tail is dead code the block
+     * never lands on, and rblock answers the want for it */
+    Type *t = rblock(it->v.fn.body, &fe, ret);
+    Ast  *tail = it->v.fn.body->v.blk.tail;
+
+    if (!tysame(t, ret)) {
+      Type *c = tail ? recoerce(tail, ret, &fe) : 0;
+
+      if (!c || !tysame(c, ret))
+        berr(tail ? tail : it->v.fn.body, "the fn returns %s, this is %s", btys(ret), btys(t));
+    }
+  }
   it->v.fn.drops = scopedrops(&fe, 0, it); /* the parameters' own
                                             * slots: the return the
                                             * body reaches on its

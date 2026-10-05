@@ -1980,3 +1980,25 @@ project that pins it: two namespaces, the same names, the statics
 and the array consts (a scalar const folds to nothing, its data
 line never asked for) each their own symbol, 53 the answer. The
 spec's Symbols section says the data symbols' law now too.
+
+And a hole the review saw shallow, the floor beneath it gone.
+The record said the tail coerced where a return would not -- the
+truth no check at all: runbody and rclosure dropped the block's
+own answer on the floor, a fn's tail against its declared return
+a comparison nowhere made, the spec's own empty-body error
+unimplemented. The check stands now, both doors the same rule --
+the tail must be the declared type, a literal that coerces still
+may, the message the return's own shape, "the fn returns i32,
+this is u32". A closure answers the same door, its annotated
+return the fn's declared one. And the dive grew a second arm: a
+tail that never lands -- a panic -- is a must-exit the block's
+walk now honors, not only a statement's (130's own finding). The
+tightening swept the old suite: forty-two tests that leaned on
+the unchecked tail, a @sizeof's usize out an i32 door, each its
+@cast now; a value where nothing was declared is the same
+refusal, the spec's model that a fn's value is its tail holding
+both ways. 220 through 224 the refusing pins -- the typed tail,
+the empty body, the statements with nothing after, the value a
+unit fn never asked for, the closure's own -- 236 the shapes
+that pass, the literal, the variable, the if, the match, the
+spec's return section carrying the rule's own sentence.

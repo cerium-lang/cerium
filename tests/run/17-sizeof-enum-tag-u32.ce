@@ -1,2 +1,2 @@
 enum X(u32) { A, B }
-fn main() -> i32 { @sizeof<X>() }
+fn main() -> i32 { @cast<i32>(@sizeof<X>()) }

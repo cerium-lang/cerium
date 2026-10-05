@@ -2,4 +2,4 @@
  * tag: the enum-to-int cast narrows the tag itself */
 enum E(u32) { A = 300 }
 
-fn main() -> i32 { @cast<i8>(E::A) }
+fn main() -> i32 { @cast<i32>(@cast<i8>(E::A)) }

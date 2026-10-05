@@ -1,0 +1,27 @@
+/* the tail expression carries the fn's value out: every shape
+ * the walk checks against the declared return (10-iteration.md) --
+ * the literal, the typed variable, the if, and the match */
+enum Mode { Off, On }
+
+fn lit() -> i32 { 7 }
+
+fn typed() -> i64 {
+  let n: i64 = 30;
+
+  n
+}
+
+fn branchy(p: bool) -> i32 {
+  if p { 11 } else { 22 }
+}
+
+fn pick(m: Mode) -> u32 {
+  match m {
+    Mode::Off => 10,
+    Mode::On => 20,
+  }
+}
+
+fn main() -> i32 {
+  lit() + @cast<i32>(typed()) + branchy(true) + @cast<i32>(pick(Mode::Off))
+}

@@ -1,0 +1,8 @@
+/* the closure's own tail answers the same door as a fn's -- the
+ * declared return is what the tail must be (10-iteration.md) */
+fn main() -> i32 {
+  let n: u32 = 5;
+  let c: fn() -> i32 = fn[]() -> i32 { n };
+
+  0
+}

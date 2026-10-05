@@ -1,1 +1,1 @@
-fn main() -> i32 { @alignof<?*i32>() }
+fn main() -> i32 { @cast<i32>(@alignof<?*i32>()) }

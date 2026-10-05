@@ -47,7 +47,7 @@ fn optional() -> u32 { /* EnumField's ?type: None, then Some: 21 */
   let x = match a { { type: None, .. } => 1, _ => 100, };
   let y = match b { { type: Some(t), .. } => 20, _ => 200, };
 
-  x + y
+  @cast<u32>(x + y)
 }
 fn attrarg() -> u32 { /* an attribute's argument, positional: 16 */
   let a: AttrArg = AttrArg::Int(16);
@@ -55,8 +55,8 @@ fn attrarg() -> u32 { /* an attribute's argument, positional: 16 */
   match a { AttrArg::Int(n) => @cast<u32>(n), _ => 99, }
 }
 fn main() -> i32 { /* 16 + 1 + 4 + 21 + 16 + 32 = 90 */
-  intback() + pointer() + passthrough() + optional() + attrarg() + (match CI {
+  @cast<i32>(intback() + pointer() + passthrough() + optional() + attrarg() + (match CI {
     TypeInfo::Int { bits, .. } => @cast<u32>(bits),
     _ => 99,
-  })
+  }))
 }
