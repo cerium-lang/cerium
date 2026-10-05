@@ -11,8 +11,8 @@
 
 use std::iter::Iter;
 
-static mut arg_count: i32 = 0;
-static mut arg_table: Option<**u8> = None;
+static mut argc: i32 = 0;
+static mut argv: Option<**u8> = None;
 
 pub struct Args {
   mut n: i32,
@@ -20,12 +20,12 @@ pub struct Args {
 }
 
 pub fn set_args(n: i32, v: **u8) {
-  arg_count = n;
-  arg_table = Some(v);
+  argc = n;
+  argv = Some(v);
 }
 
 pub fn args() -> Args {
-  Args { n: arg_count, p: arg_table }
+  Args { n: argc, p: argv }
 }
 
 impl Iter for Args {

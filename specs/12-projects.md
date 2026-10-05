@@ -189,7 +189,7 @@ the underscore's two meanings once folded together — spell
 
 A const's or a static's value rides a data symbol of its own: the
 kind, the namespace's path in dots, then the name — a root's
-`$static.N`, std's `$static.std.sys.arg_count`. An identifier holds
+`$static.N`, std's `$static.std.sys.argc`. An identifier holds
 no dot, so the split is the string's own; and the path is there for
 the fn's own reason — two namespaces' same-named slots are two
 values, and no two spellings may fold onto one symbol.
