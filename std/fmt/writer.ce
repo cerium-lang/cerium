@@ -16,7 +16,12 @@
  * (write_fixed_prec); the str's own cut is the value's own --
  * builtin.ce reads the asking where the str is spelled, the
  * other writes take no notice of it, an integer's digits its
- * own (12-projects.md) */
+ * own (12-projects.md).
+ *
+ * The base the same holding, x o b the letters: the integers'
+ * asking alone -- write_int and write_uint read it where the
+ * integers are spelled, the floats' windows decimal's own
+ * whatever a hole asks (12-projects.md) */
 
 use std::io::{Error, Write};
 
@@ -24,6 +29,7 @@ pub struct Writer {
   w: dyn mut Write,
   mut n: usize,    /* the running count: every segment's bytes, kept as they land */
   mut prec: usize, /* the precision a hole asked, 0: none */
+  mut base: u8,    /* the base a hole asked, 0: ten */
 }
 
 impl Writer {
@@ -51,24 +57,35 @@ impl Writer {
   }
 
   fn write_u64(self: *mut Self, n: u64) -> Result<usize, Error> {
+    self.write_u64_b(n, @cast<u64>(10))
+  }
+
+  /* the digits in the base asked: ten the write_u64 default, x
+   * o b the hole's own asking. The digits, low end first: a
+   * stack block sixty-four wide, a u64 of ones in binary the
+   * most it holds. They go out high end first, a byte at a
+   * time -- a mutable block cannot hand its slice to an
+   * immutable parameter until mut-dropping lands (01-types.md),
+   * and a digit at a time is the shape that needs no block read
+   * as writable at all. The letters lowercase, an a at ten */
+  fn write_u64_b(self: *mut Self, n: u64, b: u64) -> Result<usize, Error> {
     if n == 0 {
       self.write_str("0")
     } else {
-      /* the digits, low end first: a stack block a u64 cannot
-       * overflow. They go out high end first, a byte at a time --
-       * a mutable block cannot hand its slice to an immutable
-       * parameter until mut-dropping lands (01-types.md), and a
-       * digit at a time is the shape that needs no block read as
-       * writable at all */
-      let ds = [20]mut u8 { };
+      let ds = [64]mut u8 { };
       let mut i: usize = 0;
       let mut v = n;
 
       for v != 0 {
-        ds[i] = @cast<u8>(48 + v % 10); /* 48: '0', the byte literal
-                                         * itself a later milestone */
+        let d = v % b;
+        if d < 10 {
+          ds[i] = @cast<u8>(48 + d); /* 48: '0', the byte literal
+                                      * itself a later milestone */
+        } else {
+          ds[i] = @cast<u8>(87 + d); /* 87+d: 'a' at ten */
+        };
         i = i + 1;
-        v = v / 10;
+        v = v / b;
       }
       /* i the count now: the walk reads it backwards */
       let cnt = i;
@@ -80,6 +97,46 @@ impl Writer {
       }
       Ok(k)
     }
+  }
+
+  /* the base a hole asked, as a number: 0 the ten the default
+   * spells, the letter otherwise (the shape asked which) */
+  fn base_num(self: *mut Self) -> u64 {
+    if self.base == 120 { /* 'x' */
+      @cast<u64>(16)
+    } else if self.base == 111 { /* 'o' */
+      @cast<u64>(8)
+    } else { /* 'b' */
+      @cast<u64>(2)
+    }
+  }
+
+  /* the integers' own door, the base the hole asked: a negative
+   * its magnitude and its sign, a two's complement its bits --
+   * never what an asking means. The floats take no notice, their
+   * windows decimal's own; the base is the integers' asking
+   * alone (12-projects.md) */
+  fn write_int(self: *mut Self, n: i64) -> Result<(), Error> {
+    if self.base == 0 {
+      self.write_i64(n)?;
+    } else if n < 0 {
+      self.write_str("-")?;
+      self.write_u64_b(@cast<u64>(0 - n), self.base_num())?;
+    } else {
+      self.write_u64_b(@cast<u64>(n), self.base_num())?;
+    };
+    Ok(())
+  }
+
+  /* the unsigned the same door: no sign to spell, the base the
+   * hole's own asking all the same */
+  fn write_uint(self: *mut Self, n: u64) -> Result<(), Error> {
+    if self.base == 0 {
+      self.write_u64(n)?;
+    } else {
+      self.write_u64_b(n, self.base_num())?;
+    };
+    Ok(())
   }
 
   fn write_i64(self: *mut Self, n: i64) -> Result<usize, Error> {
