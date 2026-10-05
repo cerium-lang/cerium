@@ -2173,6 +2173,12 @@ checkproject(Srcfile **files, usize nfiles)
     sym_result = nsitem(std, "Result");
     sym_typeinfo = nsitem(nsopen("std::meta"), "TypeInfo");
     sym_panic = nsitem(std, "panic");
+    /* the entry fns, one per ending a main has, private to std: the
+     * wrapper alone calls them, the face-taking here the one door in
+     * (12-projects.md, 11-namespaces.md) */
+    sym_entry_unit = nsitem(std, "run_unit");
+    sym_entry_i32 = nsitem(std, "run_i32");
+    sym_entry_err = nsitem(std, "run_err");
     { /* fmt's two, the ends an E?() main has: the Fmt its Err half
        * prints through, and the exit an entry fn hands the ending
        * to (12-projects.md) */
@@ -2180,15 +2186,6 @@ checkproject(Srcfile **files, usize nfiles)
 
       sym_fmt = nsitem(fns, "Fmt");
       sym_exit = nsitem(fns, "exit");
-    }
-    { /* the entry fns, one per ending a main has: the wrapper hands
-       * the project's main to one of them by address, the
-       * platform's own two beside it (12-projects.md). Private to
-       * std -- the wrapper alone calls them, the face-taking here
-       * the one door in (11-namespaces.md) */
-      sym_entry_unit = nsitem(std, "run_unit");
-      sym_entry_i32 = nsitem(std, "run_i32");
-      sym_entry_err = nsitem(std, "run_err");
     }
     { /* the operator traits, the sugar's own (07-operators.md), and
        * the two the compiler calls on its own -- Copy at a move,
