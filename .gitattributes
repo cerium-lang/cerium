@@ -1,0 +1,6 @@
+# the ce files read best in Rust's colors: the language's own shape is
+# Rust's (fn, match, impl, trait, use), both comment kinds included, and the
+# specs' examples already say ```rust -- until Linguist knows cerium by
+# name (a grammar of its own asks adoption the project has not earned
+# yet), the nearest honest colors will do
+*.ce linguist-language=Rust
