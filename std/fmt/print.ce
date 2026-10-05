@@ -3,12 +3,15 @@
  * owns the doors and the sink's contract (std::io), fmt owns the
  * shapes, and only fmt reaches across, one way. fmt_to the
  * general one, any sink; print and eprint the string of words
- * itself, a value where each {} stands; print_one and eprint_one
- * the two conveniences, one value, the process's own doors. The
- * count handed back is the whole print's own, however many
- * writes it took. */
+ * itself, a value where each hole stands, the hole bare ({}) or
+ * carrying a spec -- a fill, an alignment, a minimum width
+ * (12-projects.md); print_one and eprint_one the two
+ * conveniences, one value, the process's own doors. The count
+ * handed back is the whole print's own, however many writes it
+ * took. */
 
 use std::io::{Error, Stdout, Stderr, Write};
+use std::meta::TypeInfo;
 
 pub fn fmt_to<T: Fmt>(v: *T, w: dyn mut Write) -> Result<usize, Error> {
   let mut wr = Writer { w: w };
@@ -29,22 +32,28 @@ pub fn eprint_one<T: Fmt>(v: *T) -> Result<usize, Error> {
   fmt_to(v, &mut dyn out)
 }
 
-/* the string of words, its own walk -- four pieces, none pub:
+/* the string of words, its own walk -- eight pieces, none pub:
  * shaped and holes the compiler's reads (the string is const,
  * the asking is the run, 08-reflection.md), lit the runtime walk
- * of a literal run, runs the pack's own peel over the values
- * (04-generics.md). The two reads carry no @compileError of
- * their own: a fn the evaluator has not run reports the words it
- * holds at its body's own walk, and std holds no call that runs
- * these ahead of it -- the doors live in the const ifs of the
- * prints themselves, where the branch taken is the only one
- * walked. */
+ * of a literal run, spec a hole's own words read where the walk
+ * stops, Count, fills and pad the width a hole asks -- the value
+ * measured by a walk that writes nowhere, the fill written
+ * around it -- and runs the pack's own peel over the values
+ * (04-generics.md). The reads carry no @compileError of their
+ * own: a fn the evaluator has not run reports the words it holds
+ * at its body's own walk, and std holds no call that runs these
+ * ahead of it -- the doors live in the const ifs of the prints
+ * themselves, where the branch taken is the only one walked. */
 
 /* the format's shape, asked where the call is written: every {
- * opens one of the two it may -- a hole {} or a brace {{ -- and
- * }} is one brace for two, a } alone the byte it is. The answer
- * a plain bool: the fn reads at compile time, and the words a
- * bad shape answers with are the print's own door */
+ * opens one of the three it may -- a bare hole {}, a brace {{,
+ * or a spec {:...} -- and the spec's own grammar is [fill]
+ * [align] [width]: a byte the alignment follows is the fill (the
+ * two-char lookahead, {:x>8} the x a fill), < ^ > the three
+ * alignments, the width a decimal run, and the '}' closes. }}
+ * is one brace for two, a } alone the byte it is. The answer a
+ * plain bool: the fn reads at compile time, and the words a bad
+ * shape answers with are the print's own door */
 fn shaped(const fmt: []u8) -> bool {
   let mut i: usize = 0;
 
@@ -53,10 +62,25 @@ fn shaped(const fmt: []u8) -> bool {
       if i + 1 == fmt.len {
         return false; /* the last { stands alone */
       };
-      if fmt[i + 1] != 123 && fmt[i + 1] != 125 {
-        return false; /* neither a hole {} nor a brace {{ */
+      if fmt[i + 1] == 123 || fmt[i + 1] == 125 { /* '{{' or '{}' */
+        i = i + 2;
+      } else if fmt[i + 1] == 58 { /* '{:' -- the spec */
+        i = i + 2;
+        if i + 1 < fmt.len && (fmt[i + 1] == 60 || fmt[i + 1] == 62 || fmt[i + 1] == 94) {
+          i = i + 2; /* a fill, the alignment behind it */
+        } else if i < fmt.len && (fmt[i] == 60 || fmt[i] == 62 || fmt[i] == 94) {
+          i = i + 1; /* the alignment alone */
+        };
+        for i < fmt.len && fmt[i] >= 48 && fmt[i] <= 57 {
+          i = i + 1; /* the width, a decimal run */
+        }
+        if i >= fmt.len || fmt[i] != 125 {
+          return false; /* the spec never closed, or holds what it should not */
+        };
+        i = i + 1;
+      } else {
+        return false; /* neither a hole, a brace, nor a spec */
       };
-      i = i + 2; /* the shape asked: one of the two */
     } else {
       if fmt[i] == 125 && i + 1 < fmt.len && fmt[i + 1] == 125 {
         i = i + 2; /* '}}': one brace for two */
@@ -68,19 +92,24 @@ fn shaped(const fmt: []u8) -> bool {
   true
 }
 
-/* the format's holes, counted the same walk's own way: each {}
- * one, the escapes folded past, the rest skipped -- the shape
- * already asked before this runs, the count the ask */
+/* the format's holes, counted the same walk's own way: each {
+ * that does not open a brace a hole, the spec between its braces
+ * skipped whole -- the shape already asked before this runs, the
+ * count the ask */
 fn holes(const fmt: []u8) -> usize {
   let mut n: usize = 0;
   let mut i: usize = 0;
 
   for i < fmt.len {
-    if fmt[i] == 123 && i + 1 < fmt.len && fmt[i + 1] == 125 { /* a hole */
+    if fmt[i] == 123 && i + 1 < fmt.len && fmt[i + 1] == 123 { /* '{{': the brace */
+      i = i + 2;
+    } else if fmt[i] == 123 { /* a hole, bare or spec'd -- the shape says the braces close */
       n = n + 1;
-      i = i + 2;
-    } else if fmt[i] == 123 && i + 1 < fmt.len && fmt[i + 1] == 123 { /* a brace */
-      i = i + 2;
+      i = i + 1; /* past the '{': the spec's own words, or the bare '}' itself */
+      for i < fmt.len && fmt[i] != 125 {
+        i = i + 1;
+      }
+      i = i + 1; /* past the '}' */
     } else if fmt[i] == 125 && i + 1 < fmt.len && fmt[i + 1] == 125 { /* '}}' */
       i = i + 2;
     } else {
@@ -120,19 +149,122 @@ fn lit(w: *mut Writer, fmt: []u8, from: usize) -> Result<usize, Error> {
   Ok(i)
 }
 
+/* a hole's own words, read where the walk stops: [fill] [align]
+ * [width] between the braces, the grammar already asked and the
+ * bytes here honest */
+struct Hole {
+  mut fill: u8,     /* the space when the spec names none */
+  mut align: u8,    /* 0: none -- the type's own answer then */
+  mut width: usize, /* 0: none */
+  mut end: usize,   /* the index past the hole's closing '}' */
+}
+
+fn spec(fmt: []u8, at: usize) -> Hole {
+  let mut h = Hole { fill: 32, align: 0, width: 0, end: 0 };
+  let mut i = at + 1; /* past the '{' the walk stopped at */
+
+  if fmt[i] == 58 { /* ':' -- the spec's own words */
+    i = i + 1;
+    if i + 1 < fmt.len && (fmt[i + 1] == 60 || fmt[i + 1] == 62 || fmt[i + 1] == 94) {
+      h.fill = fmt[i]; /* the fill, the alignment behind it */
+      h.align = fmt[i + 1];
+      i = i + 2;
+    } else if fmt[i] == 60 || fmt[i] == 62 || fmt[i] == 94 {
+      h.align = fmt[i]; /* the alignment alone */
+      i = i + 1;
+    };
+    for i < fmt.len && fmt[i] >= 48 && fmt[i] <= 57 {
+      h.width = h.width * 10 + @cast<usize>(fmt[i] - 48); /* the width, decimal */
+      i = i + 1;
+    }
+  };
+  h.end = i + 1; /* past the '}' the shape asked says stands */
+  h
+}
+
+/* the counting sink: a Writer's walk that writes nowhere, the
+ * length a value spells measured before the value spells it for
+ * real -- the pad's first pass. std has no heap, and a buffer
+ * would cap a str's own length; two walks the honest price */
+struct Count {
+  mut n: usize, /* the running count: every segment's bytes, kept as they land */
+}
+
+impl Write for Count {
+  fn write(self: *mut Self, buf: []u8) -> Result<usize, Error> {
+    self.n = self.n + buf.len;
+    Ok(buf.len)
+  }
+}
+
+/* the fill, a byte written n times */
+fn fills(w: *mut Writer, b: u8, n: usize) -> Result<(), Error> {
+  let mut i: usize = 0;
+  for i < n {
+    w.write_u8(b)?;
+    i = i + 1;
+  }
+  Ok(())
+}
+
+/* the pad: the value measured by a counting walk, the fill
+ * written around it as the alignment asks -- the width a
+ * minimum, a longer value left whole. The alignment the spec's
+ * own, or the type's where the spec gives none: the numbers and
+ * the pointers right, the rest left (the three languages' own
+ * consensus, C++ and Rust and Python the same line) */
+fn pad<V: Fmt>(w: *mut Writer, v: *V, h: Hole) -> Result<(), Error> {
+  if h.width == 0 {
+    v.fmt(w)?;
+    Ok(())
+  } else {
+    let mut c = Count { n: 0 };
+    let mut cw = Writer { w: &mut dyn c };
+
+    v.fmt(&mut cw)?;
+    let len = cw.written()?;
+    let padn = if h.width > len { h.width - len } else { 0 };
+    let align = if h.align != 0 {
+      h.align
+    } else {
+      match @typeinfo<V>() {
+        TypeInfo::Int { .. } => 62, /* '>' */
+        TypeInfo::Float { .. } => 62,
+        TypeInfo::Pointer { .. } => 62,
+        _ => 60, /* '<' */
+      }
+    };
+
+    if align == 60 { /* '<' -- the value first, the fill behind */
+      v.fmt(w)?;
+      fills(w, h.fill, padn)?;
+    } else if align == 62 { /* '>' -- the fill first, the value after */
+      fills(w, h.fill, padn)?;
+      v.fmt(w)?;
+    } else { /* '^' -- half before, half behind, the odd byte behind */
+      let before = padn / 2;
+      fills(w, h.fill, before)?;
+      v.fmt(w)?;
+      fills(w, h.fill, padn - before)?;
+    };
+    Ok(())
+  }
+}
+
 /* the peel: one unfolding a value -- the run before its hole,
- * the value in it, the rest on -- the last the tail after the
- * final hole, no value left. The depth is the pack's own
- * (04-generics.md) */
+ * the hole's spec read, the value padded through it, the rest on
+ * -- the last the tail after the final hole, no value left. The
+ * depth is the pack's own (04-generics.md) */
 fn runs<...T: Fmt>(w: *mut Writer, fmt: []u8, at: usize, args: ...T) -> Result<(), Error> {
   const if @count(...T) == 0 {
     lit(w, fmt, at)?;
     Ok(())
   } else {
     let next = lit(w, fmt, at)?;
+    let h = spec(fmt, next);
 
-    args[0].fmt(w)?;
-    runs(w, fmt, next + 2, ...args[1..])
+    pad(w, &args[0], h)?;
+    runs(w, fmt, h.end, ...args[1..])
   }
 }
 
@@ -143,7 +275,7 @@ fn runs<...T: Fmt>(w: *mut Writer, fmt: []u8, at: usize, args: ...T) -> Result<(
  * the whole print's (12-projects.md) */
 pub fn print<...T: Fmt>(const fmt: []u8, args: ...T) -> Result<usize, Error> {
   const if !shaped(fmt) {
-    @compileError("a hole is {} and a brace is {{: the format spells neither")
+    @compileError("a hole is {}, a brace is {{, a spec is {:...}: the format spells none of these")
   } else {
     const if holes(fmt) != @count(...T) {
       @compileError("the format asks a count of values the arguments do not give")
@@ -160,7 +292,7 @@ pub fn print<...T: Fmt>(const fmt: []u8, args: ...T) -> Result<usize, Error> {
 /* the eprint: the same two doors, the same walk, the stderr door */
 pub fn eprint<...T: Fmt>(const fmt: []u8, args: ...T) -> Result<usize, Error> {
   const if !shaped(fmt) {
-    @compileError("a hole is {} and a brace is {{: the format spells neither")
+    @compileError("a hole is {}, a brace is {{, a spec is {:...}: the format spells none of these")
   } else {
     const if holes(fmt) != @count(...T) {
       @compileError("the format asks a count of values the arguments do not give")

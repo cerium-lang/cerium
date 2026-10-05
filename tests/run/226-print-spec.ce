@@ -1,0 +1,24 @@
+/* the hole's own words: a fill, an alignment, a minimum width --
+ * the alignment the spec's own, or the type's where the spec
+ * gives none (the numbers right, the rest left), the width a
+ * floor, a longer value left whole, and the count handed back the
+ * whole print's own (12-projects.md) */
+use std::fmt::print;
+
+fn main() -> i32 {
+  print("[{:6}]\n", "x");     /* str: left by type */
+  print("[{:6}]\n", 42);      /* int: right by type */
+  print("[{:<6}]\n", 42);     /* the spec's own word wins */
+  print("[{:>6}]\n", "x");
+  print("[{:^6}]\n", "x");    /* the odd byte behind */
+  print("[{:*^6}]\n", "x");
+  print("[{:<<6}]\n", 42);    /* '<' the fill, the '<' behind it the align */
+  print("[{:2}]\n", "hello"); /* the width no ceiling */
+  print("[{:8}]\n", 0.5);     /* float: right by type */
+  print("[{:6}]\n", true);    /* bool: left by type */
+  print("[{}]\n", "bare");
+  match print("[{:*^6}]\n", "y") {
+    Ok(n)  => @cast<i32>(n),
+    Err(e) => 1,
+  }
+}
