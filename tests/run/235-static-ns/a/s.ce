@@ -1,0 +1,5 @@
+/* the same-named static and const, two namespaces: the slots are
+ * two values and their data symbols say so -- the kind, the
+ * namespace's path, the name (12-projects.md, Symbols) */
+pub static mut N: i32 = 1;
+pub const T: [2]i32 = [2]i32 { 10, 20 };

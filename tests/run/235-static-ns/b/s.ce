@@ -1,0 +1,6 @@
+/* the same names again, the other namespace: a symbol without
+ * the path folded the two into one, the assembler's own refusal
+ * -- the path the fix, the fn's mangle's law brought to the data
+ * symbols (12-projects.md, Symbols) */
+pub static mut N: i32 = 2;
+pub const T: [2]i32 = [2]i32 { 30, 40 };

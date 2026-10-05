@@ -187,6 +187,13 @@ root, and the path walks from there: `std::fmt::print_one` spells
 the underscore's two meanings once folded together — spell
 `ceri3web2my3app5parse` and `ceri3web6my_app5parse`.
 
+A const's or a static's value rides a data symbol of its own: the
+kind, the namespace's path in dots, then the name — a root's
+`$static.N`, std's `$static.std.sys.arg_count`. An identifier holds
+no dot, so the split is the string's own; and the path is there for
+the fn's own reason — two namespaces' same-named slots are two
+values, and no two spellings may fold onto one symbol.
+
 Types ride the same law in a closed code: the primitives their own
 words (`i32` stays `i32`; no word begins another), the composites a tag
 letter and their parts — `p`/`P` a pointer and its writable slot,
