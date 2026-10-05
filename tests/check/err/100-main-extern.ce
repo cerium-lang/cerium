@@ -1,0 +1,8 @@
+/* the door is the compiler's to arrange: #[extern(C)] on a main
+ * would take the wrapper's own C name, and one program cannot hold
+ * two doors (12-projects.md). */
+
+#[extern(C)]
+fn main() -> i32 {
+  0
+}

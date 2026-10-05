@@ -2172,6 +2172,14 @@ checkproject(Srcfile **files, usize nfiles, usize nstd)
     sym_drop = nsitem(std, "Drop");
     sym_typeinfo = nsitem(nsopen("std::meta"), "TypeInfo");
     sym_panic = nsitem(std, "panic");
+    { /* fmt's two, the ends an E?() main has: the Fmt its Err half
+       * prints through, and the exit the compiler's wrapper hands
+       * the ending to (12-projects.md) */
+      Ns *fns = nsopen("std::fmt");
+
+      sym_fmt = nsitem(fns, "Fmt");
+      sym_exit = nsitem(fns, "exit");
+    }
     { /* the operator traits, the sugar's own (07-operators.md): the
        * rewrite spells their paths, so the names never enter a scope
        * -- but the traits themselves must be there */
@@ -2190,10 +2198,11 @@ checkproject(Srcfile **files, usize nfiles, usize nstd)
           exit(1);
         }
     }
-    if (!sym_option || !sym_result || !sym_copy || !sym_drop || !sym_typeinfo || !sym_panic) {
+    if (!sym_option || !sym_result || !sym_copy || !sym_drop || !sym_typeinfo || !sym_panic ||
+        !sym_fmt || !sym_exit) {
       fprintf(stderr, "cerium: the standard library is incomplete: Option, Result, Copy, Drop,"
-                      " meta::TypeInfo, panic -- one is missing from the sysroot"
-                      " (12-projects.md)\n");
+                      " meta::TypeInfo, panic, fmt's Fmt and exit -- one is missing from the"
+                      " sysroot (12-projects.md)\n");
       exit(1);
     }
   }
@@ -2329,6 +2338,34 @@ checkproject(Srcfile **files, usize nfiles, usize nstd)
     lexsetpath(implsf[i]->path);
     for (j = 0; j < i; j++)
       checkoverlap(impls[i], impls[j]);
+  }
+
+  { /* main's own ends, past the shapes pass 2 took: an E?() hands
+     * its Err to the platform, and the platform prints it through
+     * the error type's own Fmt -- no impl, no print, said where
+     * the ending is declared (12-projects.md). And the door itself
+     * is the compiler's to arrange: #[extern(C)] on a main would
+     * take the wrapper's own C name, and one program cannot hold
+     * two doors */
+    Sym *m = nsitem(nsroot(), "main");
+
+    if (m && m->kind == Sfn) {
+      Type *rt = fnsigof(m)->t; /* pass 2's lazy read answered it
+                                 * already; the same answer */
+
+      nscur(m->ownsf->ns); /* the file's own context: a diagnostic
+                            * says where the ending is, and the
+                            * walk above left std's own behind
+                            * (11-namespaces.md) */
+      usecur(m->ownsf->uses);
+      lexsetpath(m->ownsf->path);
+      if (attrfind(m->decl->attrs, "extern"))
+        cerrat(m->decl, "#[extern(C)] is for the fns that cross to C; main's door the "
+                        "compiler arranges (12-projects.md)");
+      if (rt->k == Tyenum && rt->sym == sym_result && !implfor(sym_fmt, rt->args[1], 0))
+        cerrat(m->decl, "the error type does not implement Fmt -- the Err half prints through"
+                        " it (12-projects.md)");
+    }
   }
 
   /* pass 4: fn bodies, against the impl table pass 3 just built --

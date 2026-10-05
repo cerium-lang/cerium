@@ -1,0 +1,23 @@
+/* the Err half: the value eprinted through the error type's own
+ * words, the line's own end after it, the exit one -- a clean
+ * exit, not an abort (12-projects.md). The wrapper's own work: the
+ * main itself only hands the ending back, and the aggregate shape
+ * rides the whole way, one call's ending the next call's
+ * argument. */
+
+use std::fmt::{Fmt, Writer};
+use std::io::Error;
+use std::Result;
+
+struct Done { n: i64 }
+
+impl Fmt for Done {
+  fn fmt(self: *Self, w: *mut Writer) -> Result<(), Error> {
+    w.write_str("done ")?;
+    w.write_i64(self.n)
+  }
+}
+
+fn main() -> Done?() {
+  Err(Done { n: -42 })
+}

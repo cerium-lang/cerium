@@ -1698,3 +1698,31 @@ value gets its own honest name -- print_one, eprint_one; fmt_to,
 the general join to any sink, keeps the name it already answered
 to. The tests read the new names through the same doors: 189,
 190 and 196 print as before, 483 green.
+
+The door main stood at was a special case: the emitter spelled
+the name plain, the linker took it for the platform's own, and
+the arrangement left no room for the wrapper an E?() ending had
+been promised -- the check took the shape, the print was "a later
+milestone's," and a main that handed errors back answered the
+platform with the Result's own bits. The special case is gone
+now: main mangles like any other name, the project's own first
+segment ahead of it, and the platform's door is a wrapper the
+compiler arranges -- an injected #[extern(C)] fn main, a few
+lines of the emitter's own text, that calls the project's main
+and answers per its shape: nothing the platform's zero, an
+integer itself (a long's low half the copy a narrowing cast
+keeps), an E?() handed to std::fmt's exit, the Err half eprinted
+through the error type's own words and the newline after them,
+the code one. The exit lives in std because the match does -- the
+Ok/Err walk is the language's own, not a shape the emitter should
+copy -- and the instance the wrapper calls the emitter queues by
+hand, the same queue a call site's own walk fills. E: Fmt is
+checked where the ending is declared, a plain diagnostic at the
+main itself; #[extern(C)] on a main is refused, one program one
+door. io::Error grew its own Fmt -- the errno's number beside the
+namespace's name -- the spec's own example had spelled a main
+that could not compile until it did. The pointer-shaped E, the
+niche its one pointer is, waits on a method-resolution fix (the
+receiver a generic hands a pointer impl); the tests hold the
+rest: the Ok half clean, the Err half printed, the errno said,
+the wide integer cut to the platform's word. 489 green.
