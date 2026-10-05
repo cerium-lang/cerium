@@ -1,11 +1,10 @@
 /* std::fmt's prints -- the join of a Fmt to a door, made from
  * this side so the two namespaces do not hold each other: io
- * owns the doors and the sink's contract (std::io), fmt owns
- * the shapes, and only fmt reaches across, one way. fmt_to the
- * general one, any sink; print_one and eprint_one the two
- * conveniences, the process's own doors. The _one is honest and
- * held-for: a print is coming that takes a string of words for
- * many values, and the plain print and eprint wait for it. The
+ * owns the doors and the sink's contract (std::io), fmt owns the
+ * shapes, and only fmt reaches across, one way. fmt_to the
+ * general one, any sink; print and eprint the string of words
+ * itself, a value where each {} stands; print_one and eprint_one
+ * the two conveniences, one value, the process's own doors. The
  * count handed back is the whole print's own, however many
  * writes it took. */
 
@@ -28,6 +27,151 @@ pub fn eprint_one<T: Fmt>(v: *T) -> Result<usize, Error> {
   let mut out = Stderr { };
 
   fmt_to(v, &mut dyn out)
+}
+
+/* the string of words, its own walk -- four pieces, none pub:
+ * shaped and holes the compiler's reads (the string is const,
+ * the asking is the run, 08-reflection.md), lit the runtime walk
+ * of a literal run, runs the pack's own peel over the values
+ * (04-generics.md). The two reads carry no @compileError of
+ * their own: a fn the evaluator has not run reports the words it
+ * holds at its body's own walk, and std holds no call that runs
+ * these ahead of it -- the doors live in the const ifs of the
+ * prints themselves, where the branch taken is the only one
+ * walked. */
+
+/* the format's shape, asked where the call is written: every {
+ * opens one of the two it may -- a hole {} or a brace {{ -- and
+ * }} is one brace for two, a } alone the byte it is. The answer
+ * a plain bool: the fn reads at compile time, and the words a
+ * bad shape answers with are the print's own door */
+fn shaped(const fmt: []u8) -> bool {
+  let mut i: usize = 0;
+
+  for i < fmt.len {
+    if fmt[i] == 123 { /* '{' */
+      if i + 1 == fmt.len {
+        return false; /* the last { stands alone */
+      };
+      if fmt[i + 1] != 123 && fmt[i + 1] != 125 {
+        return false; /* neither a hole {} nor a brace {{ */
+      };
+      i = i + 2; /* the shape asked: one of the two */
+    } else {
+      if fmt[i] == 125 && i + 1 < fmt.len && fmt[i + 1] == 125 {
+        i = i + 2; /* '}}': one brace for two */
+      } else {
+        i = i + 1; /* a '}' alone, and every other byte: itself */
+      };
+    };
+  }
+  true
+}
+
+/* the format's holes, counted the same walk's own way: each {}
+ * one, the escapes folded past, the rest skipped -- the shape
+ * already asked before this runs, the count the ask */
+fn holes(const fmt: []u8) -> usize {
+  let mut n: usize = 0;
+  let mut i: usize = 0;
+
+  for i < fmt.len {
+    if fmt[i] == 123 && i + 1 < fmt.len && fmt[i + 1] == 125 { /* a hole */
+      n = n + 1;
+      i = i + 2;
+    } else if fmt[i] == 123 && i + 1 < fmt.len && fmt[i + 1] == 123 { /* a brace */
+      i = i + 2;
+    } else if fmt[i] == 125 && i + 1 < fmt.len && fmt[i + 1] == 125 { /* '}}' */
+      i = i + 2;
+    } else {
+      i = i + 1;
+    };
+  }
+  n
+}
+
+/* the literal run before the next hole: every byte itself, the
+ * two escapes folded to one, a '}' alone the byte it is. The
+ * walk stops where an unescaped '{' stands -- the doors have said
+ * a hole is due -- and answers the index it stopped at */
+fn lit(w: *mut Writer, fmt: []u8, from: usize) -> Result<usize, Error> {
+  let mut i = from;
+
+  for i < fmt.len {
+    if fmt[i] == 123 { /* '{' */
+      if i + 1 < fmt.len && fmt[i + 1] == 123 {
+        w.write_u8(123)?; /* '{{': the brace itself */
+        i = i + 2;
+      } else {
+        break; /* the hole's opening */
+      };
+    } else if fmt[i] == 125 { /* '}' */
+      w.write_u8(125)?;
+      if i + 1 < fmt.len && fmt[i + 1] == 125 {
+        i = i + 2; /* '}}': one brace for two */
+      } else {
+        i = i + 1; /* alone: the byte it is */
+      };
+    } else {
+      w.write_u8(fmt[i])?;
+      i = i + 1;
+    };
+  }
+  Ok(i)
+}
+
+/* the peel: one unfolding a value -- the run before its hole,
+ * the value in it, the rest on -- the last the tail after the
+ * final hole, no value left. The depth is the pack's own
+ * (04-generics.md) */
+fn runs<...T: Fmt>(w: *mut Writer, fmt: []u8, at: usize, args: ...T) -> Result<(), Error> {
+  const if @count(...T) == 0 {
+    lit(w, fmt, at)?;
+    Ok(())
+  } else {
+    let next = lit(w, fmt, at)?;
+
+    args[0].fmt(w)?;
+    runs(w, fmt, next + 2, ...args[1..])
+  }
+}
+
+/* the print: the format's doors taken where the call is written,
+ * the shape first, the count against the pack's rows second -- a
+ * call that fails either is refused before any program runs. The
+ * walk itself is runtime, one door held the whole way, the count
+ * the whole print's (12-projects.md) */
+pub fn print<...T: Fmt>(const fmt: []u8, args: ...T) -> Result<usize, Error> {
+  const if !shaped(fmt) {
+    @compileError("a hole is {} and a brace is {{: the format spells neither")
+  } else {
+    const if holes(fmt) != @count(...T) {
+      @compileError("the format asks a count of values the arguments do not give")
+    } else {
+      let mut out = Stdout { };
+      let mut wr = Writer { w: &mut dyn out };
+
+      runs(&mut wr, fmt, 0, ...args)?;
+      wr.written()
+    }
+  }
+}
+
+/* the eprint: the same two doors, the same walk, the stderr door */
+pub fn eprint<...T: Fmt>(const fmt: []u8, args: ...T) -> Result<usize, Error> {
+  const if !shaped(fmt) {
+    @compileError("a hole is {} and a brace is {{: the format spells neither")
+  } else {
+    const if holes(fmt) != @count(...T) {
+      @compileError("the format asks a count of values the arguments do not give")
+    } else {
+      let mut out = Stderr { };
+      let mut wr = Writer { w: &mut dyn out };
+
+      runs(&mut wr, fmt, 0, ...args)?;
+      wr.written()
+    }
+  }
 }
 
 /* the program's own ending, answered as the platform takes it: the

@@ -1,0 +1,10 @@
+/* the grammar door: a { that opens neither a hole {} nor a
+ * brace {{ is refused where the call is written -- a malformed
+ * format cannot reach a running program (12-projects.md,
+ * 08-reflection.md) */
+use std::fmt::print;
+
+fn main() -> i32 {
+  print("{x}", 1);
+  0
+}

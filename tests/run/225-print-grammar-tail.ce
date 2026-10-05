@@ -1,0 +1,9 @@
+/* the grammar door, the other shape: a { that stands alone at
+ * the format's end opens nothing, and the call is refused where
+ * it is written (12-projects.md, 08-reflection.md) */
+use std::fmt::print;
+
+fn main() -> i32 {
+  print("never runs {", 1);
+  0
+}
