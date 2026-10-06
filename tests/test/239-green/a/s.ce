@@ -1,0 +1,17 @@
+use std::io::Error;
+
+fn helper() -> i32 {
+  7
+}
+
+#[test("from a namespace, private and all")]
+fn sees_the_helper() {
+  if helper() != 7 {
+    panic("helper broke");
+  };
+}
+
+#[test]
+fn err_shape_ok() -> Error?() {
+  Ok(())
+}

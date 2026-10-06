@@ -1,0 +1,4 @@
+FAIL dies --this one dies on purpose
+FAIL err_out
+ok   fine
+1 passed, 2 failed

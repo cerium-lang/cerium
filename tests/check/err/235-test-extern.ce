@@ -1,0 +1,7 @@
+/* a test's call the runner arranges, not the platform's C name
+ * (13-testing.md) */
+
+#[test]
+#[extern(C)]
+fn t() {
+}

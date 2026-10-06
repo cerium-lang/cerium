@@ -1,0 +1,10 @@
+/* a test takes no arguments -- the runner calls with none
+ * (13-testing.md) */
+
+#[test]
+fn t(x: i32) {
+  let y = x;
+  if y == 0 {
+    panic("zero");
+  };
+}

@@ -1,0 +1,9 @@
+/* a method's self the runner never hands (13-testing.md) */
+
+struct Thing { n: i32 }
+
+impl Thing {
+  #[test]
+  fn m(self: *mut Self) {
+  }
+}

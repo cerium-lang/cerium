@@ -1,0 +1,5 @@
+/* a declaration is no test: there is nothing to run
+ * (13-testing.md) */
+
+#[test]
+fn t();

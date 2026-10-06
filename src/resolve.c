@@ -2264,6 +2264,91 @@ injectstd(void)
     usebind(ns->reexp[i]->name, ns->reexp[i]->target, 0, 0);
 }
 
+/* a #[test] fn's own shape, the main's rules over again
+ * (13-testing.md): no arguments, no generic parameters, a body to
+ * run, and the return one of the two endings a runner's entry
+ * answers -- () or E?(). The attribute's own argument is a
+ * description, one string. A method never reaches this walk: the
+ * impl's member table holds it, not the namespace's, and the impls'
+ * pass turned a #[test] method away at its own door. */
+static void
+checktests(Ns *ns)
+{
+  Sym **tbl;
+  usize n, i;
+
+  tbl = nstable(ns, &n); /* the table is hashed: the walk's own
+                          * order, a glob's (11-namespaces.md) */
+  for (i = 0; i < n; i++) {
+    Sym  *s = tbl[i];
+    Ast  *at;
+    Type *rt;
+
+    if (s->kind != Sfn || !s->decl) /* a prelude fn carries no
+                                     * declaring node, no attribute
+                                     * either */
+      continue;
+    at = attrfind(s->decl->attrs, "test");
+    if (!at)
+      continue;
+    if (s->ngparams)
+      cerrat(s->decl, "a test takes no generic parameters -- no call site"
+                      " picks them, the runner alone calls (13-testing.md)");
+    if (vlen(s->decl->v.fn.params))
+      cerrat(s->decl, "a test takes no arguments -- the runner calls with"
+                      " none (13-testing.md)");
+    if (!s->decl->v.fn.body)
+      cerrat(s->decl, "a test needs a body to run (13-testing.md)");
+    if (at->v.seg.args && (vlen(at->v.seg.args) > 1 || at->v.seg.args[0]->k != Nstr))
+      cerrat(at, "#[test] takes one string, the report's description"
+                 " (13-testing.md)");
+    rt = fnsigof(s)->t; /* the lazy read, the main's own walk */
+    if (!(rt->k == Tyunit || (rt->k == Tyenum && rt->sym == sym_result)))
+      cerrat(s->decl, "a test returns () or E?() -- the runner answers both"
+                      " endings, no other (13-testing.md)");
+  }
+  for (i = 0; i < vlen(ns->subs); i++)
+    checktests(ns->subs[i]);
+}
+
+/* the test's own ends, past the impls pass 3 took -- the main's own
+ * two checks, a test's shape over: an E?() hands its Err to the
+ * runner, and the runner prints it through the error type's own
+ * Fmt, no impl no print, said where the ending is; and #[extern(C)]
+ * is for the fns that cross to C, while a test's call the runner
+ * itself arranges (13-testing.md). */
+static void
+checktestslate(Ns *ns)
+{
+  Sym **tbl;
+  usize n, i;
+
+  tbl = nstable(ns, &n);
+  for (i = 0; i < n; i++) {
+    Sym  *s = tbl[i];
+    Type *rt;
+
+    if (s->kind != Sfn || !s->decl /* the prelude's own: no node, no
+                                     * attribute */)
+      continue;
+    if (!attrfind(s->decl->attrs, "test"))
+      continue;
+    nscur(s->ownsf->ns); /* the file's own context: the bound's own
+                          * walk reads its names (04-generics.md) */
+    usecur(s->ownsf->uses);
+    lexsetpath(s->ownsf->path);
+    rt = fnsigof(s)->t;
+    if (rt->k == Tyenum && rt->sym == sym_result && !implfor(sym_fmt, rt->args[1], 0))
+      cerrat(s->decl, "the error type does not implement Fmt -- the Err half"
+                      " prints through it (13-testing.md)");
+    if (attrfind(s->decl->attrs, "extern"))
+      cerrat(s->decl, "#[extern(C)] is for the fns that cross to C; a test's"
+                      " call the runner arranges (13-testing.md)");
+  }
+  for (i = 0; i < vlen(ns->subs); i++)
+    checktestslate(ns->subs[i]);
+}
+
 /* the project's four passes, a file at a time where a file's own
  * matters (12-projects.md): every name declared across the whole
  * project first -- cross-file reads are the point -- then each
@@ -2433,6 +2518,8 @@ checkproject(Srcfile **files, usize nfiles)
                         " own word (12-projects.md)");
     }
   }
+  checktests(nsroot()); /* every #[test] fn's own shape, the main's
+                         * rules a shape over (13-testing.md) */
 
   /* pass 3: traits and impls, then coherence. The bounds check runs
    * first so a bound nobody overlaps against still gets diagnosed.
@@ -2471,6 +2558,17 @@ checkproject(Srcfile **files, usize nfiles)
           for (k = 0; k < s->nmembers; k++)
             if (s->members[k].sym)
               s->members[k].sym->ownsf = sf;
+        }
+        { /* a method is no test's shape: the runner calls a fn by
+           * address with the platform's own two, and a method's
+           * self is not among what it hands (13-testing.md) */
+          usize k;
+
+          for (k = 0; k < s->nmembers; k++)
+            if (s->members[k].kind == Mfn && s->members[k].decl &&
+                attrfind(s->members[k].decl->attrs, "test"))
+              cerrat(s->members[k].decl, "a test is a free fn -- a method's self"
+                                         " the runner never hands (13-testing.md)");
         }
         vappend(&impls, &s);
         vappend(&implsf, &sf);
@@ -2540,6 +2638,9 @@ checkproject(Srcfile **files, usize nfiles)
                         " it (12-projects.md)");
     }
   }
+  checktestslate(nsroot()); /* every test's own ends, the impl table
+                             * built -- the main's two checks, a
+                             * test's shape over (13-testing.md) */
 
   /* pass 4: fn bodies, against the impl table pass 3 just built --
    * each file in its own context again, the same switch. std's panic

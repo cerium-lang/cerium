@@ -1,0 +1,7 @@
+/* the runner answers two endings, () and E?(), no other
+ * (13-testing.md) */
+
+#[test]
+fn t() -> i32 {
+  3
+}
