@@ -1,0 +1,8 @@
+pub fn probe() -> i32 {
+  let h: Hidden = make(); /* the bare names, the directory's own */
+
+  match color() {
+    Color::Red => h.x,
+    _ => 0,
+  }
+}

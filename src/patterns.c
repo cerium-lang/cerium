@@ -62,6 +62,11 @@ rpat(Ast *p, Type *t, Fenv *fe, int mut)
       s = k ? nsitem(ns, en) : symfind(en); /* the enum lands where
                                              * the walk did, when one
                                              * walked (11) */
+      if (s && k && !s->pub)                /* a pattern reads the enum the same
+                                             * door a value does: qualified across
+                                             * namespaces, the private stays home
+                                             * (11-namespaces.md) */
+        berr(p, "'%s' is private to %s (11-namespaces.md)", s->name, nsname(ns));
       if (!s || s->kind != Stype || s->tykind != TYenum)
         berr(p, "'%s' is not an enum", en);
       if (t && (t->k != Tyenum || t->sym != s))

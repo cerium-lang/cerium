@@ -44,6 +44,11 @@ Private means visible to every file of the same directory. A file is not a
 namespace, so there is no file-level privacy: to hide a helper from the rest of
 a namespace, give it a directory of its own.
 
+A qualified path from another namespace reaches only `pub` items — a private item
+is not the namespace's to give by path any more than by a `pub use`, and every
+position a name can stand in — a value, a call, a literal, a pattern, a type —
+answers the same door.
+
 A `pub use` is how a namespace gives away another's `pub` item under its own
 name — the re-export, the section after Use.
 

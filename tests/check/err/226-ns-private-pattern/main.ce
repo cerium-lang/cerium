@@ -1,0 +1,6 @@
+fn main() -> i32 {
+  match a::make() {
+    a::Color::Red => 0,
+    _ => 1,
+  }
+}
