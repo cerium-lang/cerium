@@ -2263,3 +2263,36 @@ reader -- now said where the checker says it, not where the
 emitter fell over. Three pins: 251 the family called in place and
 through a call's answer, 252 the inherent rows, 243 the mut
 refusal. Five hundred fifty-eight green.
+
+The captures the ground floor deferred are no longer deferred: the
+square brackets spell fields now, and the literal grows its own
+env. Each capture a local of the world above, read once where the
+literal stands -- by value a copy of a Copy, the bytes of anything
+else, the name dead after the move the checker spells there; by
+pointer the address itself, & a *T, &mut a *mut T, the body reading
+the name as the pointer it is, its writes through the pointer's own
+writability. The env is one struct a capture a field, nameless,
+grown by the checker where the literal is checked; the value the
+literal hands out is its address, and the fn it spells takes it as
+a first word -- %env the emitter names it, each field bound at the
+entry to the slot the body reads the name through, so a byref
+capture's slot holds the pointer itself and a *mut lends the write
+the same deref rules always lent. The call sugar finds the fn
+through the env's own declaration -- a local whose type's sym
+points back at the literal -- and rides the receiver's leading
+argument, the fn the name the walk gave the literal, no vtable, no
+load: a direct call with the env in front.
+
+The drops took care of themselves: a capture moved in dies where
+the binding that holds the closure dies -- the env's fields are the
+ordinary drop of the env struct, the dead name outside owing
+nothing. A &mut capture holds the slice's own bargain (01), taken
+at the capture and held from there; the accumulator works, the
+count a mut capture keeps works, the move kills the name. What
+stays out: fn[] inference (the empty brackets still a fn pointer),
+the family the env will ride as a bound -- a closure still cannot
+cross a fn's own face, the call sugar local-only, the escape the
+pointer bargain covers. 248 turns the corner from refusal to
+answer, 253 the accumulator, 254 the count, 255 the move, 244 the
+moved name, 245 the nameless capture, 246 the &mut refusal. Five
+hundred sixty-four green.

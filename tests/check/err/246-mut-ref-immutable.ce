@@ -1,0 +1,9 @@
+/* a &mut capture is an &mut over the name: the place must lend
+ * writability, and a plain binding lends none -- the same refusal
+ * an &mut anywhere keeps (01-types.md) */
+fn main() -> i32 {
+  let total = 0;
+  let add = fn[&mut total](x: i32) { *total = *total + x; };
+  add(1);
+  total
+}

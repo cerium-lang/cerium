@@ -1,0 +1,9 @@
+/* a mut by-value capture: the env's own slot, writable as a mut
+ * anywhere is -- the state the calls carry, the world above
+ * untouched (01-types.md) */
+pub fn main() -> i32 {
+  let mut n = 0;
+  let tick = fn[mut n]() -> i32 { n = n + 1; n };
+  tick();
+  tick() + n * 10 /* 2: the env's own count twice over, the outer 0 */
+}

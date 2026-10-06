@@ -239,12 +239,17 @@ struct Ast
       Ast  *body;   /* Nblock */
       Ast **drops;  /* the parameters' own slots, the return runs them (03) */
       char *sym;    /* the emitter's own name for the fn the body becomes */
+      Type *sig;    /* the fn it spells: what a captureless literal is,
+                     * what a capturing one's call rides (05-traits.md) */
     } clos;
     struct
     {
       int   byref; /* & or &mut capture */
       int   mut;   /* mut x, or &mut x */
       char *name;
+      Ast  *place; /* the captured name, as the place the world above
+                    * spelled it: the checker binds it, the emitter
+                    * reads it building the env (05-traits.md) */
     } cap;
     struct
     {

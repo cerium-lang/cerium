@@ -2092,11 +2092,50 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
         Local *l = locfind(fe, nm);
         Sym   *s;
 
-        if (l) { /* an indirect call: a fn-typed local */
+        if (l) { /* an indirect call: a fn-typed local, or a closure
+                  * held in one -- the env it rides in is its value */
           Type    *t = l->cur;
           Frzsave *svs = n ? arenaalloc(n * sizeof *svs) : 0;
           usize    k;
 
+          if (t && t->k == Tystruct && t->sym && t->sym->decl &&
+              t->sym->decl->k == Nclosure) { /* the closure's own call:
+                                              * the env rides first,
+                                              * the fn a name the
+                                              * literal carries
+                                              * (05-traits.md) */
+            Ast  *cl = t->sym->decl;
+            Type *sig = cl->v.clos.sig;
+
+            f->ty = t; /* the callee is the env's address: the emitter
+                        * hands it to the fn as its first word */
+            if (svs) { /* a borrow argument's freeze ends with the call
+                        * (01-types.md) */
+              memset(svs, 0, n * sizeof *svs);
+              for (k = 0; k < n; k++)
+                argborrow(args[k], fe, &svs[k]);
+            }
+            if (n != sig->nargs)
+              berr(e, "'%s' takes %lu arguments, %lu given", nm, (unsigned long) sig->nargs,
+                   (unsigned long) n);
+            {
+              usize a;
+
+              for (a = 0; a < n; a++) {
+                Type *at = rexpr(args[a], fe, sig->args[a]);
+
+                if (at && sig->args[a] && !tysame(at, sig->args[a])) {
+                  Type *cc = recoerce(args[a], sig->args[a], fe);
+
+                  if (!cc || !tysame(cc, sig->args[a]))
+                    berr(args[a], "'%s' wants %s here, this is %s", nm, btys(sig->args[a]),
+                         btys(at));
+                }
+              }
+            }
+            thawargs(svs, n); /* the call is done; its borrows ended with it */
+            return sig->t;
+          }
           if (!t || t->k != Tyfn)
             berr(e, "'%s' is %s, not callable", nm, btys(t));
           f->ty = t; /* the callee is a value here: the emitter loads
@@ -3837,34 +3876,90 @@ static Type *
 rclosure(Ast *c, Fenv *fe)
 {
   Ast  **ps = c->v.clos.params;
-  usize  np = vlen(ps), i;
+  Ast  **cs = c->v.clos.caps;
+  usize  np = vlen(ps), nc = vlen(cs), i, j;
   Type **ts = np ? tyargs(np) : 0;
   Type  *ret = c->v.clos.ret ? rty(c->v.clos.ret, &fe->env) : tyunit();
+  Field *cf = nc ? arenaalloc(nc * sizeof *cf) : 0;
   Fenv   fb;
 
-  if (vlen(c->v.clos.caps)) /* the environment a capture rides in
-                             * arrives with the Fn family; until then
-                             * the literal is the fn pointer it spells
-                             * (01-types.md) */
-    berr(c->v.clos.caps[0], "captures arrive with the Fn family (05-traits.md)");
+  for (i = 0; i < nc; i++) { /* the capture list: each name a local of
+                              * the world above, spelled once here into
+                              * a field of the literal's own env
+                              * (01-types.md) */
+    Ast   *a = cs[i];
+    Local *l;
+    Ast   *p;
+
+    for (j = 0; j < i; j++)
+      if (strcmp(cs[j]->v.cap.name, a->v.cap.name) == 0)
+        berr(a, "the capture '%s' is named twice", a->v.cap.name);
+    l = locfind(fe, a->v.cap.name);
+    if (!l)
+      berr(a, "'%s' names no local to capture", a->v.cap.name);
+    if (l->dead)
+      berr(a, "'%s' has been moved", a->v.cap.name);
+    p = opnode(Npath, a); /* the name as the world above spelled it:
+                           * the emitter reads this place building the
+                           * env -- a byref capture stores the address,
+                           * a value one the bytes (05-traits.md) */
+    p->v.path.segs = vnew(Ast *, 1);
+    opvpush(&p->v.path.segs, opseg(a->v.cap.name, a));
+    p->ty = l->ty;
+    a->v.cap.place = p;
+    cf[i].name = a->v.cap.name;
+    cf[i].attrs = 0;
+    if (a->v.cap.byref) { /* the pointer the address-of operators
+                           * spell: & a *T, &mut a *mut T, and the
+                           * body reads the name as that pointer, its
+                           * writes through the pointer's own *mut
+                           * rules (01-types.md). The borrow it holds
+                           * is the slice's own bargain: taken at the
+                           * capture, alive from there, and a closure
+                           * that outlives what it points at is the
+                           * same undefined behaviour a slice's is
+                           * (01-types.md) */
+      if (a->v.cap.mut && !placewritable(p, fe))
+        berr(a, "a &mut capture needs a writable place (01-types.md)");
+      if (touchconflict(p, fe, a->v.cap.mut))
+        berr(a, "the capture '%s' crosses a live borrow (01-types.md)", a->v.cap.name);
+      cf[i].ty = typtr(a->v.cap.mut ? tymut(l->ty) : l->ty);
+      cf[i].mut = 0; /* the env's slot holds the pointer, and never
+                      * changes -- the name it is read by is the
+                      * pointer's own shape (01-types.md) */
+      continue;
+    }
+    if (!iscopy(l->ty)) /* by value: a Copy one is copied in, any
+                         * other moved -- the name unusable after, the
+                         * move spelled here (03-move.md) */
+      l->dead = 1;
+    cf[i].ty = l->ty;
+    cf[i].mut = a->v.cap.mut; /* the env's own slot writable, as a mut
+                               * anywhere is (01-types.md) */
+  }
   for (i = 0; i < np; i++) {
     if (!ps[i]->v.param.t)
       berr(ps[i], "a closure parameter carries its type");
     ts[i] = rty(ps[i]->v.param.t, &fe->env);
   }
   fb = fefork(fe);
-  fb.ls = 0; /* the body sees its parameters alone: no capture is
-              * carried yet, so a name from the world above is no
-              * name at all -- the capture it names arrives with the
-              * Fn family (05-traits.md) */
+  fb.ls = 0; /* the body sees its captures and its parameters alone:
+              * the env's own fields are the world it knows, the world
+              * above them no name at a time (01-types.md) */
   fb.n = 0;
   fb.fnret = ret;
+  for (i = 0; i < nc; i++) /* the captures first, the env's own slots:
+                            * a byref name is the pointer it is read
+                            * as, a value one its own type, its mut the
+                            * capture's own word (01-types.md) */
+    locpush(&fb, cs[i]->v.cap.name, cf[i].ty, cs[i]->v.cap.byref ? 0 : cs[i]->v.cap.mut);
   for (i = 0; i < np; i++)
     locpush(&fb, ps[i]->v.param.name, ts[i], ps[i]->v.param.mut);
   fb.fnbase = fb.n; /* a closure's return leaves its own frame only:
                      * the captures and the world above them stay
-                     * (03-move.md) -- their destructors are their
-                     * own scope's */
+                     * (03-move.md) -- the env's fields are the
+                     * caller's, destructed where the literal's own
+                     * scope ends, the binding that holds it */
   {                 /* the same check a fn's body walks: the closure's own tail
                      * against its declared return (10-iteration.md) */
     Type *t = rblock(c->v.clos.body, &fb, ret);
@@ -3878,10 +3973,39 @@ rclosure(Ast *c, Fenv *fe)
              btys(t));
     }
   }
-  c->v.clos.drops = scopedrops(&fb, 0, c); /* the parameters' own slots,
-                                            * the same bookkeeping a
-                                            * fn's return runs (03-move.md) */
-  return tyfn(ts, np, ret);
+  c->v.clos.drops = scopedrops(&fb, nc, c); /* the parameters' own slots
+                                             * and the body's bindings:
+                                             * the capture slots at 0
+                                             * stay -- their destructors
+                                             * are the caller's, run
+                                             * where the env itself
+                                             * dies (03-move.md) */
+  c->v.clos.sig = tyfn(ts, np, ret);        /* the fn the literal spells: what
+                                             * a captureless one is, what a
+                                             * capturing one's call rides
+                                             * (01-types.md, 05-traits.md) */
+  if (!nc)
+    return c->v.clos.sig; /* no captures, no env: the value is the fn
+                           * pointer it spells, as it always was
+                           * (01-types.md) */
+  {                       /* the env: one struct, a capture a field, the literal's value its
+                           * address. Its own drops ride the binding that holds it -- the
+                           * fields die where the closure does (03-move.md) */
+    static usize nenv;
+    Sym         *env = arenaalloc(sizeof *env);
+
+    memset(env, 0, sizeof *env);
+    env->name = arenaalloc(16);
+    sprintf(env->name, "$env.%lu", (unsigned long) ++nenv);
+    env->kind = Stype;
+    env->tykind = TYstruct;
+    env->fields = cf;
+    env->nfields = nc;
+    env->decl = c; /* the literal the env belongs to: the call sugar
+                    * reaches the fn it names through here
+                    * (05-traits.md) */
+    return tysym(env, 0, 0);
+  }
 }
 
 /* is a place writable? The slot rules of 01-types.md: a mut binding,

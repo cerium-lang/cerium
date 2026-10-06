@@ -1,0 +1,14 @@
+/* a by-value capture of what owns a destructor moves it in, and
+ * the name is unusable after -- the same refusal a move anywhere
+ * keeps (03-move.md) */
+use std::ops::Drop;
+
+struct D { n: i32 }
+
+impl Drop for D { fn drop(mut self: D) { } }
+
+fn main() -> i32 {
+  let d = D{ n: 20 };
+  let f = fn[d]() -> i32 { d.n };
+  f() + d.n
+}

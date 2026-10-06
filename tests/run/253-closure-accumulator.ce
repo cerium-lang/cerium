@@ -1,0 +1,11 @@
+/* the pointer capture the address-of operators spell: &mut a *mut
+ * T, the body reads the name as that pointer and its writes ride
+ * the pointer's own writability -- the accumulator a by-value
+ * capture could never hand back (01-types.md) */
+pub fn main() -> i32 {
+  let mut total = 0;
+  let add = fn[&mut total](x: i32) { *total = *total + x; };
+  add(2);
+  add(3);
+  total /* 5: what the writes through the pointer reached */
+}
