@@ -1,15 +1,31 @@
 /* std::sys -- errno, the word a failed call sets. The C library
  * reports a failure two ways: the call answers -1, and the errno
- * it set waits in a word the platform keeps per thread.
- * __errno_location is where every C library agrees the word lives
- * -- the `errno` macro in C spells this same call -- and errno
- * reads it out. */
+ * it set waits in a word the platform keeps per thread. Where the
+ * word lives is the one libc spelling the platforms disagree on --
+ * glibc and musl hide it behind __errno_location, Darwin's libSystem
+ * behind __error, the C `errno` macro spelling whichever call its
+ * platform made -- so each platform carries its own pair here, a
+ * #[cfg] culling the other's out before either name is declared
+ * (12-projects.md). */
 
+#[cfg(linux)]
 #[extern(C)]
 fn __errno_location() -> *mut i32;
 
+#[cfg(linux)]
 pub fn errno() -> i32 {
   let p = __errno_location();
+
+  *p
+}
+
+#[cfg(darwin)]
+#[extern(C)]
+fn __error() -> *mut i32;
+
+#[cfg(darwin)]
+pub fn errno() -> i32 {
+  let p = __error();
 
   *p
 }

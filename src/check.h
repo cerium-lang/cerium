@@ -109,6 +109,6 @@ int rowspec(Sym *a, Sym *b);
 
 /* a diagnostic at a node: path:line:col: message, then exit(1) --
  * the same shape the lexer's and the parser's errors take */
-void cerrat(Ast *a, const char *fmt, ...);
+void cerrat(Ast *a, const char *fmt, ...) __attribute__((__noreturn__));
 
 #endif

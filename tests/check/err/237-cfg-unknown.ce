@@ -1,0 +1,9 @@
+/* a platform the tables do not know: the name is a typo guard's to
+ * catch, a quiet false would hide the miss behind a link error
+ * (12-projects.md) */
+#[cfg(mac)]
+fn f() {
+}
+
+fn main() {
+}

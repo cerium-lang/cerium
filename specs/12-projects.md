@@ -96,6 +96,39 @@ walk to the stderr door. The walk is the pack's own peel, one unfolding a
 value, the pack's depth cap its own (`04-generics.md`), and the count handed
 back is the whole print's, however many writes it took.
 
+## Platform conditions
+
+A declaration may name the platforms it lives on — `#[cfg(linux)] fn
+reboot() { ... }` exists only where the word holds, and a compile
+anywhere else never sees it: not its name, not its uses, not its
+impls, not its bodies. The cull is the first thing the checker does,
+before a single name is declared, so a culled item is not hidden but
+absent — a use that names it is the unknown name any absent thing is.
+
+Two dimensions hold the words: the system — `linux` or `darwin`, the
+libc the platform carries — and the machine — `amd64` or `arm64`, the
+qbe backend that answers it. `arm64` is the one word for both Linux's
+aarch64 and Apple's arm64_apple: the IL above them has no stake in the
+calling conventions that part them. Several words in one pair of
+parentheses must all hold — `#[cfg(darwin, arm64)]` is Apple silicon,
+the system and the machine each named — and several `#[cfg]`s on one
+declaration meet the same way. There is no negation: a library lists
+the platforms it supports, not the ones it does not — "not this one"
+is every other platform written out — and two words from one dimension
+in one pair of parentheses is an error, the hand that meant
+`#[cfg(linux, amd64)]` worth stopping rather than meeting to a quiet
+false. A word the dimensions do not know is an error too, the same
+guard a typo wants; an uname the tables cannot name at all keeps every
+word false — the honest answer for a platform the compiler was never
+told about.
+
+The platform the words read is the one the compiler itself runs on:
+host and target are the same machine, a cross compile its own
+milestone. std is the first customer — `errno`, the word a failed call
+sets, lives behind `__errno_location` where glibc and musl put it and
+behind `__error` where Darwin's libSystem does, two `#[cfg]`d
+declarations of the one `pub fn`, each compile reading exactly one.
+
 ## std, the project's first files
 
 The standard library is a directory the compiler reads like the project's

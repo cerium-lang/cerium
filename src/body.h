@@ -78,7 +78,7 @@ int hasdrop(Type *t); /* a destructor the type owns, its own row or a
                        * and what Copy's exclusion reads (03) */
 
 /* diagnostics */
-void  berr(Ast *a, const char *fmt, ...);
+void  berr(Ast *a, const char *fmt, ...) __attribute__((__noreturn__));
 char *btys(Type *t);
 
 /* small type helpers */

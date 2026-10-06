@@ -2068,3 +2068,30 @@ bits, a modulo done in the head -- each one a garbage value that
 was only ever the reader's). 238 the pin anyway: the same-named
 rows' addresses walked end to end, twenty-one the answer, the
 ground held for whoever reads the code next.
+
+And the platform got its word. The Mac's suite had fallen two
+hundred and eleven times over, every fall the same missing symbol
+-- __errno_location, the glibc spelling of the door the errno waits
+behind, and Darwin keeps the same word behind __error, nothing but
+the spelling parting them. The fix is the language's own: a #[cfg]
+on a declaration, two dimensions of names -- the system, linux or
+darwin, the libc it carries; the machine, amd64 or arm64, the qbe
+backend that answers it, the one word arm64 covering both the
+aarch64 Linux and the Apple silicon beneath it -- the arguments
+and-ed, several attributes and-ed the same way, no negation
+anywhere (a library names the platforms it stands on, not the ones
+it does not), and the cull the checker's very first walk: before a
+single name is declared, a false word's declaration is not hidden
+but absent, its uses and impls and bodies gone with it. std is the
+first customer -- errno twice over, one spelling per system, each
+compile reading exactly one. And the four noreturns beside it: die
+and cerrat and berr and voom, their declarations now saying what
+their bodies always did, and Apple clang's
+possibly-uninitialized -- the lie it told about every caller that
+treated the exit as reachable -- gone quiet. 237 through 241 the
+refusals: the unknown name, the two systems in one pair of
+parentheses, the literal where a name goes, the attribute with no
+word at all, and the culled fn's own caller, the unknown name any
+absent thing is. 239 the run beside them, the words that hold here
+holding, and-ed, the answer they make. Five hundred thirty-two
+green.

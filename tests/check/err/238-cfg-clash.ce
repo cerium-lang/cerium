@@ -1,0 +1,10 @@
+/* two systems in one pair of parentheses: the clash, a hand that
+ * meant one of each dimension -- linux and darwin are both systems,
+ * the amd64 or arm64 it meant to pair one with never read
+ * (12-projects.md) */
+#[cfg(linux, darwin)]
+fn f() {
+}
+
+fn main() {
+}

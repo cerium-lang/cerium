@@ -106,7 +106,7 @@ struct Vh
 #define vpop(p)   ((p)[--vhdr(p)->len])
 #define vclear(p) ((void) (vhdr(p)->len = 0))
 
-void  voom(const char *msg);
+void  voom(const char *msg) __attribute__((__noreturn__));
 void *valloc_(usize esiz, usize alig, usize n);
 void *vfree_(void *p);
 void *vreserve_(void *p, usize n);

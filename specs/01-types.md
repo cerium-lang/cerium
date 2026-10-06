@@ -918,7 +918,7 @@ Its arguments, when it has any, are identifiers or literals — `debug`, `16`,
 `"desc"` — never expressions, and they do not nest. Each attribute interprets
 its own arguments; an attribute is not a function, and not a macro.
 
-Six attributes are defined by the language, all consumed by the compiler:
+Seven attributes are defined by the language, all consumed by the compiler:
 
 | attribute | what it does | where |
 | --- | --- | --- |
@@ -926,6 +926,7 @@ Six attributes are defined by the language, all consumed by the compiler:
 | `#[extern(C)]` | C linkage, import or export | External functions above |
 | `#[build(...)]` | the function exists only in the named modes | Build modes below |
 | `#[noreturn]` | a call to it never produces a value | `10-iteration.md` |
+| `#[cfg(...)]` | the declaration exists only on the named platforms | `12-projects.md` |
 | `#[test]` | the function is a test; collected into the test artifact | `13-testing.md` |
 
 There is no way to define a new one. Any other name is a user attribute: the
