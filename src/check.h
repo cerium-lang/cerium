@@ -23,9 +23,12 @@ struct Srcfile
 {
   Ast       **items;
   Ns         *ns;
-  Use       **uses; /* the checker fills it, before the bindings */
-  Sym       **syms; /* pass 1's, the checker fills it */
-  const char *path; /* its diagnostics' name */
+  Use       **uses;    /* the checker fills it, before the bindings */
+  Sym       **syms;    /* pass 1's, the checker fills it */
+  const char *path;    /* its diagnostics' name */
+  int         ctxdone; /* its uses and the prelude bound -- a lazy
+                        * resolve that switches files makes them
+                        * whole on the first read */
 };
 
 void checkinit(void);

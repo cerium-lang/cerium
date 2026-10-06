@@ -618,6 +618,8 @@ fits(u64 v, Type *t)
  * before pass 3 builds it (a handle's associated types align against
  * the declaration order); the read builds it then, once (05) */
 static void resolvetrait(Sym *s);
+static void filectx(Srcfile *sf); /* a file's whole context, entered --
+                                   * bound whole on the first read (below) */
 
 Type *
 rty(Ast *t, Env *env)
@@ -846,12 +848,27 @@ resolvefn(Sym *s)
 /* a signature read on demand -- the evaluator meets a forward
  * reference (a const initializer calling a fn below it) before this
  * pass reached it; resolvefnsig reads the declaration alone, so the
- * lazy form is the same answer */
+ * lazy form is the same answer. The declaration's own names resolve
+ * in its own file: a lazy read may arrive from anywhere, and the
+ * file's context is entered here the way resolvetrait enters its
+ * own, whole and given back at the door (12-projects.md) */
 Type *
 fnsigof(Sym *s)
 {
-  if (!s->fnty)
+  if (!s->fnty) {
+    Ns         *svns = nscuring();
+    Use       **svuses = useuring();
+    const char *svpath = lexpath();
+
+    if (s->ownsf)
+      filectx(s->ownsf);
     s->fnty = resolvefnsig(s->decl, 0);
+    if (s->ownsf) {
+      nscur(svns);
+      usecur(svuses);
+      lexsetpath(svpath);
+    }
+  }
   return s->fnty;
 }
 
@@ -1004,19 +1021,32 @@ resolveimpl(Sym *s)
 /* a trait's members, in declaration order. Self is a parameter
  * here -- it names whatever implements the trait, and the fn
  * signatures carry it (and Self::Item projections) until an impl
- * substitutes them away. */
+ * substitutes them away. The members' own names resolve in the
+ * trait's own file: a lazy read may arrive from any file's pass --
+ * a signature half a project away reaching for the table -- and a
+ * bare name belongs where the trait lives, its namespace and its
+ * uses, not to whichever file asked (12-projects.md). The caller's
+ * context is kept whole and given back at the door */
 static void
 resolvetrait(Sym *s)
 {
-  Ast  *it = s->decl;
-  Env   env = envgparams(0, it->v.ty.gparams, vlen(it->v.ty.gparams));
-  Ast **ms = it->v.ty.members;
-  usize n = vlen(ms);
-  usize i, j;
+  Ast        *it = s->decl;
+  Env         env = envgparams(0, it->v.ty.gparams, vlen(it->v.ty.gparams));
+  Ast       **ms = it->v.ty.members;
+  usize       n = vlen(ms);
+  usize       i, j;
+  Ns         *svns;
+  Use       **svuses;
+  const char *svpath;
 
   if (s->traitdone)
     return; /* built early by a signature read, or already built */
   s->traitdone = 1;
+  svns = nscuring();
+  svuses = useuring();
+  svpath = lexpath();
+  if (s->ownsf)
+    filectx(s->ownsf); /* the trait's own file, its context whole */
   env.strait = s;
   env = envpush(&env, "Self", selfty());
   s->nmembers = n;
@@ -1048,6 +1078,11 @@ resolvetrait(Sym *s)
     default:
       cerrat(m, "a trait member is a fn, a type, or a const");
     }
+  }
+  if (s->ownsf) {
+    nscur(svns);
+    usecur(svuses);
+    lexsetpath(svpath);
   }
 }
 
@@ -2117,6 +2152,31 @@ injectstd(void)
     usebind(ns->reexp[i]->name, ns->reexp[i]->target, 0, 0);
 }
 
+/* a file's own context, entered whole: the namespace, the uses, the
+ * path a diagnostic names -- and, on the first entry, the file's
+ * plain uses bound and the prelude injected after them. The pass-2
+ * walk arrives here file by file; a lazy resolve may switch to a
+ * file the walk has not reached yet -- the names read there are the
+ * file's own, and they read whole (12-projects.md). The pub uses
+ * bound before any of this, their own whole-project pass */
+static void
+filectx(Srcfile *sf)
+{
+  usize j, m = vlen(sf->items);
+
+  nscur(sf->ns);
+  usecur(sf->uses);
+  lexsetpath(sf->path);
+  if (sf->ctxdone)
+    return;
+  sf->ctxdone = 1;
+  for (j = 0; j < m; j++)
+    if (sf->items[j]->k == Nuse && !sf->items[j]->pub)
+      resolveuse1(sf->items[j], 0, 0, 0, sf->ns);
+  injectstd(); /* the prelude, after the file's own uses: the
+                * injected names yield to them (12-projects.md) */
+}
+
 /* a #[test] fn's own shape, the main's rules over again
  * (13-testing.md): no arguments, no generic parameters, a body to
  * run, and the return one of the two endings a runner's entry
@@ -2337,18 +2397,10 @@ checkproject(Srcfile **files, usize nfiles)
    * same per-file context: a const's own type may read one */
   for (f = 0; f < nfiles; f++) {
     Srcfile *sf = files[f];
-    usize    j, m = vlen(sf->items);
 
-    nscur(sf->ns);
-    usecur(sf->uses);
-    lexsetpath(sf->path);
-    for (j = 0; j < m; j++)
-      if (sf->items[j]->k == Nuse && !sf->items[j]->pub)
-        resolveuse1(sf->items[j], 0, 0, 0, sf->ns);
-    injectstd(); /* the prelude, after the file's own uses: the
-                  * injected names yield to them -- std's own files
-                  * too, the declares-all pass having made the face
-                  * whole before any read (12-projects.md) */
+    filectx(sf); /* the uses and the prelude bound here on the
+                  * file's first entry -- a lazy read that switched
+                  * to it earlier found them whole already */
     resolveitems(sf->items, sf->syms);
   }
   { /* main's own return, resolved now: (), the i32 the exit code
@@ -2389,10 +2441,8 @@ checkproject(Srcfile **files, usize nfiles)
     Srcfile *sf = files[f];
     usize    j, m = vlen(sf->items);
 
-    nscur(sf->ns); /* members resolve in the impl's own context: a
-                    * signature's types read its file's uses too */
-    usecur(sf->uses);
-    lexsetpath(sf->path);
+    filectx(sf); /* members resolve in the impl's own context: a
+                  * signature's types read its file's uses too */
     for (j = 0; j < m; j++) {
       Ast *it = sf->items[j];
       Sym *s = sf->syms[j];

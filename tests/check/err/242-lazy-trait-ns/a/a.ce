@@ -1,0 +1,7 @@
+/* the same name in another namespace: the trap itself -- a lazy
+ * read that resolves the trait's members in the asking file's
+ * context would reach this one through its use, and the contract
+ * would drift across namespaces with whichever file asked first */
+pub enum Word {
+  W(i32),
+}

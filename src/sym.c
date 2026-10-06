@@ -95,6 +95,12 @@ usecur(Use **uses) /* the checker's switch, a file at a time */
   curuenv = uses;
 }
 
+Use **
+useuring(void)
+{
+  return curuenv;
+}
+
 Use *
 usebind(const char *name, Sym *sym, Ns *ns, Ast *at)
 {
@@ -153,6 +159,15 @@ void
 nscur(Ns *ns)
 {
   curns = ns;
+}
+
+Ns *
+nscuring(void) /* the namespace the checker serves right now: a
+                * nested resolve that switches to another file's
+                * context reads it first, to give its caller's own
+                * back at the door */
+{
+  return curns;
 }
 
 Ns *

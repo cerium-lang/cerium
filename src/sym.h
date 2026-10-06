@@ -170,6 +170,8 @@ Sym *symdecl(const char *name, int kind, Ast *decl, Ast **gparams, usize ngparam
 Sym *symfind(const char *name);
 void nscur(Ns *ns); /* the namespace whose file the checker is in:
                      * symfind reads its table first (11) */
+Ns *nscuring(void); /* the one it is in right now: a nested resolve
+                     * that switches files keeps its caller's whole */
 
 /* -- the use environment -------------------------------------------------
  * What a `use` brought into scope: an item's Sym, or a namespace
@@ -190,6 +192,8 @@ void  useclear(void);     /* per compilation, from syminit */
 Use **usenew(void);       /* a fresh file's own, empty */
 void  usecur(Use **uses); /* the checker's switch, a file at a time --
                            * the uses are a file's own (11) */
+Use **useuring(void);     /* the file's uses it holds right now, a nested
+                           * resolve's own to give back */
 Use *usebind(const char *name, Sym *sym, Ns *ns, Ast *at); /* the
                                                             * binding made, or the one that held
                                                             * the name first -- the caller
