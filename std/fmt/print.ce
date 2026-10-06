@@ -11,6 +11,9 @@
  * took. */
 
 use std::meta::TypeInfo;
+use std::ops::Copy; /* the hole the pack's peel hands down: a copy
+                     * each unfolding, the opt-in the use itself is
+                     * (03-move.md, 12-projects.md) */
 
 pub fn fmt_to<T: Fmt>(v: *T, w: dyn mut Write) -> Result<usize, Error> {
   let mut wr = Writer { w: w, prec: 0, base: 0 };
@@ -173,6 +176,10 @@ struct Hole {
   mut base: u8,     /* 0: ten -- x o b the three others */
   mut end: usize,   /* the index past the hole's closing '}' */
 }
+
+impl Copy for Hole { } /* scalars every field: the row the pack's
+                        * peel hands down, a copy each unfolding
+                        * (03-move.md) */
 
 fn spec(fmt: []u8, at: usize) -> Hole {
   let mut h = Hole { fill: 32, align: 0, width: 0, prec: 0, base: 0, end: 0 };

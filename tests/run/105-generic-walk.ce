@@ -6,9 +6,15 @@
  * fields, walking them field by field. Each instance its own: what
  * one wrote the next must not read (04-generics.md, 08, 09, 10) */
 use std::meta::TypeInfo;
+use std::ops::Copy; /* the walks read their argument more than once:
+                     * a copy each read, the opt-in the use itself is
+                     * (03-move.md) */
 
 struct P { x: u32, y: u32, z: u32 }
 struct Q { a: u64, b: u64 }
+
+impl Copy for P { }
+impl Copy for Q { }
 const XS: [3]u32 = [3]u32{1, 2, 3};
 
 fn sumf<T>(v: T) -> u64 { /* the walk: the fields by their own names */

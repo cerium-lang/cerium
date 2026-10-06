@@ -1,0 +1,13 @@
+/* Copy is an opt-in, not a structural accident: a struct without a
+ * Drop and without an impl of Copy still moves -- the second read
+ * names the binding the first one emptied (03-move.md) */
+struct P { n: i32 }
+
+fn id(p: P) -> i32 { p.n }
+
+fn main() -> i32 {
+  let p = P { n: 21 };
+  let a = id(p);
+  let b = p.n; /* p moved into id: the row read finds it dead */
+  a + b
+}

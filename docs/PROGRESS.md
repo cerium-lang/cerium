@@ -2296,3 +2296,44 @@ pointer bargain covers. 248 turns the corner from refusal to
 answer, 253 the accumulator, 254 the count, 255 the move, 244 the
 moved name, 245 the nameless capture, 246 the &mut refusal. Five
 hundred sixty-four green.
+
+Copy was structural in the code and opt-in in the spec, and the
+spec wins: a struct is Copy when it says it is -- the impl row
+iscopy1 asks for now -- the row accepted only because every field
+already is, exactly the two sentences 03 keeps. The marker's own
+answer stays out of the table walk the other traits take: the
+cycle an impl's bound could spell (`impl<T: Copy> Copy for W<T>`)
+is broken where iscopy breaks it, a three-state memo on the type
+itself -- asked, asking, answered -- the same word the satisfies
+walk keeps. Nothing in std had said it; the operator rows were
+already bounded Copy, waiting for the world to catch up.
+
+The structural reading had been papering over four bugs, one at
+each place a pack's rows meet the move rules, and the opt-in took
+the paper off all four at once. A row of a place is a place:
+placeroot walks the row now, so a row borrow freezes its root,
+the conflict checks see through it, the writable row answers. The
+value walk's row read takes its base as a place -- a row read
+moves the row, never the tuple that holds it. The place walk
+answers a tuple's row itself, the rewrite the value walk always
+landed, so &t[0] points at the row the emitter addresses, no
+materialised copy between -- and t[0] = v, &mut t[0] with it, are
+the writable row's own spellings. A pack-rooted place defers with
+the read: the instance's walk types the borrow for real, the
+declaration never spelling a copy the binding never made.
+
+And the spread. The whole binding's rows move together -- a
+binding dies whole or not at all -- so the rows the expansion
+spells are remembered as its own: their reads are the move's
+spelling, the marking they leave the binding's death, unwound by
+a trial that refuses exactly as any move is. A slice of the pack
+is rows the program spelled, no members: the partial move refuses,
+@take the one way around. The First/Rest peel -- a binding of its
+own each unfolding -- carries owning rows the whole way down, the
+spec's own recursion shape working where the slice cannot. std's
+Hole says Copy now, the use the file's own word that it does; the
+tests' structs say it where their values feed more than one read,
+112's generic row names the bound. 247 the refusal, 256 the
+opt-in read alive, 257 the slice's partial move, 258 the rows as
+places -- borrowed twice, forwarded whole, written and lent. Five
+hundred sixty-eight green.

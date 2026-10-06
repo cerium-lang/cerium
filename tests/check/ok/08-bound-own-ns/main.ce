@@ -3,8 +3,13 @@
  * file's context, whichever file the coherence served last
  * (11-namespaces.md). */
 use ops::Scale;
+use std::ops::Copy; /* the borrowed row names the bound: a type that
+                     * is not Copy borrows no row -- the opt-in the
+                     * use itself is (03-move.md) */
 
 struct P { n: i32 }
+
+impl Copy for P { }
 
 impl Scale for P {
   type Output = P;

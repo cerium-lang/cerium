@@ -4,9 +4,14 @@
  * trait taking what is left. The compound shifts carry their own
  * pair, <<= and >>=; the other compounds have no token in the
  * language, and no row waits for them. */
-use std::ops::{Rem, BitAnd, BitOr, BitXor, Shl, Shr, Neg, ShlAssign, ShrAssign};
+use std::ops::{Rem, BitAnd, BitOr, BitXor, Shl, Shr, Neg, ShlAssign, ShrAssign,
+               Copy}; /* Copy: the operands feed more than one call, a
+                       * copy each -- the opt-in the use itself is
+                       * (03-move.md) */
 
 struct Flags { bits: i32 }
+
+impl Copy for Flags { }
 
 impl Rem for Flags {
   type Output = Flags;

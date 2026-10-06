@@ -62,6 +62,44 @@ Sym *bodyfn;
 
 static Type *rplace1(Ast *e, Fenv *fe);
 
+/* the rows a spread of a whole binding spells: the expansion below
+ * makes them ordinary row reads -- the arity the call counts is the
+ * rows', and the trial folds them back for the pack slot as it does
+ * any tail (04-generics.md) -- and each row would be a move out of a
+ * place the checker refuses (03-move.md). But the whole binding's
+ * rows move together, the binding dying whole, never half: the rows
+ * the expansion itself made are remembered here, their reads the
+ * move's own spelling -- the marking they leave is the binding's
+ * death, and a trial that refuses unwinds it with every other move
+ * (movsnap's own discipline). A row the program spelled by hand is
+ * no member: it refuses alone, the way any row read does. The
+ * tables are never cleared: a node remembered is only ever walked
+ * as the spread's own row, and a clone re-expands its own (04). */
+static Ast **sprrows;  /* the generated row reads themselves */
+static Ast **sprbases; /* the bases they read: the spread's operand */
+
+static int
+issprrow(Ast *e)
+{
+  usize i;
+
+  for (i = 0; i < vlen(sprrows); i++)
+    if (sprrows[i] == e)
+      return 1;
+  return 0;
+}
+
+static int
+issprbase(Ast *e)
+{
+  usize i;
+
+  for (i = 0; i < vlen(sprbases); i++)
+    if (sprbases[i] == e)
+      return 1;
+  return 0;
+}
+
 /* a const []u8 parameter's bake, held by name: is it one -- the
  * shape the literal spells, no wider slice (08-reflection.md) */
 static int
@@ -115,8 +153,12 @@ rplace1(Ast *e, Fenv *fe)
     char   buf[256];
     Local *root = placeroot(e, fe, buf, sizeof buf);
 
-    if (root) { /* a local: dead and borrow checks, no move */
-      if (root->dead)
+    if (root) {                        /* a local: dead and borrow checks, no move */
+      if (root->dead && !issprbase(e)) /* a spread's own rows read
+                                        * their base after the first
+                                        * row moved the binding: the
+                                        * walk is the move itself
+                                        * (03-move.md, 04) */
         berr(e, "'%s' has been moved", root->name);
       if (touchconflict(e, fe, 0))
         berr(e, "'%s' is borrowed (01-types.md)", root->name);
@@ -175,9 +217,38 @@ rplace1(Ast *e, Fenv *fe)
     if (!bt)
       return 0;
     bt = derefthrough(bt);
+    if (bt->k == Typaram && bt->gp->v.gp.pack) { /* the pack's rows:
+                                                  * the binding's own,
+                                                  * and the place defers
+                                                  * with the read
+                                                  * (04-generics.md) */
+      evalblackbox++;
+      return 0;
+    }
+    if (e->k == Nindex && (bt->k == Tytuple || bt->k == Tyunit)) { /*
+      a tuple's row by number, the dot's own spelling (04-generics.md):
+      the rewrite the value walk lands, taken here too so a borrow
+      points at the row the emitter addresses -- never a copy a
+      materialised let would hold, the row's own Copy beside the
+      point (01-types.md) */
+      Ast *base = e->v.n2.a;
+
+      if (bt->k == Tyunit || e->v.n2.b->k != Nint)
+        berr(e, "a tuple's index is a row number the compiler reads (04-generics.md)");
+      { /* the rewrite lands the row place the checker already has */
+        u64 ix = e->v.n2.b->v.i.num;
+
+        if (ix >= bt->nargs)
+          berr(e->v.n2.b, "row %lu out of range for %s", (unsigned long) ix, btys(bt));
+        e->k = Ntupidx;
+        e->v.tup.e = base;
+        e->v.tup.idx = ix;
+        return rplace(e, fe);
+      }
+    }
     if (bt->k != Tyarray && bt->k != Tyslice)
-      return 0;           /* a tuple or a pack: rexpr's own ground, the row
-                           * rewrite it answers there */
+      return 0;           /* a range over a tuple: rexpr's own ground,
+                           * the sub-tuple rewrite it answers there */
     if (e->k == Nindex) { /* the index: a value the store reads, and
                            * one no other walk takes when this node is
                            * a place -- or a base below one -- so it is
@@ -216,6 +287,31 @@ rplace1(Ast *e, Fenv *fe)
     return tyslice(bt->t); /* the view itself, the same answer the
                             * value read gives -- a place the store
                             * does not yet write through */
+  }
+  case Ntupidx: { /* t.0, or the rewrite above: the row is a place the
+                   * same way a field is -- its address the emitter's
+                   * own offset walk, its borrow freezing the root
+                   * (01-types.md) */
+    Type *bt = rplace(e->v.tup.e, fe);
+
+    if (!bt)
+      bt = rexpr(e->v.tup.e, fe, 0); /* a computed base: f().0, a value */
+    if (!bt)
+      return 0;
+    bt = derefthrough(bt);
+    if (bt->k == Typaram && bt->gp->v.gp.pack) { /* the pack's rows:
+                                                  * the binding's own,
+                                                  * and the place defers
+                                                  * with the read
+                                                  * (04-generics.md) */
+      evalblackbox++;
+      return 0;
+    }
+    if (bt->k != Tytuple && bt->k != Tyunit)
+      berr(e, "%s is not a tuple", btys(bt));
+    if (bt->k == Tyunit || e->v.tup.idx >= bt->nargs)
+      berr(e, "tuple index %lu out of range", (unsigned long) e->v.tup.idx);
+    return bt->args[e->v.tup.idx];
   }
   case Nun:
     if (e->v.un.op == Tstar) {
@@ -1808,8 +1904,20 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                  * the emitter re-finds the impl from the pair */
     }
     if (op == Tamp) { /* &x / &mut x: the place is borrowed, not read */
+      int   bb = evalblackbox;
       Type *t = rplace(e->v.un.e, fe);
 
+      if (evalblackbox != bb) {        /* a pack-rooted place: the rows the
+                                        * binding holds, and the instance's
+                                        * walk types the borrow for real
+                                        * (04-generics.md) -- never a
+                                        * materialised copy, the row itself
+                                        * is the place the emitter addresses */
+        evalblackbox = bb;             /* the flag dies with the walk that raised it */
+        return want ? want : tyunit(); /* the shape the world around
+                                        * it wants, or none when no
+                                        * slot names one (04) */
+      }
       if (!t) {          /* a value with no place of its own -- &3, &make(),
                           * &(b - 1) -- is materialised: a nameless slot the
                           * statement's own block holds, the value stored
@@ -2001,7 +2109,17 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
             vappend(&as, &a);
             continue;
           }
-          t = rexpr(a->v.un.e, fe, 0);
+          { /* the operand read here is a look, not a take: the moves
+             * it spells on a non-Copy operand are undone before the
+             * arguments walk -- the real read happens there, once,
+             * where the argument stands (03-move.md, the same
+             * unwinding a trial's own walk takes) */
+            int  *snap = movsnap(fe);
+            Type *st = rexpr(a->v.un.e, fe, 0);
+
+            t = st;
+            movrestore(fe, snap);
+          }
           if (!t)
             berr(a->v.un.e, "the spread operand is not known here (01-types.md)");
           if (t->k == Tyslice) /* the length is a runtime thing: the
@@ -2030,6 +2148,16 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
               num->v.i.num = k;
               ix->v.n2.a = a->v.un.e;
               ix->v.n2.b = num;
+              if (!sprrows)
+                sprrows = vnew(Ast *, 16);
+              vappend(&sprrows, &ix); /* the spread's own row: the
+                                       * whole binding's move, this
+                                       * row its spelling (03, 04) */
+              if (!k) {
+                if (!sprbases)
+                  sprbases = vnew(Ast *, 4);
+                vappend(&sprbases, &a->v.un.e);
+              }
               vappend(&as, &ix);
             }
             continue;
@@ -2064,6 +2192,19 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
 
               ix->v.tup.e = a->v.un.e;
               ix->v.tup.idx = k;
+              if (!sprrows)
+                sprrows = vnew(Ast *, 16);
+              vappend(&sprrows, &ix); /* the spread's own row: the
+                                       * whole binding's move, this
+                                       * row its spelling -- a slice's
+                                       * rewrite above is no member,
+                                       * its rows the program's own
+                                       * partial move (03, 04) */
+              if (!k) {
+                if (!sprbases)
+                  sprbases = vnew(Ast *, 4);
+                vappend(&sprbases, &a->v.un.e);
+              }
               vappend(&as, &ix);
             }
         }
@@ -2989,10 +3130,21 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
 
       if (t && t->k == Tymut)
         t = t->t;
-      /* the read moves it when it is not Copy (03-move.md); a computed
-       * base is a value already */
-      if (placeroot(e, fe, pbuf, sizeof pbuf) && !iscopy(t))
-        berr(e, "cannot move out of a place: %s is not Copy (@take, 03)", btys(t));
+      { /* the read moves it when it is not Copy (03-move.md); a computed
+         * base is a value already */
+        Local *rt = placeroot(e, fe, pbuf, sizeof pbuf);
+
+        if (rt && !iscopy(t)) {
+          if (issprrow(e)) /* an array spread's own row: the whole
+                            * binding's move, this row its spelling
+                            * -- the binding dies whole, the marking
+                            * a trial that refuses unwinds with every
+                            * other move (04-generics.md) */
+            rt->dead = 1;
+          else
+            berr(e, "cannot move out of a place: %s is not Copy (@take, 03)", btys(t));
+        }
+      }
       return t;
     }
   }
@@ -3087,9 +3239,14 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
     return tyslice(bt->t);
   }
   case Ntupidx: {
-    Type *bt = rexpr(e->v.tup.e, fe, 0);
-    char  pbuf[256];
+    Type *bt = rplace(e->v.tup.e, fe); /* the base as a place: a row
+                                        * read moves the row, never
+                                        * the tuple that holds it
+                                        * (03-move.md) */
+    char pbuf[256];
 
+    if (!bt)
+      bt = rexpr(e->v.tup.e, fe, 0); /* a computed base: f().0, a value */
     if (!bt)
       return 0;
     if (bt->k != Tytuple)
@@ -3098,10 +3255,19 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
       berr(e, "tuple index %lu out of range", (unsigned long) e->v.tup.idx);
     { /* the row read out of a place moves it when it is not Copy
        * (03-move.md); a computed base is a value already */
-      Type *ft = bt->args[e->v.tup.idx];
+      Type  *ft = bt->args[e->v.tup.idx];
+      Local *rt = placeroot(e, fe, pbuf, sizeof pbuf);
 
-      if (placeroot(e, fe, pbuf, sizeof pbuf) && !iscopy(ft))
-        berr(e, "cannot move out of a place: %s is not Copy (@take, 03)", btys(ft));
+      if (rt && !iscopy(ft)) {
+        if (issprrow(e)) /* a spread's own row: the whole binding's
+                          * move, this row its spelling -- the
+                          * binding dies whole, the marking a trial
+                          * that refuses unwinds with every other
+                          * move (04-generics.md) */
+          rt->dead = 1;
+        else
+          berr(e, "cannot move out of a place: %s is not Copy (@take, 03)", btys(ft));
+      }
     }
     { /* (T, mut U): the row's slot permission stays with the
        * checker, the type goes out -- as an array read does */

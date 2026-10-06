@@ -1,0 +1,22 @@
+struct P { n: i32 }
+
+fn useit(x: *P) -> i32 { x.n }
+
+fn twice<...T>(a: ...T) -> i32 {
+  const if @count(...T) == 0 { 0 }
+  else { useit(&a[0]) + useit(&a[0]) }
+}
+
+fn deep<First, ...Rest>(f: First, r: ...Rest) -> i32 {
+  const if @count(...Rest) == 0 { f.n }
+  else { f.n + deep(...r) }
+}
+
+fn bump(x: *mut u32) -> u32 { *x = *x + 1; *x }
+
+pub fn main() -> i32 {
+  let m: (u32, mut u32) = (5, 6);
+  m[1] = 60;
+  let b = bump(&mut m[1]);
+  @cast<i32>(twice(P{ n: 3 }) + deep(P{ n: 1 }, P{ n: 2 }, P{ n: 3 }) + @cast<i32>(m[1] + b))
+}

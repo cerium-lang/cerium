@@ -1,13 +1,21 @@
 /* the tuple: whole and by row -- the value, the index, the pattern,
  * and the spread that spells its rows as arguments of their own
  * (01-types.md) */
+use std::ops::Copy; /* the generic row's bound: the name the use
+                     * itself is (12-projects.md) */
+
 struct P { xy: (u32, u32), z: u32 }
 
 fn pair() -> (u32, u32) { (3, 4) }              /* the return */
 
 fn both(t: (u32, u32)) -> u32 { t.0 * 10 + t.1 } /* the parameter */
 
-fn first2<T>(t: (T, T)) -> T { t.0 }             /* the generic row */
+fn first2<T: Copy>(t: (T, T)) -> T { t.0 }      /* the generic row: a
+                                                * row read moves the
+                                                * row, so the Copy the
+                                                * bound names is the
+                                                * read's own ground
+                                                * (03-move.md) */
 
 fn add3(a: u32, b: u32, c: u32) -> u32 { a * 100 + b * 10 + c }
 
