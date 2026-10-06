@@ -1,0 +1,13 @@
+/* hello: the smallest program that says something, and the shape
+ * the language gives a first one -- std's own print door, no
+ * #[extern(C)] of its own, no write by hand, and a main that ends in
+ * () because it has no code to answer with (12-projects.md: main
+ * may return (), an i32, or an E?()). The 27-hello beside it spells
+ * the raw call, a program carrying its own door across; this one
+ * reaches the platform the way the library does. */
+
+use std::fmt::print;
+
+fn main() {
+  print("hello cerium\n");
+}
