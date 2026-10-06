@@ -23,8 +23,6 @@
  * integers are spelled, the floats' windows decimal's own
  * whatever a hole asks (12-projects.md) */
 
-use std::io::{Error, Write};
-
 pub struct Writer {
   w: dyn mut Write,
   mut n: usize,    /* the running count: every segment's bytes, kept as they land */

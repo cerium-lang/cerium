@@ -1,0 +1,21 @@
+/* the trait's table asked for half a project away: the dyn read
+ * builds it early, here in this file (06) -- and the members' own
+ * names still resolve where the trait lives, z's Word, not a's
+ * that the use below holds. The impl answers with a's and the
+ * table says z's: the mismatch named, not drifted past */
+use a::Word;
+use z::Tell;
+
+fn take(t: dyn Tell) -> i32 { /* the dyn: the table's first read, early */
+  0
+}
+
+struct X { }
+
+impl Tell for X {
+  fn tell(self: *Self) -> Word { /* a's Word, the use's own -- the trait asked z's */
+    Word::W(1)
+  }
+}
+
+pub fn main() { }

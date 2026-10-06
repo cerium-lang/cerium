@@ -1,0 +1,39 @@
+/* std::fmt::Error -- the failure the words' own walk answers
+ * with: a system call failed at a door, the errno it set riding
+ * inside (std::sys). One error for one house -- the doors and
+ * the words the same namespace now (stdout.ce, stderr.ce, the
+ * sink's contract write.ce, the prints print.ce), and the errno
+ * crosses from the door to the walk whole, no bridge between two
+ * names for the one number. Its own Fmt says it the plain way,
+ * the errno's number beside the word a reader acts on, so a main
+ * that hands it back prints something a reader can act on. */
+
+pub enum Error {
+  Sys(i32), /* a system call failed: the errno it set, read from
+             * the platform's own thread-local word (std::sys) */
+}
+
+impl Error {
+  /* the errno itself, the number a reader acts on -- the plainest
+   * read, for the hand that wants the platform's word without
+   * matching the enum apart */
+  fn errno(self: Self) -> i32 {
+    match self {
+      Sys(n) => n,
+    }
+  }
+}
+
+impl Fmt for Error {
+  fn fmt(self: *Self, w: *mut Writer) -> Result<(), Error> { /* the walk's
+    * own error in its own words: the door's failure is the value
+    * this impl spells, Sys's number in the walk's own hand */
+    match *self {
+      Sys(n) => {
+        w.write_str("io error ")?;
+        w.write_i32(n)?;
+        Ok(())
+      },
+    }
+  }
+}

@@ -1,4 +1,4 @@
-use std::io::Error;
+use std::fmt::Error;
 
 /* the failing artifact: a panic's abort and an Err's clean exit
  * one, both failures the report names and the runner walks on

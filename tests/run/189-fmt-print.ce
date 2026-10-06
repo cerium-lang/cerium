@@ -1,4 +1,4 @@
-/* std::fmt and std::io joined, end to end: a type's own Fmt, the
+/* std::fmt's print, end to end: a type's own Fmt, the
  * Writer's typed writes composed with ? (01-types.md), the whole
  * print's count the Writer kept -- every segment in it, the ?
  * dropping only its own. The Fmt itself returns nothing, its work
@@ -7,13 +7,13 @@
  * the u64's own edges: zero, and the widest a u64 can be, all
  * twenty digits. */
 
-use std::fmt::{Fmt, Writer, print_one};
-use std::io;
+use std::fmt::{Error, Fmt, Writer, print_one}; /* the shapes' own error,
+                                                * fmt's (fmt/error.ce) */
 
 struct Pair { a: i32, b: i64 }
 
 impl Fmt for Pair {
-  fn fmt(self: *Self, w: *mut Writer) -> Result<(), io::Error> {
+  fn fmt(self: *Self, w: *mut Writer) -> Result<(), Error> {
     w.write_str("(")?;
     w.write_i32(self.a)?;
     w.write_str(" ")?;
@@ -26,7 +26,7 @@ impl Fmt for Pair {
 struct Flag { on: bool, n: u64 }
 
 impl Fmt for Flag {
-  fn fmt(self: *Self, w: *mut Writer) -> Result<(), io::Error> {
+  fn fmt(self: *Self, w: *mut Writer) -> Result<(), Error> {
     w.write_bool(self.on)?;
     w.write_str(" ")?;
     w.write_u64(self.n)?;

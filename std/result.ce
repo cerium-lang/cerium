@@ -2,9 +2,24 @@
  * (01-types.md): Ok(T), or Err(E). ? hands an Err back; the shapes
  * main may return name it (12-projects.md). Ok and Err are its
  * variants, not names in scope: a bare Ok rides the sugar's owner
- * lookup, not a use (01-types.md). */
+ * lookup, not a use (01-types.md).
+ *
+ * map_err is the bridge ?: the propagation hands the same E back,
+ * so two errors meeting in one fn -- a door's and the print's,
+ * say -- need the one hand that knows both, and this is it: the
+ * Err half through the fn, the Ok half untouched. No closures to
+ * carry: a named fn is the spelling (10-iteration.md). */
 
 pub enum Result<T, E> {
   Ok(T),
   Err(E),
+}
+
+impl<T, E> Result<T, E> {
+  fn map_err<F>(self: Self, f: fn(E) -> F) -> Result<T, F> {
+    match self {
+      Ok(v) => Ok(v),
+      Err(e) => Err(f(e)),
+    }
+  }
 }

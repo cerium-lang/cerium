@@ -1,0 +1,61 @@
+/* the walk's own error, met both ways (fmt/error.ce): the
+ * print's own crossing -- a refused write reaching fmt_to's
+ * answer already Error, no bridge to walk, the doors and the
+ * words one house (write.ce, stdout.ce) -- and map_err beside it
+ * (std/result.ce): ? hands the same E back, so the one fn that
+ * knows both sides walks a Result across, whatever the two error
+ * types are. The sink refuses with 28, ENOSPC, /dev/full's own
+ * word, without the platform's hand -- a platform-neutral watch
+ * on the error path (issue #117's own lesson), and the number
+ * rides inside both crossings, the reader losing nothing. */
+
+use std::fmt::{Error, Write, fmt_to};
+
+/* the failing sink: every write answers 28, ENOSPC -- /dev/full's
+ * own word, without the platform's hand (a platform-neutral way
+ * to watch the error path cross) */
+struct Refuse { }
+
+impl Write for Refuse {
+  fn write(self: *mut Self, buf: []u8) -> Result<usize, Error> {
+    Err(Error::Sys(28))
+  }
+}
+
+/* map_err's two error types, a test's own: the Err half through
+ * the fn, the Ok untouched -- the bridge any two error types
+ * spell, no longer the walk's own need (one Error, one house) */
+enum Own { Stuck(i32) }
+enum Far { Bad(i32) }
+
+fn cross(e: Own) -> Far {
+  match e {
+    Stuck(n) => Far::Bad(n),
+  }
+}
+
+pub fn main() -> i32 {
+  /* one: the print's own crossing -- fmt_to's error the walk's
+   * own already, no bridge between */
+  let seven = 7;
+  let mut sink = Refuse { };
+  let a = match fmt_to(&seven, &mut dyn sink) {
+    Ok(_)   => 0,
+    Err(fe) => match fe {
+      Sys(n) => if n == 28 { 1 } else { 2 },
+    },
+  };
+
+  /* two: the hand that owns two error types itself -- map_err
+   * the bridge, ?'s same-E answered by the one fn that knows
+   * both */
+  let bad: Result<i32, Own> = Err(Own::Stuck(28));
+  let b = match bad.map_err(cross) {
+    Ok(_)   => 0,
+    Err(fe) => match fe {
+      Bad(n) => if n == 28 { 4 } else { 8 },
+    },
+  };
+
+  a + b /* 1 + 4: 5, both crossings whole, the number riding inside */
+}

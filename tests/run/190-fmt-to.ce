@@ -7,9 +7,11 @@
  * -- the Fmt itself returns nothing, its work done when its
  * writes are. */
 
-use std::fmt::{Fmt, Writer, fmt_to, eprint_one};
-use std::io;
-use std::io::Write; /* the impl head names the trait bare (05-traits.md) */
+use std::fmt::{Error, Fmt, Write, Writer, fmt_to, eprint_one}; /* the shapes'
+                                                               * own error, the
+                                                               * sink's contract
+                                                               * beside -- one
+                                                               * house (fmt) */
 use std::sys;
 
 /* Fail, not Err: a user's own Err here would shadow the prelude's
@@ -18,7 +20,7 @@ use std::sys;
 struct Fail { code: i64 }
 
 impl Fmt for Fail {
-  fn fmt(self: *Self, w: *mut Writer) -> Result<(), io::Error> {
+  fn fmt(self: *Self, w: *mut Writer) -> Result<(), Error> {
     w.write_str("E: ")?;
     w.write_i64(self.code)?;
     Ok(())
@@ -28,11 +30,11 @@ impl Fmt for Fail {
 struct Mem { } /* the sink: whatever it is handed, out the door it goes */
 
 impl Write for Mem {
-  fn write(self: *mut Self, buf: []u8) -> Result<usize, io::Error> {
+  fn write(self: *mut Self, buf: []u8) -> Result<usize, Error> {
     let r = sys::write(2, buf.ptr, buf.len);
 
     if r < 0 {
-      Err(io::Error::Sys(sys::errno()))
+      Err(Error::Sys(sys::errno()))
     } else {
       Ok(@cast<usize>(r))
     }

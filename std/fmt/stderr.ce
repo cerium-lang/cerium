@@ -1,4 +1,4 @@
-/* std::io::Stderr -- the process's other door, fd 2, born open
+/* std::fmt::Stderr -- the process's other door, fd 2, born open
  * like its sibling (stdout.ce): where the wrong and the failing
  * go out. The same plain answer -- the count the platform took,
  * the errno when it takes none (error.ce, std::sys). */

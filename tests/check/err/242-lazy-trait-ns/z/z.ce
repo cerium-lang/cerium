@@ -1,0 +1,10 @@
+/* z's own Word, the trait's contract spelled bare where the trait
+ * lives -- the name resolves here, whatever file asks for the
+ * table (11-namespaces.md) */
+pub enum Word {
+  W(i32),
+}
+
+pub trait Tell {
+  fn tell(self: *Self) -> Word;
+}

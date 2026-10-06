@@ -1,17 +1,15 @@
-/* std::fmt's prints -- the join of a Fmt to a door, made from
- * this side so the two namespaces do not hold each other: io
- * owns the doors and the sink's contract (std::io), fmt owns the
- * shapes, and only fmt reaches across, one way. fmt_to the
- * general one, any sink; print and eprint the string of words
- * itself, a value where each hole stands, the hole bare ({}) or
- * carrying a spec -- a fill, an alignment, a minimum width, a
- * precision, a base (12-projects.md); print_one and eprint_one
- * the two
+/* std::fmt's prints -- the join of a Fmt to a door, one house
+ * now: the doors and the words the same namespace (stdout.ce,
+ * stderr.ce, the sink's contract write.ce beside), the join
+ * crossing no line. fmt_to the general one, any sink; print and
+ * eprint the string of words itself, a value where each hole
+ * stands, the hole bare ({}) or carrying a spec -- a fill, an
+ * alignment, a minimum width, a precision, a base
+ * (12-projects.md); print_one and eprint_one the two
  * conveniences, one value, the process's own doors. The count
  * handed back is the whole print's own, however many writes it
  * took. */
 
-use std::io::{Error, Stdout, Stderr, Write};
 use std::meta::TypeInfo;
 
 pub fn fmt_to<T: Fmt>(v: *T, w: dyn mut Write) -> Result<usize, Error> {
@@ -219,7 +217,9 @@ struct Count {
 }
 
 impl Write for Count {
-  fn write(self: *mut Self, buf: []u8) -> Result<usize, Error> {
+  fn write(self: *mut Self, buf: []u8) -> Result<usize, Error> { /* the sink's
+    * contract the walk's own (write.ce), the failure the door's
+    * (error.ce) -- one house, no crossing */
     self.n = self.n + buf.len;
     Ok(buf.len)
   }

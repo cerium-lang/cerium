@@ -9,9 +9,8 @@
  * is the precision's, read below where the str is spelled. The
  * narrow integers (i8, i16, u16, u32) stay off the table -- a
  * cast the caller's way into these rows, their own a later
- * milestone's. */
-
-use std::io::Error;
+ * milestone's. The error the rows answer with is fmt's own
+ * (error.ce), the trait's with them. */
 
 impl Fmt for i32 {
   fn fmt(self: *Self, w: *mut Writer) -> Result<(), Error> {
