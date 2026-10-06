@@ -1,0 +1,5 @@
+/* the report's description is one string (13-testing.md) */
+
+#[test(42)]
+fn t() {
+}

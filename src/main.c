@@ -459,9 +459,11 @@ static int
 usage(void)
 {
   fprintf(stderr, "usage: cerium -t file | cerium -a file | cerium -T file | cerium -s file"
-                  " | cerium -c file -o out\n"
-                  "       the last three read a directory as a project\n"
-                  "       -r rides -s and -c: release, the runtime checks out\n");
+                  " | cerium -c file -o out | cerium -x file -o out\n"
+                  "       the last four read a directory as a project\n"
+                  "       -r rides -s and -c: release, the runtime checks out\n"
+                  "       -x builds the test artifact, debug shape: every #[test] fn a"
+                  " runner walks (13-testing.md)\n");
   return 1;
 }
 
@@ -472,7 +474,7 @@ emitssa_project(const char *path, int release)
                   * panic included, like -c's own */
   Srcfile **files = checked(path, &n, &nstd);
 
-  emitfile(stdout, files, n, release, projname);
+  emitfile(stdout, files, n, release, projname, 0);
   return 0;
 }
 
@@ -480,7 +482,7 @@ emitssa_project(const char *path, int release)
  * into the system cc, the executable named by -o. qbe reads stdin
  * as "-", so nothing touches the disk but the one .s and the out. */
 static int
-compile(const char *path, const char *out, int release)
+compile(const char *path, const char *out, int release, int test)
 {
   const char *qbebin = getenv("QBE_BIN");
   const char *cc = getenv("CC");
@@ -514,7 +516,7 @@ compile(const char *path, const char *out, int release)
                     * panic included */
     Srcfile **files = checked(path, &n, &nstd);
 
-    emitfile(p, files, n, release, projname);
+    emitfile(p, files, n, release, projname, test);
   }
   if (pclose(p) != 0) {
     fprintf(stderr, "cerium: %s rejected the .ssa\n", qbebin);
@@ -541,13 +543,14 @@ main(int argc, char **argv)
   int         c;
 
   argv0 = argv[0]; /* the sysroot's search reads it below */
-  while ((c = getopt(argc, argv, "a:c:o:rs:t:T:")) != -1) {
+  while ((c = getopt(argc, argv, "a:c:o:rs:t:T:x:")) != -1) {
     switch (c) {
     case 'a':
     case 'c':
     case 's':
     case 't':
     case 'T':
+    case 'x':
       if (mode) /* one mode, one file */
         return usage();
       mode = c;
@@ -565,12 +568,16 @@ main(int argc, char **argv)
   }
   if (!mode || optind != argc) /* a file and nothing after it */
     return usage();
-  if ((mode == 'c') != (out != 0)) /* -c wants -o, nothing else does */
+  if ((mode == 'c' || mode == 'x') != (out != 0)) /* -c and -x want -o,
+                                                   * nothing else does */
     return usage();
   if (release && mode != 's' && mode != 'c') /* the checks are
                                               * codegen's own: the
                                               * dumps never carried
-                                              * them (01-types.md) */
+                                              * them (01-types.md).
+                                              * A test build keeps
+                                              * them -- debug shape
+                                              * is its own (13) */
     return usage();
   if ((mode == 't' || mode == 'a') && isdir(file)) {
     fprintf(stderr, "cerium: -t and -a read one file; a directory is a"
@@ -585,7 +592,9 @@ main(int argc, char **argv)
   case 's':
     return emitssa_project(file, release);
   case 'c':
-    return compile(file, out, release);
+    return compile(file, out, release, 0);
+  case 'x':
+    return compile(file, out, release, 1);
   default:
     return dumpcheck_project(file);
   }

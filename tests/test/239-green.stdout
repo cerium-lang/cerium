@@ -1,0 +1,5 @@
+ok   one_is_one
+ok   two_plus_two --arithmetic, the small kind
+ok   a::sees_the_helper --from a namespace, private and all
+ok   a::err_shape_ok
+4 passed, 0 failed
