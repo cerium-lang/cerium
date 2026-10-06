@@ -1800,7 +1800,16 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
       if (touchconflict(e->v.un.e, fe, e->v.un.mut))
         berr(e->v.un.e, "this place is already borrowed (01-types.md)");
       freeze(e->v.un.e, fe, e->v.un.mut, (int) fe->n);
-      return e->v.un.mut ? typtr(tymut(t)) : typtr(t);
+      { /* &mut a mut slot's element: the place's own type already
+         * carries the writable layer ([N]mut T's rows are mut
+         * slots, and & lends them *mut the same way) -- the wrap
+         * is the pointer's mut, one layer, never two
+         * (01-types.md). The borrow's own exclusiveness is the
+         * checker's freeze above, not the type's spelling */
+        if (e->v.un.mut && t->k != Tymut)
+          t = tymut(t);
+        return typtr(t);
+      }
     }
     if (op == Tminus && want && want->k == Tyint &&
         (e->v.un.e->k == Nint || e->v.un.e->k == Nflt)) {

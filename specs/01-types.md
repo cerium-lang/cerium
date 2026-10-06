@@ -361,6 +361,10 @@ let c = 42;
 let r: *mut i32 = &mut c;  // ❌ the binding c is not mut
 ```
 
+An element of a `[N]mut T` is a mut slot in its own right: `&` lends it a
+`*mut T`, and `&mut` the same — the slot's own writability is the pointer's,
+one layer, never two.
+
 `*p` is a place — a location, not a value — in the same way that `x` and `x.f`
 are. Three things can be done with one:
 

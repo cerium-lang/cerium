@@ -2019,3 +2019,31 @@ the ok project that pins it, 225 through 227 the refusing
 shapes -- a type, a pattern, a literal. Five hundred twenty-
 three green, the spec's Visibility section carrying the sentence
 that names the five positions one door.
+
+And the borrow's own arithmetic, a layer counted twice. A
+[N]mut T's rows are mut slots -- & lends them *mut T by their own
+nature -- but &mut wrapped the pointer's mut around the place's
+mut again, *mut mut u32 a shape no type ever spelled on purpose
+(the pointer's mut is the pointee's layer, one, by type.h's own
+law). The wrap is idempotent now: the slot's own writability is
+the pointer's, &mut no richer than & for a slot already writable,
+the exclusiveness the freeze's own book, never the spelling. The
+sweep of tymut's other makers found no second stacker -- the
+type-position's &mut reads a spelled type, bare by grammar; the
+arrays' and tuples' wraps are the slot's own permission.
+
+And the thaw that never came. The probe that walks the borrow to
+its end -- the binding that holds it gone, the slot to answer
+after -- found the block's exit keeping the freeze anyway: the
+pop asked the dying binding's own frz, but the freeze's book
+names the holder on the frozen side, and a borrower nobody
+borrowed carries no mark at all -- the if's else arm the only
+shape the old condition ever caught. The pop reads the frozen
+side now: a binding outside the block, frozen by one inside it,
+thaws as the borrower goes -- 03-move's own sentence, a borrow
+lives as long as the binding that holds it, true at the exits
+too. 237 the walk that pins it end to end -- the borrow, the
+write through it, the thaw, the answer after, a shared read
+beside a shared borrow -- 228 the refusal while the borrow
+lives. Five hundred twenty-five green, the spec's &mut section
+naming the mut slot's element one layer's own.

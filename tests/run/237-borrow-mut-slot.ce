@@ -1,0 +1,18 @@
+/* &mut a mut slot's element: the place's own mut is the pointer's,
+ * one layer never two (01-types.md); the borrow dies with the
+ * binding that holds it, the slot answers after (03-move.md) */
+fn main() -> i32 {
+  let mut a = [3]mut u32 { 1, 2, 3 };
+
+  if true {
+    let p: *mut u32 = &mut a[0]; /* the same shape & lends it */
+
+    *p = 7;
+  };
+  if true {
+    let q: *mut u32 = &a[1]; /* the slot's own mut, the & way */
+
+    if *q == 2 { }; /* a read is fine beside a shared borrow */
+  };
+  @cast<i32>(a[0] + a[1]) /* 7 + 2 */
+}

@@ -1,0 +1,10 @@
+/* the borrow alive, the slot stays frozen: reading the borrowed
+ * element while the &mut holds it crosses the live borrow
+ * (01-types.md) */
+fn main() -> i32 {
+  let mut a = [3]mut u32 { 1, 2, 3 };
+  let p = &mut a[0];
+
+  *p = 7;
+  @cast<i32>(a[0])
+}
