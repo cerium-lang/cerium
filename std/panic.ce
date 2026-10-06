@@ -1,22 +1,17 @@
 /* std::panic -- the one mechanism every runtime check fails into
  * (01-types.md, Panic): a plain fn, an attribute like any other --
  * the diverge judgement #[noreturn] feeds is syntactic
- * (10-iteration.md) -- and the platform's own door #[extern(C)] for
- * the abort it needs. No unwind, no destructors: the process ends
- * with abort, deliberately not exit -- a clean exit would flush
- * buffers and run handlers on a state the panic no longer trusts.
- *
- * The write is sys's now (std::sys): the platform's own door,
- * unmangled the one time it is declared, every output in the
- * library and this abort reaching through it. */
+ * (10-iteration.md) -- and the platform's own door for the abort it
+ * needs, reached through std::sys the way every other door in the
+ * library reaches the platform. No unwind, no destructors: the
+ * process ends with abort, deliberately not exit -- a clean exit
+ * would flush buffers and run handlers on a state the panic no
+ * longer trusts. */
 
 use std::sys;
-
-#[extern(C)]
-fn abort();
 
 #[noreturn]
 pub fn panic(msg: []u8) {
   sys::write(2, msg.ptr, msg.len);
-  abort();
+  sys::abort();
 }

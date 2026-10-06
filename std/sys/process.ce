@@ -1,0 +1,10 @@
+/* std::sys -- the process's own ending: abort, the door a panic
+ * takes (std/panic.ce) and the one the emitter's net lands in, the
+ * last failure behind a match no arm fit (src/emit.c). The process
+ * ends without a flush and without the handlers a clean exit would
+ * run -- the state a panic leaves is not one they should see.
+ * Declared as the ABI spells it, like every call in this namespace:
+ * the C symbol unmangled. */
+
+#[extern(C)]
+pub fn abort();
