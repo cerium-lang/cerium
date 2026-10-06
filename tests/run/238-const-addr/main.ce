@@ -1,0 +1,14 @@
+struct P { x: u32, y: u32 }
+
+const S: P = P { x: 5, y: 6 };
+
+fn rd(x: *u32) -> i32 { @cast<i32>(*x) }
+
+fn main() -> i32 {
+  let ps = &S;
+  let pa = &a::T;
+  let pb = &b::T;
+
+  @cast<i32>((*ps).x + (*ps).y) + rd(&(*pa)[0]) + rd(&(*pa)[1]) +
+  rd(&(*pb)[0]) + rd(&(*pb)[1])
+}
