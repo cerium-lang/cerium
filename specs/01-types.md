@@ -549,6 +549,15 @@ match r {
 }
 ```
 
+The same `E` on both sides is the propagation's own rule (below), and
+`map_err` is the bridge across: the `Err` half through a named fn — no
+closures to carry — the `Ok` half untouched, the new error whatever the
+fn answers (`std/result.ce`):
+
+```rust
+let crossed = r.map_err(tofmt);   // Result<T, io::Error> -> Result<T, fmt::Error>
+```
+
 ### Propagation
 
 `f()?` evaluates to the value, or returns the error from the enclosing function.

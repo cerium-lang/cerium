@@ -4,8 +4,8 @@
  * the same door run_err uses, a hand reaching it no less welcome
  * for being the program's own (12-projects.md) */
 
-use std::fmt::{Fmt, Writer};
-use std::io::Error;
+use std::fmt::{Error, Fmt, Writer}; /* the shapes' own error, fmt's
+                                     * (fmt/error.ce) */
 use std::Result;
 use std::exit;
 

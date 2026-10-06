@@ -1,0 +1,4 @@
+ok   bridge_ok
+ok   bridge_err
+FAIL refused --a refused print crosses whole, the errno riding inside
+2 passed, 1 failed

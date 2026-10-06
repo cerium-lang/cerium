@@ -23,7 +23,18 @@
  * integers are spelled, the floats' windows decimal's own
  * whatever a hole asks (12-projects.md) */
 
-use std::io::{Error, Write};
+use std::io; /* the ns itself: the bridge below names io::Error
+              * whole, a qualified walk the use opens
+              * (11-namespaces.md) */
+use std::io::Write;
+
+/* the bridge's own hand, map_err's (std::result.ce): a sink
+ * answers with io's Error, the Writer's ways are fmt's own
+ * (error.ce) -- the errno riding inside. Every door the Writer
+ * opens crosses here; the composed writes never see io's name */
+fn ioerr(e: io::Error) -> Error {
+  Error::Io(e.errno())
+}
 
 pub struct Writer {
   w: dyn mut Write,
@@ -34,7 +45,7 @@ pub struct Writer {
 
 impl Writer {
   fn write_str(self: *mut Self, s: []u8) -> Result<usize, Error> {
-    let r = self.w.write(s)?;
+    let r = self.w.write(s).map_err(ioerr)?;
 
     self.n = self.n + r;
     Ok(r)
@@ -42,7 +53,7 @@ impl Writer {
 
   fn write_u8(self: *mut Self, b: u8) -> Result<usize, Error> {
     let one = [1]u8 { b };
-    let r = self.w.write(one[..])?;
+    let r = self.w.write(one[..]).map_err(ioerr)?;
 
     self.n = self.n + r;
     Ok(r)

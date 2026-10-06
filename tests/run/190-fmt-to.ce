@@ -7,7 +7,8 @@
  * -- the Fmt itself returns nothing, its work done when its
  * writes are. */
 
-use std::fmt::{Fmt, Writer, fmt_to, eprint_one};
+use std::fmt::{Error, Fmt, Writer, fmt_to, eprint_one}; /* the shapes'
+                                                         * own error, fmt's (fmt/error.ce) */
 use std::io;
 use std::io::Write; /* the impl head names the trait bare (05-traits.md) */
 use std::sys;
@@ -18,7 +19,7 @@ use std::sys;
 struct Fail { code: i64 }
 
 impl Fmt for Fail {
-  fn fmt(self: *Self, w: *mut Writer) -> Result<(), io::Error> {
+  fn fmt(self: *Self, w: *mut Writer) -> Result<(), Error> {
     w.write_str("E: ")?;
     w.write_i64(self.code)?;
     Ok(())

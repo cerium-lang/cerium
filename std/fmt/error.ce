@@ -1,0 +1,26 @@
+/* std::fmt::Error -- a write failed on its way out. The words are
+ * fmt's own and so is the failure that names them stopping: the
+ * trait, the Writer, the prints -- all of them answer with this
+ * one, not io's, for the reach across to the doors is the join's
+ * own, not the error's (12-projects.md). A sink still fails the
+ * way a system call does, and what the failure is the errno says:
+ * the Io half holds the number whole, said the same way io's own
+ * Fmt says it -- the reader loses nothing in the crossing. The
+ * bridge from io's side is map_err's (std::result.ce): the same
+ * E the ? wants, spelled by the hand that knows both. */
+
+pub enum Error {
+  Io(i32), /* a write failed: the errno the door's error set */
+}
+
+impl Fmt for Error {
+  fn fmt(self: *Self, w: *mut Writer) -> Result<(), Error> {
+    match *self {
+      Io(n) => {
+        w.write_str("io error ")?;
+        w.write_i32(n)?;
+        Ok(())
+      },
+    }
+  }
+}

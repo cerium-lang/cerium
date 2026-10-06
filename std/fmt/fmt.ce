@@ -4,9 +4,9 @@
  * composes with ? (01-types.md): the trait's own shape is the
  * propagation's. The Fmt itself returns nothing -- its work is
  * done when its writes are; the count is the Writer's own, and
- * the print that owns the Writer answers with it. */
-
-use std::io::Error;
+ * the print that owns the Writer answers with it. The error the
+ * whole family answers with is fmt's own (error.ce): the words
+ * are the shapes', the failure that stops them is too. */
 
 pub trait Fmt {
   fn fmt(self: *Self, w: *mut Writer) -> Result<(), Error>;

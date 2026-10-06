@@ -1,0 +1,55 @@
+/* fmt's own Error, met both ways (fmt/error.ce): the print's own
+ * crossing -- a refused write reaching fmt_to's answer as
+ * fmt::Error::Io already, the Writer's bridge walked inside
+ * (writer.ce) -- and the hand that owns a door's error itself,
+ * map_err's (std/result.ce): ? hands the same E back, so the one
+ * fn that knows both sides walks the io-flavoured Result across.
+ * The sink refuses with 28, ENOSPC, /dev/full's own word, without
+ * the platform's hand -- a platform-neutral watch on the error
+ * path (issue #117's own lesson), and the errno rides inside both
+ * crossings, the reader losing nothing. */
+
+use std::fmt;
+use std::io;
+use std::io::Write;
+
+/* the failing sink: every write answers 28, ENOSPC -- /dev/full's
+ * own word, without the platform's hand (a platform-neutral way
+ * to watch the error path cross) */
+struct Refuse { }
+
+impl Write for Refuse {
+  fn write(self: *mut Self, buf: []u8) -> Result<usize, io::Error> {
+    Err(io::Error::Sys(28))
+  }
+}
+
+/* the bridge's hand, a user's own: the errno riding inside */
+fn tofmt(e: io::Error) -> fmt::Error {
+  fmt::Error::Io(e.errno())
+}
+
+pub fn main() -> i32 {
+  /* one: the print's own crossing -- fmt_to's error is fmt's
+   * already, the Writer's bridge walked inside (writer.ce) */
+  let seven = 7;
+  let mut sink = Refuse { };
+  let a = match fmt::fmt_to(&seven, &mut dyn sink) {
+    Ok(_)   => 0,
+    Err(fe) => match fe {
+      Io(n) => if n == 28 { 1 } else { 2 },
+    },
+  };
+
+  /* two: the hand that owns a door's error itself -- map_err the
+   * bridge, ?'s same-E answered by the one fn that knows both */
+  let s = "x";
+  let b = match sink.write(s[..]).map_err(tofmt) {
+    Ok(_)  => 0,
+    Err(fe) => match fe {
+      Io(n) => if n == 28 { 4 } else { 8 },
+    },
+  };
+
+  a + b /* 1 + 4: 5, both crossings whole, the number riding inside */
+}

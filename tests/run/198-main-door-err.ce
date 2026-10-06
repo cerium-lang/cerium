@@ -5,8 +5,9 @@
  * rides the whole way, one call's ending the next call's
  * argument. */
 
-use std::fmt::{Fmt, Writer};
-use std::io::Error;
+use std::fmt::{Error, Fmt, Writer}; /* the shapes' own error, fmt's
+                                     * (fmt/error.ce): the Err half prints
+                                     * through it, not io's */
 use std::Result;
 
 struct Done { n: i64 }

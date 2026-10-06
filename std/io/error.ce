@@ -7,6 +7,9 @@
  * number beside the namespace's name, so a main that hands it
  * back prints something a reader can act on. */
 
+use std::fmt; /* the ns itself: the Fmt contract below answers with
+               * fmt's own Error (fmt/error.ce), the qualified name
+               * this use opens (11-namespaces.md) */
 use std::fmt::{Fmt, Writer};
 
 pub enum Error {
@@ -14,8 +17,21 @@ pub enum Error {
              * the platform's own thread-local word (std::sys) */
 }
 
+impl Error {
+  /* the errno itself, the number a reader acts on -- the plainest
+   * read, for the hand that wants the platform's word without
+   * matching the enum apart */
+  fn errno(self: Self) -> i32 {
+    match self {
+      Sys(n) => n,
+    }
+  }
+}
+
 impl Fmt for Error {
-  fn fmt(self: *Self, w: *mut Writer) -> Result<(), Error> {
+  fn fmt(self: *Self, w: *mut Writer) -> Result<(), fmt::Error> { /* the shapes
+    * fmt's own (fmt/error.ce); the doors' own error is the value this
+    * impl spells, Sys's number in fmt's words */
     match *self {
       Sys(n) => {
         w.write_str("io error ")?;

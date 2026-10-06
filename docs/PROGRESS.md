@@ -2128,3 +2128,49 @@ word at all, and the culled fn's own caller, the unknown name any
 absent thing is. 239 the run beside them, the words that hold here
 holding, and-ed, the answer they make. Five hundred thirty-two
 green.
+
+## 2026-10-06, the second round: fmt's own error, and the bridge ? could not build alone
+
+The print's own head said it all along -- io owns the doors, fmt
+owns the shapes, only fmt reaches across, one way -- but every
+error the shapes answered with was a door's own, and a hand that
+printed was dragged into io's namespace for the asking. The fix is
+the sentence made true: fmt/error.ce, an Error of fmt's own with
+one half, Io, holding the errno whole -- the number a reader acts
+on, said the same way io's own Fmt says it, so nothing is lost in
+the crossing -- and every signature in the family turned to it at
+once: the trait, the Writer, the prints, the nine builtins, the
+error's own Fmt. But ? hands the same E back, the rule the whole
+propagation stands on, and a door's error and a print's error are
+two Es meeting in one fn -- so the bridge came with it:
+map_err, the Err half through a named fn, the Ok half untouched,
+no closure to carry (a later milestone's own), spelled in
+std/result.ce and walked first by the Writer itself, whose two
+doors to a sink cross at .map_err(ioerr)? -- not the first design:
+the nested Io(io::Error) died on the not-yet of a qualified name
+inside std, the inline match on the arm that cannot return, and
+the named fn over map_err turned out to be the shape the language
+already had. The counting sink keeps io's contract -- a sink is a
+door -- and io's own error grew an errno() of its own, the
+plainest read for the hand that wants the number without matching
+the enum apart. Five old pins turned with the family; 240 walks
+both crossings on a sink that refuses with 28, ENOSPC without the
+platform's hand -- the lesson of the Mac runner's own platform
+neutralized into a struct; 243 the test artifact's round trip, a
+refused print's Err handed to the runner and printed through
+fmt's Error's own Fmt, io error 28, the motivation closed. And
+underneath it the ground moved: the lazy build of a trait's member
+table -- a dyn read asking for it half a project away -- had been
+resolving the trait's own names in the asking file's context all
+along, the contract drifting with whichever file asked first, and
+std green all those months because the asking file happened to
+hold the right use. fmt's own Error declared, the coincidence
+ended and the drift had a face. The fix: the table builds in the
+trait's own file, its context entered whole -- uses bound, prelude
+in, all of it made on the first read and given back at the door --
+and the fn signature's own lazy read learned the same walk.
+242-lazy-trait-ns holds it: two namespaces, one name in each, a
+trait in the second, a dyn in the first -- the old compiler
+accepts what the contract never said, the new one refuses, and the
+pin watches the difference. Five hundred forty-seven green, both
+platforms' runners carrying it.

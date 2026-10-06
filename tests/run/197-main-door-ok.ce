@@ -5,8 +5,8 @@
  * Fmt anyway, the bound the declaration itself is checked against,
  * Ok half or not. */
 
-use std::fmt::{Fmt, Writer, print_one};
-use std::io::Error;
+use std::fmt::{Error, Fmt, Writer, print_one}; /* the shapes' own error,
+                                                * fmt's (fmt/error.ce) */
 use std::Result;
 
 struct Done { n: i64 }

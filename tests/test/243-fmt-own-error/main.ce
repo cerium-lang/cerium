@@ -1,0 +1,65 @@
+/* the Err half in fmt's own words, end to end (fmt/error.ce): a
+ * test that ends E?() hands its error to the runner, and the
+ * runner prints it through the error type's own Fmt -- here that
+ * type is fmt::Error itself, the new one, its Fmt saying the io
+ * word with the number beside it. The refused print is the real
+ * path: a sink that answers ENOSPC, the Writer's own crossing
+ * inside (writer.ce), the Err handed back whole. map_err's two
+ * arms beside it, the bridge a hand that owns a door's error
+ * walks (std/result.ce) -- the Ok untouched, the Err through the
+ * fn, the errno riding inside both */
+
+use std::fmt::{Error, Fmt, Writer, fmt_to};
+use std::io;
+use std::io::Write;
+
+/* the failing sink: every write answers 28, ENOSPC -- a
+ * platform-neutral way to watch the error path cross (issue
+ * #117's own lesson) */
+struct Refuse { }
+
+impl Write for Refuse {
+  fn write(self: *mut Self, buf: []u8) -> Result<usize, io::Error> {
+    Err(io::Error::Sys(28))
+  }
+}
+
+/* the bridge's own hand: the errno riding inside */
+fn tofmt(e: io::Error) -> Error {
+  Error::Io(e.errno())
+}
+
+#[test]
+fn bridge_ok() {
+  let good: Result<i32, io::Error> = Ok(3);
+
+  match good.map_err(tofmt) {
+    Ok(n)  => if n != 3 {
+      panic("the Ok half untouched: it was not");
+    },
+    Err(_) => panic("no error crossed, yet one arm answers Err"),
+  }
+}
+
+#[test]
+fn bridge_err() {
+  let bad: Result<i32, io::Error> = Err(io::Error::Sys(28));
+
+  match bad.map_err(tofmt) {
+    Ok(_)  => panic("the error did not cross, yet the arm answers Ok"),
+    Err(fe) => match fe {
+      Io(n) => if n != 28 {
+        panic("the errno did not ride inside");
+      },
+    },
+  }
+}
+
+#[test("a refused print crosses whole, the errno riding inside")]
+fn refused() -> Error?() {
+  let seven = 7;
+  let mut sink = Refuse { };
+
+  fmt_to(&seven, &mut dyn sink)?; /* the Writer's own crossing, handed back */
+  Ok(())
+}
