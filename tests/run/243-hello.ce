@@ -9,5 +9,6 @@
 use std::fmt::print;
 
 fn main() {
-  print("hello cerium\n");
+  let who = "Cerium";
+  print("Hello, {}!\n", who);
 }
