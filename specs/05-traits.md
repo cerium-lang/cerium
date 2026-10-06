@@ -19,10 +19,9 @@ impl Show for Point {
 }
 ```
 
-`print_one` and `close` below are ordinary functions from `std::fmt` and
-`std::io`, brought into scope with `use std::fmt;` / `use std::io;`
-(`11-namespaces.md`) — not `@` builtins, which are
-listed in `08-reflection.md`.
+`print_one` below is an ordinary function from `std::fmt`, brought into
+scope with `use std::fmt::print_one;` (`11-namespaces.md`) — not an
+`@` builtin, which are listed in `08-reflection.md`.
 
 `self` is an ordinary parameter — `*Self` for a read-only method, `*mut Self`
 for a mutating one, `Self` for one that consumes the value. It is written with

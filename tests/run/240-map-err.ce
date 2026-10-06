@@ -1,17 +1,15 @@
-/* fmt's own Error, met both ways (fmt/error.ce): the print's own
- * crossing -- a refused write reaching fmt_to's answer as
- * fmt::Error::Io already, the Writer's bridge walked inside
- * (writer.ce) -- and the hand that owns a door's error itself,
- * map_err's (std/result.ce): ? hands the same E back, so the one
- * fn that knows both sides walks the io-flavoured Result across.
- * The sink refuses with 28, ENOSPC, /dev/full's own word, without
- * the platform's hand -- a platform-neutral watch on the error
- * path (issue #117's own lesson), and the errno rides inside both
- * crossings, the reader losing nothing. */
+/* the walk's own error, met both ways (fmt/error.ce): the
+ * print's own crossing -- a refused write reaching fmt_to's
+ * answer already Error, no bridge to walk, the doors and the
+ * words one house (write.ce, stdout.ce) -- and map_err beside it
+ * (std/result.ce): ? hands the same E back, so the one fn that
+ * knows both sides walks a Result across, whatever the two error
+ * types are. The sink refuses with 28, ENOSPC, /dev/full's own
+ * word, without the platform's hand -- a platform-neutral watch
+ * on the error path (issue #117's own lesson), and the number
+ * rides inside both crossings, the reader losing nothing. */
 
-use std::fmt;
-use std::io;
-use std::io::Write;
+use std::fmt::{Error, Write, fmt_to};
 
 /* the failing sink: every write answers 28, ENOSPC -- /dev/full's
  * own word, without the platform's hand (a platform-neutral way
@@ -19,35 +17,43 @@ use std::io::Write;
 struct Refuse { }
 
 impl Write for Refuse {
-  fn write(self: *mut Self, buf: []u8) -> Result<usize, io::Error> {
-    Err(io::Error::Sys(28))
+  fn write(self: *mut Self, buf: []u8) -> Result<usize, Error> {
+    Err(Error::Sys(28))
   }
 }
 
-/* the bridge's hand, a user's own: the errno riding inside */
-fn tofmt(e: io::Error) -> fmt::Error {
-  fmt::Error::Io(e.errno())
+/* map_err's two error types, a test's own: the Err half through
+ * the fn, the Ok untouched -- the bridge any two error types
+ * spell, no longer the walk's own need (one Error, one house) */
+enum Own { Stuck(i32) }
+enum Far { Bad(i32) }
+
+fn cross(e: Own) -> Far {
+  match e {
+    Stuck(n) => Far::Bad(n),
+  }
 }
 
 pub fn main() -> i32 {
-  /* one: the print's own crossing -- fmt_to's error is fmt's
-   * already, the Writer's bridge walked inside (writer.ce) */
+  /* one: the print's own crossing -- fmt_to's error the walk's
+   * own already, no bridge between */
   let seven = 7;
   let mut sink = Refuse { };
-  let a = match fmt::fmt_to(&seven, &mut dyn sink) {
+  let a = match fmt_to(&seven, &mut dyn sink) {
     Ok(_)   => 0,
     Err(fe) => match fe {
-      Io(n) => if n == 28 { 1 } else { 2 },
+      Sys(n) => if n == 28 { 1 } else { 2 },
     },
   };
 
-  /* two: the hand that owns a door's error itself -- map_err the
-   * bridge, ?'s same-E answered by the one fn that knows both */
-  let s = "x";
-  let b = match sink.write(s[..]).map_err(tofmt) {
-    Ok(_)  => 0,
+  /* two: the hand that owns two error types itself -- map_err
+   * the bridge, ?'s same-E answered by the one fn that knows
+   * both */
+  let bad: Result<i32, Own> = Err(Own::Stuck(28));
+  let b = match bad.map_err(cross) {
+    Ok(_)   => 0,
     Err(fe) => match fe {
-      Io(n) => if n == 28 { 4 } else { 8 },
+      Bad(n) => if n == 28 { 4 } else { 8 },
     },
   };
 

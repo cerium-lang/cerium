@@ -1,4 +1,4 @@
-/* std::fmt and std::io joined, end to end: a type's own Fmt, the
+/* std::fmt's print, end to end: a type's own Fmt, the
  * Writer's typed writes composed with ? (01-types.md), the whole
  * print's count the Writer kept -- every segment in it, the ?
  * dropping only its own. The Fmt itself returns nothing, its work

@@ -40,7 +40,7 @@ fn twice(x: u32) -> u32 {
   x + x
 }
 
-let n = io::read_u32();          // runtime
+let n = sys::read_u32();         // runtime
 let four = twice(twice(n));      // runtime call — the argument is not known
 
 assert(twice(21) == 42);        // the argument is known, so it evaluates at compile time

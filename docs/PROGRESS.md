@@ -2174,3 +2174,25 @@ trait in the second, a dyn in the first -- the old compiler
 accepts what the contract never said, the new one refuses, and the
 pin watches the difference. Five hundred forty-seven green, both
 platforms' runners carrying it.
+
+The review's own eye found the shape under the work: io reached
+back for fmt's Fmt (Error's own words, #96) while fmt reached
+across for io's Write and doors -- two namespaces holding each
+other, the arrow #95 drew one way turned back at #96. Not a
+tangle the compiler minds -- one compilation unit, one symbol
+table, no crate graph to keep acyclic -- but two errors for one
+number all the same, Sys(i32) and Io(i32) each side of a bridge
+the ? could not build alone (#122's whole errand). The unasking
+answer: not an edge cut but a house merged -- io moved in with
+fmt, the doors, the sink's contract and the errors all one
+namespace now, std::io a path no more. One Error, one Sys, and
+every bridge gone with it -- ioerr, tofmt, the rooted spellings
+the review questioned, all of them the seams of a division that
+no longer is. The prints never moved: print and eprint stayed
+where they were, the join no longer a crossing. The doors move
+out again the day the platform's own second door arrives -- a
+file, a socket, a family big enough for a house of their own --
+write.ce says so, and the day it happens the split will have a
+real shape to answer. Five hundred forty-seven green, the runner
+forking its way past every deliberate abort, both platforms
+carrying it.

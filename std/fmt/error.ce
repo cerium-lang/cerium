@@ -1,22 +1,35 @@
-/* std::fmt::Error -- a write failed on its way out. The words are
- * fmt's own and so is the failure that names them stopping: the
- * trait, the Writer, the prints -- all of them answer with this
- * one, not io's, for the reach across to the doors is the join's
- * own, not the error's (12-projects.md). A sink still fails the
- * way a system call does, and what the failure is the errno says:
- * the Io half holds the number whole, said the same way io's own
- * Fmt says it -- the reader loses nothing in the crossing. The
- * bridge from io's side is map_err's (std::result.ce): the same
- * E the ? wants, spelled by the hand that knows both. */
+/* std::fmt::Error -- the failure the words' own walk answers
+ * with: a system call failed at a door, the errno it set riding
+ * inside (std::sys). One error for one house -- the doors and
+ * the words the same namespace now (stdout.ce, stderr.ce, the
+ * sink's contract write.ce, the prints print.ce), and the errno
+ * crosses from the door to the walk whole, no bridge between two
+ * names for the one number. Its own Fmt says it the plain way,
+ * the errno's number beside the word a reader acts on, so a main
+ * that hands it back prints something a reader can act on. */
 
 pub enum Error {
-  Io(i32), /* a write failed: the errno the door's error set */
+  Sys(i32), /* a system call failed: the errno it set, read from
+             * the platform's own thread-local word (std::sys) */
+}
+
+impl Error {
+  /* the errno itself, the number a reader acts on -- the plainest
+   * read, for the hand that wants the platform's word without
+   * matching the enum apart */
+  fn errno(self: Self) -> i32 {
+    match self {
+      Sys(n) => n,
+    }
+  }
 }
 
 impl Fmt for Error {
-  fn fmt(self: *Self, w: *mut Writer) -> Result<(), Error> {
+  fn fmt(self: *Self, w: *mut Writer) -> Result<(), Error> { /* the walk's
+    * own error in its own words: the door's failure is the value
+    * this impl spells, Sys's number in the walk's own hand */
     match *self {
-      Io(n) => {
+      Sys(n) => {
         w.write_str("io error ")?;
         w.write_i32(n)?;
         Ok(())

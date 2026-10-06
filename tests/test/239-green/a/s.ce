@@ -1,4 +1,4 @@
-use std::io::Error;
+use std::fmt::Error;
 
 fn helper() -> i32 {
   7

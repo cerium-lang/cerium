@@ -1,4 +1,4 @@
-/* std::io::Stdout -- the process's first door, fd 1, born open.
+/* std::fmt::Stdout -- the process's first door, fd 1, born open.
  * A door, not a buffer: what write hands it goes out, the count
  * the platform took the answer, and when the platform takes
  * nothing back the errno is (error.ce, std::sys). */

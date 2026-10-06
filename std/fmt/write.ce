@@ -1,0 +1,14 @@
+/* std::fmt::Write -- the sink's own contract: bytes in, the count
+ * of them out, the failure the platform's word names (error.ce).
+ * Whatever takes bytes implements it -- the process's own doors
+ * beside it here (stdout.ce, stderr.ce), a sink of anyone's own
+ * anywhere else -- and the prints join a Fmt to any taker of it
+ * (writer.ce, print.ce). One house now, the doors and the words:
+ * the join crosses no namespace line, and the doors move out
+ * again the day the platform's own second door arrives -- a file,
+ * a socket, the doors' family big enough for a house of their
+ * own. */
+
+pub trait Write {
+  fn write(self: *mut Self, buf: []u8) -> Result<usize, Error>;
+}

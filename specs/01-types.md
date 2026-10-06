@@ -555,7 +555,7 @@ closures to carry — the `Ok` half untouched, the new error whatever the
 fn answers (`std/result.ce`):
 
 ```rust
-let crossed = r.map_err(tofmt);   // Result<T, io::Error> -> Result<T, fmt::Error>
+let far = r.map_err(cross);       // Result<T, Own> -> Result<T, Far>
 ```
 
 ### Propagation

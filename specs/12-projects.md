@@ -28,7 +28,7 @@ an error type of the program's choosing — the sugar that makes `?` usable in
 
 ```rust
 // src/main.ce — the root namespace
-fn main() -> io::Error?() {
+fn main() -> fmt::Error?() {
   let f = open(config()?)?;    // ? hands errors back, main is the last stop
   ...
 }
@@ -61,7 +61,7 @@ rejected where it is declared.
 Printing an `Err` wants the error type's own words: `E` must implement `Fmt`
 (`std::fmt`), checked where `main` declares its ending. The built-ins' own
 rows give an integer its digits, a str its text, a float the arithmetic's own
-words in `%.15g`'s shape, and `std::io::Error` its errno — so the plain
+words in `%.15g`'s shape, and `fmt::Error` its errno — so the plain
 shapes work unadorned, and a program's own say themselves.
 
 The prints take a string of words and many values:
@@ -146,8 +146,9 @@ the one fn every runtime check fails into, `01-types.md`, Panic),
 (`08-reflection.md`), `std::ops` — the operator family, the sugar's
 own traits (`07-operators.md`) with `Copy` and `Drop` beside them, the two
 the compiler calls on its own, at a move and at a scope's end
-(`03-move.md`) — `std::io` and `std::fmt`, the doors and the words
-(`std::fmt`'s `print` the string of words), `std::sys`, the
+(`03-move.md`) — `std::fmt`, the words and the doors one house
+now (`print` the string of words, the two doors and the sink's
+contract beside), `std::sys`, the
 platform's own calls, the arguments among them (`args` the iterator the
 door fills), and `std::iter`, the `Iter` family itself
 (`10-iteration.md`) — each file in the namespace its path names, every
