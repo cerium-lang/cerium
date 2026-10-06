@@ -550,12 +550,14 @@ match r {
 ```
 
 The same `E` on both sides is the propagation's own rule (below), and
-`map_err` is the bridge across: the `Err` half through a named fn — no
-closures to carry — the `Ok` half untouched, the new error whatever the
+`map_err` is the bridge across: the `Err` half through the fn — a named
+one or a literal with nothing to carry, either spelling a fn pointer
+(Closures below) — the `Ok` half untouched, the new error whatever the
 fn answers (`std/result.ce`):
 
 ```rust
-let far = r.map_err(cross);       // Result<T, Own> -> Result<T, Far>
+let far = r.map_err(cross);                          // a named fn
+let far = r.map_err(fn[](e: Own) -> Far { cross(e) }); // the same, in place
 ```
 
 ### Propagation

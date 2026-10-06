@@ -1,0 +1,8 @@
+/* the fn literal with nothing to carry: the fn pointer it spells
+ * (01-types.md), a let's own spelling the spec names -- the
+ * literal assigned whole, the call through the name after, the
+ * body's own answer the process's own */
+pub fn main() -> i32 {
+  let g: fn(i32) -> i32 = fn[](x: i32) -> i32 { x * 2 };
+  g(21) /* 42: the pointer the literal handed out, called by name */
+}

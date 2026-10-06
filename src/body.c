@@ -3760,27 +3760,27 @@ rclosure(Ast *c, Fenv *fe)
 {
   Ast  **ps = c->v.clos.params;
   usize  np = vlen(ps), i;
-  Ast  **caps = c->v.clos.caps;
-  usize  nc = vlen(caps);
   Type **ts = np ? tyargs(np) : 0;
   Type  *ret = c->v.clos.ret ? rty(c->v.clos.ret, &fe->env) : tyunit();
   Fenv   fb;
 
+  if (vlen(c->v.clos.caps)) /* the environment a capture rides in
+                             * arrives with the Fn family; until then
+                             * the literal is the fn pointer it spells
+                             * (01-types.md) */
+    berr(c->v.clos.caps[0], "captures arrive with the Fn family (05-traits.md)");
   for (i = 0; i < np; i++) {
     if (!ps[i]->v.param.t)
       berr(ps[i], "a closure parameter carries its type");
     ts[i] = rty(ps[i]->v.param.t, &fe->env);
   }
   fb = fefork(fe);
+  fb.ls = 0; /* the body sees its parameters alone: no capture is
+              * carried yet, so a name from the world above is no
+              * name at all -- the capture it names arrives with the
+              * Fn family (05-traits.md) */
+  fb.n = 0;
   fb.fnret = ret;
-  for (i = 0; i < nc; i++) { /* captures: the body sees them as locals */
-    Ast   *cp = caps[i];
-    Local *l = locfind(fe, cp->v.cap.name);
-
-    if (!l)
-      berr(cp, "the capture names nothing outside");
-    locpush(&fb, cp->v.cap.name, l->ty, cp->v.cap.mut);
-  }
   for (i = 0; i < np; i++)
     locpush(&fb, ps[i]->v.param.name, ts[i], ps[i]->v.param.mut);
   fb.fnbase = fb.n; /* a closure's return leaves its own frame only:
@@ -3800,6 +3800,9 @@ rclosure(Ast *c, Fenv *fe)
              btys(t));
     }
   }
+  c->v.clos.drops = scopedrops(&fb, 0, c); /* the parameters' own slots,
+                                            * the same bookkeeping a
+                                            * fn's return runs (03-move.md) */
   return tyfn(ts, np, ret);
 }
 
