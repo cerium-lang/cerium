@@ -1530,6 +1530,12 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
         char *nm1 = segs[1]->v.seg.name;
         Sym  *s = k ? nsitem(ns, nm0) : symfind(nm0);
 
+        if (s && k && !s->pub) /* the same door the plain value and
+                                * the call walk -- a qualified name
+                                * across namespaces finds only what
+                                * the namespace gives away
+                                * (11-namespaces.md) */
+          berr(e, "'%s' is private to %s (11-namespaces.md)", s->name, nsname(ns));
         if (!s || s->kind != Stype) {
           if (s && s->kind == Strait) /* a trait method as a value
                                        * names a family: one impl per
@@ -2075,6 +2081,13 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
         char *nm1 = segs[1]->v.seg.name;
         Sym  *s = k ? nsitem(ns, nm0) : symfind(nm0);
 
+        if (s && k && !s->pub) /* the explicit trait call and the
+                                * variant's own construction answer
+                                * the same door as the plain call:
+                                * qualified across namespaces, the
+                                * private stays home
+                                * (11-namespaces.md) */
+          berr(e, "'%s' is private to %s (11-namespaces.md)", s->name, nsname(ns));
         if (s && s->kind == Strait) { /* the explicit trait call:
                                        * the receiver -- the first
                                        * argument -- picks the impl
@@ -3238,10 +3251,18 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
     s = nsegs == 1 && !e->v.slit.path->v.path.root
             ? (k ? nsitem(ns, segs[0]->v.seg.name) : symfind(segs[0]->v.seg.name))
             : 0;
+    if (s && k && !s->pub) /* a literal is a value the same as any
+                            * other: qualified across namespaces, a
+                            * private type stays home
+                            * (11-namespaces.md) */
+      berr(e, "'%s' is private to %s (11-namespaces.md)", s->name, nsname(ns));
 
     if (nsegs == 2 && !e->v.slit.path->v.path.root) {
       Sym *es = k ? nsitem(ns, segs[0]->v.seg.name) : symfind(segs[0]->v.seg.name);
 
+      if (es && k && !es->pub) /* the named-payload construction the
+                                * same door (11-namespaces.md) */
+        berr(e, "'%s' is private to %s (11-namespaces.md)", es->name, nsname(ns));
       if (es && es->kind == Stype && es->tykind == TYenum) {
         /* Enum::Variant{..}: a named payload constructed by name,
          * the fields' own order the same construction a positional

@@ -1,0 +1,5 @@
+fn main() -> i32 {
+  let h = a::Hidden { x: 1 };
+
+  h.x
+}

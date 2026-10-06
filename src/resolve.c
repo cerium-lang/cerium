@@ -402,11 +402,19 @@ rpath(Ast *p, Env *env)
       s = nsitem(ns, name); /* the type lands where the walk did --
                              * the bare name's fallthrough below is
                              * not this path's */
-      if (!s)
+      if (s) {              /* a qualified type crosses namespaces: a private
+                             * item stays its own namespace's, the value path's
+                             * own rule (11-namespaces.md) -- a re-export's
+                             * target is pub by the use's own check, and need
+                             * not the question again */
+        if (!s->pub)
+          cerrat(p, "'%s' is private to %s (11-namespaces.md)", name, nsname(ns));
+      } else {
         s = nsreexpfind(ns, name); /* a pub use's binding: the target
                                     * is the type (11-namespaces.md) */
-      if (!s)
-        cerrat(p, "unknown type '%s' in %s", name, nsname(ns));
+        if (!s)
+          cerrat(p, "unknown type '%s' in %s", name, nsname(ns));
+      }
       if (nsegs - k != 1)
         cerrat(p, "a type is the namespace path's end; nothing follows it (11-namespaces.md)");
     }

@@ -2002,3 +2002,20 @@ the empty body, the statements with nothing after, the value a
 unit fn never asked for, the closure's own -- 236 the shapes
 that pass, the literal, the variable, the if, the match, the
 spec's return section carrying the rule's own sentence.
+
+And the private door, half its hinges on. The value's two
+walks asked the pub -- the qualified read, the qualified call --
+but a type never did, and neither did the family the value's
+own branches spell: a variant named as a value, a construction
+called by its path, a literal the same, a match's pattern, each
+its own read of the namespace's table, each finding the private
+as freely as the pub. Five doors the one hinge now -- the
+qualified name across namespaces reaches only what the namespace
+gives away, whichever position it stands in, and the re-export's
+target need not the question again (the use asked it at its own
+door). The same-directory face no tighter for it: a neighbor
+file's bare names read the private the way they always did, 226
+the ok project that pins it, 225 through 227 the refusing
+shapes -- a type, a pattern, a literal. Five hundred twenty-
+three green, the spec's Visibility section carrying the sentence
+that names the five positions one door.

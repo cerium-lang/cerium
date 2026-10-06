@@ -1,0 +1,12 @@
+(file
+  (fn main fn() -> i32))
+(file
+  (struct Hidden
+    (field x i32))
+  (enum Color
+    (variant Red = 0)
+    (variant Blue = 1))
+  (fn make fn() -> Hidden)
+  (fn color fn() -> Color))
+(file
+  (fn probe fn() -> i32))
