@@ -1,0 +1,22 @@
+/* the platform's own word holds: a #[cfg] naming the system this
+ * compiler runs on keeps its item, the architecture's beside it, and
+ * the two and-ed in one pair of parentheses -- the compile none the
+ * wiser that the words were read at all (12-projects.md) */
+#[cfg(linux)]
+fn a() -> i32 {
+  2
+}
+
+#[cfg(amd64)]
+fn b() -> i32 {
+  3
+}
+
+#[cfg(linux, amd64)]
+fn c() -> i32 {
+  a() * b()
+}
+
+fn main() -> i32 {
+  c() - 6
+}

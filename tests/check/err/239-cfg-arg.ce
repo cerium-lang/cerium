@@ -1,0 +1,8 @@
+/* a number where the platforms' names go: the argument lists a
+ * platform, a literal names none (12-projects.md) */
+#[cfg(42)]
+fn f() {
+}
+
+fn main() {
+}

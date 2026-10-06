@@ -1,0 +1,12 @@
+/* the culled item never exists: on this platform -- linux, the CI
+ * the suite runs on -- the darwin word is false, its fn never
+ * declared, and the call that names it is the unknown name the
+ * cull leaves behind (12-projects.md) */
+#[cfg(darwin)]
+fn f() -> i32 {
+  1
+}
+
+fn main() -> i32 {
+  f()
+}

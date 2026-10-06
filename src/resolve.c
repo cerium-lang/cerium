@@ -28,6 +28,7 @@
 #include <string.h>
 
 #include "ast.h"
+#include "cfg.h" /* cfgcull: pass zero, the platform's own cull */
 #include "check.h"
 #include "die.h"
 #include "eval.h"
@@ -2220,6 +2221,9 @@ checkproject(Srcfile **files, usize nfiles)
                      * there and its names read in its own context:
                      * the diagnostics follow the table, not
                      * whichever file the checker served last */
+
+  cfgcull(files, nfiles); /* pass zero: the platform's own items kept,
+                           * the rest never declared (12-projects.md) */
 
   /* pass 1: every file's every name, each into its own namespace --
    * a file may read a name another declared before any use binds or

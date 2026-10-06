@@ -1,0 +1,9 @@
+/* the attribute with no word to hold: a #[cfg] without a platform
+ * says nothing, and saying nothing is not saying yes
+ * (12-projects.md) */
+#[cfg]
+fn f() {
+}
+
+fn main() {
+}
