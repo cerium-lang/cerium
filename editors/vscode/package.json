@@ -1,0 +1,51 @@
+{
+  "name": "cerium",
+  "displayName": "Cerium",
+  "description": "Syntax highlighting for Cerium (.ce).",
+  "version": "0.0.1",
+  "publisher": "cerium-lang",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "icon": "icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cerium-lang/cerium"
+  },
+  "keywords": [
+    "cerium",
+    "programming language",
+    "syntax highlighting"
+  ],
+  "galleryBanner": {
+    "color": "#ffffff",
+    "theme": "light"
+  },
+  "pricing": "Free",
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "cerium",
+        "aliases": [
+          "Cerium",
+          "cerium"
+        ],
+        "extensions": [
+          ".ce"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "cerium",
+        "scopeName": "source.cerium",
+        "path": "./syntaxes/cerium.tmLanguage.json"
+      }
+    ]
+  }
+}
