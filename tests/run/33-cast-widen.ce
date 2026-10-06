@@ -3,5 +3,5 @@ fn main() -> i32 {
   let b = @cast<i64>(a);
   let c: i32 = -1;
   let d = @cast<i64>(c);
-  b + d
+  @cast<i32>(b + d)
 }

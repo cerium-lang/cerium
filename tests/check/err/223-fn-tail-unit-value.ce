@@ -1,0 +1,5 @@
+/* the door swings both ways: a fn that returns nothing still
+ * answers (), and a value where () was declared is the same
+ * mismatch (10-iteration.md) */
+fn one() { 1 }
+fn main() -> i32 { 0 }

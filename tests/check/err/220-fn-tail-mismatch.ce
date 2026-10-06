@@ -1,0 +1,10 @@
+/* the tail expression against the declared return: the return
+ * statement's own rule, walked the tail's way around -- a typed
+ * value that is not the declared type is the error either door
+ * reports (10-iteration.md) */
+fn take() -> i32 {
+  let n: u32 = 5;
+
+  n
+}
+fn main() -> i32 { 0 }

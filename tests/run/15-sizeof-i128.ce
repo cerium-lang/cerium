@@ -1,1 +1,1 @@
-fn main() -> i32 { @sizeof<i128>() }
+fn main() -> i32 { @cast<i32>(@sizeof<i128>()) }

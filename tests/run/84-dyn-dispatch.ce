@@ -32,5 +32,5 @@ fn main() -> i32 {
   let was = p.x + p.y;         /* read before the mut handle freezes it */
   let m: dyn mut Reset = &mut dyn p;
   m.reset();                   /* through the handle, the write lands */
-  run(a) + run(b) + was  /* p stays frozen with its handle */
+  @cast<i32>(run(a) + run(b) + was)  /* p stays frozen with its handle */
 }

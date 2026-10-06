@@ -1,0 +1,4 @@
+/* a declared return with nothing to name it: the empty body's
+ * value is (), which is not the declared type (10-iteration.md) */
+fn empty() -> i32 { }
+fn main() -> i32 { 0 }

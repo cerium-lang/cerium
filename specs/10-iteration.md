@@ -432,6 +432,12 @@ A path that reaches the end of the body without a value is a type error — the
 body's value is `()`, which does not match the declared return type. No separate
 "every path returns" rule is needed.
 
+The tail expression is checked by the same rule as a `return`'s value: a value
+that is not the declared return type is the error either door reports, and a
+closure's annotated return answers the same door. The door swings both ways —
+a fn declared without a return still answers `()`, so a value where nothing
+was declared is the same mismatch.
+
 ### Divergence
 
 There is no `never` type (`01-types.md`), so an arm ending in `return` does not

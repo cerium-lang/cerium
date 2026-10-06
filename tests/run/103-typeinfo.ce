@@ -146,5 +146,5 @@ fn deferred() -> u32 { /* true for *u32, 64 bits for i64: 8+8 */
 }
 
 fn main() -> i32 {
-  scalars() + counted() + replaced() + fieldwalk() + variantwalk() + attrwalk() + deferred()
+  @cast<i32>(scalars() + counted() + replaced() + fieldwalk() + variantwalk() + attrwalk() + deferred())
 }

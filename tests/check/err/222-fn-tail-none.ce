@@ -1,0 +1,7 @@
+/* statements, then the end: the body's value is still (), and ()
+ * is not the declared i32 -- no separate every-path rule is
+ * needed (10-iteration.md) */
+fn nothing() -> i32 {
+  let n = 1;
+}
+fn main() -> i32 { 0 }

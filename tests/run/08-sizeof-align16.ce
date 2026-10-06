@@ -1,3 +1,3 @@
 #[align(16)]
 struct C { a: u8 }
-fn main() -> i32 { @sizeof<C>() }
+fn main() -> i32 { @cast<i32>(@sizeof<C>()) }

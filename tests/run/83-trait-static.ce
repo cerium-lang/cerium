@@ -34,5 +34,5 @@ fn main() -> i32 {
     + announce(&p)           /* a bound: Point answers for T */
     + announce(&w)           /* and Wrap<u32> does too */
     + b.v;                   /* the pattern impl wrote through its mut self */
-  r
+  @cast<i32>(r)
 }
