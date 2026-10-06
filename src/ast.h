@@ -45,6 +45,7 @@
   X(Ntmut, "tmut") X(Ntarray, "tarray") X(Nttuple, "ttuple") X(Ntfn, "tfn")    \
   X(Ntdyn, "tdyn") X(Nttype, "ttype") /* mut: dyn mut A */                      \
   X(Ntpack, "tpack") /* ...Ts: a pack parameter's rows (04-generics.md) */      \
+  X(Nassoc, "assoc") /* a trait's associated type, pinned at a use */           \
   /* items */                                                                  \
   X(Nfn, "fn") X(Nstruct, "struct") X(Nunion, "union") X(Nenum, "enum")        \
   X(Ntrait, "trait") X(Nimpl, "impl") X(Ntypedef, "typedef")                   \
@@ -129,6 +130,12 @@ struct Ast
       char *name;
       Ast **args; /* generic args: types, or $$/^^ expressions */
     } seg;        /* Nseg, Nattr */
+    struct
+    {
+      char *name; /* the associated type's own (05-traits.md) */
+      Ast  *t;    /* the type pinned to it */
+    } assoc;      /* Nassoc: a use's pin, standing behind the
+                   * arguments (04-generics.md) */
     struct
     {
       Ast  *l, *r;

@@ -386,6 +386,10 @@ dumpnode(Ast *n, int i)
     for (v = n->v.seg.args, j = 0; v && j < vlen(v); j++)
       child(v[j], i);
     break;
+  case Nassoc: /* a use's pin: the name, the type pinned to it */
+    printf(" %s", n->v.assoc.name);
+    child(n->v.assoc.t, i);
+    break;
   case Nbin:
   case Nassign:
     printf(" %s", optext(n->v.bin.op));
@@ -777,6 +781,10 @@ clonen(Ast *n)
   case Nattr:
     c->v.seg = n->v.seg;
     c->v.seg.args = clonev(n->v.seg.args);
+    return c;
+  case Nassoc:
+    c->v.assoc.name = n->v.assoc.name;
+    c->v.assoc.t = astclone(n->v.assoc.t);
     return c;
   case Npath:
     c->v.path = n->v.path; /* sym and tys: what checking wrote --

@@ -216,29 +216,52 @@ typepath(void)
     s->v.seg.name = wantident("a path segment");
     if (peek() == Tlt) {
       next();
-      for (;;) {
-        Ast *a;
+      {
+        int pinned = 0; /* an associated type's pin stands behind every
+                         * argument, never between them (04-generics.md) */
 
-        if (peek() == Tdollar2 || peek() == Tcaret2) {
-          Tok op = next();
+        for (;;) {
+          Ast *a;
 
-          a = mk(Nun);
-          a->v.un.op = op;
-          a->v.un.e =
-              op == Tcaret2 ? type_() : postfix(); /* a lift's
-                                                    * operand is a type; a splice's, a value */
+          if (peek() == Tdollar2 || peek() == Tcaret2) {
+            Tok op = next();
 
-        } else {
-          a = type_();
+            a = mk(Nun);
+            a->v.un.op = op;
+            a->v.un.e =
+                op == Tcaret2 ? type_() : postfix(); /* a lift's
+                                                      * operand is a type; a splice's, a value */
+
+          } else {
+            a = type_();
+            if (accept(Teq)) { /* a name and an "=": an associated
+                                * type pinned, the same spelling a
+                                * declaration's defaults take, the
+                                * position the one that tells them
+                                * apart (04-generics.md) */
+              char *pin;
+
+              if (a->k != Npath || vlen(a->v.path.segs) != 1 || a->v.path.segs[0]->v.seg.args)
+                perr("an associated type is pinned by its bare name");
+              pin = a->v.path.segs[0]->v.seg.name; /* read before the
+                                                    * node gives way */
+              a = mk(Nassoc);
+              a->v.assoc.name = pin;
+              a->v.assoc.t = type_();
+              pinned = 1;
+            } else if (pinned) {
+              perr("the pins stand behind every argument");
+            }
+          }
+          npush(&s->v.seg.args, a);
+          if (peek() == Tcomma) {
+            next();
+            if (peek() == Tgt || peek() == Tshr)
+              break;
+            continue;
+          }
+          break;
         }
-        npush(&s->v.seg.args, a);
-        if (peek() == Tcomma) {
-          next();
-          if (peek() == Tgt || peek() == Tshr)
-            break;
-          continue;
-        }
-        break;
       }
       if (nextgt() != Tgt)
         perr("expected > closing generic arguments");
