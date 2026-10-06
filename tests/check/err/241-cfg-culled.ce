@@ -1,7 +1,10 @@
-/* the culled item never exists: on this platform -- linux, the CI
- * the suite runs on -- the darwin word is false, its fn never
- * declared, and the call that names it is the unknown name the
- * cull leaves behind (12-projects.md) */
+/* the culled item never exists: no machine is both linux and darwin,
+ * so the two attributes and-ed are false on every platform the suite
+ * runs on -- the fn never declared, and the call that names it the
+ * unknown name any absent thing is. The and across attributes is the
+ * one way to say "neither" a language with no negation has
+ * (12-projects.md) */
+#[cfg(linux)]
 #[cfg(darwin)]
 fn f() -> i32 {
   1
