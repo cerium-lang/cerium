@@ -23,16 +23,15 @@
  * integers are spelled, the floats' windows decimal's own
  * whatever a hole asks (12-projects.md) */
 
-use std::io; /* the ns itself: the bridge below names io::Error
-              * whole, a qualified walk the use opens
-              * (11-namespaces.md) */
 use std::io::Write;
 
 /* the bridge's own hand, map_err's (std::result.ce): a sink
  * answers with io's Error, the Writer's ways are fmt's own
  * (error.ce) -- the errno riding inside. Every door the Writer
- * opens crosses here; the composed writes never see io's name */
-fn ioerr(e: io::Error) -> Error {
+ * opens crosses here; the composed writes never see io's name.
+ * io's name spelled rooted, the :: walk from the root itself --
+ * no use holding the door open (11-namespaces.md) */
+fn ioerr(e: ::std::io::Error) -> Error {
   Error::Io(e.errno())
 }
 

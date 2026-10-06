@@ -11,9 +11,6 @@
  * handed back is the whole print's own, however many writes it
  * took. */
 
-use std::io; /* the ns itself: the counting sink's contract names
-              * io::Error whole, a qualified walk the use opens
-              * (11-namespaces.md) */
 use std::io::{Stdout, Stderr, Write};
 use std::meta::TypeInfo;
 
@@ -222,8 +219,10 @@ struct Count {
 }
 
 impl Write for Count {
-  fn write(self: *mut Self, buf: []u8) -> Result<usize, io::Error> { /* the sink's
-    * contract io's own; the shapes above fmt's (error.ce) */
+  fn write(self: *mut Self, buf: []u8) -> Result<usize, ::std::io::Error> { /* the sink's
+    * contract io's own, spelled rooted -- the :: walk starts at the
+    * root itself, no use holding the name open (11-namespaces.md);
+    * the shapes above fmt's (error.ce) */
     self.n = self.n + buf.len;
     Ok(buf.len)
   }

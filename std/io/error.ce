@@ -7,9 +7,6 @@
  * number beside the namespace's name, so a main that hands it
  * back prints something a reader can act on. */
 
-use std::fmt; /* the ns itself: the Fmt contract below answers with
-               * fmt's own Error (fmt/error.ce), the qualified name
-               * this use opens (11-namespaces.md) */
 use std::fmt::{Fmt, Writer};
 
 pub enum Error {
@@ -29,8 +26,10 @@ impl Error {
 }
 
 impl Fmt for Error {
-  fn fmt(self: *Self, w: *mut Writer) -> Result<(), fmt::Error> { /* the shapes
-    * fmt's own (fmt/error.ce); the doors' own error is the value this
+  fn fmt(self: *Self, w: *mut Writer) -> Result<(), ::std::fmt::Error> { /* the shapes
+    * fmt's own (fmt/error.ce), spelled rooted -- the :: walk from
+    * the root itself, no use holding the name open
+    * (11-namespaces.md); the doors' own error is the value this
     * impl spells, Sys's number in fmt's words */
     match *self {
       Sys(n) => {
