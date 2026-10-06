@@ -74,23 +74,23 @@ locpush(Fenv *fe, char *name, Type *ty, int mut)
 }
 
 /* pop the bindings a block pushed -- and thaw what they borrowed:
- * a borrow lives as long as the binding that holds it (03-move.md) */
+ * a borrow lives as long as the binding that holds it (03-move.md).
+ * The freeze's own book names the holder -- frzby is the first
+ * borrower's slot -- so a binding outside the block frozen by one
+ * inside it thaws here: the borrower is going, the freeze goes
+ * with it. The borrower itself was never marked (its own frz is
+ * the mark of something borrowing *it*), which is why the walk
+ * below reads the frozen side, not the dying side */
 void
 locpop(Fenv *fe, usize nbase)
 {
-  usize i;
+  usize j;
 
-  for (i = nbase; i < fe->n; i++)
-    if (fe->ls[i].frz != FZ_NONE) {
-      /* the frozen one may sit below nbase (an outer binding) */
-      usize j;
-
-      for (j = 0; j < nbase; j++)
-        if (fe->ls[j].frzby == (int) i) {
-          fe->ls[j].frz = FZ_NONE;
-          fe->ls[j].frzby = -1;
-          fe->ls[j].frzpath = 0;
-        }
+  for (j = 0; j < nbase; j++)
+    if (fe->ls[j].frzby >= (int) nbase) {
+      fe->ls[j].frz = FZ_NONE;
+      fe->ls[j].frzby = -1;
+      fe->ls[j].frzpath = 0;
     }
   fe->n = nbase;
 }
