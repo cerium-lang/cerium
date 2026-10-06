@@ -1,8 +1,8 @@
 # Cerium
 
 A system programming language: Rust's moves, Zig's pointers and
-compile-time execution, C++'s generics — in a compiler that is here and
-running, stage 0 written in C89, codegen through
+compile-time execution, C++'s generics. The compiler works today —
+stage 0 written in C89, codegen through
 [QBE](https://c9x.me/compile/).
 
 No borrow checker and no reference type — one pointer family, lifetimes
@@ -14,7 +14,7 @@ packs, specialization ordered by shape — with a check none of the three
 has: overlap is ruled out where the impls are declared, not where they
 are instantiated.
 
-```ce
+```rust
 use std::fmt::print;
 
 fn main() {
@@ -24,7 +24,7 @@ fn main() {
 
 ## Building it
 
-```
+```bash
 git clone --recurse-submodules https://github.com/cerium-lang/cerium
 cd cerium && make             # gcc; make CC=clang works too
 make qbe/qbe                  # the backend, on demand
