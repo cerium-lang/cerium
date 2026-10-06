@@ -1,0 +1,12 @@
+/* a *mut Self over a value with no place of its own: the
+ * materialisation a shared self gains (05-traits.md) is a frozen
+ * slot, and a mutable one is not the answer -- the mut wants a
+ * place, and only a place, the same refusal an &mut keeps
+ * (01-types.md). */
+struct S { mut n: u32 }
+
+impl S {
+  fn bump(self: *mut Self) -> u32 { self.n = self.n + 1; self.n }
+}
+
+fn main() -> i32 { @cast<i32>(S{ n: 7 }.bump()) }

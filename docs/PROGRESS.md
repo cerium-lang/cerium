@@ -2247,3 +2247,19 @@ way any *Self is. 250 holds it. What the row answers is still the
 world above: captures, the env they become, the blanket row that
 lets a named fn meet the bound -- the milestones the ground floor
 was poured for.
+
+The proof walk stepped in one gap the ground floor had carried
+all along: a receiver that names no place -- `S{...}.get()`, the
+literal spelled where a let would do -- checked, and the emitter
+had no slot to lend. Not the family's own: any pointer self met
+it, inherent rows the same. The fix is the one an & already owns
+(01-types.md): the value materialised into a nameless slot the
+statement's own block holds, the call reading the name, the block
+dying with the statement -- the borrow's safest shape, arrived at
+by wrapping the call in the block itself and re-entering the walk,
+the receiver a place the second time around. A *mut self keeps
+the refusal an &mut keeps -- a writable temporary has no honest
+reader -- now said where the checker says it, not where the
+emitter fell over. Three pins: 251 the family called in place and
+through a call's answer, 252 the inherent rows, 243 the mut
+refusal. Five hundred fifty-eight green.

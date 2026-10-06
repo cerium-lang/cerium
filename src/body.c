@@ -1289,6 +1289,65 @@ recvadapt(Ast *x, Type *selfty, Type *rty, Type *ty, Fenv *fe, Frzsave *sv, int 
   return 0; /* unreachable */
 }
 
+/* the sugar's receiver, when the method takes it by a shared
+ * pointer and the receiver names no place -- a literal, a call's
+ * answer -- is materialised exactly as an & materialises its
+ * operand (01-types.md): the call wrapped in a block that binds
+ * the value into a nameless slot, the receiver reading the name.
+ * The slot dies with the statement's own block, so the pointer
+ * the call borrows never outlives it -- the borrow's safest
+ * shape, the one an argument's own & already owns. A mut self
+ * keeps the refusal an &mut keeps: a writable temporary has no
+ * honest reader. Returns the re-entered walk's answer, 0 when
+ * nothing was materialised. */
+static Type *
+recvmat(Ast *e, Ast *f, Type *selfty, Type *rt, Fenv *fe, Type *want)
+{
+  char pbuf[256];
+
+  if (!selfty || selfty->k != Typtr)
+    return 0; /* a value self: the receiver moves in as written */
+  if (rt && rt->k == Typtr && tysame(rt, selfty))
+    return 0; /* &*sp is sp: the pointer already is the address */
+  if (placeroot(f->v.fld.e, fe, pbuf, sizeof pbuf))
+    return 0; /* a place: the borrow reads it where it lies */
+  if (selfty->t->k == Tymut)
+    berr(f->v.fld.e, "a &mut receiver needs a place (01-types.md)");
+  {
+    static usize nm; /* the materialised names, unique in the
+                      * compile: '%' is no identifier's first
+                      * byte, so no binding of the program's own
+                      * can collide */
+    char  nbuf[24];
+    Ast  *blk = opnode(Nblock, e);
+    Ast  *c = opnode(Ncall, e);
+    Ast  *ls = opnode(Nlet, e);
+    Ast  *pat = opnode(Nppath, e);
+    Ast  *pp = opnode(Npath, e);
+    Ast  *rp = opnode(Npath, e);
+    Ast **ss = vnew(Ast *, 1);
+
+    sprintf(nbuf, "%%t%lu", (unsigned long) nm++);
+    pp->v.path.segs = vnew(Ast *, 1);
+    opvpush(&pp->v.path.segs, opseg(nbuf, e));
+    pat->v.ppath.path = pp;
+    rp->v.path.segs = vnew(Ast *, 1);
+    opvpush(&rp->v.path.segs, opseg(nbuf, e));
+    ls->v.let.pat = pat;
+    ls->v.let.e = f->v.fld.e; /* the value, into the slot */
+    c->v = e->v;              /* the call, whole: its f the same
+                               * node, the receiver about to read
+                               * the name */
+    f->v.fld.e = rp;          /* the name, in the call's own f */
+    opvpush(&ss, ls);
+    blk->v.blk.stmts = ss;
+    blk->v.blk.tail = c;
+    e->k = Nblock;
+    memcpy(&e->v, &blk->v, sizeof e->v);
+    return rexpr(e, fe, want); /* re-entered: the block's own walk */
+  }
+}
+
 static Type *rclosure(Ast *c, Fenv *fe);
 
 /* -- the walk ------------------------------------------------------------- */
@@ -2658,6 +2717,16 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
               e->v.call.sym = m->sym; /* the row's member: the body that runs */
               thawargs(svs, n);       /* the explicit arguments' borrows, LIFO */
               frzrestore(&sv);        /* the receiver's borrow ends with the call */
+              {                       /* a shared pointer self over a receiver that names
+                                       * no place -- the value materialised into one, the
+                                       * walk re-entered on the name (01-types.md); the
+                                       * row's own freezes gave the re-entry a clean
+                                       * field, its answers land it again */
+                Type *mt = recvmat(e, f, t->nargs ? t->args[0] : 0, rt, fe, want);
+
+                if (mt)
+                  return mt;
+              }
               e->v.call.tys = insttys(imp, rtys, mg, mtys, nmg);
               /* the answer under both landings -- a local walk, the
                * row's shared signature left as it stood */
@@ -2702,6 +2771,15 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
           e->v.call.sym = m->sym; /* the method's own fn: the emitter's pick */
           e->v.call.tys = tys;    /* the impl's binding; the member's
                                    * own joins it after the walk below */
+        }
+        { /* a shared pointer self over a receiver that names no
+           * place -- a literal, a call's answer: the value
+           * materialised into one, the walk re-entered on the
+           * name (01-types.md) */
+          Type *mt = recvmat(e, f, t->nargs ? t->args[0] : 0, rt, fe, want);
+
+          if (mt)
+            return mt;
         }
         { /* the member's own family, bound from the arguments */
           Ast  **mg = membergps(m, &nmg);

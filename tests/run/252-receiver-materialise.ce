@@ -1,0 +1,18 @@
+/* the sugar's receiver, the inherent edition: the same
+ * materialisation a trait's call gains, no place asked of the
+ * writer (05-traits.md). The mut row rides a let -- a place it
+ * can honestly write -- beside the two the slots answer. */
+
+struct S { mut n: u32 }
+
+impl S {
+  fn get(self: *Self) -> u32 { self.n }
+  fn bump(self: *mut Self) -> u32 { self.n = self.n + 1; self.n }
+}
+
+fn make() -> S { S{ n: 9 } }
+
+fn main() -> i32 {
+  let mut s = S{ n: 7 };
+  @cast<i32>(S{ n: 1 }.get() + make().get() + s.bump())  /* 1 + 9 + 8 */
+}

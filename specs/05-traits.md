@@ -38,6 +38,10 @@ declares, so `p.len()` is `Point::len(&p)` and `it.next()` is `It::next(&mut it)
 Taking `&mut` still requires a `mut` slot, exactly as `&mut` does anywhere else
 (`01-types.md`). Where the receiver is a pointer it is dereferenced first, so
 `sp.len()` with `sp: *Point` is `Point::len(&*sp)` — which is `sp` again. A
+receiver that names no place of its own — a literal, a call's answer — is given
+one: the call borrows a nameless slot the statement's own block holds, dying
+with it, so the borrow never outlives the call; a `*mut Self` receiver keeps
+the refusal an `&mut` keeps, for a writable temporary has no honest reader. A
 `dyn A` handle is passed the same way (`06-dispatch.md`). The explicit form
 stays available — `Show::show(&p)` is the same call written out.
 
