@@ -5,8 +5,13 @@ jobs:
   build:
     strategy:
       matrix:
+        # both platforms the words name -- linux on ubuntu, darwin on
+        # macOS -- each with both compilers the project builds with
+        # (issue #117): a test that holds on one platform only goes
+        # red the hour it lands, not at the next hand-run make test
+        os: [ubuntu-latest, macos-latest]
         cc: [gcc, clang]
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
         with:

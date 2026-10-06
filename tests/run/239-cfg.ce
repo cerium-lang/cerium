@@ -1,8 +1,16 @@
 /* the platform's own word holds: a #[cfg] naming the system this
  * compiler runs on keeps its item, the architecture's beside it, and
  * the two and-ed in one pair of parentheses -- the compile none the
- * wiser that the words were read at all (12-projects.md) */
+ * wiser that the words were read at all (12-projects.md). Each name
+ * carries a twin for the other platform the suite runs on -- the
+ * Darwin one of the pair, the arm64 one -- so the same source, the
+ * same answer, wherever make test runs (issue #117) */
 #[cfg(linux)]
+fn a() -> i32 {
+  2
+}
+
+#[cfg(darwin)]
 fn a() -> i32 {
   2
 }
@@ -12,7 +20,17 @@ fn b() -> i32 {
   3
 }
 
+#[cfg(arm64)]
+fn b() -> i32 {
+  3
+}
+
 #[cfg(linux, amd64)]
+fn c() -> i32 {
+  a() * b()
+}
+
+#[cfg(darwin, arm64)]
 fn c() -> i32 {
   a() * b()
 }
