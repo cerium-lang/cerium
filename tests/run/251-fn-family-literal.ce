@@ -1,0 +1,20 @@
+/* the receiver a literal spells: no place of its own, and a
+ * shared pointer self borrows one into being -- the call on a
+ * nameless slot the statement's own block holds (05-traits.md).
+ * A computed receiver, a call's answer, materialises the same
+ * way. No let the call's own business ever needed. */
+
+use std::ops::Fn;
+
+struct Scale { factor: u32 }
+
+impl Fn<u32> for Scale {
+  type Output = u32;
+  fn call(self: *Self, x: u32) -> u32 { self.factor * x }
+}
+
+fn make() -> Scale { Scale{ factor: 4 } }
+
+fn main() -> i32 {
+  @cast<i32>(Scale{ factor: 3 }.call(5)) + @cast<i32>(make().call(6))
+}   /* 15 + 24 = 39 */

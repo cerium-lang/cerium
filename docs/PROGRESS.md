@@ -2220,3 +2220,46 @@ map_err's bridge crossed in place -- the spelling the milestone
 once refused, now the one it wanted -- 248 and 249 the refusals,
 a capture and a name from the world above. Five hundred
 fifty-four green, both platforms' runners carrying it.
+
+The Fn family's ground floor, then, the shape the arguments over
+it kept refining until nothing was left to remove: the pack-only
+parameter and the associated Output, one spelling for all three
+faces -- the bound, the impl, the dyn. A call is not a builtin any
+more than a plus is: `f(x)` rides Fn::call the way `a + b` rides
+Add::add, three traits told apart by the receiver alone -- Fn
+reading its captures, FnMut writing a slot of its own, FnOnce
+moving one out -- and the write's address is the line between the
+first two, through a captured pointer or through self, a line Rust
+draws elsewhere for borrow-checker reasons Cerium's one pointer
+never had (05-traits.md). The pack was already home: `...Args` a
+gparam the variadics work carries, `args: ...Args` a tpack the
+sum pins shake down, the trait's method signature taking both the
+way any fn takes them -- nothing new under the checker, only the
+declaration now saying so, std/ops/fn.ce the three of it. The one
+new grammar is the pin: `Fn<i32, Output = u32>`, the associated
+constraint behind the arguments, an `=` the lookahead reads
+exactly as a default's, spelled in a bound to name the answer and
+in a dyn to carry it (04-generics.md). The impl was the proof:
+a hand-written row -- Scale, a factor, one element unrolled into
+a plain parameter -- checked, monomorphized, and called through
+the sugar the method tables already ran, the receiver lent the
+way any *Self is. 250 holds it. What the row answers is still the
+world above: captures, the env they become, the blanket row that
+lets a named fn meet the bound -- the milestones the ground floor
+was poured for.
+
+The proof walk stepped in one gap the ground floor had carried
+all along: a receiver that names no place -- `S{...}.get()`, the
+literal spelled where a let would do -- checked, and the emitter
+had no slot to lend. Not the family's own: any pointer self met
+it, inherent rows the same. The fix is the one an & already owns
+(01-types.md): the value materialised into a nameless slot the
+statement's own block holds, the call reading the name, the block
+dying with the statement -- the borrow's safest shape, arrived at
+by wrapping the call in the block itself and re-entering the walk,
+the receiver a place the second time around. A *mut self keeps
+the refusal an &mut keeps -- a writable temporary has no honest
+reader -- now said where the checker says it, not where the
+emitter fell over. Three pins: 251 the family called in place and
+through a call's answer, 252 the inherent rows, 243 the mut
+refusal. Five hundred fifty-eight green.

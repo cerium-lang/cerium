@@ -134,6 +134,20 @@ receiver fits. The tail the bound left unspelled is the trait's own defaults,
 default is a bound no ask can complete, and it is rejected where the bound is
 written.
 
+A bound may also pin a trait's associated types, the pin joining the
+arguments inside the angle brackets and standing behind every one of them:
+
+```rust
+fn each<F: Fn<i32, Output = u32>>(f: F) -> u32
+```
+
+The `=` tells the two apart: a name followed by one is an associated type
+being pinned, a name followed by a comma or the closing bracket a type
+argument — the same spelling a declaration's defaults take
+(`Add<Rhs = Self>` above), and read the same way: the position says which it
+is, a declaration naming its own, a use naming the trait's. The pins stand
+last, the order an impl's block spells them in (`05-traits.md`).
+
 ## Specialization
 
 Multiple impls of the same trait are ordered by how specific their bounds are.
@@ -294,6 +308,13 @@ fn sum<...Ts>(ts: ...Ts) -> i64;
 `ts` is a tuple of type `(...Ts)`. Passing a tuple to a pack parameter
 unifies the pack with the tuple's elements — `sum(t)` where `t: (i32, u8)`
 instantiates `Ts = (i32, u8)`.
+
+A trait's type parameters may be a pack too, and a pack the whole of them —
+`Fn<...Args>` takes its arguments that way (`05-traits.md`) — the last-word
+rule holding the same: a pack that is the list's only word breaks nothing.
+At an impl the pack is spelled out, the parameters the elements one for one
+(`05-traits.md`'s Scale); a bound feeds it types one for one as well, `Fn<E>`
+and `Fn<A, B>` both binding `Args` whole.
 
 A pack is manipulated with ordinary indexing and slicing, plus `@count`:
 

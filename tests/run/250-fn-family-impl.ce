@@ -1,0 +1,19 @@
+/* the family's own row, spelled by hand (05-traits.md): the
+ * pack-only parameter takes its element types at the impl, the
+ * parameters the elements one for one, Output inside the block --
+ * and the sugar is a method call like any other, the *Self
+ * receiver lent by it. A struct with named state, called. */
+
+use std::ops::Fn;
+
+struct Scale { factor: u32 }
+
+impl Fn<u32> for Scale {
+  type Output = u32;
+  fn call(self: *Self, x: u32) -> u32 { self.factor * x }
+}
+
+fn main() -> i32 {
+  let s = Scale{ factor: 3 };
+  @cast<i32>(s.call(5))          /* 15: the sugar lends &s */
+}

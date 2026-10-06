@@ -1,0 +1,40 @@
+/* std::ops::Fn -- `f(x)` is Fn::call(f, x), the call's own sugar,
+ * exactly as `a + b` is Add::add(a, b) (05-traits.md): the one
+ * operator a callable value has, `f(a, b)` supplying call's pack
+ * two elements, `f()` none. Three traits, and the receiver is
+ * what tells them apart -- Fn reads the captures, FnMut writes a
+ * captured slot, FnOnce moves a capture out. The line between Fn
+ * and FnMut is where the write goes: through a captured pointer,
+ * or through self. Writing through a captured *mut T is permitted
+ * by that pointer's own type, so reading it out of a *Self is
+ * enough; writing self.n needs *mut Self (01-types.md). Rust draws
+ * this line differently because there a &mut must be reborrowed
+ * out of the closure, which needs &mut self.
+ *
+ * The arguments arrive as one pack -- the pack-only parameter
+ * (04-generics.md), what a bound names: `F: Fn<E>` hands the
+ * element types over, `F: Fn<i32, Output = u32>` pins the answer
+ * too, the associated constraint behind the arguments. The result
+ * leaves as one associated type, what the implementation decides:
+ * the Add precedent's Output (05-traits.md), a call's answer not
+ * known until the row is. A closure implements whichever of the
+ * three its body needs, the least demanding one that works
+ * (01-types.md), and a function pointer impls Fn for its own
+ * signature -- how a named fn meets a bound a closure also
+ * answers. FnOnce has no dyn (06-dispatch.md): a handle that may
+ * be called once is not a handle. */
+
+pub trait Fn<...Args> {
+  type Output;
+  fn call(self: *Self, args: ...Args) -> Self::Output;
+}
+
+pub trait FnMut<...Args> {
+  type Output;
+  fn call_mut(self: *mut Self, args: ...Args) -> Self::Output;
+}
+
+pub trait FnOnce<...Args> {
+  type Output;
+  fn call_once(self: Self, args: ...Args) -> Self::Output;
+}
