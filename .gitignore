@@ -1,3 +1,7 @@
 *.o
+*.vsix
 /cerium
 core.*
+build
+.cache
+.vscode

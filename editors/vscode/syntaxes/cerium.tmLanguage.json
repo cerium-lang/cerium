@@ -1,0 +1,270 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Cerium",
+  "scopeName": "source.cerium",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#attribute" },
+    { "include": "#string" },
+    { "include": "#byte" },
+    { "include": "#number" },
+    { "include": "#builtin" },
+    { "include": "#splice" },
+    { "include": "#fn-def" },
+    { "include": "#type-def" },
+    { "include": "#keyword" },
+    { "include": "#primitive" },
+    { "include": "#self" },
+    { "include": "#call" },
+    { "include": "#type" },
+    { "include": "#operator" },
+    { "include": "#punctuation" }
+  ],
+  "repository": {
+    "comment": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.cerium",
+          "begin": "//",
+          "end": "(?=$|\\n)",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.comment.cerium" }
+          }
+        },
+        {
+          "name": "comment.block.cerium",
+          "begin": "/\\*",
+          "end": "\\*/",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.comment.begin.cerium" }
+          },
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.comment.end.cerium" }
+          },
+          "patterns": [{ "include": "#comment" }]
+        }
+      ]
+    },
+    "attribute": {
+      "name": "meta.attribute.cerium",
+      "begin": "#\\[",
+      "end": "\\]",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.attribute.begin.cerium" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.attribute.end.cerium" }
+      },
+      "patterns": [
+        { "include": "#string" },
+        {
+          "name": "storage.modifier.attribute.cerium",
+          "match": "\\b(extern|noreturn|packed|align|repr|inline|build|doc)\\b"
+        },
+        { "include": "#number" },
+        { "include": "#punctuation" }
+      ]
+    },
+    "string": {
+      "patterns": [
+        { "include": "#string-raw-multi" },
+        { "include": "#string-esc-multi" },
+        { "include": "#string-raw-single" },
+        { "include": "#string-esc-single" }
+      ]
+    },
+    "string-raw-multi": {
+      "name": "string.quoted.triple.raw.cerium",
+      "begin": "(?<![A-Za-z0-9_])(?:cr|r)\"\"\"",
+      "end": "\"\"\"",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.string.begin.cerium" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.string.end.cerium" }
+      }
+    },
+    "string-esc-multi": {
+      "name": "string.quoted.triple.cerium",
+      "begin": "(?<![A-Za-z0-9_])c?\"\"\"",
+      "end": "\"\"\"",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.string.begin.cerium" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.string.end.cerium" }
+      },
+      "patterns": [{ "include": "#escape" }]
+    },
+    "string-raw-single": {
+      "name": "string.quoted.double.raw.cerium",
+      "begin": "(?<![A-Za-z0-9_])(?:cr|r)\"",
+      "end": "\"",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.string.begin.cerium" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.string.end.cerium" }
+      }
+    },
+    "string-esc-single": {
+      "name": "string.quoted.double.cerium",
+      "begin": "(?<![A-Za-z0-9_])c?\"",
+      "end": "\"",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.string.begin.cerium" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.string.end.cerium" }
+      },
+      "patterns": [{ "include": "#escape" }]
+    },
+    "escape": {
+      "patterns": [
+        {
+          "name": "constant.character.escape.cerium",
+          "match": "\\\\(?:[ntr0'\"\\\\]|x[0-9a-fA-F]{2})"
+        },
+        {
+          "name": "invalid.illegal.escape.cerium",
+          "match": "\\\\."
+        }
+      ]
+    },
+    "byte": {
+      "name": "string.quoted.single.cerium",
+      "begin": "'",
+      "end": "'",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.byte.begin.cerium" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.byte.end.cerium" }
+      },
+      "patterns": [{ "include": "#escape" }]
+    },
+    "number": {
+      "patterns": [
+        {
+          "name": "constant.numeric.integer.cerium",
+          "match": "(?<=\\.)[0-9][0-9_]*\\b",
+          "comment": "a tuple index: the digits after a postfix dot are their own integer, never the fraction of a float (t.1.0)"
+        },
+        {
+          "name": "constant.numeric.hex.cerium",
+          "match": "\\b0[xX][0-9a-fA-F][0-9a-fA-F_]*\\b"
+        },
+        {
+          "name": "constant.numeric.octal.cerium",
+          "match": "\\b0[oO][0-7][0-7_]*\\b"
+        },
+        {
+          "name": "constant.numeric.binary.cerium",
+          "match": "\\b0[bB][01][01_]*\\b"
+        },
+        {
+          "name": "constant.numeric.float.cerium",
+          "match": "\\b[0-9][0-9_]*(?:\\.[0-9][0-9_]*)?[eE][+-]?[0-9][0-9_]*\\b"
+        },
+        {
+          "name": "constant.numeric.float.cerium",
+          "match": "\\b[0-9][0-9_]*\\.[0-9][0-9_]*\\b"
+        },
+        {
+          "name": "constant.numeric.integer.cerium",
+          "match": "\\b[0-9][0-9_]*\\b"
+        }
+      ]
+    },
+    "builtin": {
+      "match": "(@)(sizeof|alignof|offset|cast|typeinfo|typeof|field|count|take|compileError|slice)\\b",
+      "captures": {
+        "1": { "name": "punctuation.definition.builtin.cerium" },
+        "2": { "name": "support.function.builtin.cerium" }
+      }
+    },
+    "splice": {
+      "name": "keyword.other.splice.cerium",
+      "match": "\\$\\$"
+    },
+    "fn-def": {
+      "match": "\\b(fn)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+      "captures": {
+        "1": { "name": "keyword.other.fn.cerium" },
+        "2": { "name": "entity.name.function.cerium" }
+      }
+    },
+    "type-def": {
+      "match": "\\b(struct|enum|union|trait|type)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+      "captures": {
+        "1": { "name": "storage.type.cerium" },
+        "2": { "name": "entity.name.type.cerium" }
+      }
+    },
+    "keyword": {
+      "patterns": [
+        {
+          "name": "keyword.control.cerium",
+          "match": "\\b(if|else|match|for|in|break|continue|return)\\b"
+        },
+        {
+          "name": "keyword.other.cerium",
+          "match": "\\b(macro|defer)\\b"
+        },
+        {
+          "name": "storage.modifier.cerium",
+          "match": "\\b(pub|mut|const|static|dyn|impl|use)\\b"
+        },
+        {
+          "name": "storage.type.cerium",
+          "match": "\\b(struct|enum|union|trait|type|fn|let)\\b"
+        },
+        {
+          "name": "constant.language.cerium",
+          "match": "\\b(true|false)\\b"
+        }
+      ]
+    },
+    "primitive": {
+      "name": "support.type.primitive.cerium",
+      "match": "\\b(i8|i16|i32|i64|i128|u8|u16|u32|u64|u128|isize|usize|f32|f64|bool|voidptr)\\b"
+    },
+    "self": {
+      "name": "variable.language.self.cerium",
+      "match": "\\b(self|Self)\\b"
+    },
+    "call": {
+      "name": "entity.name.function.cerium",
+      "match": "\\b[a-z_][A-Za-z0-9_]*(?=\\s*\\()",
+      "comment": "a fn's own name reads lower; a capital followed by a paren is a variant's construction, which #type claims"
+    },
+    "type": {
+      "name": "entity.name.type.cerium",
+      "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+    },
+    "operator": {
+      "name": "keyword.operator.cerium",
+      "match": "->|=>|\\.\\.\\.|\\.\\.|<<=|>>=|<<|>>|==|!=|<=|>=|&&|\\|\\||\\+=|-=|\\*=|/=|\\^\\^|\\?|=|<|>|!|~|&|\\||\\^|\\+|\\*|/|%"
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.accessor.cerium",
+          "match": "::|\\."
+        },
+        {
+          "name": "punctuation.separator.cerium",
+          "match": "[;,]"
+        },
+        {
+          "name": "meta.brace.cerium",
+          "match": "[{}()\\[\\]]"
+        },
+        {
+          "name": "punctuation.definition.type.cerium",
+          "match": ":"
+        }
+      ]
+    }
+  }
+}
