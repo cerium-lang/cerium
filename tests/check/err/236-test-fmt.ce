@@ -1,0 +1,9 @@
+/* the Err half prints through the error type's own Fmt
+ * (13-testing.md) */
+
+struct NoFmt { n: i32 }
+
+#[test]
+fn t() -> NoFmt?() {
+  Err(NoFmt { n: 1 })
+}

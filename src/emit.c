@@ -4274,8 +4274,325 @@ emitmain(FILE *o)
           fsymname(m, m->decl), en);
 }
 
+/* -- the test artifact's own door (13-testing.md) ------------------------ */
+
+/* what one #[test] fn carries into the runner's table. The entry is
+ * not kept here: run_err's instance is made per pass, the way a
+ * body's own calls re-ensure theirs, so the second pass's queue
+ * holds it again and the text keeps it -- a cached name would leave
+ * the instance out of the out the linker reads. */
+typedef struct Test Test;
+struct Test
+{
+  Sym  *s;    /* the #[test] fn */
+  char *name; /* ns::name -- the report's own word for it */
+  usize nlen;
+  char *desc; /* #[test("...")]'s bytes, or "" when the attribute
+               * wrote none */
+  usize dlen;
+};
+
+static Test *tests; /* collected once, the two passes walk it equal */
+
+/* every #[test] fn of the tree, this namespace's table then each
+ * sub's, depth-first -- pub or not, for every namespace is collected
+ * (13-testing.md). A method never reaches this walk: the impl's own
+ * member table holds it, not the namespace's, and the checker
+ * turned a #[test] method away at its own door. */
+static void
+collecttests(Ns *ns)
+{
+  Sym **tbl;
+  usize n, i;
+
+  tbl = nstable(ns, &n); /* the table is hashed: the walk's own
+                          * order, a glob's (11-namespaces.md) */
+  for (i = 0; i < n; i++) {
+    Sym *s = tbl[i];
+    Ast *at;
+
+    if (s->kind != Sfn || !s->decl || !s->fnty) /* a prelude fn
+                                                 * carries no node, no
+                                                 * attribute either */
+      continue;
+    at = attrfind(s->decl->attrs, "test");
+    if (at) {
+      Test  t;
+      char *nn = nsname(s->ownns);
+      Ast  *d = at->v.seg.args ? at->v.seg.args[0] : 0;
+
+      t.s = s;
+      if (*nn) { /* a sub-namespace's fn: the path names it in the
+                  * report, two of the same name told apart */
+        t.name = arenaalloc(strlen(nn) + strlen(s->name) + 3);
+
+        sprintf(t.name, "%s::%s", nn, s->name);
+      } else
+        t.name = s->name;
+      t.nlen = strlen(t.name);
+      t.desc = d ? d->v.s.s : "";
+      t.dlen = d ? d->v.s.len : 0;
+      vappend(&tests, &t);
+    }
+  }
+  for (i = 0; i < vlen(ns->subs); i++)
+    collecttests(ns->subs[i]);
+}
+
+/* the entry a test answers to: std::entry's run_unit for a (), the
+ * run_err<E> instance an E?() asks -- the same two doors the main
+ * wrapper arranges, the same two shapes a test may return
+ * (13-testing.md) */
+static char *
+testentry(Sym *s)
+{
+  if (s->fnty->t->k == Tyenum) { /* E?(): the instance over the E the
+                                  * Err half carries */
+    Type **tys = tyargs(1);
+
+    tys[0] = s->fnty->t->args[1];
+    return instensure(sym_entry_err, tys, 0, 0)->name;
+  }
+  return fsymname(sym_entry_unit, sym_entry_unit->decl);
+}
+
+/* the runner's report bytes, a fixed string of its own: into the
+ * data segment with the NUL the literal's bytes take, though the
+ * write counts its length and never reads it */
+static void
+emteststr(FILE *o, const char *sym, const char *s)
+{
+  usize i, n = strlen(s);
+
+  fprintf(o, "data $%s = { ", sym);
+  for (i = 0; i < n; i++)
+    fprintf(o, "b %u, ", (unsigned) (unsigned char) s[i]);
+  fprintf(o, "b 0 }\n");
+}
+
+/* the test artifact's door, in the wrapper's own place: the table
+ * the compiler walked the namespaces for, and a runner over it. The
+ * run itself is a fork a test -- a panic is an abort, no unwinding,
+ * no destructors (12a-panic.md), so the child is the only shape
+ * that dies and the parent the only one that reports; the entry the
+ * table names does what it does for a main: set_args the none a
+ * test takes, call the fn, answer the ending -- a () a clean zero,
+ * an E?() the exit that prints the Err through its own words. The
+ * parent waits, reads the wait's own two words -- a signal a
+ * failed, an exit code the same -- prints the test's line, and
+ * walks on. The sum is the last line, and the code the platform
+ * reads: every one passed a zero, any one failed a one
+ * (13-testing.md). The project's own main is not involved -- need
+ * not exist, and if it does, nobody calls it. */
+static void
+emittest(FILE *o)
+{
+  usize  i, n;
+  char **ens;
+
+  if (!tests) { /* once: the tree's own order, stable between passes */
+    tests = vnew(Test, 8);
+    collecttests(nsroot());
+  }
+  n = vlen(tests);
+  ens = vnew(char *, n ? n : 1);
+  for (i = 0; i < n; i++) {
+    char *en = testentry(tests[i].s);
+
+    vappend(&ens, &en);
+  }
+  emteststr(o, "test.ok", "ok   ");
+  emteststr(o, "test.fail", "FAIL ");
+  emteststr(o, "test.dash", " --");
+  emteststr(o, "test.nl", "\n");
+  emteststr(o, "test.passed", " passed, ");
+  emteststr(o, "test.failed", " failed\n");
+  emteststr(o, "test.fork", "fork failed\n");
+  fprintf(o, "data $test.dec = { b 48, b 49, b 50, b 51, b 52, b 53, b 54, b 55"
+             ", b 56, b 57, b 0 }\n");
+  for (i = 0; i < n; i++) { /* the names and descriptions, one data
+                             * symbol each, $test.2i+1 and $test.2i+2
+                             * -- the numbering a function of the
+                             * walk, the same both passes */
+    usize j;
+
+    for (j = 0; j < 2; j++) { /* the name, then the description when
+                               * there is one */
+      char *s = j ? tests[i].desc : tests[i].name;
+      usize l = j ? tests[i].dlen : tests[i].nlen;
+
+      if (j && !l)
+        continue;
+      fprintf(o, "data $test.%lu = { ", (unsigned long) (2 * i + j + 1));
+      {
+        usize k;
+
+        for (k = 0; k < l; k++)
+          fprintf(o, "b %u, ", (unsigned) (unsigned char) s[k]);
+      }
+      fprintf(o, "b 0 }\n");
+    }
+  }
+  if (!n) { /* the symbol the runner names must be, though no walk
+             * reads it */
+    fprintf(o, "data $tests = { z 8 }\n");
+  } else { /* the table: a row a test, six words -- the name's slice,
+            * the description's, the entry, the fn by address */
+    char *line, *p;
+    usize len = 32;
+
+    for (i = 0; i < n; i++)
+      len += strlen(ens[i]) + strlen(fsymname(tests[i].s, tests[i].s->decl)) +
+             56; /* the six slots' own words beside the two names */
+    line = arenaalloc(len);
+    p = line + sprintf(line, "data $tests = { ");
+    for (i = 0; i < n; i++) {
+      char desc[48];
+
+      if (tests[i].dlen)
+        sprintf(desc, "l $test.%lu, l %lu", (unsigned long) (2 * i + 2),
+                (unsigned long) tests[i].dlen);
+      else
+        sprintf(desc, "l 0, l 0");
+      p += sprintf(p, "l $test.%lu, l %lu, %s, l $%s, l $%s, ", (unsigned long) (2 * i + 1),
+                   (unsigned long) tests[i].nlen, desc, ens[i],
+                   fsymname(tests[i].s, tests[i].s->decl));
+    }
+    sprintf(p, "}");
+    fprintf(o, "%s\n", line);
+  }
+  /* the counter's own words, a count in decimal -- the sum line's
+   * helper, digits built from the end of a buffer the caller owns.
+   * A zero spells its one digit, the loop's own last round */
+  fprintf(o, "function l $u64str(w %%n, l %%buf) {\n@start\n"
+             "\t%%ps =l alloc8 8\n"
+             "\t%%cs =l alloc4 4\n"
+             "\tstorel %%buf, %%ps\n"
+             "\tstorew %%n, %%cs\n"
+             "@loop\n"
+             "\t%%p0 =l load %%ps\n"
+             "\t%%c0 =w loadw %%cs\n"
+             "\t%%d =w urem %%c0, 10\n"
+             "\t%%dl =l extuw %%d\n"
+             "\t%%dp =l add $test.dec, %%dl\n"
+             "\t%%ch =w loadub %%dp\n"
+             "\tstoreb %%ch, %%p0\n"
+             "\t%%p1 =l add %%p0, 1\n"
+             "\tstorel %%p1, %%ps\n"
+             "\t%%c1 =w udiv %%c0, 10\n"
+             "\tstorew %%c1, %%cs\n"
+             "\tjnz %%c1, @loop, @done\n");
+  fprintf(o, "@done\n"
+             "\t%%p2 =l load %%ps\n"
+             "\t%%r =l sub %%p2, %%buf\n"
+             "\tret %%r\n"
+             "}\n\n");
+  /* the runner: the fork a test, the wait its ending, the line the
+   * report writes -- the child calls the entry the table's row
+   * named with the fn beside it and returns what it answered, the
+   * parent decodes the wait's status, the signal word and the exit
+   * code word, and counts. The words themselves never buffer: each
+   * is a write of its own, the report's order on the descriptor */
+  fprintf(o,
+          "export function w $main(w %%argc, l %%argv) {\n@start\n"
+          "\t%%np =l alloc4 4\n"
+          "\t%%nf =l alloc4 4\n"
+          "\t%%ip =l alloc8 8\n"
+          "\t%%stp =l alloc4 4\n"
+          "\t%%buf =l alloc8 24\n"
+          "\tstorew 0, %%np\n"
+          "\tstorew 0, %%nf\n"
+          "\tstorel 0, %%ip\n"
+          "@loop\n"
+          "\t%%i0 =l load %%ip\n"
+          "\t%%fin =w csltl %%i0, %lu\n"
+          "\tjnz %%fin, @one, @sum\n"
+          "@one\n"
+          "\t%%tp =l add $tests, %%i0\n"
+          "\t%%pid =w call $fork()\n"
+          "\t%%bad =w csltw %%pid, 0\n"
+          "\tjnz %%bad, @forkfail, @forked\n"
+          "@forked\n"
+          "\tjnz %%pid, @wait, @child\n",
+          (unsigned long) (48 * n));
+  fprintf(o, "@child\n"
+             "\t%%e0 =l add %%tp, 32\n"
+             "\t%%en =l load %%e0\n"
+             "\t%%m0 =l add %%tp, 40\n"
+             "\t%%mm =l load %%m0\n"
+             "\t%%rc =w call %%en(l %%mm, w 0, l 0)\n"
+             "\tret %%rc\n"
+             "@wait\n"
+             "\t%%wp =w call $wait(l %%stp)\n"
+             "\t%%wbad =w csltw %%wp, 0\n"
+             "\tjnz %%wbad, @forkfail, @wsig\n");
+  fprintf(o, "@wsig\n"
+             "\t%%sv =w loadw %%stp\n"
+             "\t%%sig =w and %%sv, 127\n"
+             "\t%%stpd =w ceqw %%sig, 127\n"
+             "\tjnz %%stpd, @wait, @wdec\n"
+             "@wdec\n"
+             "\t%%sigz =w ceqw %%sig, 0\n"
+             "\tjnz %%sigz, @wexit, @fail\n"
+             "@wexit\n"
+             "\t%%ec =w shr %%sv, 8\n"
+             "\t%%ok =w ceqw %%ec, 0\n"
+             "\tjnz %%ok, @pass, @fail\n"
+             "@pass\n"
+             "\t%%w1 =w call $write(w 1, l $test.ok, w 5)\n"
+             "\t%%p0 =w loadw %%np\n"
+             "\t%%p1 =w add %%p0, 1\n"
+             "\tstorew %%p1, %%np\n"
+             "\tjmp @report\n"
+             "@fail\n"
+             "\t%%w2 =w call $write(w 1, l $test.fail, w 5)\n"
+             "\t%%f0 =w loadw %%nf\n"
+             "\t%%f1 =w add %%f0, 1\n"
+             "\tstorew %%f1, %%nf\n"
+             "\tjmp @report\n");
+  fprintf(o, "@report\n"
+             "\t%%nm =l load %%tp\n"
+             "\t%%nq =l add %%tp, 8\n"
+             "\t%%nl =l load %%nq\n"
+             "\t%%w3 =w call $write(w 1, l %%nm, l %%nl)\n"
+             "\t%%dq =l add %%tp, 16\n"
+             "\t%%dp =l load %%dq\n"
+             "\t%%lq =l add %%tp, 24\n"
+             "\t%%dl =l load %%lq\n"
+             "\t%%nd =w ceqw %%dl, 0\n"
+             "\tjnz %%nd, @newline, @dash\n"
+             "@dash\n"
+             "\t%%w4 =w call $write(w 1, l $test.dash, w 3)\n"
+             "\t%%w5 =w call $write(w 1, l %%dp, l %%dl)\n"
+             "@newline\n"
+             "\t%%w6 =w call $write(w 1, l $test.nl, w 1)\n"
+             "\t%%i1 =l load %%ip\n"
+             "\t%%i2 =l add %%i1, 48\n"
+             "\tstorel %%i2, %%ip\n"
+             "\tjmp @loop\n");
+  fprintf(o, "@sum\n"
+             "\t%%pv =w loadw %%np\n"
+             "\t%%la =l call $u64str(w %%pv, l %%buf)\n"
+             "\t%%w7 =w call $write(w 1, l %%buf, l %%la)\n"
+             "\t%%w8 =w call $write(w 1, l $test.passed, w 9)\n"
+             "\t%%fv =w loadw %%nf\n"
+             "\t%%lb =l call $u64str(w %%fv, l %%buf)\n"
+             "\t%%w9 =w call $write(w 1, l %%buf, l %%lb)\n"
+             "\t%%wA =w call $write(w 1, l $test.failed, w 8)\n"
+             "\t%%none =w ceqw %%fv, 0\n"
+             "\tjnz %%none, @ret0, @ret1\n"
+             "@ret0\n"
+             "\tret 0\n"
+             "@ret1\n"
+             "\tret 1\n"
+             "@forkfail\n"
+             "\t%%wF =w call $write(w 2, l $test.fork, w 12)\n"
+             "\tret 1\n"
+             "}\n\n");
+}
+
 void
-emitfile(FILE *out, Srcfile **files, usize nfiles, int release, const char *proj)
+emitfile(FILE *out, Srcfile **files, usize nfiles, int release, const char *proj, int test)
 {
   FILE *scratch = tmpfile(); /* pass one names the aggregates and
                               * finds every instantiation; its text
@@ -4289,10 +4606,15 @@ emitfile(FILE *out, Srcfile **files, usize nfiles, int release, const char *proj
   emproj = proj; /* the project's name, the symbols' first segment
                   * (12-projects.md, Symbols) */
   rel = release; /* the runtime checks' own mode: debug inserts
-                  * them, release leaves them out (01-types.md) */
+                  * them, release leaves them out (01-types.md). A
+                  * test build never takes -r, so its shape is
+                  * always the debug one (13-testing.md) */
   ipass = 1;
   emitall(scratch, files, nfiles);
-  emitmain(scratch);
+  if (test) /* the runner's own door, in the wrapper's place */
+    emittest(scratch);
+  else
+    emitmain(scratch);
   draininsts(scratch);
   for (;;) { /* the tables the handles named: their entries name
               * instances no static call found, so the print is
@@ -4311,7 +4633,10 @@ emitfile(FILE *out, Srcfile **files, usize nfiles, int release, const char *proj
   abidecls(out);                      /* the :type declarations, the order qbe reads */
   ipass = 2;
   emitall(out, files, nfiles); /* pass two: the text */
-  emitmain(out);
+  if (test)
+    emittest(out);
+  else
+    emitmain(out);
   draininsts(out);
   for (;;) {
     draininsts(out);

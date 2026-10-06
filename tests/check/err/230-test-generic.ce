@@ -1,0 +1,6 @@
+/* no call site picks them, the runner alone calls
+ * (13-testing.md) */
+
+#[test]
+fn t<T>() {
+}

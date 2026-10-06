@@ -1,0 +1,24 @@
+use std::io::Error;
+
+/* the failing artifact: a panic's abort and an Err's clean exit
+ * one, both failures the report names and the runner walks on
+ * past -- and a passing one between them, the order kept
+ * (13-testing.md) */
+
+#[test]
+fn fine() {
+  let a = [3]i32{1, 2, 3};
+  if a[1] != 2 {
+    panic("wrong");
+  };
+}
+
+#[test("this one dies on purpose")]
+fn dies() {
+  panic("a deliberate panic");
+}
+
+#[test]
+fn err_out() -> Error?() {
+  Err(Error::Sys(13))
+}

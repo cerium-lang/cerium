@@ -2068,3 +2068,36 @@ bits, a modulo done in the head -- each one a garbage value that
 was only ever the reader's). 238 the pin anyway: the same-named
 rows' addresses walked end to end, twenty-one the answer, the
 ground held for whoever reads the code next.
+
+Then the tests got their own door. `#[test]` had waited in the
+specs with its whole chapter -- the second product a project
+builds, `-x` beside `-c`, every marked fn from every namespace pub
+or not walked by a runner the compiler writes; now the writing
+itself. The shape the chapter names came home in the existing
+grammar's own pieces: the attribute was already parsed, the
+checker's main checks already knew the two endings a fn may
+answer, and std::entry's runs already wrapped both -- a () handed
+to `run_unit`, an E?() to the `run_err` instance over its error,
+the same doors the main wrapper arranges, no trampoline of its
+own to generate. The new part was the isolation: a panic is an
+abort, no unwinding, no destructors, so the runner forks per test
+-- the child calls the entry and returns what it answered, the
+parent waits, reads the status word's two halves (a signal the
+abort, an exit code the Err's own clean one), and walks on. The
+report is writes and nothing buffered: a line a test, `ok` or
+`FAIL`, the name with its namespace, the description the attribute
+wrote; the sum line last, a count in decimal a tiny hand-written
+itoa spells; exit 0 all green, 1 any red. The checker's side
+takes the main's own rules and answers them for a test's shape --
+no arguments, no generics, a body, one of the two endings, the
+description one string, a method or an #[extern(C)] refused --
+eight refusals pinned. The first walk taught the table's own
+shape the hard way: a namespace's table is a hash, not a row, and
+the entries the collector found through it came out in the hash's
+own order -- the report pins that order the way a golden pins its
+dump, and four projects hold the whole door open: the all-green
+walk with an E?()'s Ok in it, the failing one with a deliberate
+panic and a deliberate Err, the project whose main stands aside
+uncalled, and the empty table's honest zero. Five hundred
+thirty-eight green, and S1 and S2 -- the reason the door was
+built first -- have somewhere to live.

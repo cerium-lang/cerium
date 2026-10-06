@@ -26,6 +26,15 @@
 # write there, a runtime check's panic among them: abort's own exit
 # is 134. It needs qbe/qbe built -- a checkout without it skips
 # the section rather than failing.
+#
+# tests/test is the test artifact's (13-testing.md): every entry a
+# directory project, -x compiling it to the runner over its #[test]
+# fns. The .expect beside the directory names the exit -- 0 every
+# one passed, 1 any one failed -- an optional .stdout the report
+# lines, an optional .stderr the failures' own words, the panic's
+# or the Err's. The report's line order is the table's, the
+# compiler's own walk; the .stdout pins it the way a golden pins
+# its dump.
 set -u
 cd "$(dirname "$0")/.."
 
@@ -196,6 +205,48 @@ runthem() { # $1: the directory; an .expect of "!" wants rejection,
   rm -rf "$tmp"
 }
 
+testthem() { # $1: the directory; every entry a directory project,
+  # the .expect its exit, an optional .stdout the report lines, an
+  # optional .stderr the failures' own words (13-testing.md)
+  tmp=$(mktemp -d)
+  for d in "$1"/*/; do
+    [ -d "$d" ] || continue
+    g="${d%/}.expect"
+    if [ ! -f "$g" ]; then
+      echo "FAIL $d (no .expect)"
+      fail=1
+      continue
+    fi
+    exp=$(cat "$g")
+    if ! ./cerium -x "$d" -o "$tmp/out" 2>"$tmp/err"; then
+      echo "FAIL $d (rejected: $(head -1 "$tmp/err"))"
+      fail=1
+      continue
+    fi
+    sh -c 'exec "$0" >"$1" 2>"$2"' "$tmp/out" "$tmp/stdout" "$tmp/stderr"
+    got=$?
+    if [ "$got" != "$exp" ]; then
+      echo "FAIL $d (exit $got, want $exp)"
+      fail=1
+      continue
+    fi
+    s="${d%/}.stdout"
+    if [ -f "$s" ] && ! cmp -s "$s" "$tmp/stdout"; then
+      echo "FAIL $d (stdout $(head -c 40 "$tmp/stdout" | tr '\n' ' ')...)"
+      fail=1
+      continue
+    fi
+    s="${d%/}.stderr"
+    if [ -f "$s" ] && ! cmp -s "$s" "$tmp/stderr"; then
+      echo "FAIL $d (stderr $(head -c 40 "$tmp/stderr" | tr '\n' ' ')...)"
+      fail=1
+      continue
+    fi
+    echo "ok   $d"
+  done
+  rm -rf "$tmp"
+}
+
 golden tests/lex/ok -t
 golden tests/parse/ok -a
 golden tests/check/ok -T
@@ -204,8 +255,9 @@ rejected tests/parse/err -a
 rejected tests/check/err -T
 if [ -x qbe/qbe ]; then
   runthem tests/run
+  testthem tests/test
 else
-  echo "skipped tests/run -- build qbe first: make qbe/qbe"
+  echo "skipped tests/run and tests/test -- build qbe first: make qbe/qbe"
 fi
 
 exit $fail
