@@ -129,13 +129,14 @@ operator is sugar for the call. See `07-operators.md`.
 ## Fn
 
 A call is not a builtin either: `f(x)` is sugar for a trait method, exactly as
-an operator is. Three traits, and the receiver is what tells them apart:
+an operator is — `f(a, b)` supplies `call`'s pack two elements, `f()` none.
+Three traits, and the receiver is what tells them apart:
 
 | trait | receiver | the body |
 | --- | --- | --- |
-| `Fn(A) -> B` | `self: *Self` | reads the captures; may also write **through** a captured `*mut T` |
-| `FnMut(A) -> B` | `self: *mut Self` | writes a captured slot |
-| `FnOnce(A) -> B` | `self: Self` | moves a capture out |
+| `Fn<...Args>` | `self: *Self` | reads the captures; may also write **through** a captured `*mut T` |
+| `FnMut<...Args>` | `self: *mut Self` | writes a captured slot |
+| `FnOnce<...Args>` | `self: Self` | moves a capture out |
 
 The line between `Fn` and `FnMut` is where the write goes: through a captured
 pointer, or through `self`. Writing through a captured `*mut T` is permitted by
@@ -144,24 +145,50 @@ that pointer's own type, so reading it out of a `*Self` is enough; writing
 because there a `&mut` must be reborrowed out of the closure, which needs
 `&mut self`.
 
-`A` is the argument type and `B` the result; the method is `call`. Several
-arguments are one argument of tuple type, so `f(a, b)` supplies an `(A, B)`.
+The arguments arrive as one pack, the result leaves as one associated type —
+the arguments are what a bound names, the result what the implementation
+decides (`std/ops/fn.ce`):
 
-A closure implements whichever of the three its body needs — the least demanding
-one that works (`01-types.md`). A struct can implement one directly, which is how
-a callable with named state is written:
+```rust
+pub trait Fn<...Args> {
+  type Output;
+  fn call(self: *Self, args: ...Args) -> Self::Output;
+}
+```
+
+In an impl the pack is spelled out, the parameters the pack's elements one
+for one, and `Output` given inside the block — a struct that implements one
+directly is a callable with named state:
 
 ```rust
 struct Scale { factor: u32 }
 
-impl Fn(u32) -> u32 for Scale {
+impl Fn<u32> for Scale {
+  type Output = u32;
   fn call(self: *Self, x: u32) -> u32 { self.factor * x }
 }
 ```
 
-A generic function takes a callable by value and monomorphizes, as it does for
-any bound; `dyn Fn(u32) -> u32` is the type-erased form, and it is a value like
-any other `dyn A` (`06-dispatch.md`).
+A bound names the arguments and may pin the result; unpinned, the result
+reads `F::Output` and inference takes it the rest of the way:
+
+```rust
+impl<T, E> Result<T, E> {
+  fn map_err<F: Fn<E>>(self: Self, f: F) -> Result<T, F::Output> { ... }
+}
+fn each<F: Fn<i32, Output = u32>>(f: F) -> u32
+```
+
+A generic function takes a callable by value and monomorphizes, as it does
+for any bound; `dyn Fn<i32, Output = u32>` is the type-erased form, `dyn mut
+Fn<...>` the writable one, and both are values like any other `dyn A`
+(`06-dispatch.md`). `FnOnce` has no `dyn`: a handle that may be called once
+is not a handle.
+
+A closure implements whichever of the three its body needs — the least
+demanding one that works (`01-types.md`). A function pointer implements
+`Fn` for its own signature (`std/ops/fn.ce`), which is how a named fn meets
+a bound a closure also answers.
 
 ## Copy
 

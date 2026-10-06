@@ -76,6 +76,16 @@ without knowing `Self`:
 let it: dyn Iter<Item = u32> = &mut dyn iter;
 ```
 
+The callable traits go the same way, their one associated type pinned beside
+the argument pack (`05-traits.md`) — `Fn` behind a plain `dyn`, `FnMut`
+behind the `mut` one; `FnOnce` has no form here, for a handle that may be
+called once is not a handle:
+
+```rust
+let cb: dyn Fn<i32, Output = u32> = &dyn add;
+let cb: dyn mut Fn<i32, Output = u32> = &mut dyn tick;
+```
+
 ## Layout
 
 | type | `@sizeof` | `@alignof` |
