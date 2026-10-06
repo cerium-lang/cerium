@@ -810,6 +810,31 @@ static int    ipass;  /* scratch is 1, the text is 2 */
 static Inst  *icur;   /* the instance being re-checked, its calls'
                        * children (04-generics.md) */
 
+/* the fn a literal becomes, held back to the drain beside the
+ * instances: qbe's text is flat, a body cannot sit inside the fn
+ * that wrote it. The name is given once, the tree remembers it, so
+ * the two passes and every instantiation's own walk share one
+ * spelling of the fn one literal names */
+typedef struct Clo Clo;
+struct Clo
+{
+  Ast *c;           /* the literal: its fnty the check left, the body under it */
+  Ns  *ns;          /* the file the literal was written in: its body's
+                     * bare names read there -- symfind walks the current
+                     * namespace first (11-namespaces.md), and the drain
+                     * that emits a literal may stand where an instance's
+                     * own file left the switch (emitinst), a world away
+                     * from the one the body spells its names in */
+  Use       **uses; /* that file's own uses, the same switch's other half */
+  const char *path; /* and its path, so a diagnostic the body raises
+                     * names it, not whichever file parsed last */
+};
+
+static Clo **cloqueue; /* the current drain's worklist: a body may
+                        * hold another literal, the drain walks until
+                        * the queue stands still */
+static usize nclos;    /* the name counter: one a literal, file-wide */
+
 /* -- the symbols' alphabet (12-projects.md, Symbols) --------------------
  *
  * Every name the mangler writes is a segment: the byte count in
@@ -3750,6 +3775,38 @@ emaexpr(Em *em, Ast *e)
 
     return emamatch(em, e, &reached);
   }
+  case Nclosure: { /* the fn literal: a fn of its own under a name
+                    * the emitter gave it, the value its address --
+                    * the fn pointer it spells (01-types.md); the
+                    * captures' own environment arrives with the Fn
+                    * family (05-traits.md) */
+    char *t = newtmp(em);
+    Clo  *cl;
+
+    if (!e->v.clos.sym) { /* the name once: the two passes share the
+                           * one the first walk gave, and an
+                           * instantiation's clone names its own */
+      e->v.clos.sym = arenaalloc(32);
+      sprintf(e->v.clos.sym, "closure.%lu", (unsigned long) ++nclos);
+    }
+    cl = arenaalloc(sizeof *cl); /* queued every walk: the scratch
+                                  * pass and the text pass each emit
+                                  * what their own text asked for */
+    cl->c = e;
+    cl->ns = nscuring(); /* the context the walk stands in: the
+                          * literal rides the fn whose body holds
+                          * it, so that fn's own file is the one
+                          * its body reads -- the drain restores it
+                          * before the emit (emitinst's own switch,
+                          * the same three) */
+    cl->uses = useuring();
+    cl->path = lexpath();
+    if (!cloqueue)
+      cloqueue = vnew(Clo *, 16);
+    vappend(&cloqueue, &cl);
+    fprintf(em->o, "\t%s =l copy $%s\n", t, e->v.clos.sym);
+    return t;
+  }
   case Nblock: { /* a block in expression position: its bindings end
                   * with it, its tail is its value */
     int reached;
@@ -4100,6 +4157,135 @@ emitfn(FILE *o, Sym *s, Ast *it, char *name, Type **ats, Type *ret)
   fputs("}\n\n", o);
   for (i = 0; i < vlen(em.datas); i++) /* the strings this fn grew */
     fprintf(o, "%s\n", em.datas[i]);
+}
+
+/* the fn a fn literal becomes: no symbol of the tables, a name the
+ * emitter gave it at the walk -- not exported, reached only by the
+ * pointer the literal hands out. The types read off the fnty the
+ * check left on the literal itself; the body is the same walk a
+ * fn's takes, the parameters' own drops included (03-move.md) */
+static void
+emitclosfn(FILE *o, Clo *cl) /* the context the walk stood in,
+                              * restored first: the drain may stand
+                              * where an instance's own file left the
+                              * switch, a world away from the one the
+                              * body spells its names in (emitinst's
+                              * switch, the same three) */
+{
+  Ast  *c = cl->c;
+  Type *fnty = c->ty;
+  Type *ret = fnty->t;
+  Ast **ps = c->v.clos.params;
+  usize i;
+  Em    em;
+  FILE *body;
+
+  nscur(cl->ns);
+  usecur(cl->uses);
+  lexsetpath(cl->path);
+  memset(&em, 0, sizeof em);
+  em.ormark = (usize) -1; /* no or-pattern yet: reuse is off */
+  em.allocs = vnew(char *, 16);
+  em.datas = vnew(char *, 8);
+  em.locs = vnew(ELoc, 16);
+  body = tmpfile(); /* the fn's text, held back: the stack its body
+                     * asks for goes ahead of it, at the entry */
+  if (!body)
+    die("a closure's body could not be buffered");
+  em.o = body;
+  fputs("function", o);
+  if (ret)
+    fprintf(o, " %s", sigty(ret, c));
+  fprintf(o, " $%s(", c->v.clos.sym);
+  for (i = 0; i < fnty->nargs; i++) {
+    if (i)
+      fputs(", ", o);
+    fprintf(o, "%s %%%s", sigty(fnty->args[i], ps[i]), ps[i]->v.param.name);
+  }
+  fputs(") {\n@start\n", o);
+  for (i = 0; i < fnty->nargs; i++) { /* every parameter a slot: one
+                                       * path reads them all */
+    char *nm = ps[i]->v.param.name;
+    Type *pt = fnty->args[i];
+
+    while (pt && pt->k == Tymut)
+      pt = pt->t;
+    if (isabb(pt)) { /* the incoming temp is the copy's own address:
+                      * nothing to store (01-types.md: the C
+                      * convention, which qbe lowers) */
+      char *tmp = arenaalloc(strlen(nm) + 2);
+
+      sprintf(tmp, "%%%s", nm);
+      locbind(&em, nm, tmp, pt);
+      continue;
+    }
+    if (nicheness(pt)) { /* one pointer arrived in a register: the
+                          * slot the value model wants */
+      char *slot = newtmp(&em);
+
+      fprintf(o, "\t%s =l alloc8 8\n", slot);
+      fprintf(o, "\tstorel %%%s, %s\n", nm, slot);
+      locbind(&em, nm, slot, pt);
+      continue;
+    }
+    {
+      char *slot = newtmp(&em);
+
+      fprintf(o, "\t%s =l alloc8 %lu\n", slot, (unsigned long) (sizeof_(pt) ? sizeof_(pt) : 1));
+      if (sizeof_(pt)) /* a ZST -- () or `type` -- crosses in the
+                        * word it arrived in, and the slot stays
+                        * unused (08-reflection.md) */
+        fprintf(o, "\t%s %%%s, %s\n", stins(pt), nm, slot);
+      locbind(&em, nm, slot, pt);
+    }
+  }
+  {
+    int   reached;
+    char *v = emablockval(&em, c->v.clos.body, &reached);
+
+    if (reached) { /* a niche returns as its one pointer, an
+                    * aggregate as the address the :type names */
+      v = nicheout(&em, ret, v);
+      emdrops(&em, c->v.clos.drops); /* the parameters' own slots
+                                      * (03-move.md) */
+      fprintf(em.o, "\tret %s\n", v ? v : "0");
+    } else if (em.openend) /* the body ended in the call the abort
+                            * never returns from: qbe wants its
+                            * terminator whatever the flow (10) */
+      fputs("\tret 0\n", em.o);
+  }
+  for (i = 0; i < vlen(em.allocs); i++) /* the entry's asks, ahead of
+                                         * the text that asked for
+                                         * them */
+    fprintf(o, "%s", em.allocs[i]);
+  {
+    char   buf[4096];
+    size_t n;
+
+    rewind(body);
+    while ((n = fread(buf, 1, sizeof buf, body)) > 0)
+      fwrite(buf, 1, n, o);
+  }
+  fclose(body);
+  fputs("}\n\n", o);
+  for (i = 0; i < vlen(em.datas); i++) /* the strings this fn grew */
+    fprintf(o, "%s\n", em.datas[i]);
+}
+
+/* drain the literals: a body may hold another, the walk goes until
+ * the queue stands still; a body may name an instance too, which
+ * the drain beside this one takes (04-generics.md) */
+static void
+drainclos(FILE *o)
+{
+  usize i;
+
+  i = 0;
+  while (i < vlen(cloqueue)) {
+    emitclosfn(o, cloqueue[i]);
+    i++;
+  }
+  cloqueue = vnew(Clo *, 16);
 }
 
 /* one instantiation: re-check the body under this binding -- the
@@ -4616,10 +4802,13 @@ emitfile(FILE *out, Srcfile **files, usize nfiles, int release, const char *proj
   else
     emitmain(scratch);
   draininsts(scratch);
+  drainclos(scratch);
   for (;;) { /* the tables the handles named: their entries name
               * instances no static call found, so the print is
-              * what queues them */
+              * what queues them; a literal's body names instances
+              * and literals both, the drains walk together */
     draininsts(scratch);
+    drainclos(scratch);
     if (vtprinted == vlen(vts))
       break;
     printvts(scratch);
@@ -4638,8 +4827,10 @@ emitfile(FILE *out, Srcfile **files, usize nfiles, int release, const char *proj
   else
     emitmain(out);
   draininsts(out);
+  drainclos(out);
   for (;;) {
     draininsts(out);
+    drainclos(out);
     if (vtprinted == vlen(vts))
       break;
     printvts(out);

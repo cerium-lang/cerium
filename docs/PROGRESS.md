@@ -2196,3 +2196,27 @@ write.ce says so, and the day it happens the split will have a
 real shape to answer. Five hundred forty-seven green, the runner
 forking its way past every deliberate abort, both platforms
 carrying it.
+
+And the lambda itself: the fn literal, a thing the grammar and the
+checker had carried all along -- parse.c's closure() whole since
+the first pass, body.c's rclosure a spine waiting -- with only the
+emitter left holding nothing. L0 is the layer with no captures:
+the literal is the fn pointer it spells (01-types.md), a body of
+its own under a name the emitter gives it, queued the way an
+instantiation is and drained beside them, the two-pass walk
+sharing one spelling through the tree itself. The captures, and
+the Fn family they ride in with, stay a milestone away -- a list
+with a name in it refused at the check, the body seeing its
+parameters alone. One lesson the drain paid for: the emitter
+switches namespace per file the way the checker does, and the
+instance's own emit leaves the switch where its file lives -- so
+a literal queued in main and drained after map_err's body read
+its Stuck and Far in std's tables, nowhere it was written. The
+queue now carries its own context -- the ns, the uses, the path,
+the same three emitinst switches -- and the body reads where it
+was born. Six pins: 244 the pointer a let can hold, 245 the call
+the moment it is written, 246 one literal inside another, 247
+map_err's bridge crossed in place -- the spelling the milestone
+once refused, now the one it wanted -- 248 and 249 the refusals,
+a capture and a name from the world above. Five hundred
+fifty-four green, both platforms' runners carrying it.

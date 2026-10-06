@@ -7,8 +7,10 @@
  * map_err is the bridge ?: the propagation hands the same E back,
  * so two errors meeting in one fn -- a door's and the print's,
  * say -- need the one hand that knows both, and this is it: the
- * Err half through the fn, the Ok half untouched. No closures to
- * carry: a named fn is the spelling (10-iteration.md). */
+ * Err half through the fn, the Ok half untouched. The fn is a
+ * pointer's parameter: a named one, or a literal with nothing to
+ * carry -- either spelling, the pointer the same
+ * (01-types.md). */
 
 pub enum Result<T, E> {
   Ok(T),

@@ -1,0 +1,10 @@
+/* a name from the world above, read inside the body: a capture
+ * the square brackets never spelled, and the literal holds none
+ * -- the body sees its parameters alone, the way a fn's own file
+ * never rides into it (11-namespaces.md's other lesson: a name
+ * reads where it is written) */
+pub fn main() -> i32 {
+  let f = 21;
+  let g = fn[](x: i32) -> i32 { f + x };
+  g(21)
+}

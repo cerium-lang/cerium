@@ -1,0 +1,9 @@
+/* the capture list with a name in it: the environment a capture
+ * rides in arrives with the Fn family (05-traits.md) -- until
+ * then the literal is the fn pointer it spells, and a pointer
+ * carries nothing (01-types.md) */
+pub fn main() -> i32 {
+  let x = 21;
+  let g = fn[x](y: i32) -> i32 { x + y };
+  g(21)
+}

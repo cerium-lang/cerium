@@ -1,0 +1,13 @@
+/* a literal inside a literal's body: each its own fn, the inner
+ * found while the outer emits -- the emitter's queue the drain
+ * walks until it stands still, the worklist's own shape
+ * (04-generics.md). No name crosses between them: the inner sees
+ * its parameters alone, the outer's own among the world above
+ * (01-types.md) */
+pub fn main() -> i32 {
+  let outer: fn(i32) -> i32 = fn[](x: i32) -> i32 {
+    let inner: fn(i32) -> i32 = fn[](y: i32) -> i32 { y + 1 };
+    inner(x) + inner(x) /* 22 + 22: the inner twice over */
+  };
+  outer(21) - 2 /* 42 */
+}

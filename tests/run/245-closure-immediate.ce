@@ -1,0 +1,6 @@
+/* the literal called the moment it is written: no name between
+ * the fn and the call, the value the body returns arriving the
+ * way any expression's would (01-types.md) */
+pub fn main() -> i32 {
+  fn[](x: i32) -> i32 { x + 1 }(41) /* 42: made and called in one */
+}

@@ -1,0 +1,21 @@
+/* map_err with the fn written where it is used: the literal the
+ * bridge's own hand, no named fn held between the call and the
+ * work (std/result.ce) -- Own across to Far inside one
+ * expression, the crossing 240 spells with a fn the file holds;
+ * this is the same one, spelled where it stands. The emitter
+ * walks the literal after the instance its call instantiated, a
+ * drain away from the file it was written in, and the body's own
+ * names -- Stuck, Far -- still read there */
+enum Own { Stuck(i32) }
+enum Far { Bad(i32) }
+
+pub fn main() -> i32 {
+  let crossed: Result<i32, Own> = Err(Own::Stuck(28));
+  let b = match crossed.map_err(fn[](e: Own) -> Far {
+    match e { Stuck(n) => Far::Bad(n), }
+  }) {
+    Ok(_)   => 0,
+    Err(fe) => match fe { Bad(n) => n, },
+  };
+  b - 28 /* 0: 28 across the bridge and back, whole */
+}

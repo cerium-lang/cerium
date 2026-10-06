@@ -230,6 +230,8 @@ struct Ast
       Ast **params; /* Nparam vector */
       Ast  *ret;    /* or NULL */
       Ast  *body;   /* Nblock */
+      Ast **drops;  /* the parameters' own slots, the return runs them (03) */
+      char *sym;    /* the emitter's own name for the fn the body becomes */
     } clos;
     struct
     {
