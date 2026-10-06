@@ -26,10 +26,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/utsname.h> /* uname: the platform a #[cfg] holds
-                          * (12-projects.md) */
 
 #include "ast.h"
+#include "cfg.h" /* cfgcull: pass zero, the platform's own cull */
 #include "check.h"
 #include "die.h"
 #include "eval.h"
@@ -2085,152 +2084,6 @@ resolveuse1(Ast *it, Ast **head, usize nhead, int pub, Ns *home) /* one use
       if (usebind(nm, s, 0, it)) /* the file's own binding, pub or not */
         cerrat(it, "'%s' is brought in twice (11-namespaces.md)", nm);
     }
-  }
-}
-
-/* -- platform conditions ------------------------------------------------ */
-
-static char cfgos[16];   /* "linux" or "darwin", or "" -- a system the
-                          * tables do not know (12-projects.md) */
-static char cfgarch[16]; /* "amd64" or "arm64", or "" -- a machine the
-                          * tables do not know */
-
-static const char *const cfgsystems[] = {"linux", "darwin"};
-static const char *const cfgmachines[] = {"amd64", "arm64"};
-
-/* the platform this compiler runs on, the one it compiles for: the
- * two are the same machine, the honest shape for a compiler without a
- * cross target (12-projects.md). A uname the tables cannot name leaves
- * both empty -- and every named condition false, the honest answer
- * for a system the tables do not know */
-static void
-cfginit(void)
-{
-  struct utsname u;
-  static int     done;
-
-  if (done)
-    return;
-  done = 1;
-  if (uname(&u) != 0)
-    return;
-  if (strcmp(u.sysname, "Linux") == 0)
-    strcpy(cfgos, "linux");
-  else if (strcmp(u.sysname, "Darwin") == 0)
-    strcpy(cfgos, "darwin");
-  if (strcmp(u.machine, "x86_64") == 0 || strcmp(u.machine, "amd64") == 0)
-    strcpy(cfgarch, "amd64");
-  else if (strcmp(u.machine, "arm64") == 0 || strcmp(u.machine, "aarch64") == 0)
-    strcpy(cfgarch, "arm64");
-}
-
-/* 1 the systems' dimension, 2 the machines', 0 a name neither table
- * holds -- the unknown-name error the cull reads is the typo guard
- * both dimensions share (12-projects.md) */
-static int
-cfgdim(const char *name)
-{
-  usize i;
-
-  for (i = 0; i < sizeof cfgsystems / sizeof cfgsystems[0]; i++)
-    if (strcmp(name, cfgsystems[i]) == 0)
-      return 1;
-  for (i = 0; i < sizeof cfgmachines / sizeof cfgmachines[0]; i++)
-    if (strcmp(name, cfgmachines[i]) == 0)
-      return 2;
-  return 0;
-}
-
-/* one #[cfg(...)]'s word: its arguments and-ed, a name from each
- * dimension at most -- the clash error, a pair of systems or a pair
- * of machines in one pair of parentheses, guarding the hand that
- * meant one of each. The parser made each argument a single-segment
- * path; a literal is a misplaced one, a path with segments left names
- * a namespace the conditions do not take (12-projects.md) */
-static int
-cfgattr(Ast *at)
-{
-  Ast       **as = at->v.seg.args;
-  usize       i;
-  const char *sys = 0, *mac = 0;
-  int         keep = 1;
-
-  if (!vlen(as))
-    cerrat(at, "#[cfg] takes a platform -- linux, darwin, amd64 or arm64 (12-projects.md)");
-  for (i = 0; i < vlen(as); i++) {
-    Ast        *a = as[i];
-    const char *nm;
-
-    if (a->k != Npath || a->v.path.root || vlen(a->v.path.segs) != 1)
-      cerrat(a, "#[cfg] takes a name -- linux, darwin, amd64 or arm64 (12-projects.md)");
-    nm = a->v.path.segs[0]->v.seg.name;
-    if (cfgdim(nm) == 1) {
-      if (sys && strcmp(sys, nm) != 0)
-        cerrat(a,
-               "'%s' and '%s' are both systems -- one #[cfg] takes one of each dimension"
-               " (12-projects.md)",
-               sys, nm);
-      sys = nm;
-      if (strcmp(nm, cfgos) != 0)
-        keep = 0;
-    } else if (cfgdim(nm) == 2) {
-      if (mac && strcmp(mac, nm) != 0)
-        cerrat(a,
-               "'%s' and '%s' are both machines -- one #[cfg] takes one of each dimension"
-               " (12-projects.md)",
-               mac, nm);
-      mac = nm;
-      if (strcmp(nm, cfgarch) != 0)
-        keep = 0;
-    } else
-      cerrat(a, "unknown platform '%s' -- linux, darwin, amd64 or arm64 (12-projects.md)", nm);
-  }
-  return keep;
-}
-
-/* does an item live here? Every #[cfg] it carries and-ed, and no
- * negation: a library lists the platforms it supports rather than the
- * ones it does not -- "not on this one" is every other platform
- * written out (12-projects.md). A word already false does not stop
- * the walk: the later arguments, and the later attributes, still read
- * their checks -- a typo on a culled branch as loud as one on a kept
- * one */
-static int
-itemcfg(Ast *it)
-{
-  usize i;
-  int   keep = 1;
-
-  if (!it->attrs)
-    return 1;
-  for (i = 0; i < vlen(it->attrs); i++)
-    if (strcmp(it->attrs[i]->v.seg.name, "cfg") == 0 && !cfgattr(it->attrs[i]))
-      keep = 0;
-  return keep;
-}
-
-/* pass zero, before the four: every file's items rebuilt without the
- * ones the platform culls. The cull is why a culled item never
- * exists -- not its declare, not its uses, not its impls, not its
- * bodies; the Syms stay parallel to what is left, and no later pass
- * walks a list the culled entered (12-projects.md) */
-static void
-cfgcull(Srcfile **files, usize nfiles)
-{
-  usize f;
-
-  cfginit();
-  for (f = 0; f < nfiles; f++) {
-    Srcfile *sf = files[f];
-    Ast    **keep = vnew(Ast *, 8);
-    usize    i;
-
-    lexsetpath(sf->path); /* the cull's errors name the file the item
-                           * sits in, like every pass's */
-    for (i = 0; i < vlen(sf->items); i++)
-      if (itemcfg(sf->items[i]))
-        vappend(&keep, &sf->items[i]);
-    sf->items = keep;
   }
 }
 
