@@ -1,0 +1,4 @@
+/* two namespaces, the same aggregate const name: the data symbol
+ * carries its own path (X1), and the address each one takes is
+ * its own row's -- the X5 question, walked to its end */
+pub const T: [2]u32 = [2]u32 { 1, 2 };

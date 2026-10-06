@@ -2047,3 +2047,24 @@ write through it, the thaw, the answer after, a shared read
 beside a shared borrow -- 228 the refusal while the borrow
 lives. Five hundred twenty-five green, the spec's &mut section
 naming the mut slot's element one layer's own.
+
+And the question that answered itself: never there. The const
+aggregate's address, read through, was to be garbage somewhere --
+the probe went at every door it could think of. The direct read,
+the index; the address taken, the deref the other side; a field's
+own address, an element's, either handed to a fn; two
+namespaces' worth of aggregates at once, statics among them; the
+floats, the longs, the shorts, the bytes; a struct in a struct;
+the slice view over a const row; the release road; the const
+evaluator reading one const's rows to make another. Every answer
+the right one, on the fixed compiler and the one before the fix
+alike -- the one shape the old compiler did own was X1's own, two
+namespaces' same-named rows meeting at the assembler, a refusal
+loud and hard, no quiet garbage in it. The honest close: the
+observation itself most likely the error, the arithmetic of an
+expected value the easiest thing a reader fumbles (the probe
+writer's own hand four times this round -- an exit code's eight
+bits, a modulo done in the head -- each one a garbage value that
+was only ever the reader's). 238 the pin anyway: the same-named
+rows' addresses walked end to end, twenty-one the answer, the
+ground held for whoever reads the code next.
