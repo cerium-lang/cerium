@@ -154,8 +154,19 @@ int     boundsok(Sym *im, Type **tys); /* the impl's own bounds, every
  * when the evaluator never ran it (08-reflection.md). */
 Type       *rexpr(Ast *e, Fenv *fe, Type *want);
 Type       *rplace(Ast *e, Fenv *fe);
-Type       *rblock(Ast *b, Fenv *fe, Type *want);
+void        rstmt(Ast *st, Fenv *fe);
+Type       *recoerce(Ast *e, Type *t, Fenv *fe);
+int         placewritable(Ast *p, Fenv *fe);
 extern Sym *bodyfn;
+
+/* the drop calls and the closure ground, their own file:
+ * bodymove.c. A scope's drops run in reverse when it leaves; a
+ * closure literal becomes the fn and the env its captures ride in.
+ * The blocks walk these -- the statements are body.c's above. */
+Type *rblock(Ast *b, Fenv *fe, Type *want);
+void  dropcalls(Ast *place, Type *t, Ast ***out, Ast *at);
+Ast **scopedrops(Fenv *fe, usize from, Ast *at);
+Type *rclosure(Ast *c, Fenv *fe);
 
 /* the spelled surface (07-operators.md, 08-reflection.md), its own
  * file: operators.c. The walk hands the shapes over, and the
