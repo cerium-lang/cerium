@@ -1,0 +1,10 @@
+#[cfg(release)] /* a type the cull holds away in this build:
+                   * absent, not hidden -- the use names nothing
+                   * (12-projects.md) */
+struct D { a: u32 }
+
+fn main() -> i32 {
+  let d: D = D { a: 1 };
+
+  @cast<i32>(d.a)
+}

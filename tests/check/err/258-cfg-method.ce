@@ -1,0 +1,7 @@
+struct S { a: u32 }
+
+impl S {
+  #[cfg(debug)] /* the cull never walks an impl's rows: gate the
+                 * impl, whole, not one row (12-projects.md) */
+  fn get(self: *Self) -> u32 { self.a }
+}

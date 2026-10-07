@@ -579,8 +579,8 @@ main(int argc, char **argv)
                                               * them -- debug shape
                                               * is its own (13) */
     return usage();
-  chk_rel = release; /* the mode's own word, held for every #[build]
-                      * door the passes open (01-types.md) */
+  chk_rel = release; /* the mode's own word, held for every #[cfg]
+                      * mode door the passes open (01-types.md) */
   if ((mode == 't' || mode == 'a') && isdir(file)) {
     fprintf(stderr, "cerium: -t and -a read one file; a directory is a"
                     " project (-T, -s, -c)\n");

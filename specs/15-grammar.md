@@ -77,7 +77,7 @@ keywords but are not:
 - `Self`, `main`, `Some`, `None` — names the language or the standard library
   defines, reached through the namespace rules like any other (`11-namespaces.md`,
   `12-projects.md`)
-- attribute names — `packed`, `align`, `build`, `test`, and every user
+- attribute names — `packed`, `align`, `cfg`, `test`, and every user
   attribute are ordinary identifiers inside `#[...]` (`01-types.md`)
 
 ## Integer literals

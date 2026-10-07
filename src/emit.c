@@ -3921,8 +3921,8 @@ emitall(FILE *out, Srcfile **files, usize nfiles)
         s = s->next;
       if (!s)
         continue; /* unreachable: the resolver made one */
-      if (buildgated(s, rel))
-        continue; /* a #[build] fn this build holds away: no call
+      if (modegated(s, rel))
+        continue; /* a gated fn this build holds away: no call
                    * survived to name it, its body never walks
                    * (01-types.md, Mode-gated functions) */
       if (s->ngparams)

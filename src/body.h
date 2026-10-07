@@ -168,12 +168,12 @@ void  dropcalls(Ast *place, Type *t, Ast ***out, Ast *at);
 Ast **scopedrops(Fenv *fe, usize from, Ast *at);
 Type *rclosure(Ast *c, Fenv *fe);
 
-/* #[build]'s own doors (01-types.md, Mode-gated functions): the
+/* the mode words' own doors (01-types.md, Mode-gated functions): the
  * statement cull and the tail cull read the callee ahead of the
  * value walk, and the @take ban rides the gated pick. */
 Sym *gatedcall(Ast *e, Fenv *fe); /* the callee when every gated row
                                    * of its chain is closed here */
-extern int gatedargs;             /* inside a #[build] fn's arguments: @take's ban */
+extern int gatedargs;             /* inside a gated fn's arguments: @take's ban */
 
 /* the spelled surface (07-operators.md, 08-reflection.md), its own
  * file: operators.c. The walk hands the shapes over, and the

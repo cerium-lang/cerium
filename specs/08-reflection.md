@@ -191,7 +191,7 @@ struct Attr {
 }
 
 enum AttrArg {          // an argument is an identifier, a number, or a string
-  Ident([]u8),          // #[build(debug)] — debug
+  Ident([]u8),          // #[cfg(debug)] — debug
   Int(i64),             // #[align(16)] — 16
   Str([]u8),            // a string literal
 }

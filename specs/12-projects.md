@@ -96,7 +96,7 @@ walk to the stderr door. The walk is the pack's own peel, one unfolding a
 value, the pack's depth cap its own (`04-generics.md`), and the count handed
 back is the whole print's, however many writes it took.
 
-## Platform conditions
+## Conditions
 
 A declaration may name the platforms it lives on — `#[cfg(linux)] fn
 reboot() { ... }` exists only where the word holds, and a compile
@@ -105,11 +105,28 @@ impls, not its bodies. The cull is the first thing the checker does,
 before a single name is declared, so a culled item is not hidden but
 absent — a use that names it is the unknown name any absent thing is.
 
-Two dimensions hold the words: the system — `linux` or `darwin`, the
-libc the platform carries — and the machine — `amd64` or `arm64`, the
-qbe backend that answers it. `arm64` is the one word for both Linux's
-aarch64 and Apple's arm64_apple: the IL above them has no stake in the
-calling conventions that part them. Several words in one pair of
+Three dimensions hold the words: the system — `linux` or `darwin`,
+the libc the platform carries — and the machine — `amd64` or `arm64`,
+the qbe backend that answers it. `arm64` is the one word for both
+Linux's aarch64 and Apple's arm64_apple: the IL above them has no
+stake in the calling conventions that part them.
+
+The third is the build's own word: the mode — `debug` or `release`,
+`-r`'s say (`01-types.md`, Build Modes). On every item but a fn a mode
+word is the platform words' own cull: the declaration is absent in
+the modes it does not name, and a use that names it is the unknown
+name any absent thing is — a debug shape and a release shape are two
+declarations of one name, each compile reading exactly one. On a fn
+it is the other shape: the fn is kept, and in the modes it does not
+name every call to it is removed whole — the statement gone, the
+arguments with it, not evaluated and not checked — the door the
+body's pass owns (`01-types.md`, Mode-gated functions). A fn carries
+at most one `#[cfg]` that holds a mode word: the words of two would
+meet with `and` — a fn neither mode holds — while the call-site
+removal reads the two doors' words as one fn every mode holds, and
+the shapes do not compose.
+
+Several words in one pair of
 parentheses must all hold — `#[cfg(darwin, arm64)]` is Apple silicon,
 the system and the machine each named — and several `#[cfg]`s on one
 declaration meet the same way. There is no negation: a library lists

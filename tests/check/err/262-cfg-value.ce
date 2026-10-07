@@ -1,0 +1,9 @@
+#[cfg(release)] /* the debug build holds this row away, and a held
+                  * fn is no value here (01-types.md) */
+fn answer() -> u32 { 42 }
+
+fn main() -> i32 {
+  let x: u32 = answer();
+
+  @cast<i32>(x - 42)
+}

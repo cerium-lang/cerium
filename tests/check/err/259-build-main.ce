@@ -1,2 +1,0 @@
-#[build(debug)] /* main is every mode's door */
-fn main() -> i32 { 0 }

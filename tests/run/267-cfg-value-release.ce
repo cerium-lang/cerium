@@ -3,7 +3,7 @@
  * value position, the one the release build refuses with the gating
  * named -- the statement form is the one that compiles away */
 
-#[build(debug)]
+#[cfg(debug)]
 fn answer() -> u32 { 42 }
 
 fn main() -> i32 {

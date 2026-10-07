@@ -1,2 +1,0 @@
-#[build(profile)] /* a mode is 'debug' or 'release', nothing else */
-fn a() {}

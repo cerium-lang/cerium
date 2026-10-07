@@ -837,7 +837,7 @@ mkattrargval(Ast *g)
   Type *at2 = tysym(sym_attrarg, 0, 0);
 
   switch (g->k) {
-  case Npath: { /* #[build(debug)] -- debug, an identifier */
+  case Npath: { /* #[cfg(debug)] -- debug, an identifier */
     Variant *v = symvarfind(at2->sym, "Ident");
 
     r.t = at2;

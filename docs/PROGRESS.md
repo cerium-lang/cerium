@@ -2531,3 +2531,41 @@ row's statement culled the same way; 266 the release half, a false
 assert and a panic row both removed, the answer still 42; 267 the
 value use the release build refuses; 255 through 262 the corners.
 Five hundred ninety-two green.
+
+## 2026-10-08, the attribute folds: #[cfg] holds the modes, and #[build] is no more
+
+The mode gate had been its own attribute for a day -- #[build], a
+fn's own words, the call sites that compile away -- when the shorter
+question came: why two doors? #[cfg] already names the conditions a
+declaration lives under; a mode is a condition like a platform is,
+the third dimension after the system and the machine, and one
+attribute carrying both is one thing to learn. The answer, after the
+walk: the two doors never were two shapes of the same hand -- #[cfg]
+culls, the item absent, its uses unknown names; #[build] removed,
+the fn kept, its calls gone -- so the fold is a fn's own half of the
+one attribute, spelled in the dimension's own words.
+
+#[cfg(debug)] on a fn is what #[build(debug)] was: the call sites
+that compile away, the arguments never evaluated, the body neither
+checked nor emitted in the modes that hold it away -- every rule the
+first walk wrote, the same door. On every other item a mode word is
+the platform words' own cull: the declaration absent in the modes it
+does not name, so a debug shape and a release shape are two
+declarations of one name, each compile reading exactly one -- the
+fold opened what #[build] had kept shut, a type's and an impl's own
+half. A method is gated through its impl, whole: the cull never
+walks an impl's rows, and a row half a table does not compose. One
+rule the fold itself asked for: a fn carries at most one #[cfg] that
+holds a mode word -- the words of two would meet with and, a fn
+neither mode holds, while the removal reads them as one fn every
+mode holds, and the shapes do not compose.
+
+The machinery did not move. modegated and modewords read the #[cfg]
+words where they read the #[build] ones, the cull hands a fn with
+mode words past itself to the body's pass, and std::debug::assert
+spells its door #[cfg(debug)] now. 268 the type's own cull, the
+debug shape and the release shape one name; 269 the impl's, the
+whole half gone with the fn that read it; 270 a mode word beside a
+platform word, and-ed; 255 the fn that carried two mode #[cfg]s;
+262 the value use the debug build refuses; 263 the type the cull
+holds away. Six hundred minus four green.

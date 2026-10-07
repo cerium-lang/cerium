@@ -1,3 +1,3 @@
-#[build(debug)] #[noreturn] /* the modes that remove the calls make
+#[cfg(debug)] #[noreturn] /* the modes that remove the calls make
                               * what follows them reachable */
 fn a() { panic("x\n"); }

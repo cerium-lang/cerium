@@ -929,15 +929,14 @@ Its arguments, when it has any, are identifiers or literals — `debug`, `16`,
 `"desc"` — never expressions, and they do not nest. Each attribute interprets
 its own arguments; an attribute is not a function, and not a macro.
 
-Seven attributes are defined by the language, all consumed by the compiler:
+Six attributes are defined by the language, all consumed by the compiler:
 
 | attribute | what it does | where |
 | --- | --- | --- |
 | `#[packed]` / `#[align(N)]` | changes layout | `02-layout.md` |
 | `#[extern(C)]` | C linkage, import or export | External functions above |
-| `#[build(...)]` | the function exists only in the named modes | Build modes below |
 | `#[noreturn]` | a call to it never produces a value | `10-iteration.md` |
-| `#[cfg(...)]` | the declaration exists only on the named platforms | `12-projects.md` |
+| `#[cfg(...)]` | the declaration exists only under the named conditions: platforms, or the modes a fn answers in | `12-projects.md`, Mode-gated functions below |
 | `#[test]` | the function is a test; collected into the test artifact | `13-testing.md` |
 
 There is no way to define a new one. Any other name is a user attribute: the
@@ -1022,21 +1021,22 @@ addresses.
 
 ### Mode-gated functions
 
-`#[build(...)]` names the modes a function exists in:
+A `#[cfg]`'s mode word — `debug` or `release`, the third dimension of
+`12-projects.md` — holds a fn to the modes it names:
 
 ```rust
 // in std::debug
-#[build(debug)]
+#[cfg(debug)]
 fn assert(cond: bool) { if !cond { panic("assertion failed"); } }
 
-#[build(debug)]
+#[cfg(debug)]
 fn assert(cond: bool, msg: []u8) { if !cond { panic(msg); } }
 ```
 
 In a mode that is not listed, a call to the function does not exist: the call
 site is removed, and the arguments are not evaluated. Both `assert`s above
 therefore compile away to nothing in `release`. A debug-only stretch of code
-is the same mechanism — put it in a `#[build(debug)]` function and call that.
+is the same mechanism — put it in a `#[cfg(debug)]` function and call that.
 
 The removal is the statement's own: a call whose value nothing reads — the
 bare statement, or a block's `()` tail when every gated row of the name
@@ -1054,8 +1054,10 @@ modes that remove the call, `@take` (`03-move.md`) may not appear in them: a
 move that happens in one mode but not the other would break the static
 destructor bookkeeping.
 
-`#[build]` is a free function's own — a method's row every mode's vtable lays
-out, `main` every mode's door, a test's build the debug shape alone, and
-`#[noreturn]` shares no fn with it: the modes that remove its calls make what
-follows them reachable. `#[build(debug, release)]` names several modes; listing
-every mode is the same as having no attribute at all.
+A mode word is a free function's own: the cull never walks an impl's rows,
+so a method is gated through its impl, whole; `main` is every mode's door;
+a test's build is the debug shape alone; and `#[noreturn]` shares no fn
+with a mode word: the modes that remove its calls make what follows them
+reachable. A fn carries at most one `#[cfg]` that holds a mode word — the
+shapes the two doors would read do not compose (`12-projects.md`) — and a
+fn every mode holds is one with no mode words at all.

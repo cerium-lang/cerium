@@ -1,2 +1,0 @@
-#[build(debug)] /* the attribute names the modes a fn exists in */
-struct S { a: u8 }

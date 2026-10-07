@@ -6,14 +6,14 @@
  * line, the newline its last byte. Two rows of one name: a bare
  * word and one with a message of the caller's own. */
 
-#[build(debug)]
+#[cfg(debug)]
 pub fn assert(cond: bool) {
   if !cond {
     panic("assertion failed\n");
   }
 }
 
-#[build(debug)]
+#[cfg(debug)]
 pub fn assert(cond: bool, msg: []u8) {
   if !cond {
     panic(msg);

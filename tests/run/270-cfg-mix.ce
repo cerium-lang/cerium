@@ -1,0 +1,16 @@
+/* a mode word rides beside a platform word, and-ed with it
+ * (12-projects.md): a fn the machine's row gates to debug alone, its
+ * twin the other machine's -- every platform the suite runs on holds
+ * exactly one, and the release build of this file removes its calls
+ * whichever row survived the platform's own cull */
+
+#[cfg(amd64, debug)]
+fn boom() { panic("debug only\n") }
+
+#[cfg(arm64, debug)]
+fn boom() { panic("debug only\n") }
+
+fn main() -> i32 {
+  boom(); /* a mode word holds it: removed in release, any machine */
+  0
+}

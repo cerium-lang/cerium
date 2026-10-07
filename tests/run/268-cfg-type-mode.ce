@@ -1,0 +1,18 @@
+/* a mode word on a type is the platform words' own cull
+ * (12-projects.md): the declaration absent in the modes it does not
+ * name, its uses the unknown names any absent thing's are -- so a
+ * debug shape and a release shape are two declarations of one name,
+ * each compile reading exactly one, the answer the same from either
+ * side. The release twin of this file walks the u64 row */
+
+#[cfg(debug)]
+struct D { a: u32 }
+
+#[cfg(release)]
+struct D { a: u64 }
+
+fn main() -> i32 {
+  let d = D { a: 7 };
+
+  @cast<i32>(d.a)
+}

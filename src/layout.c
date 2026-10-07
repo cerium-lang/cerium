@@ -66,43 +66,82 @@ modeident(Ast *g, const char *mode)
          strcmp(g->v.path.segs[0]->v.seg.name, mode) == 0;
 }
 
-/* is the fn gated out of this mode? A #[build] attribute names the
- * modes a fn exists in (01-types.md, Mode-gated functions); every
- * other mode removes its calls' statements, refuses its value, skips
- * its body whole. A word that names this mode keeps it; none does
- * and the fn is held away. */
+/* does a declaration's #[cfg] name a mode? -- the fn's own door, a
+ * type's or an impl's own cull, never a method's (12-projects.md).
+ * The words are the cull's own checked ones by the time any pass
+ * reads them, so the spelling here rides the pattern alone */
 int
-buildgated(Sym *s, int rel)
+declmodes(Ast *decl)
 {
-  Ast  *at;
-  usize i;
+  usize i, gi;
 
-  if (!s || s->kind != Sfn || !s->decl)
+  if (!decl || !decl->attrs)
     return 0;
-  at = attrfind(s->decl->attrs, "build");
-  if (!at)
-    return 0;
-  for (i = 0; i < vlen(at->v.seg.args); i++)
-    if (modeident(at->v.seg.args[i], rel ? "release" : "debug"))
-      return 0; /* this mode is among the words: the fn is here */
-  return 1;
+  for (i = 0; i < vlen(decl->attrs); i++) {
+    Ast *at = decl->attrs[i];
+
+    if (strcmp(at->v.seg.name, "cfg") != 0)
+      continue;
+    for (gi = 0; gi < vlen(at->v.seg.args); gi++)
+      if (modeident(at->v.seg.args[gi], "debug") || modeident(at->v.seg.args[gi], "release"))
+        return 1;
+  }
+  return 0;
 }
 
-/* the modes a #[build] attribute names, as words for a diagnostic */
-void
-buildmodes(Sym *s, char *buf, usize sz)
+/* is the fn gated out of this mode? A #[cfg] naming a mode holds a fn
+ * to it (12-projects.md; 01-types.md, Mode-gated functions); every
+ * other mode removes its calls' statements, refuses its value, skips
+ * its body whole. A word that names this mode keeps it; none does
+ * and the fn is held away. A #[cfg] may carry platform words beside
+ * the mode ones -- only the mode words answer here, the platform's
+ * own cull read its own before this pass ever walked */
+int
+modegated(Sym *s, int rel)
 {
-  Ast  *at = attrfind(s->decl->attrs, "build");
-  usize i, o = 0;
+  usize i, gi;
+  int   gate = 0;
+
+  if (!s || s->kind != Sfn || !s->decl || !s->decl->attrs)
+    return 0;
+  for (i = 0; i < vlen(s->decl->attrs); i++) {
+    Ast *at = s->decl->attrs[i];
+
+    if (strcmp(at->v.seg.name, "cfg") != 0)
+      continue;
+    for (gi = 0; gi < vlen(at->v.seg.args); gi++) {
+      Ast *g = at->v.seg.args[gi];
+
+      if (modeident(g, "debug") || modeident(g, "release")) {
+        gate = 1;
+        if (modeident(g, rel ? "release" : "debug"))
+          return 0; /* this mode is among the words: the fn is here */
+      }
+    }
+  }
+  return gate;
+}
+
+/* the modes a fn's #[cfg] names, as words for a diagnostic */
+void
+modewords(Sym *s, char *buf, usize sz)
+{
+  usize i, gi, o = 0;
 
   buf[0] = 0;
-  if (!at)
+  if (!s || !s->decl || !s->decl->attrs)
     return;
-  for (i = 0; i < vlen(at->v.seg.args) && o + 2 < sz; i++) {
-    Ast *g = at->v.seg.args[i];
+  for (i = 0; i < vlen(s->decl->attrs); i++) {
+    Ast *at = s->decl->attrs[i];
 
-    if (g->k == Npath && !g->v.path.root && vlen(g->v.path.segs) == 1)
-      o += sprintf(buf + o, "%s%s", o ? ", " : "", g->v.path.segs[0]->v.seg.name);
+    if (strcmp(at->v.seg.name, "cfg") != 0)
+      continue;
+    for (gi = 0; gi < vlen(at->v.seg.args) && o + 2 < sz; gi++) {
+      Ast *g = at->v.seg.args[gi];
+
+      if (modeident(g, "debug") || modeident(g, "release"))
+        o += sprintf(buf + o, "%s%s", o ? ", " : "", g->v.path.segs[0]->v.seg.name);
+    }
   }
 }
 

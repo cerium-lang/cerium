@@ -51,7 +51,7 @@ rbuiltin(Ast *e, Fenv *fe, Type *want)
                     * mode and skip in the other: neither mode may
                     * make it, the kept one holds the ban
                     * (01-types.md, Mode-gated functions) */
-      berr(e, "@take cannot ride a #[build] fn's arguments: the modes that remove"
+      berr(e, "@take cannot ride a gated fn's arguments: the modes that remove"
               " the call never make the move (01-types.md)");
     {
       int spent = spentborrow(args[0]);

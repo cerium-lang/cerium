@@ -1,0 +1,6 @@
+#[cfg(debug)] #[cfg(release)] /* a fn's modes belong in one #[cfg]:
+                              * the words of two meet with and, a fn
+                              * neither mode holds, while the
+                              * call-site removal reads them as one
+                              * door's own words (12-projects.md) */
+fn a() {}
