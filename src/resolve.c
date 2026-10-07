@@ -2020,6 +2020,34 @@ declare(Ast **items, Ns *ns)
                     : it->k == Nunion ? TYunion
                     : it->k == Nenum  ? TYenum
                                       : TYalias;
+      { /* #[build]'s own words, checked where the name is made: the
+         * modes a fn exists in, idents only -- 'debug', 'release' --
+         * and a fn's own attribute, nothing else's
+         * (01-types.md, Mode-gated functions) */
+        Ast *at = attrfind(it->attrs, "build");
+
+        if (at) {
+          usize gi;
+
+          if (it->k != Nfn)
+            cerrat(it, "#[build] is a function's own: it names the modes a fn"
+                       " exists in (01-types.md)");
+          if (!at->v.seg.args || !vlen(at->v.seg.args))
+            cerrat(at, "#[build] names the modes it exists in: 'debug', 'release'"
+                       " (01-types.md)");
+          for (gi = 0; gi < vlen(at->v.seg.args); gi++) {
+            Ast *g = at->v.seg.args[gi];
+
+            if (g->k != Npath || g->v.path.root || vlen(g->v.path.segs) != 1 ||
+                (strcmp(g->v.path.segs[0]->v.seg.name, "debug") != 0 &&
+                 strcmp(g->v.path.segs[0]->v.seg.name, "release") != 0))
+              cerrat(g, "a build mode is 'debug' or 'release' (01-types.md)");
+          }
+          if (it->k == Nfn && s->noreturn)
+            cerrat(it, "#[build] and #[noreturn] share no fn: the modes that remove"
+                       " its calls make what follows them reachable (01-types.md)");
+        }
+      }
     }
     vappend(&syms, &s);
   }
@@ -2031,6 +2059,7 @@ declare(Ast **items, Ns *ns)
 /* pass 3's impl table, read by pass 4 (sym.h) */
 Sym **chk_impls;
 usize chk_nimpls;
+int   chk_rel; /* the build's own mode: -r's word, every #[build] door's say */
 
 void
 checkinit(void)
@@ -2375,6 +2404,14 @@ checktests(Ns *ns)
     at = attrfind(s->decl->attrs, "test");
     if (!at)
       continue;
+    if (attrfind(s->decl->attrs, "build")) /* the test build is the
+                                            * debug shape, the one
+                                            * mode a runner knows:
+                                            * a mode-gated test has
+                                            * no mode to run in
+                                            * (13-testing.md) */
+      cerrat(s->decl, "a test is never mode-gated: the test build is the debug"
+                      " shape, one mode only (13-testing.md)");
     if (s->ngparams)
       cerrat(s->decl, "a test takes no generic parameters -- no call site"
                       " picks them, the runner alone calls (13-testing.md)");
@@ -2600,6 +2637,9 @@ checkproject(Srcfile **files, usize nfiles)
       else
         cerrat(m->decl, "main returns (), i32, or E?() -- the exit code is an i32, the platform's"
                         " own word (12-projects.md)");
+      if (attrfind(m->decl->attrs, "build"))
+        cerrat(m->decl, "main is every mode's door: #[build] cannot hold it away"
+                        " (12-projects.md)");
     }
   }
   checktests(nsroot()); /* every #[test] fn's own shape, the main's
@@ -2643,14 +2683,24 @@ checkproject(Srcfile **files, usize nfiles)
         }
         { /* a method is no test's shape: the runner calls a fn by
            * address with the platform's own two, and a method's
-           * self is not among what it hands (13-testing.md) */
+           * self is not among what it hands (13-testing.md). Nor is
+           * one #[build]'s: a vtable lays its rows out for every
+           * mode alike, and a row one mode holds away has no shape
+           * the others match (01-types.md) */
           usize k;
 
+          if (attrfind(it->attrs, "build"))
+            cerrat(it, "#[build] is a free fn's own: an impl's rows every mode's"
+                       " table holds (01-types.md)");
           for (k = 0; k < s->nmembers; k++)
-            if (s->members[k].kind == Mfn && s->members[k].decl &&
-                attrfind(s->members[k].decl->attrs, "test"))
-              cerrat(s->members[k].decl, "a test is a free fn -- a method's self"
-                                         " the runner never hands (13-testing.md)");
+            if (s->members[k].kind == Mfn && s->members[k].decl) {
+              if (attrfind(s->members[k].decl->attrs, "test"))
+                cerrat(s->members[k].decl, "a test is a free fn -- a method's self"
+                                           " the runner never hands (13-testing.md)");
+              if (attrfind(s->members[k].decl->attrs, "build"))
+                cerrat(s->members[k].decl, "#[build] is a free fn's own: a method's row"
+                                           " every mode's vtable holds (01-types.md)");
+            }
         }
         vappend(&impls, &s);
         vappend(&implsf, &sf);
@@ -2737,8 +2787,14 @@ checkproject(Srcfile **files, usize nfiles)
     for (j = 0; j < m; j++) {
       if (!sf->syms[j])
         continue;
-      if (sf->items[j]->k == Nfn && sf->items[j]->v.fn.body)
+      if (sf->items[j]->k == Nfn && sf->items[j]->v.fn.body) {
+        if (buildgated(sf->syms[j], chk_rel))
+          continue; /* a #[build] fn this build holds away is not
+                     * here: its body neither checked nor emitted --
+                     * it exists only in the modes its words name
+                     * (01-types.md, Mode-gated functions) */
         checkbodyfn(sf->syms[j], sf->items[j]);
+      }
       if (sf->items[j]->k == Nimpl)
         checkbodyimpl(sf->syms[j], sf->items[j]);
     }

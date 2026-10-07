@@ -1,0 +1,2 @@
+#[build(debug)] #[test] /* the test build is the debug shape, one mode only */
+fn t() {}

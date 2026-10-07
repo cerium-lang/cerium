@@ -2480,3 +2480,54 @@ named fn's trampoline, the captureless literal's, a slot's own
 pointer, aggregates forwarded, FnMut accumulating through the mut
 handle, the empty pack, the method spelled out. Five hundred
 eighty-one green.
+
+## 2026-10-08, mode-gated fns: the call sites that compile away
+
+The attribute sat in the table for months, `#[build(...)]` with a
+"below" that pointed at nothing -- the reflection reading its
+arguments, the compiler consuming none of them. The section below
+the table was written before the work began, and it chose the
+semantics before the implementation could flinch: not a cull of the
+fn but a removal of the call, the statement gone, the arguments
+with it, the value a thing the mode refuses to hand out. That
+choice carried the whole design -- a culled fn leaves its callers
+stranded, a removed call leaves nothing behind at all.
+
+The statement walk does the culling. A call whose every gated row
+is closed in this build is rewritten in place to the shape a const
+if's untaken arm leaves -- an empty block, nothing runs, nothing
+checks -- and the emitter reads the same tree, no flag to carry, no
+second pass to keep honest. The tail is a value use by shape, but a
+() no one reads is the statement's own in disguise: when every
+closed row answers (), the tail goes too, and `fn check(v: u32) {
+debug::assert(v == 5) }` compiles away as whole as the statement
+spelled with its semicolon. Any other use -- a let's init, a nested
+argument, a fn taken as a value -- is refused with the gating
+named, the modes the attribute holds it to in the words themselves.
+
+What the mode holds away is not there at all. The body of a gated
+fn is neither checked nor emitted in the modes that keep it out --
+a #[build(debug)] row in a release build might as well live in
+another project -- and the arguments of a removed call are not
+checked either: debug is where that call is real, and the program
+is validated there first. The overload chains walk the same door:
+a gated row never reaches the trial (a trial is the arguments' own
+walk, and a call that does not exist walks nothing), so arity picks
+among the rows this mode kept, and a chain closed whole is the
+removal or the refusal above. @take may not ride the arguments of
+any gated fn -- one mode's move is another mode's silence, and the
+destructor bookkeeping cannot hold both -- the kept mode holds the
+ban, the removed one never walks far enough to ask.
+
+The corners the attribute cannot live in, said at declaration: a
+method's row every mode's vtable lays out, main every mode's door,
+a test's build the debug shape alone, and #[noreturn] shares no fn
+with it -- the modes that remove its calls make what follows them
+reachable, and reachability is not a mode's to change. std::debug
+arrived with the mechanism, two rows of one name, the bare word and
+the caller's message, both failing into the one door every runtime
+check already fails through. 265 the debug half, the release-only
+row's statement culled the same way; 266 the release half, a false
+assert and a panic row both removed, the answer still 42; 267 the
+value use the release build refuses; 255 through 262 the corners.
+Five hundred ninety-two green.

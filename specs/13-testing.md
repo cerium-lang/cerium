@@ -30,4 +30,6 @@ artifact exits 0 when every test passed, 1 otherwise.
 `#[build]` applies as usual — a `#[build(debug)]` helper compiled out in
 `release` is absent from a test build too, which is built in `debug` shape.
 There is no `test` build mode: the artifact is its own product, and the
-debug/release axis is not what distinguishes it.
+debug/release axis is not what distinguishes it. A `#[test]` fn itself is
+never mode-gated: `#[build]` on one is a compile error, for the artifact is
+the debug shape, the one mode a runner knows.

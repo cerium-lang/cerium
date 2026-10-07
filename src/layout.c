@@ -5,6 +5,7 @@
  * writes every type back into the tree (README); these tables
  * answer for a type: its size, its alignment, its niche shape. */
 
+#include <stdio.h>
 #include <string.h>
 
 #include "ast.h"
@@ -55,6 +56,54 @@ attrfind(Ast **attrs, const char *name)
     if (strcmp(attrs[i]->v.seg.name, name) == 0)
       return attrs[i];
   return 0;
+}
+
+/* an attribute's argument an ident spelling one of the two modes? */
+static int
+modeident(Ast *g, const char *mode)
+{
+  return g->k == Npath && !g->v.path.root && vlen(g->v.path.segs) == 1 &&
+         strcmp(g->v.path.segs[0]->v.seg.name, mode) == 0;
+}
+
+/* is the fn gated out of this mode? A #[build] attribute names the
+ * modes a fn exists in (01-types.md, Mode-gated functions); every
+ * other mode removes its calls' statements, refuses its value, skips
+ * its body whole. A word that names this mode keeps it; none does
+ * and the fn is held away. */
+int
+buildgated(Sym *s, int rel)
+{
+  Ast  *at;
+  usize i;
+
+  if (!s || s->kind != Sfn || !s->decl)
+    return 0;
+  at = attrfind(s->decl->attrs, "build");
+  if (!at)
+    return 0;
+  for (i = 0; i < vlen(at->v.seg.args); i++)
+    if (modeident(at->v.seg.args[i], rel ? "release" : "debug"))
+      return 0; /* this mode is among the words: the fn is here */
+  return 1;
+}
+
+/* the modes a #[build] attribute names, as words for a diagnostic */
+void
+buildmodes(Sym *s, char *buf, usize sz)
+{
+  Ast  *at = attrfind(s->decl->attrs, "build");
+  usize i, o = 0;
+
+  buf[0] = 0;
+  if (!at)
+    return;
+  for (i = 0; i < vlen(at->v.seg.args) && o + 2 < sz; i++) {
+    Ast *g = at->v.seg.args[i];
+
+    if (g->k == Npath && !g->v.path.root && vlen(g->v.path.segs) == 1)
+      o += sprintf(buf + o, "%s%s", o ? ", " : "", g->v.path.segs[0]->v.seg.name);
+  }
 }
 
 /* #[align(N)]'s N, at the declaration that carries it */

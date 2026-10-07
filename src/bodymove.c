@@ -274,16 +274,40 @@ rblock(Ast *b, Fenv *fe, Type *want)
   Ast **ss = b->v.blk.stmts;
   usize n = vlen(ss), i;
   Type *t;
-  int   dive = (n && mustexit(ss[n - 1])) ||
-             (b->v.blk.tail && mustexit(b->v.blk.tail)); /* the
-                                                          * last statement leaves,
-                                                          * or the tail itself is
-                                                          * a call that never lands
-                                                          * -- a panic's own shape
-                                                          * (10-iteration.md): the
-                                                          * block never lands, its
-                                                          * value the shape the
-                                                          * world asked for */
+  int   dive;
+
+  if (b->v.blk.tail &&
+      b->v.blk.tail->k == Ncall) { /* the tail a
+                                    * mode-gated call spells, removed here when every row of its
+                                    * chain is closed and every row answers (): the block's own
+                                    * value the unit the call never made -- the value no one
+                                    * reads, the one shape past the statement that still compiles
+                                    * away (01-types.md, Mode-gated functions). A non-unit answer
+                                    * stays: its value is a use, and the use the mode refuses */
+    Sym *gs = gatedcall(b->v.blk.tail, fe);
+
+    if (gs) {
+      Sym *c;
+
+      for (c = gs; c; c = c->next)
+        if (fnsigof(c)->t->k != Tyunit)
+          break;
+      if (!c) {
+        b->v.blk.tail = 0;
+        b->ty = tyunit();
+      }
+    }
+  }
+  dive = (n && mustexit(ss[n - 1])) ||
+         (b->v.blk.tail && mustexit(b->v.blk.tail)); /* the
+                                                      * last statement leaves,
+                                                      * or the tail itself is
+                                                      * a call that never lands
+                                                      * -- a panic's own shape
+                                                      * (10-iteration.md): the
+                                                      * block never lands, its
+                                                      * value the shape the
+                                                      * world asked for */
 
   for (i = 0; i < n; i++)
     rstmt(ss[i], fe);

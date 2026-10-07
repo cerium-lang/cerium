@@ -1,0 +1,2 @@
+#[build] /* the attribute names the modes it exists in */
+fn a() {}

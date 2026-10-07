@@ -1,0 +1,22 @@
+/* #[build]'s release half (01-types.md, Mode-gated functions): the
+ * call sites compiled away whole -- a false assert that would abort,
+ * a panic row whose statement names it, both gone, the arguments
+ * with them; the release-only rows ordinary fns. One of the two
+ * survives to run and the answer is still 42. */
+
+use std::debug;
+
+#[build(debug)]
+fn never() { panic("must not run\n"); }
+
+#[build(release)]
+fn answer() -> u32 { 42 }
+
+fn main() -> i32 {
+  let mut r: u32 = 0;
+
+  debug::assert(false); /* removed: an abort if the cull broke */
+  never();              /* ditto */
+  r = r + answer();
+  @cast<i32>(r - 42)
+}

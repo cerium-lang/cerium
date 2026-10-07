@@ -290,6 +290,10 @@ Bind *envbind(Env *env, char *name); /* the binding whole: a const generic
 extern Sym **chk_impls;
 extern usize chk_nimpls;
 
+/* the build's own mode: 0 debug, 1 release, -r's word held here for
+ * every pass that asks -- #[build]'s doors read it (01-types.md) */
+extern int chk_rel;
+
 /* Self's one generic parameter, built by syminit (sym.c) */
 extern Ast *sym_selfgp;
 

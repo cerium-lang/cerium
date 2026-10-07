@@ -4,6 +4,7 @@
 #ifndef LAYOUT_H
 #define LAYOUT_H
 
+#include "sym.h"
 #include "type.h"
 #include "vec.h"
 
@@ -21,6 +22,8 @@ enum
 usize alignto(usize off, usize a);
 usize intwidth(Type *t); /* an integer's width in bytes, its alignment with it */
 Ast  *attrfind(Ast **attrs, const char *name); /* #[name] or #[name(arg)], or NULL */
+int   buildgated(Sym *s, int rel);             /* is the fn held out of this mode? */
+void  buildmodes(Sym *s, char *buf, usize sz); /* the modes its #[build] names, as words */
 void  layoutattrs(Ast *decl, int *packed, usize *alignk);
 int   nicheness(Type *t);
 usize alignof_(Type *t);

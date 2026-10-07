@@ -1038,6 +1038,15 @@ site is removed, and the arguments are not evaluated. Both `assert`s above
 therefore compile away to nothing in `release`. A debug-only stretch of code
 is the same mechanism — put it in a `#[build(debug)]` function and call that.
 
+The removal is the statement's own: a call whose value nothing reads — the
+bare statement, or a block's `()` tail when every gated row of the name
+answers `()`. Any other use of the value is rejected where it stands, the
+diagnostic naming the gating. The arguments of a removed call are not checked
+either, not only not run — `debug` is where that call is real, and the
+program is validated there first; what `release` trusts, `debug` has already
+said. A gated-out function is not there either: its body is not checked and
+not emitted in the modes that hold it away.
+
 The value of a call that does not exist cannot be used: `let x = debug_only();`
 is rejected at the `let`, with a diagnostic that names the mode gating — not a
 bare "expected expression". And because the arguments are not evaluated in the
@@ -1045,5 +1054,8 @@ modes that remove the call, `@take` (`03-move.md`) may not appear in them: a
 move that happens in one mode but not the other would break the static
 destructor bookkeeping.
 
-`#[build(debug, release)]` names several modes; listing every mode is the same
-as having no attribute at all.
+`#[build]` is a free function's own — a method's row every mode's vtable lays
+out, `main` every mode's door, a test's build the debug shape alone, and
+`#[noreturn]` shares no fn with it: the modes that remove its calls make what
+follows them reachable. `#[build(debug, release)]` names several modes; listing
+every mode is the same as having no attribute at all.
