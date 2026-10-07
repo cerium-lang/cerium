@@ -129,7 +129,7 @@ const ABS: []Attr = match @typeinfo<PB>() { /* the attrs out where a
 };
 
 fn attrwalk() -> u32 { /* both marks, the 16 the align's own arg, the
-                        * debug the build's: 2+20+21 */
+                        * debug the stage's: 2+20+21 */
   let mut r: u32 = 0;
   const for a in ABS {
     r += 1;
