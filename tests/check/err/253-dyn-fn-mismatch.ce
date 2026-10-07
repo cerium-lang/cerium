@@ -1,0 +1,13 @@
+use std::ops::Fn;
+
+/* the pointer's own row answers only the words that spell the
+ * signature back (06-dispatch.md): the pack's own slot the whole
+ * tuple, one a row -- here two spelled, the fn takes two, the
+ * handle's words ask for one */
+
+fn add(a: i32, b: i32) -> i32 { a + b }
+
+fn main() -> i32 {
+  let h: dyn Fn<i32, Output = i32> = &dyn add;
+  h(3)
+}

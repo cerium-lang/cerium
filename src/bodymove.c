@@ -463,7 +463,12 @@ rclosure(Ast *c, Fenv *fe)
        * hear (05-traits.md) */
       Sym    *im = arenaalloc(sizeof *im);
       Type  **ta = tyargs(fam->ngparams);
-      Member *ms = arenaalloc(sizeof *ms);
+      Member *ms = arenaalloc(2 * sizeof *ms); /* Output, then the
+                                                * family's own method:
+                                                * what a handle's
+                                                * table carries
+                                                * (06-dispatch.md) */
+      Type *envt = tysym(env, 0, 0);
 
       memset(im, 0, sizeof *im);
       im->kind = Simpl;
@@ -477,12 +482,32 @@ rclosure(Ast *c, Fenv *fe)
         ta[fam->ngparams - 1] = tytuple(ts, np);
       }
       im->ipath = tysym(fam, ta, fam->ngparams);
-      memset(ms, 0, sizeof *ms);
-      ms->kind = Mtype; /* Output: the answer the body returns, the
-                         * projection's own supply (05-traits.md) */
-      ms->name = "Output";
-      ms->val = ret;
-      im->nmembers = 1;
+      memset(ms, 0, 2 * sizeof *ms);
+      ms[0].kind = Mtype; /* Output: the answer the body returns, the
+                           * projection's own supply (05-traits.md) */
+      ms[0].name = "Output";
+      ms[0].val = ret;
+      ms[1].kind = Mfn; /* the family's own method: the literal's fn
+                         * itself, the row a handle's vtable names
+                         * (06-dispatch.md). No Sym -- the emitter
+                         * reads the literal's own name off the decl;
+                         * the trait's candidates skip it, the sugar
+                         * the only door (05-traits.md) */
+      ms[1].name = fam == sym_fn ? "call" : fam == sym_fnmut ? "call_mut" : "call_once";
+      ms[1].decl = c;
+      { /* the signature the trait's own check would spell: the
+         * pack's rows one for one, Self the env (04-generics.md) --
+         * the ABI the fat call passes already matches, the env
+         * pointer the first word (05-traits.md) */
+        Type **fa = tyargs(np + 1);
+        usize  ai;
+
+        fa[0] = fam == sym_fn ? typtr(envt) : fam == sym_fnmut ? typtr(tymut(envt)) : envt;
+        for (ai = 0; ai < np; ai++)
+          fa[ai + 1] = ts[ai];
+        ms[1].ty = tyfn(fa, np + 1, ret);
+      }
+      im->nmembers = 2;
       im->members = ms;
       if (!chk_impls)
         chk_impls = vnew(Sym *, 16);

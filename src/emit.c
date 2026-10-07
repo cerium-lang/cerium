@@ -2312,14 +2312,25 @@ emaexpr(Em *em, Ast *e)
     Tok   op = e->v.un.op;
     char *v, *t;
 
-    if (op == Tdyn) { /* &dyn b / &mut dyn b: the fat -- the place's
-                       * address, the impl's table (06-dispatch.md) */
-      char *addr = emaplace(em, e->v.un.e);
+    if (op == Tdyn) { /* &dyn b / &mut dyn b: the fat -- the object's
+                       * address (a fn's value, when the row is the
+                       * pointer's own: the word the trampoline
+                       * calls), the impl's table (06-dispatch.md) */
+      Type *ot = e->v.un.e->ty;
+      char *word;
       char *p8 = newtmp(em);
-      char *vt = vtname(e->ty->sym, e->v.un.e->ty);
+      char *vt;
 
+      if (ot && ot->k == Tyfn) /* the pointer's own row: the value is
+                                * the word itself -- a named fn, a
+                                * captureless literal, a slot's load
+                                * (05-traits.md) */
+        word = emaexpr(em, e->v.un.e);
+      else
+        word = emaplace(em, e->v.un.e);
+      vt = vtname(e->ty->sym, ot);
       t = stackslot(em, 16);
-      fprintf(em->o, "\tstorel %s, %s\n", addr, t);
+      fprintf(em->o, "\tstorel %s, %s\n", word, t);
       fprintf(em->o, "\t%s =l add %s, 8\n", p8, t);
       fprintf(em->o, "\tstorel $%s, %s\n", vt, p8);
       return t;

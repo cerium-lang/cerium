@@ -1,0 +1,63 @@
+/* the handle the family's own rows ride (06-dispatch.md): what a
+ * bound met by name, a closure's env, a named fn's pointer all
+ * answer, dyn Fn carries -- made wherever the row is known, called
+ * by the sugar wherever it is not, f(x) the one operator a callable
+ * value has (05-traits.md). The vtable's row is the impl's own for
+ * an env, the trampoline the emitter lays for a pointer: the fat's
+ * first word the fn itself, the call dropping it -- the ABI the
+ * env's row already kept, the pointer riding it the same way. The
+ * pack's own slot the whole tuple (04-generics.md), its rows the
+ * arguments a call spells; an aggregate crosses as its :type, the
+ * trampoline forwarding the addresses as they arrived; a mut
+ * capture's FnMut needs the dyn mut handle its row asks. */
+
+use std::ops::Fn;
+use std::ops::FnMut;
+
+struct P { a: i32, b: i32 }
+
+fn add(a: i32, b: i32) -> i32 { a + b }
+
+fn sum(p: P, q: P) -> i32 { p.a + p.b + q.a + q.b }
+
+fn dbl(n: i32) -> i32 { n * 2 }
+
+fn zero() -> i32 { 0 }
+
+fn main() -> i32 {
+  let x = 7;
+  let c = fn[x](n: i32) -> i32 { x + n };
+  let h1: dyn Fn<i32, Output = i32> = &dyn c;
+  let a = h1(10);        /* 17: the env's own row, the sugar's call */
+
+  let h2: dyn Fn<i32, i32, Output = i32> = &dyn add;
+  let b = h2(20, 22);    /* 42: a named fn, the trampoline's */
+
+  let n = fn[](n: i32) -> i32 { n * 2 };
+  let h3: dyn Fn<i32, Output = i32> = &dyn n;
+  let d = h3(21);        /* 42: a captureless literal, the same */
+
+  let f: fn(i32) -> i32 = dbl;
+  let h4: dyn Fn<i32, Output = i32> = &dyn f;
+  let e = h4(21);        /* 42: a slot's own pointer, loaded */
+
+  let h5: dyn Fn<P, P, Output = i32> = &dyn sum;
+  let g = h5(P{ a: 1, b: 2 }, P{ a: 3, b: 4 }); /* 10: aggregates
+                                                  * forwarded, their
+                                                  * :type the
+                                                  * trampoline's */
+
+  let mut m = 0;
+  let mut w = fn[mut m](x: i32, y: i32) -> i32 { m = m + x * 10 + y; m };
+  let h6: dyn mut FnMut<i32, i32, Output = i32> = &mut dyn w;
+  let i = h6(7, 8);      /* 78: the mut row, accumulated through */
+  let j = h6(9, 1);      /* 169: the same handle again */
+
+  let h7: dyn Fn<Output = i32> = &dyn zero;
+  let k = h7();          /* 0: the empty pack, nothing spelled */
+
+  let l = h2.call(1, 2); /* 3: the method spelled out, the same fat
+                          * call the sugar walked */
+
+  a + b + d + e + g + i + j + k + l - 403
+}

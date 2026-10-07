@@ -526,8 +526,9 @@ projopen(Type *t, Ast *at)
 
 /* what a declared projection was is the handle's own spelling: the
  * vtable erased the impl's choice, and the spelling gives it back
- * (06-dispatch.md). The handle's args are the Mtype slots, in the
- * trait's declaration order. */
+ * (06-dispatch.md). The handle's args are the trait's own gparam
+ * slots ahead, the Mtype slots behind them, the trait's declaration
+ * order both */
 static Type *
 projsubst(Type *t, Type *h)
 {
@@ -538,7 +539,7 @@ projsubst(Type *t, Type *h)
     return t;
   switch (t->k) {
   case Typroj: { /* Self::Item under this handle's trait */
-    usize mi = 0;
+    usize mi = h->sym->ngparams;
 
     if (t->sym != h->sym)
       return t;
@@ -1933,8 +1934,15 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
       while (w && w->k == Tymut) /* a slot's permission, not the
                                   * handle's own shape */
         w = w->t;
-      if (!t)
-        berr(e->v.un.e, "cannot make a handle of a temporary");
+      if (!t) { /* a global name, a literal: the value's own ground.
+                 * A fn the words name -- a named fn, a captureless
+                 * closure -- is a value, the pointer itself; an
+                 * env-holding literal is not, and no place lent it
+                 * one (05-traits.md) */
+        t = rexpr(e->v.un.e, fe, 0);
+        if (!t)
+          berr(e->v.un.e, "cannot make a handle of a temporary");
+      }
       if (e->v.un.mut && !placewritable(e->v.un.e, fe))
         berr(e->v.un.e, "a &mut dyn needs a mut slot (01-types.md)");
       if (touchconflict(e->v.un.e, fe, e->v.un.mut))
@@ -1945,9 +1953,42 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
          * point of dyn: the choice travels (06-dispatch.md) */
         Sym *im = implfor(w->sym, t, 0);
 
-        if (!im)
+        if (!im && t->k == Tyfn && w->sym == sym_fn) { /* the fn
+                                                        * pointer's own row, the compiler's
+                                                        * knowledge, no impl a file spells
+                                                        * (05-traits.md): the words must
+                                                        * spell the signature back, the
+                                                        * pack's own slot the whole tuple,
+                                                        * the answer the return */
+          usize ng = w->sym->ngparams;
+          Type *pk = w->nargs >= ng ? w->args[ng - 1] : 0; /* the
+                                                            * pack's own slot, the
+                                                            * whole tuple -- the
+                                                            * Mtype slots stand
+                                                            * behind it (06) */
+          usize pi;
+
+          if (!pk || (pk->k != Tytuple && pk->k != Tyunit) ||
+              (pk->k == Tytuple ? pk->nargs : 0) != t->nargs)
+            berr(e->v.un.e, "no 'Fn' for %s: the handle's words spell another signature", btys(t));
+          if (pk->k == Tytuple)
+            for (pi = 0; pi < pk->nargs; pi++)
+              if (!tysame(pk->args[pi], t->args[pi]))
+                berr(e->v.un.e, "no 'Fn' for %s: the handle's words spell another signature",
+                     btys(t));
+          if (!tysame(w->args[ng], t->t)) /* Output: the family's
+                                           * only Mtype, the first
+                                           * slot behind the
+                                           * positional (06) */
+            berr(e->v.un.e, "no 'Fn' for %s: the handle's words spell another answer", btys(t));
+        } else if (!im)
           berr(e->v.un.e, "no '%s' for %s", w->sym->name, btys(t));
-        objectsafety(w->sym, e, w->args, w->nargs);
+        if (w->sym == sym_fnonce) /* the family's own spent call: the
+                                   * handle would hold what the one
+                                   * call already took (06) */
+          berr(e, "'FnOnce' has no handle: a handle that may be called once is not a handle "
+                  "(06-dispatch.md)");
+        objectsafety(w->sym, e, w->args + w->sym->ngparams, w->nargs - w->sym->ngparams);
       }
       freeze(e->v.un.e, fe, e->v.un.mut, (int) fe->n);
       return w; /* rplace wrote the concrete type on the operand;
@@ -2263,6 +2304,25 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                               * spelled, the emitter included */
         args = as;
         n = vlen(as);
+      }
+    }
+    if (f->k == Npath && !f->v.path.root && vlen(f->v.path.segs) == 1) {
+      /* a handle held in a local, called by its own sugar: f(x) is
+       * f.call(x) spelled, the callable value's own operator
+       * (05-traits.md). Rewritten here, the receiver's own branch
+       * below walks it -- the fat call the whole language of it
+       * (06-dispatch.md) */
+      Local *dl = locfind(fe, f->v.path.segs[0]->v.seg.name);
+      Type  *dt = dl && dl->cur ? derefthrough(dl->cur) : 0;
+
+      if (dt && dt->k == Tydyn && (dt->sym == sym_fn || dt->sym == sym_fnmut)) {
+        Ast *a = mk(Naccess);
+
+        a->v.fld.e = f;
+        a->v.fld.name = dt->sym == sym_fn ? "call" : "call_mut";
+        e->v.call.f = f = a; /* the Naccess branch takes it from
+                              * here; the local's own dead and borrow
+                              * checks ride the place walk it opens */
       }
     }
     if (f->k == Npath) {
@@ -2870,6 +2930,12 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                                                             * what survives object
                                                             * safety is pointers,
                                                             * all one width */
+        if (ty->sym->ngparams)                             /* the family's own arguments: a pack
+                                                            * parameter bound the whole tuple
+                                                            * spells out one row a parameter --
+                                                            * the signature every caller reads
+                                                            * (04-generics.md, 06-dispatch.md) */
+          t = tyfnspread(t, ty->sym->gparams, ty->args, ty->sym->ngparams);
         if (t->nargs && t->args[0] && t->args[0]->k == Typtr && t->args[0]->t->k == Tymut &&
             !ty->mut)
           berr(f, "'%s' is a mut method; a 'dyn mut %s' handle carries it", f->v.fld.name,

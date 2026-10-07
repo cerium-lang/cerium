@@ -420,16 +420,41 @@ prefixtype(void)
       }
       n->v.tdyn.e = p;
     }
-    if (peek() == Tlt) { /* dyn Iter<Item = u32>: the associated
-                          * types given, an Ninit list (06-dispatch.md) */
+    if (peek() == Tlt) { /* dyn Iter<Item = u32>, dyn Fn<i32, i32,
+                          * Output = u32>: the associated types and,
+                          * ahead of them, the positional words a
+                          * handle's own trait arguments spell -- one
+                          * "=" tells the two apart (04, 06) */
       next();
       for (;;) {
-        Ast *a = mk(Ninit);
+        Ast *a = 0;
 
-        a->v.init.name = wantident("an associated type name");
-        want(Teq, "=");
-        a->v.init.e = type_();
-        npush(&n->v.tdyn.assocs, a);
+        if (peek() == Tgt) /* the empty spelling: a pack trait's own
+                            * slot, the whole empty tuple (04) */
+          break;
+        if (peek() == Tident) { /* an associated type's name, or the
+                                 * head of a positional type: read
+                                 * the ident, the "=" after it
+                                 * decides which */
+          LexSnap *s = lexsnap();
+          char    *name;
+
+          next();
+          name = mkstr();
+          if (peek() == Teq) { /* it was the name: commit the read */
+            lexdrop(s);
+            next();
+            a = mk(Ninit);
+            a->v.init.name = name;
+            a->v.init.e = type_();
+          } else /* a positional type opens with it: rewind, read
+                  * it whole */
+            lexunsnap(s);
+        }
+        if (a)
+          npush(&n->v.tdyn.assocs, a);
+        else
+          npush(&n->v.tdyn.args, type_());
         if (!accept(Tcomma))
           break;
       }

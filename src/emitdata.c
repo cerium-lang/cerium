@@ -447,13 +447,16 @@ constsym(Em *em, Sym *s)
 typedef struct Vt Vt;
 struct Vt
 {
-  Sym  *tr;   /* the trait */
-  Type *ty;   /* the concrete type behind the handle */
-  char *name; /* the data symbol, $-less */
+  Sym  *tr;    /* the trait */
+  Type *ty;    /* the concrete type behind the handle */
+  char *name;  /* the data symbol, $-less */
+  char *tramp; /* the pointer row's trampoline, its own fn, named
+                * once and shared by the passes (06-dispatch.md) */
 };
 
 static Vt   *vts;       /* every pair named, in first-seen order */
 static usize vtprinted; /* how many of them the text already holds */
+static usize ntramp;    /* the trampolines named, in the same order */
 
 /* the table's own name: the trait's whole path, the concrete type's
  * code beside it -- the pair the construction site names, spelled
@@ -481,6 +484,8 @@ vtname(Sym *tr, Type *ty)
     char *n = arenaalloc(o + 1);
 
     memcpy(n, buf, o + 1);
+    memset(&vt, 0, sizeof vt); /* the fields a pair never fills hold
+                                * zero, not the stack's leftovers */
     vt.tr = tr;
     vt.ty = ty;
     vt.name = n;
@@ -489,6 +494,33 @@ vtname(Sym *tr, Type *ty)
     vappend(&vts, &vt);
     return n;
   }
+}
+
+/* the pointer's own row, laid as a fn of its own: the fat's first
+ * word is the fn the handle holds, the slot's ABI hands it %self,
+ * and the call drops it -- every argument forwarded as it arrived,
+ * the aggregate addresses included, qbe lowering the rest
+ * (06-dispatch.md). The scratch pass names the aggregate types this
+ * signature wears, so the declarations print ahead of the text */
+static void
+printtramp(FILE *o, Vt *vt)
+{
+  Type *t = vt->ty;
+  usize i;
+
+  if (t->k != Tyfn) /* unreachable: the caller checked */
+    return;
+  if (!vt->tramp) {
+    vt->tramp = arenaalloc(32);
+    sprintf(vt->tramp, "vttramp.%lu", (unsigned long) ++ntramp);
+  }
+  fprintf(o, "function %s $%s(l %%self", sigty(t->t, 0), vt->tramp);
+  for (i = 0; i < t->nargs; i++)
+    fprintf(o, ", %s %%a.%lu", sigty(t->args[i], 0), (unsigned long) i);
+  fprintf(o, ") {\n@start\n\t%%r =%s call %%self(", sigty(t->t, 0));
+  for (i = 0; i < t->nargs; i++)
+    fprintf(o, "%s%s %%a.%lu", i ? ", " : "", sigty(t->args[i], 0), (unsigned long) i);
+  fprintf(o, ")\n\tret %%r\n}\n");
 }
 
 /* the tables not yet printed: one line each, its entries the impl
@@ -512,7 +544,10 @@ printvts(FILE *o)
     usize len, nn = 0;
 
     im = implfor(vt->tr, vt->ty, &tys);
-    if (!im)
+    if (!im && vt->ty->k != Tyfn) /* the fn pointer's own row: no
+                                   * impl a file spells, the
+                                   * trampoline the entry names
+                                   * (05-traits.md, 06) */
       cerrat(vt->tr->decl, "unreachable: the construction site checked");
     for (j = 0; j < vt->tr->nmembers; j++) {
       Member *tm = &vt->tr->members[j];
@@ -521,15 +556,29 @@ printvts(FILE *o)
       char   *nm;
 
       if (tm->kind != Mfn)
-        continue; /* a handle exposes the methods (06-dispatch.md) */
+        continue;          /* a handle exposes the methods (06-dispatch.md) */
+      if (!im) {           /* the pointer's own row: the trampoline its one
+                            * entry (06-dispatch.md) */
+        printtramp(o, vt); /* names it, and the types it wears */
+        nm = vt->tramp;
+        vappend(&nms, &nm);
+        nn++;
+        continue;
+      }
       for (k = 0; k < im->nmembers; k++)
         if (strcmp(im->members[k].name, tm->name) == 0) {
           fm = &im->members[k];
           break;
         }
-      if (!fm || fm->kind != Mfn || !fm->sym)
+      if (!fm || fm->kind != Mfn)
         cerrat(vt->tr->decl, "unreachable: the impl supplies it");
-      if (tys)
+      if (!fm->sym) { /* the closure's own fn: the literal's own
+                       * name, the one the drain gave it
+                       * (05-traits.md) */
+        if (!fm->decl || fm->decl->k != Nclosure || !fm->decl->v.clos.sym)
+          cerrat(vt->tr->decl, "unreachable: the impl supplies it");
+        nm = fm->decl->v.clos.sym;
+      } else if (tys)
         nm = instensure(fm->sym, tys, 0, 0)->name; /* the instance this
                                                     * table names */
       else

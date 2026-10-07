@@ -798,13 +798,40 @@ rty(Ast *t, Env *env)
       cerrat(path, "'%s' is not a trait", seg->v.seg.name);
     if (!s->traitdone)
       resolvetrait(s); /* early: this signature needs the table now */
-    {                  /* the given associated types, aligned to the trait's Mtype
-                        * declaration order -- what a handle exposes of them (06) */
+    {                  /* the handle's own words: the positional, a pack trait
+                        * gathering them whole into its own slot (04-generics.md),
+                        * then the associated types the Mtype slots hold, aligned to
+                        * the trait's declaration order -- what a handle exposes of
+                        * them (06) */
       Ast  **as = t->v.tdyn.assocs;
-      usize  na = vlen(as), i, j;
-      Type **args = 0;
-      usize  nty = 0, mi;
+      Ast  **ps = t->v.tdyn.args;
+      usize  na = vlen(as), nps = vlen(ps), i, j;
+      usize  ng = s->ngparams, nty = 0, mi;
+      Type **ga = 0;
+      Type **args;
 
+      if (!ng && nps)
+        cerrat(t, "'%s' takes no arguments", s->name);
+      if (ng) {
+        int    pack = s->gparams[ng - 1]->v.gp.pack;
+        Type **pa = nps ? tyargs(nps) : 0;
+
+        for (i = 0; i < nps; i++)
+          pa[i] = rty(ps[i], env);
+        if (pack) {
+          if (nps + 1 < ng) /* the pack's own prefix stands spelled
+                             * or defaulted nowhere: a handle's words
+                             * give the whole head (04-generics.md) */
+            cerrat(t, "'%s' wants its %lu leading arguments, %lu spelled", s->name,
+                   (unsigned long) (ng - 1), (unsigned long) nps);
+          ga = packargs(s, pa, nps);
+        } else {
+          if (nps != ng)
+            cerrat(t, "'%s' takes %lu arguments, %lu spelled", s->name, (unsigned long) ng,
+                   (unsigned long) nps);
+          ga = pa;
+        }
+      }
       for (i = 0; i < s->nmembers; i++)
         if (s->members[i].kind == Mtype)
           nty++;
@@ -819,8 +846,10 @@ rty(Ast *t, Env *env)
         if (!m)
           cerrat(as[i], "'%s' has no associated type '%s'", s->name, as[i]->v.init.name);
       }
-      args = nty ? tyargs(nty) : 0;
-      mi = 0;
+      args = tyargs(ng + nty);
+      for (i = 0; i < ng; i++)
+        args[i] = ga[i];
+      mi = ng;
       for (i = 0; i < s->nmembers; i++) { /* each slot what its spelling gave */
         Member *m = &s->members[i];
 
@@ -836,7 +865,7 @@ rty(Ast *t, Env *env)
           cerrat(t, "'%s' is not given; a handle leaves nothing open (06-dispatch.md)", m->name);
         mi++;
       }
-      return tydyn(s, args, nty, t->v.tdyn.mut);
+      return tydyn(s, args, ng + nty, t->v.tdyn.mut);
     }
   }
   case Nttype:

@@ -115,6 +115,11 @@ Type *tysym(Sym *s, Type **args, usize n); /* struct/union/enum/trait */
 Type *tydyn(Sym *s, Type **args, usize n, int mut);
 Type *typroj(Sym *s, Type *self, char *name); /* Self::Item, in a trait */
 
+/* a family's signature read through a handle's own words: the pack's
+ * parameter bound the whole tuple spelled out one row a parameter
+ * (04-generics.md, 06-dispatch.md) */
+Type *tyfnspread(Type *t, Ast **gp, Type **ty, usize n);
+
 /* the sugar constructors: prelude enums, spelled as themselves */
 Type *tyopt(Type *t);          /* ?T */
 Type *tyres(Type *t, Type *e); /* E?T is Result<T, E> */
