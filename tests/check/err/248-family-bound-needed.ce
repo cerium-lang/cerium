@@ -1,0 +1,14 @@
+/* a parameter alone names no call: everything the body does to a
+ * generic's own name must be justified by a bound, checked once at
+ * the declaration (04-generics.md) -- and f(x) is the Fn family's
+ * sugar, the bound the one that makes it callable (05-traits.md).
+ * No bound, no call: the report names the family, not the sugar's
+ * own "not callable", for the fix a bound away. */
+
+fn plain<F>(f: F, x: i32) -> i32 {
+  f(x)
+}
+
+pub fn main() -> i32 {
+  0
+}

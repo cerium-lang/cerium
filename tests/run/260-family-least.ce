@@ -1,0 +1,37 @@
+/* the least demanding row the body needs (01-types.md): a mut
+ * by-value capture is the one write through self there is, FnMut;
+ * a capture the body moves out of the env, FnOnce -- and the family
+ * a bound spells carries either across the fn's own face. The FnMut
+ * closure's writes land in the env the caller grew, twice, the
+ * accumulation riding the calls; the FnOnce closure spends a
+ * capture inside, the answer the projection F::Output carries the
+ * whole way back, opened where the call lands it (05-traits.md). */
+
+use std::ops::FnMut;
+use std::ops::FnOnce;
+
+struct P { n: i32 }
+
+fn take(p: P) -> i32 { p.n }
+
+pub fn main() -> i32 {
+  /* FnMut: the mut by-value capture, the env's own slot written,
+   * twice -- 1 then 3, the accumulation the calls share */
+  let c = 0;
+  let pair = run2(fn[mut c](x: i32) -> i32 { c = c + x; c });
+
+  /* FnOnce: the capture the body moves out, the env spent by the
+   * call that read it -- once, the answer back in one piece */
+  let q = P { n: 21 };
+  let r = spend(fn[q](v: P) -> i32 { v.n + take(q) });
+
+  pair.0 + pair.1 + r - 46 /* 1 + 3 + 42 */
+}
+
+fn run2<F: FnMut<i32>>(f: F) -> (F::Output, F::Output) {
+  (f(1), f(2))
+}
+
+fn spend<F: FnOnce<P>>(f: F) -> F::Output {
+  f(P { n: 21 })
+}

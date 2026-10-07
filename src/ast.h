@@ -241,6 +241,9 @@ struct Ast
       char *sym;    /* the emitter's own name for the fn the body becomes */
       Type *sig;    /* the fn it spells: what a captureless literal is,
                      * what a capturing one's call rides (05-traits.md) */
+      int once;     /* the family the body needs is FnOnce: a capture
+                     * moved out of the env, the call the move's own
+                     * spelling -- the binding dead after it (01) */
     } clos;
     struct
     {

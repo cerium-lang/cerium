@@ -22,18 +22,21 @@
 
 Sym *sym_option, *sym_result;
 Sym *sym_copy, *sym_drop;
-Sym *sym_typeinfo; /* std::meta's reflection model, set from the
-                    * sysroot's own source by checkproject
-                    * (08-reflection.md) */
-Sym *sym_panic;    /* std's one runtime fn, the checks' failure door
-                    * -- the emitter reads it by pointer
-                    * (01-types.md) */
-Sym *sym_fmt;      /* std::fmt's Fmt, the Err half's own words: an
-                    * E?() main's error type is checked against it
-                    * where the ending is declared (12-projects.md) */
-Sym *sym_exit;     /* std's exit (entry.ce), the ending answered as
-                    * the platform takes it -- run_err hands it the
-                    * ending; the prelude asks only that it stands */
+Sym *sym_fn, *sym_fnmut, *sym_fnonce; /* ops' call family: the sugar's
+                                       * own traits, the fn pointer's
+                                       * built-in row (05-traits.md) */
+Sym *sym_typeinfo;                    /* std::meta's reflection model, set from the
+                                       * sysroot's own source by checkproject
+                                       * (08-reflection.md) */
+Sym *sym_panic;                       /* std's one runtime fn, the checks' failure door
+                                       * -- the emitter reads it by pointer
+                                       * (01-types.md) */
+Sym *sym_fmt;                         /* std::fmt's Fmt, the Err half's own words: an
+                                       * E?() main's error type is checked against it
+                                       * where the ending is declared (12-projects.md) */
+Sym *sym_exit;                        /* std's exit (entry.ce), the ending answered as
+                                       * the platform takes it -- run_err hands it the
+                                       * ending; the prelude asks only that it stands */
 Sym *sym_entry_unit, *sym_entry_i32,
     *sym_entry_err; /* std::entry's
                      * three runs, one per ending a main has: the

@@ -2337,3 +2337,49 @@ tests' structs say it where their values feed more than one read,
 opt-in read alive, 257 the slice's partial move, 258 the rows as
 places -- borrowed twice, forwarded whole, written and lent. Five
 hundred sixty-eight green.
+
+A closure could not cross a fn's own face: the call sugar read the
+env's declaration, and a fn's parameter was a name no call could
+spell. The bound owns the door now. The literal grows the impl
+itself -- the env's own row in the table, the family the least
+demanding one the body needs, exactly as 01 draws the line: a
+capture the body moved out of the env an FnOnce, the call the move's
+own spelling and the binding dead after it; a mut by-value capture
+the one write through self there is, an FnMut; everything else --
+reads, and the writes a captured pointer's own *mut carries -- an
+Fn. The row holds the pack's arguments one a parameter and Output
+the body returns, so F::Output opens on it where the instance lands
+the answer. No file spelled it: the literal did, its own words the
+only ones an env this private can hear.
+
+The fn pointer is Fn for its own signature, the compiler's own
+knowledge the way Copy's marker is -- the satisfies walk and the
+projection's opening both read it built in, no row the table holds.
+So map_err's parameter is the bound itself now, and all three doors
+walk through it: the named fn, the captureless literal, the closure
+with its captures -- the env riding the fn's own face, the capture's
+arithmetic working inside it.
+
+The declaration and the instance split the call. The declaration
+reads the bound: f(x) takes the family the least demanding bound
+that answers -- Fn before FnMut before FnOnce -- the arguments the
+pack spells one a parameter, the answer the projection F::Output,
+carried, not opened; a parameter without the family refuses the
+call naming the bound that would make it callable. The instance's
+re-check walks the same node with the parameter a type already, and
+the local callee's own two doors take it -- the env a direct call,
+the pointer an indirect one -- no third path grown, nothing in the
+emitter told. A call that reads a dead name refuses it now, the
+once row's second call and a moved fn pointer alike: the name a call
+reads is a read like any other.
+
+Two doors had been shut on the way. A method's bound may name the
+parameters above it -- map_err's Fn<E>, E the impl's own -- and the
+satisfies walk now lands the impl's binding before the member's, the
+same two-step a signature's substitution always takes. And a
+projection nested in a shape's own arguments -- Result<T,
+F::Output>, a tuple's row -- opens with the top one: the answer
+rides the whole type out, not a projection left standing in a row a
+match could not read. 248 the boundless call named, 259 the three
+doors, 260 the least demanding rows at work, 261 the once row's
+second call. Five hundred seventy-two green.

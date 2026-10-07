@@ -377,6 +377,9 @@ nshead(Ast **segs, usize nsegs, Ns **nsp, int rooted)
 }
 
 /* a path in type position */
+static void resolvetrait(Sym *s); /* the family's members, read early
+                                   * where a projection needs them
+                                   * (04-generics.md) */
 Type *
 rpath(Ast *p, Env *env)
 {
@@ -470,6 +473,10 @@ rpath(Ast *p, Env *env)
         }
         if (!tr || tr->kind != Strait)
           continue;
+        if (!tr->traitdone)
+          resolvetrait(tr); /* early: the projection reads the
+                             * family's members now, the lazy read a
+                             * file away (04-generics.md) */
         for (mi = 0; mi < tr->nmembers; mi++)
           if (tr->members[mi].kind == Mtype && strcmp(tr->members[mi].name, nm1) == 0) {
             if (hitsym)
@@ -2358,6 +2365,13 @@ checkproject(Srcfile **files, usize nfiles)
 
       sym_copy = nsitem(ons, "Copy");
       sym_drop = nsitem(ons, "Drop");
+      sym_fn = nsitem(ons, "Fn"); /* the family the call sugar reads
+                                   * (05-traits.md): a bound names it,
+                                   * a fn pointer answers it for its
+                                   * own signature -- the compiler's
+                                   * own knowledge, no impl spelled */
+      sym_fnmut = nsitem(ons, "FnMut");
+      sym_fnonce = nsitem(ons, "FnOnce");
       for (oi = 0; oi < sizeof ops / sizeof ops[0]; oi++)
         if (!ons || !nsitem(ons, ops[oi])) {
           fprintf(stderr,
@@ -2368,10 +2382,11 @@ checkproject(Srcfile **files, usize nfiles)
         }
     }
     if (!sym_option || !sym_result || !sym_copy || !sym_drop || !sym_typeinfo || !sym_panic ||
-        !sym_fmt || !sym_exit || !sym_entry_unit || !sym_entry_i32 || !sym_entry_err) {
+        !sym_fmt || !sym_exit || !sym_entry_unit || !sym_entry_i32 || !sym_entry_err || !sym_fn ||
+        !sym_fnmut || !sym_fnonce) {
       fprintf(stderr, "cerium: the standard library is incomplete: Option, Result, Copy, Drop,"
-                      " meta::TypeInfo, panic, fmt's Fmt, exit, entry's three runs -- one is"
-                      " missing from the sysroot (12-projects.md)\n");
+                      " meta::TypeInfo, panic, fmt's Fmt, exit, entry's three runs, ops' Fn"
+                      " family -- one is missing from the sysroot (12-projects.md)\n");
       exit(1);
     }
   }
