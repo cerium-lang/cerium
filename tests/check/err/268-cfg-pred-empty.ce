@@ -1,0 +1,2 @@
+#[cfg(any())] /* all, any and not take a word at least */
+fn a() {}

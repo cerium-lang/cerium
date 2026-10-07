@@ -190,10 +190,11 @@ struct Attr {
   args: []AttrArg,
 }
 
-enum AttrArg {          // an argument is an identifier, a number, or a string
+enum AttrArg {          // an identifier, a number, a string, or a predicate's own words
   Ident([]u8),          // #[cfg(debug)] — debug
   Int(i64),             // #[align(16)] — 16
   Str([]u8),            // a string literal
+  Nest { name: []u8, args: []AttrArg },  // #[cfg(any(linux, darwin))] — any, its words
 }
 ```
 
@@ -203,7 +204,10 @@ variants that describe types with no declaration of their own — `Bool`, `Int`,
 `Float`, and the rest — carry no `attrs`: there is nothing to mark. Layout is
 not decoded here either: `@sizeof`, `@alignof` and `@offset` answer those
 questions directly, so `#[packed]` and `#[align(N)]` are recorded as names,
-not as layout facts.
+not as layout facts. A predicate's nesting — `#[cfg(any(linux, darwin))]`,
+a user attribute the same — reads as a `Nest`: the shape the attribute
+itself spells, its name the first field, its words each an `AttrArg` again,
+the model's own shape the whole way down (`12-projects.md`).
 
 `fn(A, B) -> R` is a pointer at the language level (`01-types.md`) — one word,
 nullable — but its reflection is its own variant, not a `Pointer`: `Fn` carries

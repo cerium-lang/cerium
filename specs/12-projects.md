@@ -129,10 +129,8 @@ the shapes do not compose.
 Several words in one pair of
 parentheses must all hold — `#[cfg(darwin, arm64)]` is Apple silicon,
 the system and the machine each named — and several `#[cfg]`s on one
-declaration meet the same way. There is no negation: a library lists
-the platforms it supports, not the ones it does not — "not this one"
-is every other platform written out — and two words from one dimension
-in one pair of parentheses is an error, the hand that meant
+declaration meet the same way. Two words from one dimension in one
+pair of parentheses is an error, the hand that meant
 `#[cfg(linux, amd64)]` worth stopping rather than meeting to a quiet
 false. The same dimension across several `#[cfg]`s is the same
 error, and for the same hand: the attributes meet with `and` too,
@@ -140,6 +138,34 @@ and the words of one dimension never hold together. A word the dimensions do not
 guard a typo wants; an uname the tables cannot name at all keeps every
 word false — the honest answer for a platform the compiler was never
 told about.
+
+The words have shapes beyond the bare list. `all(...)` is the list's
+own `and` spelled one shape deeper — `#[cfg(all(darwin, arm64))]`
+and `#[cfg(darwin, arm64)]` are the one condition — and a shape
+holding no word is refused: `all`, `any` and `not` take a word at
+least. `any(...)` is the `or` the bare list is not —
+`#[cfg(any(linux, darwin))]` holds where either word holds — and the
+same dimension is no error inside it: `#[cfg(any(amd64, arm64))]` is
+the machine's either arm, the one question `any` exists to ask, and
+the same-dimension guard takes no notice of an `any`'s or a `not`'s
+words — it walks the `and` shapes only. `not(...)` takes one word
+alone — a complement is one word's own — and holds wherever the word
+does not.
+
+A mode word keeps to the `and` shapes: bare, in the bare list, or
+inside an `all` however deep — and inside an `any` or a `not`, at
+any depth, it is refused. The mode is the fn's own door, its words
+answer the call removal, not the cull (`01-types.md`, Mode-gated
+functions) — an `any` or a `not` would read them as the platform
+words' own, a meeting or a complement, and the two shapes do not
+compose.
+
+`not` is honest about the unknown. An uname keeps every word false —
+said above — and the complement of a false word holds:
+`#[cfg(not(linux))]` is true on a platform the compiler was never
+told about. The recommended hand is still the whitelist — a library
+lists the platforms it supports — but the complement says what it
+says: the tables as they stand, not what they happen to hold today.
 
 The platform the words read is the one the compiler itself runs on:
 host and target are the same machine, a cross compile its own

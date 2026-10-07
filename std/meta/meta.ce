@@ -54,10 +54,13 @@ pub struct Attr {
   args: []AttrArg,
 }
 
-pub enum AttrArg {   /* an argument is an identifier, a number, or a string */
+pub enum AttrArg {   /* an argument is a name, a number, a string, or
+                      * a predicate's own words (12-projects.md) */
   Ident([]u8),   /* #[cfg(debug)] -- debug */
   Int(i64),      /* #[align(16)] -- 16 */
   Str([]u8),     /* a string literal */
+  Nest { name: []u8, args: []AttrArg }, /* #[cfg(any(linux, darwin))]
+                                         * -- any, its words */
 }
 
 /* is_same -- the type-equality predicate, a predicate struct: an

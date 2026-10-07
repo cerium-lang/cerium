@@ -1,0 +1,3 @@
+#[cfg(not(debug))] /* a mode word's complement is the other mode's
+                      * own word -- spell it (12-projects.md) */
+fn a() {}

@@ -1,0 +1,4 @@
+#[cfg(not(all(amd64, debug)))] /* a mode word under a complement:
+                                    * the pure and chains alone hold
+                                    * one (12-projects.md) */
+struct S { a: u32 }

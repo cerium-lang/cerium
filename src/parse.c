@@ -119,12 +119,43 @@ attrarg(void)
 
   switch (peek()) {
   case Tident: {
+    char *nm;
+
     next();
+    nm = mkstr();
+    if (peek() == Tlparen) { /* "all(...)", "any(...)", "not(...)":
+                              * a predicate's own words, nested the
+                              * attribute's own shape -- the name and
+                              * its arguments the one node the
+                              * attribute itself spells */
+      Ast **as = 0;
+
+      next();
+      if (peek() != Trparen)
+        for (;;) {
+          Ast *g = attrarg();
+
+          npush(&as, g);
+          if (peek() == Tcomma) {
+            next();
+            if (peek() == Trparen)
+              break;
+            continue;
+          }
+          break;
+        }
+      want(Trparen, ")");
+      n = mk(Nattr);
+      n->v.seg.name = nm;
+      n->v.seg.args = as;
+      return n;
+    }
     n = mk(Npath);
     n->v.path.segs = vnew(Ast *, 2);
     {
       Ast *s = mk(Nseg);
-      s->v.seg.name = mkstr();
+
+      s->v.seg.name = nm;
       npush(&n->v.path.segs, s);
     }
     return n;

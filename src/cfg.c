@@ -91,10 +91,11 @@ cfgdim(const char *name)
   return 0;
 }
 
-/* does one #[cfg]'s arguments hold a mode word? -- a fn's modes
+/* does one #[cfg]'s all-chains hold a mode word? -- a fn's modes
  * belong in one #[cfg], never two: the words one pair of parentheses
  * meets with and the call-site removal the mode words hand a fn to
- * do not compose (12-projects.md) */
+ * do not compose (12-projects.md). The all-chains alone are walked:
+ * a mode word inside any or not is the predicate walk's own error */
 static int
 cfgmodesin(Ast *at)
 {
@@ -103,6 +104,11 @@ cfgmodesin(Ast *at)
   for (i = 0; i < vlen(at->v.seg.args); i++) {
     Ast *a = at->v.seg.args[i];
 
+    if (a->k == Nattr) {
+      if (strcmp(a->v.seg.name, "all") == 0 && cfgmodesin(a))
+        return 1;
+      continue; /* any, not: their own words are the chain's to read */
+    }
     if (a->k == Npath && !a->v.path.root && vlen(a->v.path.segs) == 1 &&
         cfgdim(a->v.path.segs[0]->v.seg.name) == 3)
       return 1;
@@ -110,12 +116,14 @@ cfgmodesin(Ast *at)
   return 0;
 }
 
-/* one #[cfg(...)]'s word: its arguments and-ed, a name from each
- * dimension at most -- the clash error, two words from one dimension
- * in one pair of parentheses, guarding the hand that meant one of
- * each. The parser made each argument a single-segment path; a
- * literal is a misplaced one, a path with segments left names a
- * namespace the conditions do not take (12-projects.md).
+/* the words one pair of parentheses spells, and-ed at the top level
+ * and inside an all(...), or-ed inside an any(...): each word read,
+ * its keep met to the chain's own. The clash guard -- two words from
+ * one dimension -- rides the and chains alone: or is any dimension's
+ * own meeting. pure says the chain sits under no any and no not, the
+ * only place a mode word lives: a mode is a fn's own door, and a
+ * complement or a meeting would read it as the cull's word instead
+ * (12-projects.md).
  *
  * A mode word is a fn's own door on this walk: the fn is not culled
  * but handed to the call-site removal the body's pass owns
@@ -123,59 +131,112 @@ cfgmodesin(Ast *at)
  * over a fn's keep here, while on every other item it is the
  * platform words' own cull, the item absent in the modes it does not
  * name (12-projects.md) */
+static int cfgpred(Ast *at, int isfn, int pure);
+
 static int
-cfgattr(Ast *at, int isfn)
+cfgchain(Ast **as, int isfn, int isand, int pure)
 {
-  Ast       **as = at->v.seg.args;
   usize       i;
   const char *sys = 0, *mac = 0, *mod = 0;
-  int         keep = 1;
+  int         keep = isand;
 
-  if (!vlen(as))
-    cerrat(at, "#[cfg] takes a condition -- linux, darwin, amd64, arm64, debug or"
-               " release (12-projects.md)");
   for (i = 0; i < vlen(as); i++) {
     Ast        *a = as[i];
     const char *nm;
+    int         d, w;
 
+    if (a->k == Nattr) {
+      w = cfgpred(a, isfn, pure);
+      keep = isand ? keep && w : keep || w;
+      continue;
+    }
     if (a->k != Npath || a->v.path.root || vlen(a->v.path.segs) != 1)
       cerrat(a, "#[cfg] takes a name -- linux, darwin, amd64, arm64, debug or"
                 " release (12-projects.md)");
     nm = a->v.path.segs[0]->v.seg.name;
-    if (cfgdim(nm) == 1) {
-      if (sys && strcmp(sys, nm) != 0)
-        cerrat(a,
-               "'%s' and '%s' are both systems -- one #[cfg] takes one of each"
-               " dimension (12-projects.md)",
-               sys, nm);
-      sys = nm;
-      if (strcmp(nm, cfgos) != 0)
-        keep = 0;
-    } else if (cfgdim(nm) == 2) {
-      if (mac && strcmp(mac, nm) != 0)
-        cerrat(a,
-               "'%s' and '%s' are both machines -- one #[cfg] takes one of"
-               " each dimension (12-projects.md)",
-               mac, nm);
-      mac = nm;
-      if (strcmp(nm, cfgarch) != 0)
-        keep = 0;
-    } else if (cfgdim(nm) == 3) {
-      if (mod && strcmp(mod, nm) != 0)
-        cerrat(a,
-               "'%s' and '%s' are both modes -- one #[cfg] takes one of each"
-               " dimension (12-projects.md)",
-               mod, nm);
-      mod = nm;
-      if (!isfn && strcmp(nm, cfgmode()) != 0)
-        keep = 0;
-    } else
+    d = cfgdim(nm);
+    if (!d)
       cerrat(a,
              "unknown condition '%s' -- linux, darwin, amd64, arm64, debug or"
              " release (12-projects.md)",
              nm);
+    if (!pure && d == 3)
+      cerrat(a, "a mode word is a fn's own door, bare or inside an all -- never"
+                " inside any or not (12-projects.md)");
+    if (isand) { /* the clash guard, and chains alone (12-projects.md) */
+      if (d == 1 && sys && strcmp(sys, nm) != 0)
+        cerrat(a,
+               "'%s' and '%s' are both systems -- one #[cfg] takes one of each"
+               " dimension (12-projects.md)",
+               sys, nm);
+      if (d == 2 && mac && strcmp(mac, nm) != 0)
+        cerrat(a,
+               "'%s' and '%s' are both machines -- one #[cfg] takes one of"
+               " each dimension (12-projects.md)",
+               mac, nm);
+      if (d == 3 && mod && strcmp(mod, nm) != 0)
+        cerrat(a,
+               "'%s' and '%s' are both modes -- one #[cfg] takes one of each"
+               " dimension (12-projects.md)",
+               mod, nm);
+      if (d == 1)
+        sys = nm;
+      else if (d == 2)
+        mac = nm;
+      else
+        mod = nm;
+    }
+    if (d == 1)
+      w = strcmp(nm, cfgos) == 0;
+    else if (d == 2)
+      w = strcmp(nm, cfgarch) == 0;
+    else
+      w = isfn ? 1 : strcmp(nm, cfgmode()) == 0;
+    keep = isand ? keep && w : keep || w;
   }
   return keep;
+}
+
+/* a predicate's own word: all -- and, the top level's commas with a
+ * name; any -- or; not -- the one word's complement. Empty they never
+ * are, and not takes one word alone: a complement is one word's own.
+ * all meets with and under the pure it was given, any and not under
+ * none -- their words are the cull's alone, a mode word never rides
+ * them (12-projects.md) */
+static int
+cfgpred(Ast *at, int isfn, int pure)
+{
+  const char *nm = at->v.seg.name;
+  int         isall, isany;
+
+  isall = strcmp(nm, "all") == 0;
+  isany = strcmp(nm, "any") == 0;
+  if (!isall && !isany && strcmp(nm, "not") != 0)
+    cerrat(at, "a #[cfg] predicate is all, any or not (12-projects.md)");
+  if (!at->v.seg.args || !vlen(at->v.seg.args))
+    cerrat(at, "#[cfg]'s all, any and not take a word at least (12-projects.md)");
+  if (!isall && !isany && vlen(at->v.seg.args) != 1)
+    cerrat(at, "not takes one word -- a complement is one word's own"
+               " (12-projects.md)");
+  if (isall)
+    return cfgchain(at->v.seg.args, isfn, 1, pure);
+  if (isany)
+    return cfgchain(at->v.seg.args, isfn, 0, 0);
+  return !cfgchain(at->v.seg.args, isfn, 0, 0);
+}
+
+/* one #[cfg(...)]'s word: its arguments and-ed, the chain the top
+ * level spells. The parser made each argument a single-segment path
+ * or a predicate's own node; a literal is a misplaced one, a path
+ * with segments left names a namespace the conditions do not take
+ * (12-projects.md) */
+static int
+cfgattr(Ast *at, int isfn)
+{
+  if (!at->v.seg.args || !vlen(at->v.seg.args))
+    cerrat(at, "#[cfg] takes a condition -- linux, darwin, amd64, arm64, debug or"
+               " release (12-projects.md)");
+  return cfgchain(at->v.seg.args, isfn, 1, 1);
 }
 
 /* the words of one dimension never hold together, and several
@@ -193,6 +254,13 @@ cfgcrossdim(Ast *at, const char **sys, const char **mac, const char **mod)
     Ast        *a = at->v.seg.args[i];
     const char *nm;
 
+    if (a->k == Nattr) {
+      if (strcmp(a->v.seg.name, "all") == 0)
+        cfgcrossdim(a, sys, mac, mod); /* an all's words meet the
+                                        * chain's own and */
+      continue;                        /* any, not: or meets any dimension, and the words
+                                        * under a complement are not this walk's to weigh */
+    }
     if (a->k != Npath || a->v.path.root || vlen(a->v.path.segs) != 1)
       return;
     nm = a->v.path.segs[0]->v.seg.name;
@@ -224,10 +292,10 @@ cfgcrossdim(Ast *at, const char **sys, const char **mac, const char **mod)
   }
 }
 
-/* does an item live here? Every #[cfg] it carries and-ed, and no
- * negation: a library lists the platforms it supports rather than the
- * ones it does not -- "not on this one" is every other platform
- * written out (12-projects.md). A word already false does not stop
+/* does an item live here? Every #[cfg] it carries and-ed, the
+ * predicates inside each reading their own way -- all the and it
+ * was given, any the or, not the complement (12-projects.md). A
+ * word already false does not stop
  * the walk: the later arguments, and the later attributes, still read
  * their checks -- a typo on a culled branch as loud as one on a kept
  * one.

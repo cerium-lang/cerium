@@ -829,7 +829,8 @@ mkti(char *nm, Val *els, usize n, Ast *at)
 }
 
 /* an attribute's argument, as the model spells it: a name, an
- * integer, or a string -- the grammar's three (01-types.md) */
+ * integer, a string, or a predicate's own words -- the grammar's
+ * four (01-types.md, 12-projects.md) */
 static Val
 mkattrargval(Ast *g)
 {
@@ -880,10 +881,32 @@ mkattrargval(Ast *g)
     r.len = 0;
     return r;
   }
+  case Nattr: { /* a predicate's own words, the node the attribute
+                 * itself spells -- its name the first field, each
+                 * argument the model's own shape again
+                 * (08-reflection.md, 12-projects.md) */
+    Variant *v = symvarfind(at2->sym, "Nest");
+    Val     *els = arenaalloc(vlen(g->v.seg.args) * sizeof *els);
+    usize    i;
+
+    for (i = 0; i < vlen(g->v.seg.args); i++)
+      els[i] = mkattrargval(g->v.seg.args[i]);
+    r.t = at2;
+    r.i = 0;
+    r.f = 0;
+    r.tag = v->disc;
+    r.tyval = 0;
+    r.elems = arenaalloc(2 * sizeof *r.elems);
+    r.elems[0] = strslice(g->v.seg.name);
+    r.elems[1] = sliceval(els, vlen(g->v.seg.args), at2);
+    r.len = 0;
+    return r;
+  }
   default: /* the grammar parses a float there too; the model
             * carries no variant for one (08-reflection.md) */
-    cerrat(g, "an attribute's argument is a name, an integer, or a string: "
-              "the model carries no float (08-reflection.md)");
+    cerrat(g, "an attribute's argument is a name, an integer, a string or a"
+              " predicate's words: the model carries no float"
+              " (08-reflection.md)");
   }
   return valint(0, tyint(IN_I32)); /* unreachable */
 }

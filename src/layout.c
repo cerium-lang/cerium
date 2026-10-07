@@ -58,12 +58,47 @@ attrfind(Ast **attrs, const char *name)
   return 0;
 }
 
-/* an attribute's argument an ident spelling one of the two modes? */
-static int
-modeident(Ast *g, const char *mode)
+/* the mode words a #[cfg] holds, its all-chains walked: a mode word
+ * rides an and chain only -- the top level's commas or an all(...)
+ * nested in one -- never inside any or not, whose words the cull's
+ * own walk refuses (12-projects.md). The words collect into w, the
+ * count back, an overflow quietly cut: the shapes the checks admit
+ * hold one */
+static usize
+modescan(Ast *at, const char **w, usize max)
 {
-  return g->k == Npath && !g->v.path.root && vlen(g->v.path.segs) == 1 &&
-         strcmp(g->v.path.segs[0]->v.seg.name, mode) == 0;
+  usize i, n = 0;
+
+  for (i = 0; i < vlen(at->v.seg.args); i++) {
+    Ast *a = at->v.seg.args[i];
+
+    if (a->k == Nattr) {
+      if (strcmp(a->v.seg.name, "all") == 0 && n < max)
+        n += modescan(a, w + n, max - n);
+      continue;
+    }
+    if (a->k == Npath && !a->v.path.root && vlen(a->v.path.segs) == 1 && n < max) {
+      const char *nm = a->v.path.segs[0]->v.seg.name;
+
+      if (strcmp(nm, "debug") == 0 || strcmp(nm, "release") == 0)
+        w[n++] = nm;
+    }
+  }
+  return n;
+}
+
+/* a declaration's mode words, every #[cfg] its all-chains hold */
+static usize
+modewalk(Ast *decl, const char **w, usize max)
+{
+  usize i, n = 0;
+
+  if (!decl || !decl->attrs)
+    return 0;
+  for (i = 0; i < vlen(decl->attrs); i++)
+    if (strcmp(decl->attrs[i]->v.seg.name, "cfg") == 0 && n < max)
+      n += modescan(decl->attrs[i], w + n, max - n);
+  return n;
 }
 
 /* does a declaration's #[cfg] name a mode? -- the fn's own door, a
@@ -73,20 +108,9 @@ modeident(Ast *g, const char *mode)
 int
 declmodes(Ast *decl)
 {
-  usize i, gi;
+  const char *w[8];
 
-  if (!decl || !decl->attrs)
-    return 0;
-  for (i = 0; i < vlen(decl->attrs); i++) {
-    Ast *at = decl->attrs[i];
-
-    if (strcmp(at->v.seg.name, "cfg") != 0)
-      continue;
-    for (gi = 0; gi < vlen(at->v.seg.args); gi++)
-      if (modeident(at->v.seg.args[gi], "debug") || modeident(at->v.seg.args[gi], "release"))
-        return 1;
-  }
-  return 0;
+  return modewalk(decl, w, 8) > 0;
 }
 
 /* is the fn gated out of this mode? A #[cfg] naming a mode holds a fn
@@ -99,50 +123,33 @@ declmodes(Ast *decl)
 int
 modegated(Sym *s, int rel)
 {
-  usize i, gi;
-  int   gate = 0;
+  const char *w[8];
+  usize       i, n;
 
-  if (!s || s->kind != Sfn || !s->decl || !s->decl->attrs)
+  if (!s || s->kind != Sfn)
     return 0;
-  for (i = 0; i < vlen(s->decl->attrs); i++) {
-    Ast *at = s->decl->attrs[i];
-
-    if (strcmp(at->v.seg.name, "cfg") != 0)
-      continue;
-    for (gi = 0; gi < vlen(at->v.seg.args); gi++) {
-      Ast *g = at->v.seg.args[gi];
-
-      if (modeident(g, "debug") || modeident(g, "release")) {
-        gate = 1;
-        if (modeident(g, rel ? "release" : "debug"))
-          return 0; /* this mode is among the words: the fn is here */
-      }
-    }
-  }
-  return gate;
+  n = modewalk(s->decl, w, 8);
+  if (!n)
+    return 0;
+  for (i = 0; i < n; i++)
+    if (strcmp(w[i], rel ? "release" : "debug") == 0)
+      return 0; /* this mode is among the words: the fn is here */
+  return 1;
 }
 
 /* the modes a fn's #[cfg] names, as words for a diagnostic */
 void
 modewords(Sym *s, char *buf, usize sz)
 {
-  usize i, gi, o = 0;
+  const char *w[8];
+  usize       i, n, o = 0;
 
   buf[0] = 0;
-  if (!s || !s->decl || !s->decl->attrs)
+  if (!s || s->kind != Sfn)
     return;
-  for (i = 0; i < vlen(s->decl->attrs); i++) {
-    Ast *at = s->decl->attrs[i];
-
-    if (strcmp(at->v.seg.name, "cfg") != 0)
-      continue;
-    for (gi = 0; gi < vlen(at->v.seg.args) && o + 2 < sz; gi++) {
-      Ast *g = at->v.seg.args[gi];
-
-      if (modeident(g, "debug") || modeident(g, "release"))
-        o += sprintf(buf + o, "%s%s", o ? ", " : "", g->v.path.segs[0]->v.seg.name);
-    }
-  }
+  n = modewalk(s->decl, w, 8);
+  for (i = 0; i < n && o + 2 < sz; i++)
+    o += sprintf(buf + o, "%s%s", o ? ", " : "", w[i]);
 }
 
 /* #[align(N)]'s N, at the declaration that carries it */
