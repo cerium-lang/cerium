@@ -1,0 +1,42 @@
+/* the pack spelled out, the elements one for one (04-generics.md):
+ * a bound and an impl head both feed the pack any number of its
+ * own -- zero included -- the binding the whole tuple, one slot.
+ * The same words everywhere: a hand-written row, a named fn, a
+ * closure, the family's FnMut among them, and the empty pack the
+ * pin alone spells. */
+
+use std::ops::Fn;
+use std::ops::FnMut;
+
+struct Pair { a: u32, b: u32 }
+
+impl Fn<u32, u32> for Pair {
+  type Output = u32;
+  fn call(self: *Self, x: u32, y: u32) -> u32 { self.a * x + self.b * y }
+}
+
+fn each<F: Fn<i32, i32, Output = i32>>(f: F) -> i32 { f(2, 3) }
+
+fn mul2(a: i32, b: i32) -> i32 { a * b }
+
+fn add3(a: i32, b: i32, c: i32) -> i32 { a * 100 + b * 10 + c }
+
+fn wide<F: Fn<i32, i32, i32, Output = i32>>(f: F) -> i32 { f(4, 5, 6) }
+
+fn run2<F: FnMut<i32, i32, Output = i32>>(f: F) -> i32 { f(7, 8) + f(9, 1) }
+
+fn zero<F: Fn<Output = i32>>(f: F) -> i32 { f() }
+
+fn k() -> i32 { 42 }
+
+pub fn main() -> i32 {
+  let p = Pair{ a: 2, b: 3 };
+  let a = @cast<i32>(p.call(5, 7));          /* 31: the hand row, the sugar */
+  let b = each(fn[](x: i32, y: i32) -> i32 { x * 10 + y }); /* 23: the literal */
+  let c = each(mul2);                        /* 6: the named fn */
+  let d = wide(add3);                        /* 456: three rows */
+  let m = 0;
+  let e = run2(fn[mut m](x: i32, y: i32) -> i32 { m = m + x * 10 + y; m }); /* 247: FnMut, m accumulating */
+  let f = zero(k);                           /* 42: the empty pack, the pin alone */
+  a + b + c + d + e + f - 805
+}

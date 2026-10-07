@@ -320,6 +320,27 @@ rargs(Ast *seg, Env *env, usize *np, int pins)
   return ts;
 }
 
+/* the pack's binding, the whole tuple: the elements a bound or an
+ * impl head spells one for one gather into the pack's own slot --
+ * zero elements the empty tuple -- the count back to the
+ * declaration's own (04-generics.md). No pack, the arguments one a
+ * slot, as spelled */
+static Type **
+packargs(Sym *s, Type **args, usize n)
+{
+  Type **full;
+  usize  i, floor;
+
+  if (!s->ngparams || !s->gparams[s->ngparams - 1]->v.gp.pack)
+    return args;
+  floor = s->ngparams - 1;
+  full = tyargs(s->ngparams);
+  for (i = 0; i < floor; i++)
+    full[i] = args[i];
+  full[floor] = tytuple(args ? args + floor : 0, n - floor);
+  return full;
+}
+
 /* a member item's name -- fn, typedef, and const are the three */
 static char *
 itemname(Ast *it)
@@ -1020,6 +1041,17 @@ rtraitpath(Ast *p, Env *env, Type *self)
                                       * arguments its own parameters,
                                       * the members the impl's words
                                       * answer -- no pin here */
+  if (s->ngparams && s->gparams[s->ngparams - 1]->v.gp.pack) {
+    /* the pack: the impl spells the elements one for one, any
+     * number -- zero included -- and they gather into the pack's
+     * own slot, the whole tuple (04-generics.md). The prefix the
+     * same missing word as anywhere */
+    usize k;
+
+    for (k = nargs; k + 1 < s->ngparams; k++)
+      cerrat(p, "missing type argument '%s'", s->gparams[k]->v.gp.name);
+    return tysym(s, packargs(s, args, nargs), s->ngparams);
+  }
   if (nargs > s->ngparams)
     cerrat(p, "'%s' takes %lu type argument%s, not %lu", s->name, (unsigned long) s->ngparams,
            s->ngparams == 1 ? "" : "s", (unsigned long) nargs);
@@ -1270,6 +1302,9 @@ boundresolve(Ast **gps, Env *env)
       Ast  *seg;
       Sym  *s;
       usize n, k, na;
+      int   pack = 0; /* the trait's last parameter is a pack: the
+                       * arguments gather into its slot, the whole
+                       * tuple (04-generics.md) */
 
       if (vlen(segs) != 1)
         cerrat(b, "a bound is a trait's name");
@@ -1285,14 +1320,26 @@ boundresolve(Ast **gps, Env *env)
       for (k = 0; k < na; k++)
         if (seg->v.seg.args[k]->k != Nassoc)
           n++;
-      if (n > s->ngparams)
+      if (s->ngparams && s->gparams[s->ngparams - 1]->v.gp.pack) {
+        /* the pack: a bound feeds it types one for one, any number
+         * its own -- zero included, spelled <> -- the binding the
+         * whole tuple (04-generics.md). The count takes the prefix
+         * alone; the tail the bound left unspelled is the same
+         * missing word as anywhere */
+        usize k2;
+
+        for (k2 = n; k2 + 1 < s->ngparams; k2++)
+          if (!s->gparams[k2]->v.gp.dflt)
+            cerrat(b, "the bound spells no '%s', and it has no default", s->gparams[k2]->v.gp.name);
+        pack = 1;
+      } else if (n > s->ngparams)
         cerrat(b, "'%s' takes %lu type argument%s, not %lu", s->name, (unsigned long) s->ngparams,
                s->ngparams == 1 ? "" : "s", (unsigned long) n);
-      if (n < s->ngparams) { /* the tail the bound left unspelled:
-                              * whoever asks fills it from the
-                              * trait's defaults, so every parameter
-                              * past the spelled ones must carry one
-                              * (04-generics.md) */
+      else if (n < s->ngparams) { /* the tail the bound left unspelled:
+                                   * whoever asks fills it from the
+                                   * trait's defaults, so every parameter
+                                   * past the spelled ones must carry one
+                                   * (04-generics.md) */
         usize k2;
 
         for (k2 = n; k2 < s->ngparams; k2++)
@@ -1321,7 +1368,8 @@ boundresolve(Ast **gps, Env *env)
         }
       }
       b->v.path.sym = s;
-      b->v.path.tys = n ? rargs(seg, env, &n, 1) : 0;
+      b->v.path.tys =
+          pack ? packargs(s, n ? rargs(seg, env, &n, 1) : 0, n) : (n ? rargs(seg, env, &n, 1) : 0);
     }
   }
 }
@@ -1441,11 +1489,38 @@ tsubst(Type *t, TSub *sub)
     return tytuple(ts, t->nargs);
   }
   case Tyfn: {
-    Type **ts = t->nargs ? tyargs(t->nargs) : 0;
+    /* the pack's row spelled out: a declared parameter that is the
+     * pack itself, bound the whole tuple, becomes the elements one
+     * for one -- the impl's own spelling of the same signature
+     * (04-generics.md). An unbound pack stays a slot: the trait's
+     * own declaration reads itself */
+    Type **ts;
+    usize  n = 0, j;
 
-    for (i = 0; i < t->nargs; i++)
-      ts[i] = tsubst(t->args[i], sub);
-    return tyfn(ts, t->nargs, tsubst(t->t, sub));
+    for (i = 0; i < t->nargs; i++) { /* the count first */
+      Type *a = t->args[i];
+
+      if (a->k == Typaram && a->gp->v.gp.pack)
+        for (j = 0; j < sub->n; j++)
+          if (a->gp == sub->gp[j] && sub->ty[j] && sub->ty[j]->k == Tytuple) {
+            n += sub->ty[j]->nargs;
+            goto next;
+          }
+      n++;
+    next:;
+    }
+    ts = n ? tyargs(n) : 0;
+    n = 0;
+    for (i = 0; i < t->nargs; i++) {
+      Type *a = tsubst(t->args[i], sub);
+
+      if (a->k == Tytuple && t->args[i]->k == Typaram && t->args[i]->gp->v.gp.pack)
+        for (j = 0; j < a->nargs; j++)
+          ts[n++] = a->args[j];
+      else
+        ts[n++] = a;
+    }
+    return tyfn(ts, n, tsubst(t->t, sub));
   }
   case Tystruct:
   case Tyunion:
