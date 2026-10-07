@@ -2383,3 +2383,43 @@ rides the whole type out, not a projection left standing in a row a
 match could not read. 248 the boundless call named, 259 the three
 doors, 260 the least demanding rows at work, 261 the once row's
 second call. Five hundred seventy-two green.
+
+The bound could name the pack a call hands over, but not the
+answer: F::Output stayed a projection, carried and never known, and
+a body that wanted it a concrete type -- each returning i32, f(1)
+the same -- had no way to say so. The pin is the missing half of
+the spelling: `Output = u32` stands behind the arguments, the same
+position a declaration's own defaults take, the associated
+constraint (04-generics.md). The parse had grown it already -- a
+bare name and an "=", the pins behind every argument -- waiting for
+a reader.
+
+The reader is the bound's own resolve. The count walks the
+positional alone now, and each pin names one of the trait's
+associated types, the dyn handle's own rule (06); resolved where
+the bound was written, the pin rides its node under the same cache
+the arguments take. Anywhere else a pin refuses the spelling: a
+type's arguments are its own parameters, and an associated type is
+a member's answer, not an argument's.
+
+The asks keep the pin's word. A fn pointer answers by its
+signature's own return, the compiler's knowledge again; a row by
+the member the pin names, the receiver's own match landing the
+binding the answer reads; a parameter by the pin its own bound
+spelled -- a promise it did not make is not kept, and the transfer
+without one refuses the handing on. A method's bound may name the
+parameters above it, and the pin takes the same two rounds the
+arguments always took, the impl's words first.
+
+The answers stop being projections. The body's f(x) returns the
+pinned type itself: the declaration knows it, and the instance's
+re-check walks the same node with the parameter a type already,
+nothing left to open. F::Output in a signature reads the pin the
+same way -- snap's return is u32, whole, and pipe's G crosses
+snap's F without a projection between them. The unpinned bound
+keeps its projection: map_err's F::Output rides on as before, the
+pin an answer offered, not a requirement. 249 the pin nobody kept,
+250 the name the trait never declared, 251 the pin outside a bound;
+262 the pin at work through the family's doors -- the named fn, the
+literal, the env's row, FnMut's slot, the handoff whole. Five
+hundred seventy-six green.

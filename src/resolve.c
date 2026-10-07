@@ -285,23 +285,37 @@ dflttail(Sym *s, Type **args, usize nargs, Env *outer, Type *self, Ast *at)
 }
 
 /* the generic arguments of a path segment, resolved; $$ and ^^ wait
- * for the compile-time evaluator */
+ * for the compile-time evaluator. A bound's pins stand behind the
+ * arguments (04-generics.md): pins allowed walks the positional
+ * alone, and any other position rejects one -- a type's arguments
+ * are its own parameters, and an associated type is a member's
+ * answer, not an argument's. */
 static Type **
-rargs(Ast *seg, Env *env, usize *np)
+rargs(Ast *seg, Env *env, usize *np, int pins)
 {
   Ast  **as = seg->v.seg.args;
-  usize  n = vlen(as);
+  usize  na = vlen(as);
   Type **ts;
-  usize  i;
+  usize  i, j, n;
 
+  n = 0;
+  for (i = 0; i < na; i++) {
+    if (as[i]->k == Nassoc) {
+      if (!pins)
+        cerrat(as[i], "an associated type is pinned only in a bound (04-generics.md)");
+      continue;
+    }
+    n++;
+  }
   if (!n) {
     *np = 0;
     return 0;
   }
   ts = tyargs(n);
-  for (i = 0; i < n; i++)
-    ts[i] = rty(as[i], env); /* a $$ among them: rty's own case
-                              * splices it (08-reflection.md) */
+  for (i = 0, j = 0; i < na; i++)
+    if (as[i]->k != Nassoc)
+      ts[j++] = rty(as[i], env); /* a $$ among them: rty's own case
+                                  * splices it (08-reflection.md) */
   *np = n;
   return ts;
 }
@@ -457,6 +471,9 @@ rpath(Ast *p, Env *env)
       Ast **bs = pt->gp->v.gp.bounds;
       usize bi, mi;
       Sym  *hitsym = 0;
+      Ast  *hitpin = 0; /* the bound's own pin for it, when it spelled
+                         * one: the answer is the pinned type itself,
+                         * no projection left to open (04-generics.md) */
 
       if (segs[1]->v.seg.args)
         cerrat(p, "'%s' takes no type arguments", nm1);
@@ -482,11 +499,24 @@ rpath(Ast *p, Env *env)
             if (hitsym)
               cerrat(p, "'%s' carries '%s' twice; the bounds cannot be told apart", nm0, nm1);
             hitsym = tr;
+            {
+              Ast **pas = bs[bi]->v.path.segs[0]->v.seg.args;
+              usize pa, pna = vlen(pas);
+
+              for (pa = 0; pa < pna; pa++)
+                if (pas[pa]->k == Nassoc && strcmp(pas[pa]->v.assoc.name, nm1) == 0) {
+                  hitpin = pas[pa];
+                  break;
+                }
+            }
           }
       }
       if (!hitsym)
         cerrat(p, "'%s' is not an associated type of a bound on '%s'", nm1, nm0);
-      return typroj(hitsym, pt, nm1);
+      /* the pin unresolved -- a bound read ahead of its own walk --
+       * falls to the projection, the instance's opening the answer
+       * either way */
+      return hitpin && hitpin->v.assoc.rt ? hitpin->v.assoc.rt : typroj(hitsym, pt, nm1);
     }
     if (pt && pt->k != Typaram && pt->sym) {
       /* T::Item under the binding: the parameter is a type now,
@@ -573,7 +603,7 @@ rpath(Ast *p, Env *env)
   }
   if (s->kind == Sfn || s->kind == Sconst || s->kind == Sstatic)
     cerrat(p, "'%s' is not a type", name);
-  args = rargs(seg, env, &nargs);
+  args = rargs(seg, env, &nargs, 0);
   if (s->kind == Strait) {
     if (nargs)
       cerrat(p, "a trait's arguments belong to its impl head (05-traits.md)");
@@ -986,7 +1016,10 @@ rtraitpath(Ast *p, Env *env, Type *self)
     cerrat(p, "unknown trait '%s'", seg->v.seg.name);
   if (s->kind != Strait)
     cerrat(p, "'%s' is not a trait", seg->v.seg.name);
-  args = rargs(seg, env, &nargs);
+  args = rargs(seg, env, &nargs, 0); /* the impl head: a trait's
+                                      * arguments its own parameters,
+                                      * the members the impl's words
+                                      * answer -- no pin here */
   if (nargs > s->ngparams)
     cerrat(p, "'%s' takes %lu type argument%s, not %lu", s->name, (unsigned long) s->ngparams,
            s->ngparams == 1 ? "" : "s", (unsigned long) nargs);
@@ -1219,9 +1252,10 @@ resolveimplmembers(Sym *s)
  * binding check, the generic branch's signature, a projection's
  * hunt -- and a name would read that caller's context
  * (11-namespaces.md); the cache is what keeps the bound's own
- * file's reading. The tail the bound left unspelled is not cached:
- * its defaults belong to whoever asks, their Self their own
- * (07-operators.md). */
+ * file's reading. The pins a bound spells ride the same cache: each
+ * resolved here, standing behind the arguments (04-generics.md).
+ * The tail the bound left unspelled is not cached: its defaults
+ * belong to whoever asks, their Self their own (07-operators.md). */
 static void
 boundresolve(Ast **gps, Env *env)
 {
@@ -1235,7 +1269,7 @@ boundresolve(Ast **gps, Env *env)
       Ast **segs = b->v.path.segs;
       Ast  *seg;
       Sym  *s;
-      usize n;
+      usize n, k, na;
 
       if (vlen(segs) != 1)
         cerrat(b, "a bound is a trait's name");
@@ -1245,7 +1279,12 @@ boundresolve(Ast **gps, Env *env)
         cerrat(b, "unknown trait '%s'", seg->v.seg.name);
       if (s->kind != Strait)
         cerrat(b, "a bound names a trait, and '%s' is not one", seg->v.seg.name);
-      n = vlen(seg->v.seg.args);
+      n = 0; /* the pins stand behind every argument: the count
+              * walks the positional alone (04-generics.md) */
+      na = vlen(seg->v.seg.args);
+      for (k = 0; k < na; k++)
+        if (seg->v.seg.args[k]->k != Nassoc)
+          n++;
       if (n > s->ngparams)
         cerrat(b, "'%s' takes %lu type argument%s, not %lu", s->name, (unsigned long) s->ngparams,
                s->ngparams == 1 ? "" : "s", (unsigned long) n);
@@ -1254,14 +1293,35 @@ boundresolve(Ast **gps, Env *env)
                               * trait's defaults, so every parameter
                               * past the spelled ones must carry one
                               * (04-generics.md) */
-        usize k;
+        usize k2;
 
-        for (k = n; k < s->ngparams; k++)
-          if (!s->gparams[k]->v.gp.dflt)
-            cerrat(b, "the bound spells no '%s', and it has no default", s->gparams[k]->v.gp.name);
+        for (k2 = n; k2 < s->ngparams; k2++)
+          if (!s->gparams[k2]->v.gp.dflt)
+            cerrat(b, "the bound spells no '%s', and it has no default", s->gparams[k2]->v.gp.name);
+      }
+      if (!s->traitdone)
+        resolvetrait(s);         /* early: the pins read the trait's members
+                                  * now, the same early a projection takes
+                                  * (04-generics.md) */
+      for (k = 0; k < na; k++) { /* each pin names one of the trait's
+                                  * associated types -- the dyn
+                                  * handle's own rule (06) -- and
+                                  * rides the node resolved, the
+                                  * arguments' own cache */
+        Ast *a = seg->v.seg.args[k];
+
+        if (a->k != Nassoc)
+          continue;
+        {
+          Member *m = memberfind(s, a->v.assoc.name);
+
+          if (!m || m->kind != Mtype)
+            cerrat(a, "'%s' has no associated type '%s'", s->name, a->v.assoc.name);
+          a->v.assoc.rt = rty(a->v.assoc.t, env);
+        }
       }
       b->v.path.sym = s;
-      b->v.path.tys = n ? rargs(seg, env, &n) : 0;
+      b->v.path.tys = n ? rargs(seg, env, &n, 1) : 0;
     }
   }
 }

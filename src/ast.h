@@ -134,6 +134,9 @@ struct Ast
     {
       char *name; /* the associated type's own (05-traits.md) */
       Ast  *t;    /* the type pinned to it */
+      Type *rt;   /* the pin resolved, read where the bound was
+                   * written and cached on its own node -- the same
+                   * cache the bound's arguments take (04) */
     } assoc;      /* Nassoc: a use's pin, standing behind the
                    * arguments (04-generics.md) */
     struct

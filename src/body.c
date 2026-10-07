@@ -2382,8 +2382,26 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
             { /* the bound's own words: the arguments the pack spells,
                * one a parameter (05-traits.md) */
               Type **bts = hit->v.path.tys;
-              usize  nb = vlen(hit->v.path.segs[0]->v.seg.args);
-              Sym   *fam = hit->v.path.sym;
+              Ast  **pas = hit->v.path.segs[0]->v.seg.args;
+              usize  pna = vlen(pas);
+              usize  nb = 0;
+              usize  pa;
+              Ast   *pin = 0; /* the bound's own Output, when it
+                               * spelled one: the answer the pin
+                               * already knows, no projection left
+                               * to open (04-generics.md) */
+              Sym *fam = hit->v.path.sym;
+
+              for (pa = 0; pa < pna; pa++) { /* the pins stand behind
+                                              * every argument: the
+                                              * count walks the
+                                              * positional alone */
+                if (pas[pa]->k == Nassoc) {
+                  if (strcmp(pas[pa]->v.assoc.name, "Output") == 0)
+                    pin = pas[pa];
+                } else
+                  nb++;
+              }
 
               if (svs2) {
                 memset(svs2, 0, n * sizeof *svs2);
@@ -2403,11 +2421,12 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                     berr(args[bi], "'%s' wants %s here, this is %s", nm, btys(bts[bi]), btys(at));
                 }
               }
-              thawargs(svs2, n);               /* the call is done; its borrows ended with it */
-              return typroj(fam, t, "Output"); /* the answer the impl
-                                                * decides, opened where
-                                                * the instance lands it
-                                                * (05-traits.md) */
+              thawargs(svs2, n); /* the call is done; its borrows ended with it */
+              return pin ? pin->v.assoc.rt : typroj(fam, t, "Output"); /* the answer the
+                                                                        * impl decides, opened
+                                                                        * where the instance
+                                                                        * lands it
+                                                                        * (05-traits.md) */
             }
           }
           if (!t || t->k != Tyfn)

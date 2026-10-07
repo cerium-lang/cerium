@@ -1,0 +1,13 @@
+/* a pin names one of the trait's associated types, the dyn handle's
+ * own rule (06-dispatch.md): a name the trait never declared pins
+ * nothing, and the bound refuses it where it was written. */
+
+use std::ops::Fn;
+
+fn each<F: Fn<i32, Nope = u32>>(f: F) -> u32 {
+  f(1)
+}
+
+pub fn main() -> i32 {
+  0
+}

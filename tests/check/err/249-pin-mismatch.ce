@@ -1,0 +1,17 @@
+/* the pin is a promise the callee must keep (04-generics.md): the
+ * pointer answers by its signature's own return, the compiler's own
+ * knowledge, and a return the pin did not name is a fn the bound
+ * cannot take -- refused where the binding was made, the same door
+ * the arguments take, not a wrong answer at run. */
+
+use std::ops::Fn;
+
+fn double(n: i32) -> i32 { n * 2 }
+
+fn each<F: Fn<i32, Output = u32>>(f: F) -> u32 {
+  f(1)
+}
+
+pub fn main() -> i32 {
+  @cast<i32>(each(double))
+}
