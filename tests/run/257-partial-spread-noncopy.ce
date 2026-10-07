@@ -1,0 +1,15 @@
+/* a spread of a pack's slice moves the rows it names out of the
+ * binding that holds them -- a partial move, the shape a binding is
+ * never left in. The whole pack spreads whole, a binding's own rows
+ * all together; a slice of it is rows, and rows out of a place need
+ * @take (03-move.md, 04-generics.md). The refusal is the instance's
+ * own -- the declaration defers to the binding, and the re-check
+ * under it walks the rows for real (04) */
+struct P { n: i32 }
+
+fn tail<...T>(a: ...T) -> i32 {
+  const if @count(...T) == 0 { 0 }
+  else { tail(...a[1..]) }
+}
+
+fn main() -> i32 { tail(P{ n: 1 }, P{ n: 2 }) }

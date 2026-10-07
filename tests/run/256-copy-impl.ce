@@ -1,0 +1,19 @@
+/* the opt-in taken: impl Copy for P is the file's own word that the
+ * value copies, and the two reads the refusal above named both read
+ * a living copy -- the closure's value capture rides the same row
+ * (03-move.md) */
+use std::ops::Copy;
+
+struct P { n: i32 }
+
+impl Copy for P { }
+
+fn id(p: P) -> i32 { p.n }
+
+fn main() -> i32 {
+  let p = P { n: 21 };
+  let a = id(p);
+  let b = p.n; /* a copy: p alive under the second read */
+  let c = fn[p](x: i32) -> i32 { p.n + x }; /* the capture copies too */
+  a + b + c(0) /* 21 + 21 + 21 */
+}

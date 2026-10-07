@@ -1,0 +1,14 @@
+use std::ops::Drop;
+
+/* a capture by value of what owns a destructor: moved in, the name
+ * unusable after -- the env's field dies where the closure's own
+ * binding does, the destructor carried with it (03-move.md) */
+struct D { n: i32 }
+
+impl Drop for D { fn drop(mut self: D) { } }
+
+pub fn main() -> i32 {
+  let d = D{ n: 20 };
+  let f = fn[d]() -> i32 { d.n };
+  f() + 22 /* 42: the move the checker spelled, read through the env */
+}

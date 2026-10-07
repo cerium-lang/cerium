@@ -3303,6 +3303,20 @@ emaexpr(Em *em, Ast *e)
         }
       }
     }
+    if (!nm && !dynfp && f->k == Npath && f->ty && f->ty->k == Tystruct && f->ty->sym &&
+        f->ty->sym->decl && f->ty->sym->decl->k == Nclosure) { /* the closure's own call:
+                                                                * the env rides first, the
+                                                                * fn a name the literal
+                                                                * itself carries
+                                                                * (05-traits.md) */
+      Ast *cl = f->ty->sym->decl;
+
+      if (!cl->v.clos.sym)
+        cerrat(f, "the closure's fn was never named");
+      nm = cl->v.clos.sym;
+      ra = emaexpr(em, f);         /* the env's address: the callee's own value */
+      selfty = typtr(tyvoidptr()); /* one pointer, one width */
+    }
     if (nm)
       fprintf(em->o, "\t%s =%s call $%s(", t, sigty(e->ty, e), nm);
     else if (dynfp) /* the vtable slot: called through it (06) */
@@ -3312,8 +3326,9 @@ emaexpr(Em *em, Ast *e)
 
       fprintf(em->o, "\t%s =%s call %s(", t, sigty(e->ty, e), fp);
     }
-    if (ra)
-      fprintf(em->o, "%s %s", sigty(selfty, f->v.fld.e), ra);
+    if (ra) /* the sugar's receiver first, the closure's env first:
+             * a leading argument either way, its width its type's */
+      fprintf(em->o, "%s %s", f->k == Naccess ? sigty(selfty, f->v.fld.e) : "l", ra);
     for (i = 0; i < n; i++)
       fprintf(em->o, "%s%s %s", (i || ra) ? ", " : "", sigty(args[i]->ty, args[i]), as[i]);
     fputs(")\n", em->o);
@@ -3776,11 +3791,13 @@ emaexpr(Em *em, Ast *e)
     return emamatch(em, e, &reached);
   }
   case Nclosure: { /* the fn literal: a fn of its own under a name
-                    * the emitter gave it, the value its address --
-                    * the fn pointer it spells (01-types.md); the
-                    * captures' own environment arrives with the Fn
-                    * family (05-traits.md) */
-    char *t = newtmp(em);
+                    * the emitter gave it. Captureless, the value is
+                    * its address -- the fn pointer it spells
+                    * (01-types.md); with captures, the value is the
+                    * env's address, the fields one capture each
+                    * (05-traits.md) */
+    Ast **cs = e->v.clos.caps;
+    usize nc = vlen(cs);
     Clo  *cl;
 
     if (!e->v.clos.sym) { /* the name once: the two passes share the
@@ -3804,8 +3821,54 @@ emaexpr(Em *em, Ast *e)
     if (!cloqueue)
       cloqueue = vnew(Clo *, 16);
     vappend(&cloqueue, &cl);
-    fprintf(em->o, "\t%s =l copy $%s\n", t, e->v.clos.sym);
-    return t;
+    if (!nc) { /* no captures, no env: the fn pointer the literal
+                * spells, as it always was (01-types.md) */
+      char *t = newtmp(em);
+
+      fprintf(em->o, "\t%s =l copy $%s\n", t, e->v.clos.sym);
+      return t;
+    }
+    { /* the env: a slot this frame holds, a capture a field, laid
+       * down where the literal stands -- it dies with the binding
+       * that holds it (03-move.md) */
+      Type *et = e->ty;
+      usize sz = sizeof_(et) ? sizeof_(et) : 1;
+      char *t = stackslot(em, sz);
+      usize i;
+
+      fprintf(em->o, "\tblit %s, %s, %lu\n", zeroblk(em, sz), t, (unsigned long) sz);
+      for (i = 0; i < nc; i++) {
+        Ast  *a = cs[i];
+        Type *ft = et->sym->fields[i].ty;
+        usize off = fieldoffof(et, i);
+        char *p = t;
+
+        if (!sizeof_(ft)) /* a zero-sized capture holds no value, the
+                           * same skip a literal's field makes */
+          continue;
+        if (off) {
+          p = newtmp(em);
+          fprintf(em->o, "\t%s =l add %s, %lu\n", p, t, (unsigned long) off);
+        }
+        if (a->v.cap.byref) { /* the address itself: the outer place's
+                               * own slot (01-types.md) */
+          char *v = emaplace(em, a->v.cap.place);
+
+          fprintf(em->o, "\tstorel %s, %s\n", v, p);
+          continue;
+        }
+        { /* the value: a copy of a Copy, the bytes of a move the
+           * checker already spelled (03-move.md) */
+          char *v = emaexpr(em, a->v.cap.place);
+
+          if (isagg(ft))
+            fprintf(em->o, "\tblit %s, %s, %lu\n", v, p, (unsigned long) sizeof_(ft));
+          else
+            fprintf(em->o, "\t%s %s, %s\n", stins(ft), v, p);
+        }
+      }
+      return t; /* the env's address: the closure's value */
+    }
   }
   case Nblock: { /* a block in expression position: its bindings end
                   * with it, its tail is its value */
@@ -4173,7 +4236,17 @@ emitclosfn(FILE *o, Clo *cl) /* the context the walk stood in,
                               * switch, the same three) */
 {
   Ast  *c = cl->c;
-  Type *fnty = c->ty;
+  Ast **cs = c->v.clos.caps;
+  usize nc = vlen(cs);
+  Type *fnty = c->v.clos.sig ? c->v.clos.sig : c->ty; /* the fn the
+                                                       * literal spells:
+                                                       * the env a
+                                                       * capturing one
+                                                       * rides never
+                                                       * reaches a
+                                                       * signature
+                                                       * (05-traits.md) */
+  Type *et = nc ? c->ty : 0;                          /* the env, the fields one capture each */
   Type *ret = fnty->t;
   Ast **ps = c->v.clos.params;
   usize i;
@@ -4197,12 +4270,35 @@ emitclosfn(FILE *o, Clo *cl) /* the context the walk stood in,
   if (ret)
     fprintf(o, " %s", sigty(ret, c));
   fprintf(o, " $%s(", c->v.clos.sym);
+  if (nc) /* the env rides first: one pointer, the captures' own
+           * struct (05-traits.md) */
+    fputs("l %env.1", o);
   for (i = 0; i < fnty->nargs; i++) {
-    if (i)
+    if (i || nc)
       fputs(", ", o);
     fprintf(o, "%s %%%s", sigty(fnty->args[i], ps[i]), ps[i]->v.param.name);
   }
   fputs(") {\n@start\n", o);
+  if (nc) { /* each capture its field's address: the slot the body
+             * reads the name through, writes included -- a byref
+             * capture's slot holds the pointer itself, its *mut the
+             * writability the body's writes ride (01-types.md) */
+    for (i = 0; i < nc; i++) {
+      Ast  *a = cs[i];
+      Type *ft = et->sym->fields[i].ty;
+      usize off = fieldoffof(et, i);
+      char *p;
+
+      if (off) {
+        p = newtmp(&em);
+        fprintf(o, "\t%s =l add %%env.1, %lu\n", p, (unsigned long) off);
+      } else {
+        p = arenaalloc(8);
+        sprintf(p, "%%env.1");
+      }
+      locbind(&em, a->v.cap.name, p, ft);
+    }
+  }
   for (i = 0; i < fnty->nargs; i++) { /* every parameter a slot: one
                                        * path reads them all */
     char *nm = ps[i]->v.param.name;

@@ -3,7 +3,13 @@
  * own arguments, and the specific row still answers first where
  * one stands under it -- the receiver's order holds, the
  * arguments only finish what it started. */
+use std::ops::Copy; /* the receiver hands itself to two rows: a copy
+                     * each call, the opt-in the use itself is
+                     * (03-move.md) */
+
 struct S { n: i32 }
+
+impl Copy for S { }
 
 trait Combine<Rhs = Self> {
   fn combine(self: Self, other: Rhs) -> i32;

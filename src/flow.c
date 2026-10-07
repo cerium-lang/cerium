@@ -170,12 +170,18 @@ iscopy(Type *t)
 
   if (!t)
     return 0;
-  if (t->copyknown) /* the interned type asked once; the answer
-                     * holds for every read after */
+  if (t->copyknown == 1) /* the interned type asked once; the answer
+                          * holds for every read after */
     return t->copyval;
+  if (t->copyknown == 2) /* asked again under itself: an impl whose
+                          * own bound is this very question is not
+                          * the answer -- the same word the
+                          * satisfies walk keeps, below */
+    return 0;
+  t->copyknown = 2;
   v = iscopy1(t);
-  t->copyknown = 1;
   t->copyval = (u8) v;
+  t->copyknown = 1;
   return v;
 }
 
@@ -217,6 +223,14 @@ iscopy1(Type *t)
     Sym *s = t->sym;
 
     if (hasdrop(t)) /* a destructor inside kills the copy (03-move.md) */
+      return 0;
+    if (!implfor(sym_copy, t, 0)) /* the impl the spec asks for: a
+                                   * struct is Copy when it says it
+                                   * is, the row accepted only because
+                                   * every field already is (03) --
+                                   * the fields walk below, the
+                                   * instance's own words
+                                   * (04-generics.md) */
       return 0;
     for (i = 0; i < s->nfields; i++) {
       Type *ft = s->fields[i].ty;
@@ -380,7 +394,7 @@ placeroot(Ast *e, Fenv *fe, char *path, usize psz)
   usize n = 0;
 
   path[0] = 0;
-  while (e->k == Naccess || e->k == Nindex || e->k == Nrangeindex) {
+  while (e->k == Naccess || e->k == Nindex || e->k == Nrangeindex || e->k == Ntupidx) {
     if (e->k == Naccess && strlen(e->v.fld.name) < 126 && n + strlen(e->v.fld.name) + 2 < psz) {
       char cat[128];
 
@@ -394,7 +408,7 @@ placeroot(Ast *e, Fenv *fe, char *path, usize psz)
       } else
         strcpy(path, cat);
       n = strlen(path);
-    } else { /* an index, a slice, or a long name: the whole root */
+    } else { /* an index, a row, a slice, or a long name: the whole root */
       path[0] = 0;
       n = 0;
     }
@@ -402,6 +416,8 @@ placeroot(Ast *e, Fenv *fe, char *path, usize psz)
       e = e->v.fld.e;
     else if (e->k == Nindex)
       e = e->v.n2.a;
+    else if (e->k == Ntupidx)
+      e = e->v.tup.e;
     else
       e = e->v.ridx.e;
   }
@@ -413,7 +429,7 @@ placeroot(Ast *e, Fenv *fe, char *path, usize psz)
 }
 
 /* freeze a place: & sets FZ_SHR, &mut FZ_MUT. The field chain is the
- * borrowed place itself; an index or a deref freezes the root. The
+ * borrowed place itself; an index, a row, or a deref freezes the root. The
  * freeze thaws when the binding that holds the borrow dies (locpop). */
 void
 freeze(Ast *place, Fenv *fe, int mut, int by)
@@ -1252,7 +1268,11 @@ implsatisfies(Sym *trait, Type *t, Type **targs, usize ntargs)
   if (!t)
     return 0;
   if (trait == sym_copy)
-    return iscopy(t);    /* structural: what the type is, not what it impls */
+    return iscopy(t);    /* the Copy question entire: the marker's own
+                          * answer, impl and fields both, asked without
+                          * the table walk the other traits take -- the
+                          * cycle an impl's bound could spell is broken
+                          * where iscopy breaks it (03-move.md) */
   if (t->k == Typaram) { /* the type is a parameter of the fn that
                           * asked: its own declaration's bounds are
                           * the answer. Everything the body does to T

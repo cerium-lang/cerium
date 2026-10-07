@@ -3,8 +3,16 @@
  * of both and handing it on -- where another language writes a
  * macro over its matrix (14-macros.md), Cerium writes this. The
  * comparisons borrow the same way: Eq deciding, Ord ordering. */
-use std::ops::{Add, Eq, Ord, Ordering};
+use std::ops::{Add, Eq, Ord, Ordering, Copy}; /* Copy: the borrowed
+                                               * rows hand the value
+                                               * on, and a type that
+                                               * is not Copy borrows
+                                               * no row -- the opt-in
+                                               * the use itself is
+                                               * (03-move.md) */
 struct V { x: i32 }
+
+impl Copy for V { }
 impl Add for V {
   type Output = V;
   fn add(self: V, other: V) -> V { V{ x: self.x + other.x } }

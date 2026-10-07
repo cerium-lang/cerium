@@ -2263,3 +2263,77 @@ reader -- now said where the checker says it, not where the
 emitter fell over. Three pins: 251 the family called in place and
 through a call's answer, 252 the inherent rows, 243 the mut
 refusal. Five hundred fifty-eight green.
+
+The captures the ground floor deferred are no longer deferred: the
+square brackets spell fields now, and the literal grows its own
+env. Each capture a local of the world above, read once where the
+literal stands -- by value a copy of a Copy, the bytes of anything
+else, the name dead after the move the checker spells there; by
+pointer the address itself, & a *T, &mut a *mut T, the body reading
+the name as the pointer it is, its writes through the pointer's own
+writability. The env is one struct a capture a field, nameless,
+grown by the checker where the literal is checked; the value the
+literal hands out is its address, and the fn it spells takes it as
+a first word -- %env the emitter names it, each field bound at the
+entry to the slot the body reads the name through, so a byref
+capture's slot holds the pointer itself and a *mut lends the write
+the same deref rules always lent. The call sugar finds the fn
+through the env's own declaration -- a local whose type's sym
+points back at the literal -- and rides the receiver's leading
+argument, the fn the name the walk gave the literal, no vtable, no
+load: a direct call with the env in front.
+
+The drops took care of themselves: a capture moved in dies where
+the binding that holds the closure dies -- the env's fields are the
+ordinary drop of the env struct, the dead name outside owing
+nothing. A &mut capture holds the slice's own bargain (01), taken
+at the capture and held from there; the accumulator works, the
+count a mut capture keeps works, the move kills the name. What
+stays out: fn[] inference (the empty brackets still a fn pointer),
+the family the env will ride as a bound -- a closure still cannot
+cross a fn's own face, the call sugar local-only, the escape the
+pointer bargain covers. 248 turns the corner from refusal to
+answer, 253 the accumulator, 254 the count, 255 the move, 244 the
+moved name, 245 the nameless capture, 246 the &mut refusal. Five
+hundred sixty-four green.
+
+Copy was structural in the code and opt-in in the spec, and the
+spec wins: a struct is Copy when it says it is -- the impl row
+iscopy1 asks for now -- the row accepted only because every field
+already is, exactly the two sentences 03 keeps. The marker's own
+answer stays out of the table walk the other traits take: the
+cycle an impl's bound could spell (`impl<T: Copy> Copy for W<T>`)
+is broken where iscopy breaks it, a three-state memo on the type
+itself -- asked, asking, answered -- the same word the satisfies
+walk keeps. Nothing in std had said it; the operator rows were
+already bounded Copy, waiting for the world to catch up.
+
+The structural reading had been papering over four bugs, one at
+each place a pack's rows meet the move rules, and the opt-in took
+the paper off all four at once. A row of a place is a place:
+placeroot walks the row now, so a row borrow freezes its root,
+the conflict checks see through it, the writable row answers. The
+value walk's row read takes its base as a place -- a row read
+moves the row, never the tuple that holds it. The place walk
+answers a tuple's row itself, the rewrite the value walk always
+landed, so &t[0] points at the row the emitter addresses, no
+materialised copy between -- and t[0] = v, &mut t[0] with it, are
+the writable row's own spellings. A pack-rooted place defers with
+the read: the instance's walk types the borrow for real, the
+declaration never spelling a copy the binding never made.
+
+And the spread. The whole binding's rows move together -- a
+binding dies whole or not at all -- so the rows the expansion
+spells are remembered as its own: their reads are the move's
+spelling, the marking they leave the binding's death, unwound by
+a trial that refuses exactly as any move is. A slice of the pack
+is rows the program spelled, no members: the partial move refuses,
+@take the one way around. The First/Rest peel -- a binding of its
+own each unfolding -- carries owning rows the whole way down, the
+spec's own recursion shape working where the slice cannot. std's
+Hole says Copy now, the use the file's own word that it does; the
+tests' structs say it where their values feed more than one read,
+112's generic row names the bound. 247 the refusal, 256 the
+opt-in read alive, 257 the slice's partial move, 258 the rows as
+places -- borrowed twice, forwarded whole, written and lent. Five
+hundred sixty-eight green.

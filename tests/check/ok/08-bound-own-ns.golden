@@ -1,7 +1,9 @@
 (file
   (use ops::Scale)
+  (use std::ops::Copy)
   (struct P
     (field n i32))
+  (impl Copy for P)
   (impl Scale<P> for P
     (type Output P)
     (fn scale fn(P, P) -> P))

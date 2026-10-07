@@ -3,8 +3,13 @@
  * Ordering::Less, a == b is Eq::eq(a, b), and a != b is its
  * negation -- both operands entering by value. Seven answers,
  * one bit each. */
-use std::ops::{Ord, Eq, Ordering};
+use std::ops::{Ord, Eq, Ordering, Copy}; /* Copy: the operands feed
+                                          * seven calls, a copy each
+                                          * -- the opt-in the use
+                                          * itself is (03-move.md) */
 struct V3 { x: i32, y: i32 }
+
+impl Copy for V3 { }
 impl Ord for V3 {
   fn cmp(self: V3, other: V3) -> Ordering {
     if self.x < other.x { return Ordering::Less; };

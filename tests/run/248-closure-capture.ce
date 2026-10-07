@@ -1,9 +1,8 @@
-/* the capture list with a name in it: the environment a capture
- * rides in arrives with the Fn family (05-traits.md) -- until
- * then the literal is the fn pointer it spells, and a pointer
- * carries nothing (01-types.md) */
+/* the capture list with a name in it: the value carried in the
+ * literal's own env, one field a capture -- a Copy one read out a
+ * copy, the call through the name after (01-types.md, 05-traits.md) */
 pub fn main() -> i32 {
   let x = 21;
   let g = fn[x](y: i32) -> i32 { x + y };
-  g(21)
+  g(21) /* 42: the env's own field, read through the fn it names */
 }

@@ -1,7 +1,13 @@
 /* T bound to an aggregate: the instance's signature carries the
  * struct's ABI class, and the value moves through the instance and
  * back by that convention */
+use std::ops::Copy; /* the aggregate reads through the instance and
+                     * back again: a copy each read, the opt-in the
+                     * use itself is (03-move.md) */
+
 struct P { a: i32, b: i64 }
+
+impl Copy for P { }
 fn first(p: P) -> i32 { p.a }
 fn scale(p: P, k: i32) -> P { P{a: p.a * k, b: p.b} }
 fn idp<T>(t: T) -> T { t }

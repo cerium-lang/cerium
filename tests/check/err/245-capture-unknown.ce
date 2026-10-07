@@ -1,0 +1,6 @@
+/* a capture names a local of the world above: a name no binding
+ * holds is no capture at all (01-types.md) */
+fn main() -> i32 {
+  let f = fn[nope]() -> i32 { 1 };
+  f()
+}

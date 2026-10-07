@@ -6,8 +6,15 @@
  * instance; a pass-through defers twice and the outer binding
  * answers both; the two spellings of an overload split by whether
  * the caller's argument is compile-time known. */
+use std::ops::Copy; /* the reads fold the same value twice: a copy
+                     * each, the opt-in the use itself is
+                     * (03-move.md) */
+
 struct P { x: u32, y: u32 }
 struct Q { x: u64, y: u64, z: u64 }
+
+impl Copy for P { }
+impl Copy for Q { }
 
 fn field_offset<T>(const name: []u8) -> usize {
   @offset<T>(name)
