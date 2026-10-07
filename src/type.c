@@ -316,6 +316,53 @@ tydyn(Sym *s, Type **args, usize n, int mut)
   return intern(&x);
 }
 
+/* a family's signature through the handle's own words: a parameter
+ * that is the pack itself, its slot the whole tuple, becomes the
+ * elements one for one -- the spelling every caller of the family
+ * reads (04-generics.md). tsubst's own case walks the same words
+ * under an impl's binding; this one walks a handle's, no impl
+ * between (06-dispatch.md). An unbound pack stays a slot, the
+ * trait's own declaration reading itself */
+Type *
+tyfnspread(Type *t, Ast **gp, Type **ty, usize n)
+{
+  Type **ts;
+  usize  m = 0, i, j;
+
+  for (i = 0; i < t->nargs; i++) { /* the count first */
+    Type *a = t->args[i];
+
+    if (a->k == Typaram && a->gp->v.gp.pack)
+      for (j = 0; j < n; j++)
+        if (a->gp == gp[j] && ty[j] && (ty[j]->k == Tytuple || ty[j]->k == Tyunit)) {
+          m += ty[j]->k == Tytuple ? ty[j]->nargs : 0;
+          goto next;
+        }
+    m++;
+  next:;
+  }
+  ts = m ? tyargs(m) : 0;
+  for (i = m = 0; i < t->nargs; i++) {
+    Type *a = t->args[i];
+    Type *r = a;
+
+    if (a->k == Typaram && a->gp->v.gp.pack)
+      for (j = 0; j < n; j++)
+        if (a->gp == gp[j]) {
+          r = ty[j];
+          break;
+        }
+    if (r && a->k == Typaram && a->gp->v.gp.pack && (r->k == Tytuple || r->k == Tyunit)) {
+      usize rows = r->k == Tytuple ? r->nargs : 0;
+
+      for (j = 0; j < rows; j++)
+        ts[m++] = r->args[j];
+    } else
+      ts[m++] = r;
+  }
+  return tyfn(ts, m, t->t);
+}
+
 Type *
 typroj(Sym *s, Type *self, char *name)
 {

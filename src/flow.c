@@ -1222,7 +1222,12 @@ traitcands(Type *t, const char *name, Implcand *cs, usize cap)
     if (!im->ifort || !im->ipath)
       continue;
     for (j = 0; j < im->nmembers; j++)
-      if (im->members[j].kind == Mfn && strcmp(im->members[j].name, name) == 0) {
+      if (im->members[j].kind == Mfn && im->members[j].sym &&
+          strcmp(im->members[j].name, name) == 0) { /* a row with no
+                                                     * fn of its own -- a closure literal's -- names
+                                                     * a vtable slot,
+                                                     * never a call
+                                                     * (05-traits.md) */
         m = &im->members[j];
         break;
       }

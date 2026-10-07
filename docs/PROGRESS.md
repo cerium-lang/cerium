@@ -2449,3 +2449,34 @@ sugar spells the bound's words out the same way, a parameter a row.
 the family's doors -- the hand row, the literal, the named fn,
 three rows, FnMut accumulating, the empty pack the pin alone. Five
 hundred seventy-eight green.
+
+The family's rows ride a handle now. `dyn Fn<i32, i32, Output =
+u32>` spells the positional words ahead of the associated -- one
+"=" telling the two apart -- and the pack gathers them whole into
+its own slot, the handle's args carrying the trait's own gparams
+ahead of the Mtype slots, the declaration order both. Every reader
+of the handle's words walks the one shape: the projection the slot
+behind the positional, the construction the same count.
+
+What the handle holds names its row. An env's vtable line is the
+literal's own fn -- the env pointer the ABI the fat call passes
+already kept -- and a pointer's is a trampoline the emitter lays:
+the fat's first word the fn itself, the slot's ABI handing it
+%self, the call dropping it, every argument forwarded as it
+arrived, the aggregate addresses included, qbe lowering the rest.
+One vtable a pair, one trampoline a pair, the scratch pass naming
+the aggregate types it wears so the declarations print ahead of the
+text.
+
+The sugar is the fat call's. f(x) is f.call(x) spelled wherever the
+callee's own type is a handle of the family -- rewritten to the
+access, the receiver's own branch walking it from there -- and the
+signature it checks opens the pack out, the rows one a parameter,
+the spelling every caller reads. FnOnce has no handle, its spent
+call no handle to hold: the words say so at the making. 253 the
+words that spell another signature, 254 the once row refused its
+handle; 264 the rows through the handle's doors -- the env's, the
+named fn's trampoline, the captureless literal's, a slot's own
+pointer, aggregates forwarded, FnMut accumulating through the mut
+handle, the empty pack, the method spelled out. Five hundred
+eighty-one green.

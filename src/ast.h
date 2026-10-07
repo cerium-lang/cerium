@@ -157,6 +157,9 @@ struct Ast
     {
       Ast  *e;      /* the trait path */
       int   mut;    /* dyn mut A */
+      Ast **args;   /* <i32, i32, Output = u32>: the positional words,
+                       a type list -- a pack trait gathers them whole
+                       into its own slot (04-generics.md) */
       Ast **assocs; /* <Item = u32>: Ninit list, name + the type (06) */
     } tdyn;         /* Ntdyn */
     struct

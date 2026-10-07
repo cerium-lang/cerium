@@ -1,0 +1,15 @@
+use std::ops::FnOnce;
+
+/* FnOnce has no dyn (06-dispatch.md): what may be called once is
+ * spent, not held -- a handle that may be called once is not a
+ * handle. The move capture makes the literal's family the once row,
+ * and the handle asks for it by name */
+
+struct Box { v: i32 }
+
+fn main() -> i32 {
+  let b = Box{ v: 7 };
+  let c = fn[b](n: i32) -> Box { b };
+  let h: dyn FnOnce<i32, Output = Box> = &dyn c;
+  3
+}
