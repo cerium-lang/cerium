@@ -921,11 +921,11 @@ boundsok(Sym *im, Type **tys)
         usize ri;
 
         for (ri = 0; ri < rn; ri++)
-          if (!boundsatisfies(bs[j], tys[i]->args[ri], gps, tys, im->ngparams, 0))
+          if (!boundsatisfies(bs[j], tys[i]->args[ri], gps, tys, im->ngparams, 0, 0, 0, 0))
             return 0; /* a row the bound does not answer */
         continue;     /* the empty pack: every row it has answers */
       }
-      if (!boundsatisfies(bs[j], tys[i], gps, tys, im->ngparams, 0))
+      if (!boundsatisfies(bs[j], tys[i], gps, tys, im->ngparams, 0, 0, 0, 0))
         return 0; /* the receiver does not answer this bound */
     }
   }
@@ -1307,6 +1307,21 @@ implsatisfies(Sym *trait, Type *t, Type **targs, usize ntargs)
     }
     return 0;
   }
+  if (t->k == Tyfn && trait == sym_fn) { /* a fn pointer is Fn for its
+                                          * own signature, the compiler's
+                                          * own knowledge, the way Copy's
+                                          * marker is: no impl a file
+                                          * spells, no row the table
+                                          * holds (05-traits.md) */
+    usize j;
+
+    if (ntargs != t->nargs)
+      return 0;
+    for (j = 0; j < ntargs; j++)
+      if (!tysame(targs[j], t->args[j]))
+        return 0;
+    return 1;
+  }
   for (i = 0; i < satn; i++)
     if (satq[i].tr == trait && tysame(satq[i].ty, t))
       return 0; /* asked again under itself: this impl is not the answer */
@@ -1348,18 +1363,31 @@ implsatisfies(Sym *trait, Type *t, Type **targs, usize ntargs)
 /* a bound's question with its own arguments: the trait and the type
  * arguments it spelled, read where the bound was written, the
  * owner's binding landed in them -- a bound may name the parameters
- * around it (04-generics.md). The tail the bound left unspelled is
- * the trait's own defaults, this type the Self they read: T: Add
- * asks Add<T>, the row's own Self (07-operators.md). The arguments
- * the question asked come back through *ta, for the diagnostic that
- * names them; NULL says nobody will. */
+ * around it (04-generics.md). A method's owner is an impl: its own
+ * parameters land first (ig/itys, or ni 0), the member's around
+ * them. The tail the bound left unspelled is the trait's own
+ * defaults, this type the Self they read: T: Add asks Add<T>, the
+ * row's own Self (07-operators.md). The arguments the question
+ * asked come back through *ta, for the diagnostic that names them;
+ * NULL says nobody will. */
 int
-boundsatisfies(Ast *b, Type *t, Ast **gps, Type **tys, usize n, Type ***ta)
+boundsatisfies(Ast *b, Type *t, Ast **gps, Type **tys, usize n, Type ***ta, Ast **ig, Type **itys,
+               usize ni)
 {
   Sym   *tr = b->v.path.sym;
   Type **btys = b->v.path.tys;
   usize  nb = vlen(b->v.path.segs[0]->v.seg.args);
 
+  if (btys && ig) { /* the impl's own words first: a bound a method
+                     * spells may name the parameters above it
+                     * (04-generics.md) */
+    Type **st = tyargs(nb);
+    usize  j;
+
+    for (j = 0; j < nb; j++)
+      st[j] = gsubst(btys[j], ig, itys, ni);
+    btys = st;
+  }
   if (btys && gps) {
     Type **st = tyargs(nb);
     usize  j;

@@ -1,0 +1,49 @@
+/* the family bound the fn's own face takes (05-traits.md): map_err
+ * was a fn pointer's parameter, a literal with nothing to carry the
+ * only other spelling -- now the bound owns the door, and all three
+ * walk through it. A named fn is Fn for its own signature, the
+ * compiler's own knowledge, no impl a file spells; a captureless
+ * literal the pointer it always was; a capturing closure its env,
+ * the impl the literal grew itself -- one capture a field, the
+ * answer F::Output opens on. The capture crosses the fn's own face
+ * and works inside it: k rides the env across, the bridge's own
+ * arithmetic riding it back (std/result.ce). */
+
+enum Own { Stuck(i32) }
+enum Far { Bad(i32) }
+
+fn cross(e: Own) -> Far {
+  match e {
+    Stuck(n) => Far::Bad(n),
+  }
+}
+
+pub fn main() -> i32 {
+  /* one: the named fn, the built-in row */
+  let a: Result<i32, Own> = Err(Own::Stuck(28));
+  let x = match a.map_err(cross) {
+    Ok(_)   => 0,
+    Err(fe) => match fe { Bad(n) => n, },
+  };
+
+  /* two: the captureless literal, the pointer it spells */
+  let b: Result<i32, Own> = Err(Own::Stuck(28));
+  let y = match b.map_err(fn[](e: Own) -> Far {
+    match e { Stuck(n) => Far::Bad(n), }
+  }) {
+    Ok(_)   => 0,
+    Err(fe) => match fe { Bad(n) => n, },
+  };
+
+  /* three: the closure with its captures, the env across the face */
+  let c: Result<i32, Own> = Err(Own::Stuck(28));
+  let k = 10;
+  let z = match c.map_err(fn[k](e: Own) -> Far {
+    match e { Stuck(n) => Far::Bad(n + k), }
+  }) {
+    Ok(_)   => 0,
+    Err(fe) => match fe { Bad(n) => n, },
+  };
+
+  x + y + z - 94 /* 28 + 28 + 38: three crossings whole, the capture's ten riding the third */
+}

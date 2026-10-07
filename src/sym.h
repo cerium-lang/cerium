@@ -301,6 +301,12 @@ extern Ast *sym_selfgp;
  * as their passes arrive. */
 extern Sym *sym_option, *sym_result, *sym_copy, *sym_drop;
 
+/* std::ops' Fn family, the call sugar's own traits (05-traits.md):
+ * a fn pointer is Fn for its own signature, a closure for the least
+ * demanding row its body needs -- both answered where the compiler
+ * asks, not from an impl a file spelled (std/ops/fn.ce) */
+extern Sym *sym_fn, *sym_fnmut, *sym_fnonce;
+
 /* std::meta's TypeInfo, from the sysroot's own source: the type every
  * @typeinfo answers with (prelude.c, 08-reflection.md) -- the Sym
  * itself set by checkproject, once the walks have filled the tree */

@@ -458,20 +458,73 @@ selfsubst(Type *t, Type *self)
  * stays the projection: the instantiation's re-check answers it
  * (04-generics.md). An impl's row may answer in a projection of
  * its own -- a generic row's Output is the Self's -- so the walk
- * loops until a type stands */
+ * loops until a type stands. The depth opens too: a projection
+ * nested in a shape's own arguments -- Result<T, F::Output>, a
+ * tuple's row -- reads the same answers the top one does, the
+ * whole type the instantiation's own words (04-generics.md). */
 Type *
 projopen(Type *t, Ast *at)
 {
+  Type **as;
+  usize  i;
+
   while (t && t->k == Typroj && t->t && t->t->k != Typaram) {
     Sym    *imp;
     Type  **tys;
-    Member *m = implfind(t->sym, t->t, t->name, &imp, &tys);
+    Member *m;
+
+    if (t->t->k == Tyfn && t->sym == sym_fn) { /* a fn pointer's own
+                                                * answer: the signature's
+                                                * return, the same
+                                                * built-in Fn the
+                                                * satisfies walk reads
+                                                * (05-traits.md) */
+      t = t->t->t;
+      continue;
+    }
+    m = implfind(t->sym, t->t, t->name, &imp, &tys);
 
     if (!m || m->kind != Mtype)
       berr(at, "no '%s' for %s", t->sym->name, btys(t->t));
     t = tys ? gsubst(m->val, imp->gparams, tys, imp->ngparams) : m->val;
   }
-  return t;
+  if (!t)
+    return t;
+  switch (t->k) { /* the shape's own arguments, the same depth a
+                   * substitution walks (selfsubst) */
+  case Typtr:
+    return typtr(projopen(t->t, at));
+  case Tyslice:
+    return tyslice(projopen(t->t, at));
+  case Tymut:
+    return tymut(projopen(t->t, at));
+  case Tyarray:
+    return tyarray(t->n, projopen(t->t, at));
+  case Tytuple:
+  case Tyfn:
+  case Tyenum:
+  case Tystruct:
+  case Tyunion:
+  case Tytrait:
+  case Tydyn:
+    if (!t->nargs && t->k != Tyfn)
+      return t;
+    as = t->nargs ? tyargs(t->nargs) : 0;
+    for (i = 0; i < t->nargs; i++)
+      as[i] = projopen(t->args[i], at);
+    switch (t->k) {
+    case Tytuple:
+      return tytuple(as, t->nargs);
+    case Tyfn:
+      return tyfn(as, t->nargs, projopen(t->t, at));
+    case Tydyn:
+      return tydyn(t->sym, as, t->nargs, t->mut);
+    default:
+      return tysym(t->sym, as, t->nargs);
+    }
+  default:
+    return t;
+  }
 }
 
 /* what a declared projection was is the handle's own spelling: the
@@ -710,7 +763,8 @@ argfit(Ast *a, Type *pt, Type *at, Ast **mg, Type **mtys, usize nm, Ast **ig, Ty
  * or a bound they could not answer is a row that did not take the
  * call, the next row's to try, not a report. */
 static int
-memberdone(Ast *e, Ast **mg, Type **mtys, usize nm, const char *who, int soft)
+memberdone(Ast *e, Ast **mg, Type **mtys, usize nm, const char *who, int soft, Ast **ig,
+           Type **itys, usize ni)
 {
   usize g, bi;
 
@@ -727,7 +781,7 @@ memberdone(Ast *e, Ast **mg, Type **mtys, usize nm, const char *who, int soft)
       Sym   *tr = bs[bi]->v.path.sym; /* the bound's own cache (04) */
       Type **ta;
 
-      if (!boundsatisfies(bs[bi], mtys[g], mg, mtys, nm, &ta)) {
+      if (!boundsatisfies(bs[bi], mtys[g], mg, mtys, nm, &ta, ig, itys, ni)) {
         if (soft)
           return 0;
         berr(e, "'%s' does not implement '%s'; '%s' cannot take it", btys(mtys[g]),
@@ -768,7 +822,7 @@ rowbounds(Sym *imp, Type **tys, Ast *at)
       Sym   *tr = bs[bi]->v.path.sym; /* the bound's own cache (04) */
       Type **ta;
 
-      if (!boundsatisfies(bs[bi], tys[g], imp->gparams, tys, imp->ngparams, &ta))
+      if (!boundsatisfies(bs[bi], tys[g], imp->gparams, tys, imp->ngparams, &ta, 0, 0, 0))
         berr(at, "'%s' does not implement '%s'; the row cannot take it", btys(tys[g]),
              btys(tysym(tr, ta, tr->ngparams)));
     }
@@ -1074,12 +1128,13 @@ tryonesig(Sym *s, Ast *a, Ast **args, usize n, usize nfreeze, Fenv *fe, Ast *seg
 
           if (pk) {
             for (ri = 0; ri < rn; ri++)
-              if (!boundsatisfies(bs[bi], tys[gi]->args[ri], s->gparams, tys, s->ngparams, &ta))
+              if (!boundsatisfies(bs[bi], tys[gi]->args[ri], s->gparams, tys, s->ngparams, &ta, 0,
+                                  0, 0))
                 berr(a, "'%s' does not implement '%s'; '%s' cannot take it",
                      btys(tys[gi]->args[ri]), btys(tysym(tr, ta, tr->ngparams)), s->name);
             continue; /* the empty pack: no row, no bound to fail */
           }
-          if (!boundsatisfies(bs[bi], tys[gi], s->gparams, tys, s->ngparams, &ta))
+          if (!boundsatisfies(bs[bi], tys[gi], s->gparams, tys, s->ngparams, &ta, 0, 0, 0))
             berr(a, "'%s' does not implement '%s'; '%s' cannot take it", btys(tys[gi]),
                  btys(tysym(tr, ta, tr->ngparams)), s->name);
         }
@@ -1093,7 +1148,7 @@ tryonesig(Sym *s, Ast *a, Ast **args, usize n, usize nfreeze, Fenv *fe, Ast *seg
     a->v.call.cvals = cvals;
     a->v.call.gcvals = s->ngparams ? gcvals : 0;
     thawargs(svs, nfreeze); /* the call is done; its borrows ended with it */
-    return gsubstv(fnty->t, s->gparams, tys, gcvals, s->ngparams);
+    return projopen(gsubstv(fnty->t, s->gparams, tys, gcvals, s->ngparams), a);
   }
   thawargs(svs, nfreeze); /* this signature did not take: its freezes
                            * unwound, its moves with them */
@@ -1145,7 +1200,7 @@ trysig(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, Va
         a->v.call.cvals = 0;
         a->v.call.gcvals = 0;
         thawargs(svs, n);
-        ret = gsubstv(s->fnty->t, s->gparams, tys, 0, s->ngparams);
+        ret = projopen(gsubstv(s->fnty->t, s->gparams, tys, 0, s->ngparams), a);
         return ret;
       }
     }
@@ -2239,6 +2294,12 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
           Frzsave *svs = n ? arenaalloc(n * sizeof *svs) : 0;
           usize    k;
 
+          if (l->dead) /* the name a call reads is a read like any
+                        * other: a closure spent by its once row, a
+                        * fn pointer moved on -- the call refuses the
+                        * dead name exactly as a plain read does
+                        * (03-move.md) */
+            berr(f, "'%s' has been moved", nm);
           if (t && t->k == Tystruct && t->sym && t->sym->decl &&
               t->sym->decl->k == Nclosure) { /* the closure's own call:
                                               * the env rides first,
@@ -2274,8 +2335,80 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                 }
               }
             }
-            thawargs(svs, n); /* the call is done; its borrows ended with it */
+            thawargs(svs, n);    /* the call is done; its borrows ended with it */
+            if (cl->v.clos.once) /* the family's once row: the call is
+                                  * the move that spends the env, the
+                                  * binding dead after it (03-move.md) */
+              l->dead = 1;
             return sig->t;
+          }
+          if (t && t->k == Typaram) { /* the Fn family a bound spells on
+                                       * the parameter, the call's own
+                                       * sugar (05-traits.md): f(x) is
+                                       * call(f, x) spelled, the family
+                                       * the least demanding bound that
+                                       * answers it -- Fn before FnMut
+                                       * before FnOnce, exactly as the
+                                       * literal's own row is picked
+                                       * (01-types.md). The declaration
+                                       * reads the bound; the
+                                       * instantiation's re-check walks
+                                       * this node with the parameter a
+                                       * type already, the local
+                                       * callee's own two doors above
+                                       * (04-generics.md) */
+            Ast    **bs = t->gp->v.gp.bounds;
+            Ast     *hit = 0;
+            Sym     *fams[3];
+            Frzsave *svs2 = n ? arenaalloc(n * sizeof *svs2) : 0;
+            usize    fi, bi;
+
+            fams[0] = sym_fn;
+            fams[1] = sym_fnmut;
+            fams[2] = sym_fnonce;
+            for (fi = 0; fi < 3 && !hit; fi++)
+              for (bi = 0; bi < vlen(bs); bi++)
+                if (bs[bi]->v.path.sym == fams[fi]) { /* the bound's
+                                                       * own cache
+                                                       * (04) */
+                  hit = bs[bi];
+                  break;
+                }
+            if (!hit)
+              berr(e,
+                   "'%s' is a parameter: a bound of the Fn family is what makes it callable "
+                   "(05-traits.md)",
+                   nm);
+            { /* the bound's own words: the arguments the pack spells,
+               * one a parameter (05-traits.md) */
+              Type **bts = hit->v.path.tys;
+              usize  nb = vlen(hit->v.path.segs[0]->v.seg.args);
+              Sym   *fam = hit->v.path.sym;
+
+              if (svs2) {
+                memset(svs2, 0, n * sizeof *svs2);
+                for (bi = 0; bi < n; bi++)
+                  argborrow(args[bi], fe, &svs2[bi]);
+              }
+              if (n != nb)
+                berr(e, "'%s' takes %lu arguments, %lu given", nm, (unsigned long) nb,
+                     (unsigned long) n);
+              for (bi = 0; bi < n; bi++) {
+                Type *at = rexpr(args[bi], fe, bts ? bts[bi] : 0);
+
+                if (at && bts && bts[bi] && !tysame(at, bts[bi])) {
+                  Type *cc = recoerce(args[bi], bts[bi], fe);
+
+                  if (!cc || !tysame(cc, bts[bi]))
+                    berr(args[bi], "'%s' wants %s here, this is %s", nm, btys(bts[bi]), btys(at));
+                }
+              }
+              thawargs(svs2, n);               /* the call is done; its borrows ended with it */
+              return typroj(fam, t, "Output"); /* the answer the impl
+                                                * decides, opened where
+                                                * the instance lands it
+                                                * (05-traits.md) */
+            }
           }
           if (!t || t->k != Tyfn)
             berr(e, "'%s' is %s, not callable", nm, btys(t));
@@ -2457,8 +2590,8 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                     }
                     thawargs(svs, n); /* the call is done; its borrows ended with it */
                   }
-                  memberdone(e, mg, mtys, nmg, nm1, 0);
-                  return nmg ? gsubst(t->t, mg, mtys, nmg) : t->t;
+                  memberdone(e, mg, mtys, nmg, nm1, 0, 0, 0, 0);
+                  return projopen(nmg ? gsubst(t->t, mg, mtys, nmg) : t->t, e);
                 }
               }
               { /* the rows the receiver alone cannot order: a row's
@@ -2547,7 +2680,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                                 imp->ngparams, fe, nm1, soft);
                   }
                   if (ok)
-                    ok = memberdone(e, mg, mtys, nmg, nm1, soft);
+                    ok = memberdone(e, mg, mtys, nmg, nm1, soft, imp->gparams, rtys, imp->ngparams);
                   if (ok && rtys) { /* the row's own slots: the
                                      * receiver's landing and the
                                      * arguments' together, the bounds
@@ -2666,9 +2799,9 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
               }
               thawargs(svs, n); /* the call is done; its borrows ended with it */
             }
-            memberdone(e, mg, mtys, nmg, nm1, 0);
+            memberdone(e, mg, mtys, nmg, nm1, 0, 0, 0, 0);
             e->v.call.tys = insttys(0, 0, mg, mtys, nmg);
-            return nmg ? gsubst(t->t, mg, mtys, nmg) : t->t;
+            return projopen(nmg ? gsubst(t->t, mg, mtys, nmg) : t->t, e);
           }
         }
       }
@@ -2865,7 +2998,8 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                             imp->ngparams, fe, f->v.fld.name, soft);
               }
               if (ok)
-                ok = memberdone(f, mg, mtys, nmg, f->v.fld.name, soft);
+                ok = memberdone(f, mg, mtys, nmg, f->v.fld.name, soft, imp->gparams, rtys,
+                                imp->ngparams);
               if (ok && rtys) { /* the row's own slots and their
                                  * bounds, the arguments' landing with
                                  * the receiver's (07-operators.md) */
@@ -2913,7 +3047,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
               {
                 Type *rt = gsubst(t->t, imp->gparams, rtys, imp->ngparams);
 
-                return nmg ? gsubst(rt, mg, mtys, nmg) : rt;
+                return projopen(nmg ? gsubst(rt, mg, mtys, nmg) : rt, e);
               }
             }
           }
@@ -2999,10 +3133,11 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
             thawargs(svs, n); /* the explicit arguments' borrows, LIFO */
             frzrestore(&sv);  /* the receiver's borrow ends with the call */
           }
-          memberdone(f, mg, mtys, nmg, f->v.fld.name, 0);
+          memberdone(f, mg, mtys, nmg, f->v.fld.name, 0, imp ? imp->gparams : 0, imp ? tys : 0,
+                     imp ? imp->ngparams : 0);
           if (!declared)
             e->v.call.tys = insttys(imp, tys, mg, mtys, nmg);
-          return nmg ? gsubst(t->t, mg, mtys, nmg) : t->t;
+          return projopen(nmg ? gsubst(t->t, mg, mtys, nmg) : t->t, e);
         }
       }
     }
@@ -4159,6 +4294,8 @@ rclosure(Ast *c, Fenv *fe)
                            * fields die where the closure does (03-move.md) */
     static usize nenv;
     Sym         *env = arenaalloc(sizeof *env);
+    int          once = 0, mutslot = 0;
+    Sym         *fam;
 
     memset(env, 0, sizeof *env);
     env->name = arenaalloc(16);
@@ -4170,6 +4307,58 @@ rclosure(Ast *c, Fenv *fe)
     env->decl = c; /* the literal the env belongs to: the call sugar
                     * reaches the fn it names through here
                     * (05-traits.md) */
+    {              /* the family the body needs, the least demanding row that
+                    * works (01-types.md): a capture the body moved out of the
+                    * env spells FnOnce, the binding that holds the closure
+                    * dying with the call that spent it; a mut by-value
+                    * capture is the one write through self there is, FnMut;
+                    * everything else -- reads, and writes a captured
+                    * pointer's own *mut carries -- an Fn (01-types.md) */
+      usize ci;
+
+      for (ci = 0; ci < nc; ci++)
+        if (fb.ls[ci].dead)
+          once = 1;
+        else if (!cs[ci]->v.cap.byref && cs[ci]->v.cap.mut)
+          mutslot = 1;
+      c->v.clos.once = once;
+    }
+    fam = once ? sym_fnonce : mutslot ? sym_fnmut : sym_fn;
+    { /* the env's own impl of the family, a row the table holds: the
+       * bound a fn spells over the closure reads it, the projection
+       * F::Output opens on it. No file spelled it -- the literal did,
+       * here, its own words the only ones an env this private can
+       * hear (05-traits.md) */
+      Sym    *im = arenaalloc(sizeof *im);
+      Type  **ta = np ? tyargs(np) : 0;
+      Member *ms = arenaalloc(sizeof *ms);
+      usize   ai;
+
+      memset(im, 0, sizeof *im);
+      im->kind = Simpl;
+      im->ownns = nscuring(); /* the file the literal stands in: a
+                               * method's mangle carries it (11) */
+      im->decl = c;
+      im->ifort = tysym(env, 0, 0); /* the for-type: the env itself */
+      for (ai = 0; ai < np; ai++)   /* the trait's own words: the
+                                     * arguments the pack spells, one a
+                                     * parameter (05-traits.md) */
+        ta[ai] = ts[ai];
+      im->ipath = tysym(fam, ta, np);
+      memset(ms, 0, sizeof *ms);
+      ms->kind = Mtype; /* Output: the answer the body returns, the
+                         * projection's own supply (05-traits.md) */
+      ms->name = "Output";
+      ms->val = ret;
+      im->nmembers = 1;
+      im->members = ms;
+      if (!chk_impls)
+        chk_impls = vnew(Sym *, 16);
+      vappend(&chk_impls, &im); /* the table the bounds walk reads:
+                                 * a literal met this late answers
+                                 * the asks that follow it (04) */
+      chk_nimpls = vlen(chk_impls);
+    }
     return tysym(env, 0, 0);
   }
 }

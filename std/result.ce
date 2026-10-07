@@ -7,10 +7,14 @@
  * map_err is the bridge ?: the propagation hands the same E back,
  * so two errors meeting in one fn -- a door's and the print's,
  * say -- need the one hand that knows both, and this is it: the
- * Err half through the fn, the Ok half untouched. The fn is a
- * pointer's parameter: a named one, or a literal with nothing to
- * carry -- either spelling, the pointer the same
- * (01-types.md). */
+ * Err half through the fn, the Ok half untouched. The fn is the
+ * family bound's own parameter now (05-traits.md): a named one, a
+ * literal, a closure with its captures -- whichever answers Fn<E>,
+ * the answer F::Output decides, opened where the instance lands
+ * it. */
+
+use std::ops::Fn; /* the family name the bound spells, the file's own
+                   * word that it uses it (05-traits.md) */
 
 pub enum Result<T, E> {
   Ok(T),
@@ -18,7 +22,7 @@ pub enum Result<T, E> {
 }
 
 impl<T, E> Result<T, E> {
-  fn map_err<F>(self: Self, f: fn(E) -> F) -> Result<T, F> {
+  fn map_err<F: Fn<E>>(self: Self, f: F) -> Result<T, F::Output> {
     match self {
       Ok(v) => Ok(v),
       Err(e) => Err(f(e)),

@@ -1,0 +1,24 @@
+/* the once row's own bargain (01-types.md, 03-move.md): a closure
+ * whose body moves a capture out of the env is spent by the call
+ * that reads it -- the binding dead after, exactly as a move's own
+ * reading leaves it. The declaration cannot know: f is a parameter
+ * there, the family a bound names; the instance's re-check walks
+ * the second call with the parameter a type already, and the dead
+ * name refuses it. The refusal is the instance's own (04) -- the
+ * program never runs. */
+
+use std::ops::FnOnce;
+
+struct P { n: i32 }
+
+fn spend<F: FnOnce<P>>(f: F) -> (F::Output, F::Output) {
+  (f(P { n: 21 }), f(P { n: 21 }))
+}
+
+fn take(p: P) -> i32 { p.n }
+
+pub fn main() -> i32 {
+  let q = P { n: 21 };
+  let r = spend(fn[q](v: P) -> i32 { v.n + take(q) });
+  r.0 + r.1
+}

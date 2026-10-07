@@ -139,7 +139,8 @@ usize   implcands(Sym *trait, Type *t, const char *name, Implcand *cs, usize cap
 usize   traitcands(Type *t, const char *name, Implcand *cs, usize cap);
 Sym    *implfor(Sym *trait, Type *t, Type ***tysp);
 int     implsatisfies(Sym *trait, Type *t, Type **targs, usize ntargs);
-int     boundsatisfies(Ast *b, Type *t, Ast **gps, Type **tys, usize n, Type ***ta);
+int     boundsatisfies(Ast *b, Type *t, Ast **gps, Type **tys, usize n, Type ***ta, Ast **ig,
+                       Type **itys, usize ni);
 int     boundsok(Sym *im, Type **tys); /* the impl's own bounds, every
                                         * slot landed: the trial's ask
                                         * once the arguments bound the
