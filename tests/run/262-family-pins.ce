@@ -1,0 +1,45 @@
+/* the associated constraint, the pin standing behind the arguments
+ * (04-generics.md): `Output = u32` answers at the declaration what
+ * the projection could only carry -- the body's f(x) the pinned
+ * type itself, F::Output in a signature the pin the same way, no
+ * projection left for the instance to open. The asks keep their
+ * word: a named fn by its signature's own return, a closure by the
+ * Output member its row grew, a parameter by the pin its own bound
+ * spelled -- the promise handed on whole, pipe's G crossing snap's
+ * F without a projection between them (05-traits.md). */
+
+use std::ops::Fn;
+use std::ops::FnMut;
+
+fn double(n: i32) -> i32 { n * 2 }
+
+fn each<F: Fn<i32, Output = i32>>(f: F) -> i32 {
+  f(1)
+}
+
+fn run2<F: FnMut<i32, Output = i32>>(f: F) -> (i32, i32) {
+  (f(1), f(2))
+}
+
+fn wide(n: i32) -> u32 { @cast<u32>(n) + 1 }
+
+fn snap<F: Fn<i32, Output = u32>>(f: F) -> F::Output {
+  f(3)
+}
+
+fn pipe<G: Fn<i32, Output = u32>>(g: G) -> u32 {
+  snap(g)
+}
+
+pub fn main() -> i32 {
+  let a = each(double); /* the named fn, its own return the pin */
+  let k = 10;
+  let b = each(fn[k](x: i32) -> i32 { x + k }); /* the env's row, Output what it grew */
+  let c = each(fn[](x: i32) -> i32 { x + 5 });  /* the literal, the pointer it spells */
+  let m = 0;
+  let pair = run2(fn[mut m](x: i32) -> i32 { m = m + x; m }); /* FnMut, the pin the same */
+  let d = @cast<i32>(snap(wide)); /* F::Output: the pin the signature read */
+  let e = @cast<i32>(pipe(wide)); /* the parameter's own pin, handed on */
+
+  a + b + c + pair.0 + pair.1 + d + e - 31 /* 2 + 11 + 6 + 1 + 3 + 4 + 4 */
+}

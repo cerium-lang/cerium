@@ -1260,7 +1260,7 @@ static struct
 static usize satn;
 
 int
-implsatisfies(Sym *trait, Type *t, Type **targs, usize ntargs)
+implsatisfies(Sym *trait, Type *t, Type **targs, usize ntargs, Ast **pins, Type **ptys, usize npins)
 {
   usize i;
   int   r;
@@ -1283,16 +1283,24 @@ implsatisfies(Sym *trait, Type *t, Type **targs, usize ntargs)
                           * the trait's arguments answers only the ask
                           * that spells the same ones, the tail
                           * falling to the defaults the way any ask's
-                          * does, Self the parameter under the bound */
+                          * does, Self the parameter under the bound.
+                          * The pins the ask demands it must spell
+                          * too, the same words: a promise it did not
+                          * make is not kept */
     Ast **bs = t->gp->v.gp.bounds;
     usize bi, nb = vlen(bs);
 
     for (bi = 0; bi < nb; bi++) {
       Ast   *bnd = bs[bi];
       Type **btys = bnd->v.path.tys;
-      usize  nn = vlen(bnd->v.path.segs[0]->v.seg.args);
-      usize  j;
+      Ast  **pas = bnd->v.path.segs[0]->v.seg.args;
+      usize  pna = vlen(pas);
+      usize  nn = 0, j, pa, pi;
 
+      for (pa = 0; pa < pna; pa++) /* the pins stand behind the
+                                    * arguments again (04) */
+        if (pas[pa]->k != Nassoc)
+          nn++;
       if (bnd->v.path.sym != trait)
         continue;
       if (nn < trait->ngparams) {
@@ -1302,8 +1310,22 @@ implsatisfies(Sym *trait, Type *t, Type **targs, usize ntargs)
       for (j = 0; j < nn && j < ntargs; j++)
         if (!tysame(btys[j], targs[j]))
           break;
-      if (j == nn && j == ntargs)
-        return 1;
+      if (j == nn && j == ntargs) {
+        for (pi = 0; pi < npins; pi++) {
+          Ast *own = 0;
+
+          for (pa = 0; pa < pna; pa++)
+            if (pas[pa]->k == Nassoc &&
+                strcmp(pas[pa]->v.assoc.name, pins[pi]->v.assoc.name) == 0) {
+              own = pas[pa];
+              break;
+            }
+          if (!own || !own->v.assoc.rt || !tysame(own->v.assoc.rt, ptys[pi]))
+            break;
+        }
+        if (pi == npins)
+          return 1;
+      }
     }
     return 0;
   }
@@ -1312,13 +1334,19 @@ implsatisfies(Sym *trait, Type *t, Type **targs, usize ntargs)
                                           * own knowledge, the way Copy's
                                           * marker is: no impl a file
                                           * spells, no row the table
-                                          * holds (05-traits.md) */
-    usize j;
+                                          * holds (05-traits.md). The
+                                          * pins it answers by the same
+                                          * knowledge -- the return is
+                                          * the family's Output */
+    usize j, pi;
 
     if (ntargs != t->nargs)
       return 0;
     for (j = 0; j < ntargs; j++)
       if (!tysame(targs[j], t->args[j]))
+        return 0;
+    for (pi = 0; pi < npins; pi++)
+      if (!tysame(ptys[pi], t->t))
         return 0;
     return 1;
   }
@@ -1351,9 +1379,37 @@ implsatisfies(Sym *trait, Type *t, Type **targs, usize ntargs)
       if (j < ntargs)
         continue; /* this row's arguments are other ones */
     }
-    if (implfit(im, t, 0)) {
-      r = 1;
-      break;
+    {
+      Type **fit = 0;
+
+      if (implfit(im, t, &fit)) { /* the receiver's own match, its
+                                   * variables landed -- the binding
+                                   * the pins read */
+        usize pk;                 /* the row's own members answer the pins, each the
+                                   * same type the ask pinned (04-generics.md) */
+
+        for (pk = 0; pk < npins; pk++) {
+          Member *m = 0;
+          Type   *val;
+          usize   mj;
+
+          for (mj = 0; mj < im->nmembers; mj++)
+            if (im->members[mj].kind == Mtype &&
+                strcmp(im->members[mj].name, pins[pk]->v.assoc.name) == 0) {
+              m = &im->members[mj];
+              break;
+            }
+          if (!m)
+            break;
+          val = fit ? gsubst(m->val, im->gparams, fit, im->ngparams) : m->val;
+          if (!tysame(val, ptys[pk]))
+            break;
+        }
+        if (pk == npins) {
+          r = 1;
+          break;
+        }
+      }
     }
   }
   satn--;
@@ -1365,35 +1421,66 @@ implsatisfies(Sym *trait, Type *t, Type **targs, usize ntargs)
  * owner's binding landed in them -- a bound may name the parameters
  * around it (04-generics.md). A method's owner is an impl: its own
  * parameters land first (ig/itys, or ni 0), the member's around
- * them. The tail the bound left unspelled is the trait's own
- * defaults, this type the Self they read: T: Add asks Add<T>, the
- * row's own Self (07-operators.md). The arguments the question
- * asked come back through *ta, for the diagnostic that names them;
- * NULL says nobody will. */
+ * them. The pins the bound spells take the same two rounds, the
+ * ask's own substitutions landing in them before they are asked.
+ * The tail the bound left unspelled is the trait's own defaults,
+ * this type the Self they read: T: Add asks Add<T>, the row's own
+ * Self (07-operators.md). The arguments the question asked come
+ * back through *ta, for the diagnostic that names them; NULL says
+ * nobody will. */
 int
 boundsatisfies(Ast *b, Type *t, Ast **gps, Type **tys, usize n, Type ***ta, Ast **ig, Type **itys,
                usize ni)
 {
   Sym   *tr = b->v.path.sym;
   Type **btys = b->v.path.tys;
-  usize  nb = vlen(b->v.path.segs[0]->v.seg.args);
+  Ast  **pas = b->v.path.segs[0]->v.seg.args;
+  usize  na = vlen(pas);
+  usize  nb = 0; /* the positional alone: the pins stand behind
+                  * every argument (04-generics.md) */
+  Ast  **pins = 0;
+  Type **ptys = 0;
+  usize  np = 0;
+  usize  k, j;
 
+  for (k = 0; k < na; k++)
+    if (pas[k]->k == Nassoc)
+      np++;
+    else
+      nb++;
+  if (np) { /* the bound's own pins, resolved where it was written
+             * and cached on their nodes (04) */
+    pins = arenaalloc(np * sizeof *pins);
+    ptys = tyargs(np);
+    for (k = 0, j = 0; k < na; k++)
+      if (pas[k]->k == Nassoc) {
+        pins[j] = pas[k];
+        ptys[j] = pas[k]->v.assoc.rt;
+        j++;
+      }
+    if (ig)
+      for (j = 0; j < np; j++)
+        ptys[j] = gsubst(ptys[j], ig, itys, ni);
+    if (gps)
+      for (j = 0; j < np; j++)
+        ptys[j] = gsubst(ptys[j], gps, tys, n);
+  }
   if (btys && ig) { /* the impl's own words first: a bound a method
                      * spells may name the parameters above it
                      * (04-generics.md) */
     Type **st = tyargs(nb);
-    usize  j;
+    usize  j2;
 
-    for (j = 0; j < nb; j++)
-      st[j] = gsubst(btys[j], ig, itys, ni);
+    for (j2 = 0; j2 < nb; j2++)
+      st[j2] = gsubst(btys[j2], ig, itys, ni);
     btys = st;
   }
   if (btys && gps) {
     Type **st = tyargs(nb);
-    usize  j;
+    usize  j2;
 
-    for (j = 0; j < nb; j++)
-      st[j] = gsubst(btys[j], gps, tys, n);
+    for (j2 = 0; j2 < nb; j2++)
+      st[j2] = gsubst(btys[j2], gps, tys, n);
     btys = st;
   }
   if (nb < tr->ngparams) {
@@ -1402,5 +1489,5 @@ boundsatisfies(Ast *b, Type *t, Ast **gps, Type **tys, usize n, Type ***ta, Ast 
   }
   if (ta)
     *ta = btys;
-  return implsatisfies(tr, t, btys, nb);
+  return implsatisfies(tr, t, btys, nb, pins, ptys, np);
 }

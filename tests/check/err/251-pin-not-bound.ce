@@ -1,0 +1,11 @@
+/* the pins stand behind a bound's arguments and nowhere else
+ * (04-generics.md): a type's arguments are its own parameters, and
+ * an associated type is a member's answer, not an argument's -- a
+ * pin in a type's own list refuses the spelling. */
+
+struct Box<T> { v: T }
+
+pub fn main() -> i32 {
+  let b: Box<i32, Output = i32> = Box { v: 1 };
+  b.v
+}

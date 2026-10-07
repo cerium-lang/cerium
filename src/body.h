@@ -138,7 +138,8 @@ Member *implfind(Sym *trait, Type *t, const char *name, Sym **imp, Type ***tysp)
 usize   implcands(Sym *trait, Type *t, const char *name, Implcand *cs, usize cap);
 usize   traitcands(Type *t, const char *name, Implcand *cs, usize cap);
 Sym    *implfor(Sym *trait, Type *t, Type ***tysp);
-int     implsatisfies(Sym *trait, Type *t, Type **targs, usize ntargs);
+int     implsatisfies(Sym *trait, Type *t, Type **targs, usize ntargs, Ast **pins, Type **ptys,
+                      usize npins);
 int     boundsatisfies(Ast *b, Type *t, Ast **gps, Type **tys, usize n, Type ***ta, Ast **ig,
                        Type **itys, usize ni);
 int     boundsok(Sym *im, Type **tys); /* the impl's own bounds, every
