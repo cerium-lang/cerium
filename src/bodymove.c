@@ -462,9 +462,8 @@ rclosure(Ast *c, Fenv *fe)
        * here, its own words the only ones an env this private can
        * hear (05-traits.md) */
       Sym    *im = arenaalloc(sizeof *im);
-      Type  **ta = np ? tyargs(np) : 0;
+      Type  **ta = tyargs(fam->ngparams);
       Member *ms = arenaalloc(sizeof *ms);
-      usize   ai;
 
       memset(im, 0, sizeof *im);
       im->kind = Simpl;
@@ -472,11 +471,12 @@ rclosure(Ast *c, Fenv *fe)
                                * method's mangle carries it (11) */
       im->decl = c;
       im->ifort = tysym(env, 0, 0); /* the for-type: the env itself */
-      for (ai = 0; ai < np; ai++)   /* the trait's own words: the
-                                     * arguments the pack spells, one a
-                                     * parameter (05-traits.md) */
-        ta[ai] = ts[ai];
-      im->ipath = tysym(fam, ta, np);
+      {                             /* the trait's own words: the arguments the pack spells, one
+                                     * a parameter, gathered whole into the pack's own slot
+                                     * (04-generics.md) -- a bound's spelling lands the same */
+        ta[fam->ngparams - 1] = tytuple(ts, np);
+      }
+      im->ipath = tysym(fam, ta, fam->ngparams);
       memset(ms, 0, sizeof *ms);
       ms->kind = Mtype; /* Output: the answer the body returns, the
                          * projection's own supply (05-traits.md) */

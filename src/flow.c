@@ -1303,10 +1303,14 @@ implsatisfies(Sym *trait, Type *t, Type **targs, usize ntargs, Ast **pins, Type 
           nn++;
       if (bnd->v.path.sym != trait)
         continue;
-      if (nn < trait->ngparams) {
+      if (nn < trait->ngparams &&
+          !(trait->ngparams && trait->gparams[trait->ngparams - 1]->v.gp.pack &&
+            nn >= trait->ngparams - 1))
+        /* the pack needs no tail: its slot is the whole tuple, the
+         * empty one included (04-generics.md) -- only a prefix left
+         * unspelled asks the defaults */
         btys = dflttail(trait, btys, nn, 0, t, bnd);
-        nn = trait->ngparams;
-      }
+      nn = trait->ngparams; /* the cache's own count: the pack's slot one */
       for (j = 0; j < nn && j < ntargs; j++)
         if (!tysame(btys[j], targs[j]))
           break;
@@ -1340,11 +1344,25 @@ implsatisfies(Sym *trait, Type *t, Type **targs, usize ntargs, Ast **pins, Type 
                                           * the family's Output */
     usize j, pi;
 
-    if (ntargs != t->nargs)
-      return 0;
-    for (j = 0; j < ntargs; j++)
-      if (!tysame(targs[j], t->args[j]))
+    if (trait->ngparams && trait->gparams[trait->ngparams - 1]->v.gp.pack) {
+      /* the pack's slot, the whole tuple: the signature's own rows
+       * the same spelling the bound fed it, one for one
+       * (04-generics.md) */
+      Type *pk = ntargs == trait->ngparams ? targs[trait->ngparams - 1] : 0;
+      usize rows = pk && pk->k == Tytuple ? pk->nargs : 0;
+
+      if (!pk || rows != t->nargs)
         return 0;
+      for (j = 0; j < rows; j++)
+        if (!tysame(pk->args[j], t->args[j]))
+          return 0;
+    } else {
+      if (ntargs != t->nargs)
+        return 0;
+      for (j = 0; j < ntargs; j++)
+        if (!tysame(targs[j], t->args[j]))
+          return 0;
+    }
     for (pi = 0; pi < npins; pi++)
       if (!tysame(ptys[pi], t->t))
         return 0;
@@ -1448,8 +1466,12 @@ boundsatisfies(Ast *b, Type *t, Ast **gps, Type **tys, usize n, Type ***ta, Ast 
       np++;
     else
       nb++;
-  if (np) { /* the bound's own pins, resolved where it was written
-             * and cached on their nodes (04) */
+  if (tr->ngparams && tr->gparams[tr->ngparams - 1]->v.gp.pack && nb >= tr->ngparams - 1)
+    nb = tr->ngparams; /* the pack's slot: the whole tuple, one slot
+                        * whatever the spelling spelled -- the count
+                        * the cache holds, not the words (04-generics.md) */
+  if (np) {            /* the bound's own pins, resolved where it was written
+                        * and cached on their nodes (04) */
     pins = arenaalloc(np * sizeof *pins);
     ptys = tyargs(np);
     for (k = 0, j = 0; k < na; k++)

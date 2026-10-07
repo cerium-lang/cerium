@@ -2423,3 +2423,29 @@ pin an answer offered, not a requirement. 249 the pin nobody kept,
 262 the pin at work through the family's doors -- the named fn, the
 literal, the env's row, FnMut's slot, the handoff whole. Five
 hundred seventy-six green.
+
+The pack feeds the family now, any number of its own. The spec
+said it all along -- `Fn<E>` and `Fn<A, B>` both binding Args whole
+-- but the counters read the count alone, and a second element was
+a fourth word to them: takes 1, not 2. The count takes the prefix
+alone now, the pack itself any number, zero included, spelled <>
+or the pin alone; the missing prefix the same word as anywhere.
+
+What gathers is the whole tuple, one slot. The elements spelled one
+for one at the bound and the impl head gather into the pack's own
+place -- the shape the unification always fed a handed-over tuple,
+the one `...Args` reads back -- and every mouth that reads the
+trait's words speaks it: the bound's own cache, the impl head's
+instance, the closure's env row grown beside its literal. The
+signature the row must answer opens the pack out again: a declared
+parameter that is the pack itself, bound whole, becomes the
+elements one for one, the impl's own spelling of the same fn -- the
+one place the opening belongs, tsubst alone walking it.
+
+The asks read the same shape. A fn pointer answers the family by
+its signature's own rows against the pack's, one for one; the call
+sugar spells the bound's words out the same way, a parameter a row.
+252 the one-row fn the two-row bound refused; 263 the count through
+the family's doors -- the hand row, the literal, the named fn,
+three rows, FnMut accumulating, the empty pack the pin alone. Five
+hundred seventy-eight green.

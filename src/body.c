@@ -2375,7 +2375,9 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                    "(05-traits.md)",
                    nm);
             { /* the bound's own words: the arguments the pack spells,
-               * one a parameter (05-traits.md) */
+               * one a parameter (05-traits.md) -- the pack's slot the
+               * whole tuple, its rows spelled out here, one for one
+               * (04-generics.md) */
               Type **bts = hit->v.path.tys;
               Ast  **pas = hit->v.path.segs[0]->v.seg.args;
               usize  pna = vlen(pas);
@@ -2396,6 +2398,19 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                     pin = pas[pa];
                 } else
                   nb++;
+              }
+              if (bts && fam->ngparams && fam->gparams[fam->ngparams - 1]->v.gp.pack) {
+                Type  *pk = bts[fam->ngparams - 1];
+                usize  rows = pk->k == Tytuple ? pk->nargs : 0;
+                usize  pre = fam->ngparams - 1, r, w = 0;
+                Type **flat = tyargs(pre + rows);
+
+                for (r = 0; r < pre; r++)
+                  flat[w++] = bts[r];
+                for (r = 0; r < rows; r++)
+                  flat[w++] = pk->args[r];
+                bts = flat;
+                nb = w;
               }
 
               if (svs2) {
