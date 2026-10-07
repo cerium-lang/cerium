@@ -2569,3 +2569,10 @@ whole half gone with the fn that read it; 270 a mode word beside a
 platform word, and-ed; 255 the fn that carried two mode #[cfg]s;
 262 the value use the debug build refuses; 263 the type the cull
 holds away. Six hundred minus four green.
+
+One guard the review's own walk asked for: the clash check had read
+one pair of parentheses alone, and the same dimension across several
+#[cfg]s -- #[cfg(linux)] #[cfg(darwin)], and-meet to a quiet false --
+culled without a word. The words of one dimension never hold
+together, within one pair of parentheses or across attributes: the
+same error now, the same hand stopped, 264 the guard's own test.

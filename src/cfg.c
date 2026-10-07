@@ -178,6 +178,52 @@ cfgattr(Ast *at, int isfn)
   return keep;
 }
 
+/* the words of one dimension never hold together, and several
+ * #[cfg]s meet with and: the same dimension across attributes is as
+ * false as within one pair of parentheses -- the same hand, the same
+ * guard, stopped the same way (12-projects.md). The shape's own
+ * errors and the unknown names are cfgattr's to say; this walk only
+ * carries each attribute's words to the next one's */
+static void
+cfgcrossdim(Ast *at, const char **sys, const char **mac, const char **mod)
+{
+  usize i;
+
+  for (i = 0; i < vlen(at->v.seg.args); i++) {
+    Ast        *a = at->v.seg.args[i];
+    const char *nm;
+
+    if (a->k != Npath || a->v.path.root || vlen(a->v.path.segs) != 1)
+      return;
+    nm = a->v.path.segs[0]->v.seg.name;
+    if (cfgdim(nm) == 1) {
+      if (*sys && strcmp(*sys, nm) != 0)
+        cerrat(a,
+               "'%s' and '%s' are both systems -- several #[cfg]s meet with and,"
+               " and the words of one dimension never hold together"
+               " (12-projects.md)",
+               *sys, nm);
+      *sys = nm;
+    } else if (cfgdim(nm) == 2) {
+      if (*mac && strcmp(*mac, nm) != 0)
+        cerrat(a,
+               "'%s' and '%s' are both machines -- several #[cfg]s meet with"
+               " and, and the words of one dimension never hold together"
+               " (12-projects.md)",
+               *mac, nm);
+      *mac = nm;
+    } else if (cfgdim(nm) == 3) {
+      if (*mod && strcmp(*mod, nm) != 0)
+        cerrat(a,
+               "'%s' and '%s' are both modes -- several #[cfg]s meet with and,"
+               " and the words of one dimension never hold together"
+               " (12-projects.md)",
+               *mod, nm);
+      *mod = nm;
+    }
+  }
+}
+
 /* does an item live here? Every #[cfg] it carries and-ed, and no
  * negation: a library lists the platforms it supports rather than the
  * ones it does not -- "not on this one" is every other platform
@@ -194,10 +240,11 @@ cfgattr(Ast *at, int isfn)
 static int
 itemcfg(Ast *it)
 {
-  usize i;
-  int   keep = 1;
-  int   isfn = it->k == Nfn;
-  int   modes = 0;
+  usize       i;
+  int         keep = 1;
+  int         isfn = it->k == Nfn;
+  int         modes = 0;
+  const char *sys = 0, *mac = 0, *mod = 0;
 
   if (!it->attrs)
     return 1;
@@ -208,6 +255,7 @@ itemcfg(Ast *it)
                              " never two (12-projects.md)");
       if (!cfgattr(it->attrs[i], isfn))
         keep = 0;
+      cfgcrossdim(it->attrs[i], &sys, &mac, &mod);
     }
   return keep;
 }

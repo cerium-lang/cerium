@@ -134,7 +134,9 @@ the platforms it supports, not the ones it does not — "not this one"
 is every other platform written out — and two words from one dimension
 in one pair of parentheses is an error, the hand that meant
 `#[cfg(linux, amd64)]` worth stopping rather than meeting to a quiet
-false. A word the dimensions do not know is an error too, the same
+false. The same dimension across several `#[cfg]`s is the same
+error, and for the same hand: the attributes meet with `and` too,
+and the words of one dimension never hold together. A word the dimensions do not know is an error too, the same
 guard a typo wants; an uname the tables cannot name at all keeps every
 word false — the honest answer for a platform the compiler was never
 told about.
