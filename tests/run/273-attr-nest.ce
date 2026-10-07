@@ -1,0 +1,52 @@
+/* the reflection of a predicate's own words (08-reflection.md,
+ * 12-projects.md): the model's Nest rows, a user attribute reading
+ * the same shape #[cfg] does -- the predicate's name the first
+ * field, the words the second: two levels, any and all, the idents
+ * and the integer between them */
+
+use std::meta::{TypeInfo, Attr, AttrArg};
+
+#[stage(any(alpha, all(beta, 7)))]
+struct S { a: u32 }
+
+const NS: []Attr = match @typeinfo<S>() {
+  TypeInfo::Struct { attrs, .. } => attrs,
+  _ => @compileError("S is a struct"),
+};
+
+fn nestwalk() -> u32 { /* the names say themselves, any 3 and all 3,
+                        * and the words follow: alpha and beta the
+                        * Ident rows, one each; the 7 the Int one:
+                        * 3+3+1+1+7 */
+  let mut r: u32 = 0;
+
+  for at in NS {
+    for g in at.args {
+      match *g {
+        AttrArg::Nest { name, args } => {
+          r += @cast<u32>(name.len);
+          for w in args {
+            match *w {
+              AttrArg::Ident(s) => { r += 1; },
+              AttrArg::Nest { name: nm, args: deeper } => {
+                r += @cast<u32>(nm.len);
+                for d in deeper {
+                  match *d {
+                    AttrArg::Int(n) => { r += @cast<u32>(n); },
+                    AttrArg::Ident(s) => { r += 1; },
+                    _ => {},
+                  }
+                }
+              },
+              _ => {},
+            }
+          }
+        },
+        _ => {},
+      }
+    }
+  }
+  r
+}
+
+fn main() -> i32 { @cast<i32>(nestwalk() - 15) }

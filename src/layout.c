@@ -5,6 +5,7 @@
  * writes every type back into the tree (README); these tables
  * answer for a type: its size, its alignment, its niche shape. */
 
+#include <stdio.h>
 #include <string.h>
 
 #include "ast.h"
@@ -55,6 +56,100 @@ attrfind(Ast **attrs, const char *name)
     if (strcmp(attrs[i]->v.seg.name, name) == 0)
       return attrs[i];
   return 0;
+}
+
+/* the mode words a #[cfg] holds, its all-chains walked: a mode word
+ * rides an and chain only -- the top level's commas or an all(...)
+ * nested in one -- never inside any or not, whose words the cull's
+ * own walk refuses (12-projects.md). The words collect into w, the
+ * count back, an overflow quietly cut: the shapes the checks admit
+ * hold one */
+static usize
+modescan(Ast *at, const char **w, usize max)
+{
+  usize i, n = 0;
+
+  for (i = 0; i < vlen(at->v.seg.args); i++) {
+    Ast *a = at->v.seg.args[i];
+
+    if (a->k == Nattr) {
+      if (strcmp(a->v.seg.name, "all") == 0 && n < max)
+        n += modescan(a, w + n, max - n);
+      continue;
+    }
+    if (a->k == Npath && !a->v.path.root && vlen(a->v.path.segs) == 1 && n < max) {
+      const char *nm = a->v.path.segs[0]->v.seg.name;
+
+      if (strcmp(nm, "debug") == 0 || strcmp(nm, "release") == 0)
+        w[n++] = nm;
+    }
+  }
+  return n;
+}
+
+/* a declaration's mode words, every #[cfg] its all-chains hold */
+static usize
+modewalk(Ast *decl, const char **w, usize max)
+{
+  usize i, n = 0;
+
+  if (!decl || !decl->attrs)
+    return 0;
+  for (i = 0; i < vlen(decl->attrs); i++)
+    if (strcmp(decl->attrs[i]->v.seg.name, "cfg") == 0 && n < max)
+      n += modescan(decl->attrs[i], w + n, max - n);
+  return n;
+}
+
+/* does a declaration's #[cfg] name a mode? -- the fn's own door, a
+ * type's or an impl's own cull, never a method's (12-projects.md).
+ * The words are the cull's own checked ones by the time any pass
+ * reads them, so the spelling here rides the pattern alone */
+int
+declmodes(Ast *decl)
+{
+  const char *w[8];
+
+  return modewalk(decl, w, 8) > 0;
+}
+
+/* is the fn gated out of this mode? A #[cfg] naming a mode holds a fn
+ * to it (12-projects.md; 01-types.md, Mode-gated functions); every
+ * other mode removes its calls' statements, refuses its value, skips
+ * its body whole. A word that names this mode keeps it; none does
+ * and the fn is held away. A #[cfg] may carry platform words beside
+ * the mode ones -- only the mode words answer here, the platform's
+ * own cull read its own before this pass ever walked */
+int
+modegated(Sym *s, int rel)
+{
+  const char *w[8];
+  usize       i, n;
+
+  if (!s || s->kind != Sfn)
+    return 0;
+  n = modewalk(s->decl, w, 8);
+  if (!n)
+    return 0;
+  for (i = 0; i < n; i++)
+    if (strcmp(w[i], rel ? "release" : "debug") == 0)
+      return 0; /* this mode is among the words: the fn is here */
+  return 1;
+}
+
+/* the modes a fn's #[cfg] names, as words for a diagnostic */
+void
+modewords(Sym *s, char *buf, usize sz)
+{
+  const char *w[8];
+  usize       i, n, o = 0;
+
+  buf[0] = 0;
+  if (!s || s->kind != Sfn)
+    return;
+  n = modewalk(s->decl, w, 8);
+  for (i = 0; i < n && o + 2 < sz; i++)
+    o += sprintf(buf + o, "%s%s", o ? ", " : "", w[i]);
 }
 
 /* #[align(N)]'s N, at the declaration that carries it */

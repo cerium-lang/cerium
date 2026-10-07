@@ -1,0 +1,20 @@
+/* a predicate's own words (12-projects.md): any -- or, the platforms
+ * a declaration shares one shape across; all -- and, the top
+ * level's own commas with a name, a mode word riding beside a
+ * platform word the same way. One definition both platforms read, an
+ * and chain each machine's own */
+
+#[cfg(any(linux, darwin))]
+fn shared() -> i32 { 41 }
+
+#[cfg(all(amd64, debug))]
+fn machine_debug() { /* the and chain a mode word rides: this
+                        * platform's word and the build's own */ }
+
+#[cfg(all(arm64, debug))]
+fn machine_debug() { /* the twin the other machine answers */ }
+
+fn main() -> i32 {
+  machine_debug();
+  shared() - 41
+}

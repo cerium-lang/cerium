@@ -1,0 +1,13 @@
+/* the value of a call that does not exist cannot be used
+ * (01-types.md, Mode-gated functions): a debug-only fn's call in
+ * value position, the one the release build refuses with the gating
+ * named -- the statement form is the one that compiles away */
+
+#[cfg(debug)]
+fn answer() -> u32 { 42 }
+
+fn main() -> i32 {
+  let x: u32 = answer();
+
+  @cast<i32>(x - 42)
+}

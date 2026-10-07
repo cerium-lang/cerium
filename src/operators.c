@@ -47,6 +47,12 @@ rbuiltin(Ast *e, Fenv *fe, Type *want)
 
     if (nt != 0 || na != 1)
       berr(e, "@take takes one place");
+    if (gatedargs) /* the move a mode-gated call would make in one
+                    * mode and skip in the other: neither mode may
+                    * make it, the kept one holds the ban
+                    * (01-types.md, Mode-gated functions) */
+      berr(e, "@take cannot ride a gated fn's arguments: the modes that remove"
+              " the call never make the move (01-types.md)");
     {
       int spent = spentborrow(args[0]);
 

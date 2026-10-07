@@ -1244,6 +1244,110 @@ trysig(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, Va
   return tryonesig(s, a, args, n, n, fe, seg, svs, cvals, runtime, 0);
 }
 
+/* inside a mode-gated fn's arguments: @take may not appear there,
+ * for the modes that remove the call never make the move
+ * (01-types.md). Set around the whole pick, restored after: a trial
+ * that returns walks the arguments, and the ban holds on every
+ * trial's walk alike. */
+int gatedargs;
+
+/* a call's callee, read ahead of the value walk: the path a
+ * mode-gated fn answers by, when every gated row of its chain is
+ * closed in this build (01-types.md, Mode-gated functions) -- the
+ * head Sym, the chain the pick below walks. The read mirrors the
+ * Ncall walk's own: the local that shadows the name, the namespaces
+ * the path walks, the privacy a qualified read crosses -- anything
+ * the walk itself would refuse, this leaves alone too, the error the
+ * walk's
+ * own to say. */
+Sym *
+gatedcall(Ast *e, Fenv *fe)
+{
+  Ast  *f = e->v.call.f;
+  Ast **segs;
+  usize nsegs, k;
+  Ns   *ns;
+  Sym  *s;
+
+  if (f->k != Npath)
+    return 0; /* a method's sugar, a local's fat call: a mode-gated
+               * fn is a free fn (01-types.md) */
+  segs = f->v.path.segs;
+  nsegs = vlen(segs);
+  k = nshead(segs, nsegs, &ns, f->v.path.root);
+  if (nsegs - k != 1)
+    return 0; /* a namespace whole, a variant's or a trait's
+               * qualified door: none of them a gated fn's shape */
+  {
+    char  *nm = segs[k]->v.seg.name;
+    Local *l = locfind(fe, nm);
+
+    if (l)
+      return 0; /* the name a local owns is the local's
+                 * (11-namespaces.md) */
+    s = k ? nsitem(ns, nm) : symfind(nm);
+  }
+  if (!s || s->kind != Sfn || (k && !s->pub))
+    return 0;
+  {
+    Sym *c;
+
+    for (c = s; c; c = c->next)
+      if (!modegated(c, chk_rel))
+        return 0; /* a kept row answers the name: the call is real here */
+  }
+  return s; /* every row held away: the call names nothing in this mode */
+}
+
+/* the chain's own walk: one row a trial, the first that takes these
+ * arguments answers (04-generics.md). A gated row this mode
+ * holds away never answers -- a trial is the arguments' own walk,
+ * and a call that does not exist walks nothing
+ * (01-types.md, Mode-gated functions). */
+static Type *
+callpick(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, Val **cvals,
+         int constmode, int *runtime, const char *nm)
+{
+  Sym  *head = s;
+  Type *r;
+
+  if (constmode) {
+    for (; s; s = s->next) {
+      if (modegated(s, chk_rel) || !fnconstparams(s)) {
+        thawargs(svs, n);
+        continue; /* the plain spellings wait below */
+      }
+      r = trysig(s, a, args, n, fe, seg, svs, cvals, runtime);
+      if (r)
+        return r;
+    }
+    for (s = head; s; s = s->next) { /* the plain spellings: the
+                                      * runtime arguments' own
+                                      * (08-reflection.md) */
+      if (modegated(s, chk_rel) || fnconstparams(s)) {
+        thawargs(svs, n);
+        continue; /* tried above */
+      }
+      r = trysig(s, a, args, n, fe, seg, svs, 0, 0);
+      if (r)
+        return r;
+    }
+  } else
+    for (; s; s = s->next) {
+      if (modegated(s, chk_rel)) {
+        thawargs(svs, n);
+        continue;
+      }
+      r = trysig(s, a, args, n, fe, seg, svs, 0, 0);
+      if (r)
+        return r;
+    }
+  if (*runtime)
+    berr(a, "the argument is not compile-time known; '%s' takes it const (08-reflection.md)", nm);
+  berr(a, "no '%s' takes these argument types", nm);
+  return 0; /* unreachable */
+}
+
 /* a call to a named fn, overload chain and all. tys holds the
  * generic bindings while the arguments are walked. */
 static Type *
@@ -1258,6 +1362,27 @@ callfn(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe)
   Type    *r;
   int      constmode, runtime;
   usize    k;
+
+  { /* the mode's own door first (01-types.md, Mode-gated functions):
+     * every row of the chain held out of this build, and the call
+     * names nothing here. The statement form the block walk removed
+     * already -- what reaches this door is a value use, the one the
+     * mode refuses with the gating named */
+    int kept = 0;
+
+    for (q = s; q; q = q->next)
+      if (!modegated(q, chk_rel))
+        kept = 1;
+    if (!kept) {
+      char modes[64];
+
+      modewords(s, modes, sizeof modes);
+      berr(a,
+           "no call to '%s' in %s: #[cfg] holds it to %s -- the call's value"
+           " does not exist in this mode (01-types.md)",
+           nm, chk_rel ? "release" : "debug", modes);
+    }
+  }
 
   if (svs) { /* the borrow arguments' freezes go back with the call,
               * on every path out but the errors (01-types.md) */
@@ -1301,37 +1426,20 @@ callfn(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe)
       memset(cvals, 0, mx * sizeof *cvals);
   }
   runtime = 0;
-  if (constmode) {
-    for (; s; s = s->next) {
-      if (!fnconstparams(s)) {
-        thawargs(svs, n);
-        continue; /* the plain spellings wait below */
-      }
-      r = trysig(s, a, args, n, fe, seg, svs, cvals, &runtime);
-      if (r)
-        return r;
-    }
-    for (s = head; s; s = s->next) { /* the plain spellings: the
-                                      * runtime arguments' own
-                                      * (08-reflection.md) */
-      if (fnconstparams(s)) {
-        thawargs(svs, n);
-        continue; /* tried above */
-      }
-      r = trysig(s, a, args, n, fe, seg, svs, 0, 0);
-      if (r)
-        return r;
-    }
-  } else
-    for (; s; s = s->next) {
-      r = trysig(s, a, args, n, fe, seg, svs, 0, 0);
-      if (r)
-        return r;
-    }
-  if (runtime)
-    berr(a, "the argument is not compile-time known; '%s' takes it const (08-reflection.md)", nm);
-  berr(a, "no '%s' takes these argument types", nm);
-  return 0; /* unreachable */
+  { /* the @take ban rides the whole pick: a gated fn's arguments
+     * move in no mode -- what one mode never evaluates, neither may
+     * (01-types.md) */
+    int   sv = gatedargs;
+    Type *rr;
+
+    for (q = head; q; q = q->next)
+      if (declmodes(q->decl))
+        gatedargs = 1;
+    rr = callpick(s, a, args, n, fe, seg, svs, cvals, constmode, &runtime, nm);
+    gatedargs = sv;
+    r = rr;
+  }
+  return r;
 }
 
 /* an enum's variant as a constructor: Some(3), Ok(File{..}). The
@@ -1578,7 +1686,24 @@ rexprpath1(Ast *e, Fenv *fe, char *name, Type *want, Ns *ns)
   case Sconst:
   case Sstatic:
     return s->cty;
-  case Sfn:
+  case Sfn: {
+    Sym *c;
+    int  kept = 0;
+
+    for (c = s; c; c = c->next)
+      if (!modegated(c, chk_rel))
+        kept = 1;
+    if (!kept) { /* the mode's own door: a fn the build holds away
+                  * is no value here, a pointer to it nothing to
+                  * point (01-types.md, Mode-gated functions) */
+      char modes[64];
+
+      modewords(s, modes, sizeof modes);
+      berr(e,
+           "no '%s' in %s: #[cfg] holds it to %s -- the fn is not a value in"
+           " this mode (01-types.md)",
+           name, chk_rel ? "release" : "debug", modes);
+    }
     if (fnconstparams(s)) /* a compile-time tool, no value: the baked
                            * arguments have nowhere to cross a pointer
                            * call, and the check it would silently
@@ -1592,7 +1717,6 @@ rexprpath1(Ast *e, Fenv *fe, char *name, Type *want, Ns *ns)
                                    * against fn(i32) -> i32 is
                                    * id<i32> (04-generics.md). A chain
                                    * picks the member the want fits. */
-      Sym *c;
 
       if (!want || want->k != Tyfn)
         berr(e, "'%s' needs an expected fn type here", name);
@@ -1601,6 +1725,9 @@ rexprpath1(Ast *e, Fenv *fe, char *name, Type *want, Ns *ns)
         Val  **gcvals = c->ngparams ? arenaalloc(c->ngparams * sizeof *gcvals) : 0;
         usize  i;
 
+        if (modegated(c, chk_rel))
+          continue; /* a row the mode holds away: not a fit to find
+                     * (01-types.md, Mode-gated functions) */
         if (!tys) { /* an ungeneric member: it fits or it does not */
           if (c->fnty->nargs == want->nargs && tysame(c->fnty, want)) {
             e->v.path.sym = c;
@@ -1627,6 +1754,7 @@ rexprpath1(Ast *e, Fenv *fe, char *name, Type *want, Ns *ns)
       berr(e, "no '%s' fits %s", name, btys(want));
     }
     return s->fnty;
+  }
   case Stype:
     if (s->tykind == TYenum) {
       struct Variant *v = varfind(s, name);
@@ -4524,6 +4652,18 @@ rstmt(Ast *st, Fenv *fe)
     return;
   }
   case Nexprstmt:
+    if (st->v.n1.e->k == Ncall && gatedcall(st->v.n1.e, fe)) {
+      /* the mode words' own cull (01-types.md, Mode-gated functions):
+       * a call that names no mode here is removed whole -- the
+       * statement gone, the arguments with it, neither checked nor
+       * evaluated. The shape a const if's untaken arm leaves stands
+       * in its place: an empty block, nothing runs (10-iteration.md) */
+      st->k = Nblock;
+      st->v.blk.stmts = 0;
+      st->v.blk.tail = 0;
+      st->ty = tyunit();
+      return;
+    }
     rexpr(st->v.n1.e, fe, 0);
     if (st->v.n1.e->ty && hasdrop(st->v.n1.e->ty)) /* a value no
                                                     * one owns dies at

@@ -2020,6 +2020,18 @@ declare(Ast **items, Ns *ns)
                     : it->k == Nunion ? TYunion
                     : it->k == Nenum  ? TYenum
                                       : TYalias;
+      { /* a #[cfg]'s mode words on a fn, read where the name is made:
+         * the modes that remove its calls make what follows them
+         * reachable, a shape #[noreturn]'s own say contradicts
+         * (01-types.md, Mode-gated functions). The words themselves
+         * are the cull's own checked ones (12-projects.md), and on
+         * every item but a fn they are that cull's alone -- a type or
+         * an impl absent in the modes it does not name, its uses the
+         * unknown names any absent thing's are */
+        if (it->k == Nfn && s->noreturn && declmodes(it))
+          cerrat(it, "#[cfg] and #[noreturn] share no fn: the modes that remove"
+                     " its calls make what follows them reachable (01-types.md)");
+      }
     }
     vappend(&syms, &s);
   }
@@ -2031,6 +2043,7 @@ declare(Ast **items, Ns *ns)
 /* pass 3's impl table, read by pass 4 (sym.h) */
 Sym **chk_impls;
 usize chk_nimpls;
+int   chk_rel; /* the build's own mode: -r's word, every mode door's say */
 
 void
 checkinit(void)
@@ -2375,6 +2388,12 @@ checktests(Ns *ns)
     at = attrfind(s->decl->attrs, "test");
     if (!at)
       continue;
+    if (declmodes(s->decl)) /* the test build is the debug shape,
+                             * the one mode a runner knows: a
+                             * mode-gated test has no mode to run
+                             * in (13-testing.md) */
+      cerrat(s->decl, "a test is never mode-gated: the test build is the debug"
+                      " shape, one mode only (13-testing.md)");
     if (s->ngparams)
       cerrat(s->decl, "a test takes no generic parameters -- no call site"
                       " picks them, the runner alone calls (13-testing.md)");
@@ -2600,6 +2619,9 @@ checkproject(Srcfile **files, usize nfiles)
       else
         cerrat(m->decl, "main returns (), i32, or E?() -- the exit code is an i32, the platform's"
                         " own word (12-projects.md)");
+      if (declmodes(m->decl))
+        cerrat(m->decl, "main is every mode's door: #[cfg] cannot hold it away"
+                        " (12-projects.md)");
     }
   }
   checktests(nsroot()); /* every #[test] fn's own shape, the main's
@@ -2643,14 +2665,23 @@ checkproject(Srcfile **files, usize nfiles)
         }
         { /* a method is no test's shape: the runner calls a fn by
            * address with the platform's own two, and a method's
-           * self is not among what it hands (13-testing.md) */
+           * self is not among what it hands (13-testing.md). Nor
+           * does the cull walk an impl's rows -- a method's mode
+           * words would sit unread, so the hand is stopped here;
+           * an impl's own #[cfg] is its own cull, the whole table
+           * gone in the modes it does not name (12-projects.md) */
           usize k;
 
           for (k = 0; k < s->nmembers; k++)
-            if (s->members[k].kind == Mfn && s->members[k].decl &&
-                attrfind(s->members[k].decl->attrs, "test"))
-              cerrat(s->members[k].decl, "a test is a free fn -- a method's self"
-                                         " the runner never hands (13-testing.md)");
+            if (s->members[k].kind == Mfn && s->members[k].decl) {
+              if (attrfind(s->members[k].decl->attrs, "test"))
+                cerrat(s->members[k].decl, "a test is a free fn -- a method's self"
+                                           " the runner never hands (13-testing.md)");
+              if (declmodes(s->members[k].decl))
+                cerrat(s->members[k].decl, "a method's #[cfg] is its impl's own:"
+                                           " gate the impl, whole, not one row"
+                                           " (12-projects.md)");
+            }
         }
         vappend(&impls, &s);
         vappend(&implsf, &sf);
@@ -2737,8 +2768,14 @@ checkproject(Srcfile **files, usize nfiles)
     for (j = 0; j < m; j++) {
       if (!sf->syms[j])
         continue;
-      if (sf->items[j]->k == Nfn && sf->items[j]->v.fn.body)
+      if (sf->items[j]->k == Nfn && sf->items[j]->v.fn.body) {
+        if (modegated(sf->syms[j], chk_rel))
+          continue; /* a gated fn this build holds away is not
+                     * here: its body neither checked nor emitted --
+                     * it exists only in the modes its words name
+                     * (01-types.md, Mode-gated functions) */
         checkbodyfn(sf->syms[j], sf->items[j]);
+      }
       if (sf->items[j]->k == Nimpl)
         checkbodyimpl(sf->syms[j], sf->items[j]);
     }

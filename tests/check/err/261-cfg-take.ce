@@ -1,0 +1,10 @@
+use std::debug;
+
+fn main() -> i32 {
+  let mut v: u32 = 5;
+  let p: *mut u32 = &mut v;
+
+  debug::assert(@take(p) == 0); /* the modes that remove the call
+                                 * never make the move */
+  0
+}

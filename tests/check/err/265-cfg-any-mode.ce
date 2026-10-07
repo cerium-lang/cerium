@@ -1,0 +1,4 @@
+#[cfg(any(linux, debug))] /* a mode word is a fn's own door -- a
+                            * meeting would read it as the cull's
+                            * word instead (12-projects.md) */
+fn a() {}

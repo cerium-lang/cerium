@@ -1,0 +1,11 @@
+/* not -- the one word's complement (12-projects.md): a declaration
+ * the other side of the word keeps, the twin naming the word itself,
+ * so the same source, the same answer, wherever make test runs */
+
+#[cfg(not(darwin))]
+fn side() -> i32 { 42 }
+
+#[cfg(darwin)]
+fn side() -> i32 { 42 }
+
+fn main() -> i32 { side() - 42 }

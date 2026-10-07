@@ -114,9 +114,12 @@ fn variantwalk() -> u32 { /* the variants: A none, B some, C none --
   r
 }
 
-#[align(16)] #[build(debug)] /* the marks the declaration carries:
+#[align(16)] #[stage(debug)] /* the marks the declaration carries:
                               * no argument, then one -- an Int row,
-                              * an Ident row */
+                              * an Ident row. #[build] was the Ident's
+                              * own example once, and now the language
+                              * reads it -- a user attribute reads the
+                              * same shape (01-types.md, 08) */
 struct PB { a: u8, b: u32 }
 
 const ABS: []Attr = match @typeinfo<PB>() { /* the attrs out where a
@@ -126,7 +129,7 @@ const ABS: []Attr = match @typeinfo<PB>() { /* the attrs out where a
 };
 
 fn attrwalk() -> u32 { /* both marks, the 16 the align's own arg, the
-                        * debug the build's: 2+20+21 */
+                        * debug the stage's: 2+20+21 */
   let mut r: u32 = 0;
   const for a in ABS {
     r += 1;

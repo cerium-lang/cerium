@@ -1,0 +1,5 @@
+#[cfg(linux)] #[cfg(darwin)] /* several #[cfg]s meet with and: the words
+                              * of one dimension never hold together
+                              * across attributes any more than within
+                              * one pair of parentheses (12-projects.md) */
+fn a() {}

@@ -1,0 +1,2 @@
+#[cfg(some(linux))] /* a #[cfg] predicate is all, any or not */
+fn a() {}

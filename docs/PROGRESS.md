@@ -2480,3 +2480,126 @@ named fn's trampoline, the captureless literal's, a slot's own
 pointer, aggregates forwarded, FnMut accumulating through the mut
 handle, the empty pack, the method spelled out. Five hundred
 eighty-one green.
+
+## 2026-10-08, mode-gated fns: the call sites that compile away
+
+The attribute sat in the table for months, `#[build(...)]` with a
+"below" that pointed at nothing -- the reflection reading its
+arguments, the compiler consuming none of them. The section below
+the table was written before the work began, and it chose the
+semantics before the implementation could flinch: not a cull of the
+fn but a removal of the call, the statement gone, the arguments
+with it, the value a thing the mode refuses to hand out. That
+choice carried the whole design -- a culled fn leaves its callers
+stranded, a removed call leaves nothing behind at all.
+
+The statement walk does the culling. A call whose every gated row
+is closed in this build is rewritten in place to the shape a const
+if's untaken arm leaves -- an empty block, nothing runs, nothing
+checks -- and the emitter reads the same tree, no flag to carry, no
+second pass to keep honest. The tail is a value use by shape, but a
+() no one reads is the statement's own in disguise: when every
+closed row answers (), the tail goes too, and `fn check(v: u32) {
+debug::assert(v == 5) }` compiles away as whole as the statement
+spelled with its semicolon. Any other use -- a let's init, a nested
+argument, a fn taken as a value -- is refused with the gating
+named, the modes the attribute holds it to in the words themselves.
+
+What the mode holds away is not there at all. The body of a gated
+fn is neither checked nor emitted in the modes that keep it out --
+a #[build(debug)] row in a release build might as well live in
+another project -- and the arguments of a removed call are not
+checked either: debug is where that call is real, and the program
+is validated there first. The overload chains walk the same door:
+a gated row never reaches the trial (a trial is the arguments' own
+walk, and a call that does not exist walks nothing), so arity picks
+among the rows this mode kept, and a chain closed whole is the
+removal or the refusal above. @take may not ride the arguments of
+any gated fn -- one mode's move is another mode's silence, and the
+destructor bookkeeping cannot hold both -- the kept mode holds the
+ban, the removed one never walks far enough to ask.
+
+The corners the attribute cannot live in, said at declaration: a
+method's row every mode's vtable lays out, main every mode's door,
+a test's build the debug shape alone, and #[noreturn] shares no fn
+with it -- the modes that remove its calls make what follows them
+reachable, and reachability is not a mode's to change. std::debug
+arrived with the mechanism, two rows of one name, the bare word and
+the caller's message, both failing into the one door every runtime
+check already fails through. 265 the debug half, the release-only
+row's statement culled the same way; 266 the release half, a false
+assert and a panic row both removed, the answer still 42; 267 the
+value use the release build refuses; 255 through 262 the corners.
+Five hundred ninety-two green.
+
+## 2026-10-08, the attribute folds: #[cfg] holds the modes, and #[build] is no more
+
+The mode gate had been its own attribute for a day -- #[build], a
+fn's own words, the call sites that compile away -- when the shorter
+question came: why two doors? #[cfg] already names the conditions a
+declaration lives under; a mode is a condition like a platform is,
+the third dimension after the system and the machine, and one
+attribute carrying both is one thing to learn. The answer, after the
+walk: the two doors never were two shapes of the same hand -- #[cfg]
+culls, the item absent, its uses unknown names; #[build] removed,
+the fn kept, its calls gone -- so the fold is a fn's own half of the
+one attribute, spelled in the dimension's own words.
+
+#[cfg(debug)] on a fn is what #[build(debug)] was: the call sites
+that compile away, the arguments never evaluated, the body neither
+checked nor emitted in the modes that hold it away -- every rule the
+first walk wrote, the same door. On every other item a mode word is
+the platform words' own cull: the declaration absent in the modes it
+does not name, so a debug shape and a release shape are two
+declarations of one name, each compile reading exactly one -- the
+fold opened what #[build] had kept shut, a type's and an impl's own
+half. A method is gated through its impl, whole: the cull never
+walks an impl's rows, and a row half a table does not compose. One
+rule the fold itself asked for: a fn carries at most one #[cfg] that
+holds a mode word -- the words of two would meet with and, a fn
+neither mode holds, while the removal reads them as one fn every
+mode holds, and the shapes do not compose.
+
+The machinery did not move. modegated and modewords read the #[cfg]
+words where they read the #[build] ones, the cull hands a fn with
+mode words past itself to the body's pass, and std::debug::assert
+spells its door #[cfg(debug)] now. 268 the type's own cull, the
+debug shape and the release shape one name; 269 the impl's, the
+whole half gone with the fn that read it; 270 a mode word beside a
+platform word, and-ed; 255 the fn that carried two mode #[cfg]s;
+262 the value use the debug build refuses; 263 the type the cull
+holds away. Six hundred minus four green.
+
+One guard the review's own walk asked for: the clash check had read
+one pair of parentheses alone, and the same dimension across several
+#[cfg]s -- #[cfg(linux)] #[cfg(darwin)], and-meet to a quiet false --
+culled without a word. The words of one dimension never hold
+together, within one pair of parentheses or across attributes: the
+same error now, the same hand stopped, 264 the guard's own test.
+
+## 2026-10-08, the predicates: all, any and not, the shapes the commas cannot
+
+The and-chain carries a declaration far -- a library listing its
+platforms, a fn naming its modes -- but the shapes it cannot spell
+kept asking: one definition two platforms share, a declaration the
+other side of a word keeps. Three predicates answer, the attribute's
+own node nested as an argument: all -- and, the top level's commas
+with a name; any -- or; not -- the one word's complement, one word
+alone, empty never. The words nest to any depth; the parser grew the
+shape once, the attribute itself spelled as an argument of itself,
+and the reflection reads it beside the ident and the number -- a
+Nest row, the model's fourth, the predicate's name its first field
+and its words the second: any and all read apart, the shape whole.
+
+The guard the fold taught held here too: a mode word never rides
+inside any or not, not under an all inside one. A mode is a fn's
+own door, and a meeting or a complement would read it as the cull's
+word instead -- the pure and chains alone hold one, the top level's
+commas and the alls nested in them, the fn's door where it has
+always been. And not carries its own honesty to spell out: it reads
+the word tables as they stand, a platform the compiler was never
+told about answering not(linux) yes -- the list still says what it
+says, not what the tables happen to hold today. 271 the any a
+declaration shares one shape across; 272 the not, the twin naming
+the word itself; 273 the Nest rows the reflection reads; 265
+through 270 the corners. Six hundred and six green.

@@ -1,0 +1,4 @@
+#[cfg(debug, release)] /* two words from one dimension in one pair
+                         * of parentheses -- the same guard a pair of
+                         * systems has (12-projects.md) */
+fn a() {}

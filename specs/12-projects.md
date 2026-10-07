@@ -96,7 +96,7 @@ walk to the stderr door. The walk is the pack's own peel, one unfolding a
 value, the pack's depth cap its own (`04-generics.md`), and the count handed
 back is the whole print's, however many writes it took.
 
-## Platform conditions
+## Conditions
 
 A declaration may name the platforms it lives on — `#[cfg(linux)] fn
 reboot() { ... }` exists only where the word holds, and a compile
@@ -105,22 +105,67 @@ impls, not its bodies. The cull is the first thing the checker does,
 before a single name is declared, so a culled item is not hidden but
 absent — a use that names it is the unknown name any absent thing is.
 
-Two dimensions hold the words: the system — `linux` or `darwin`, the
-libc the platform carries — and the machine — `amd64` or `arm64`, the
-qbe backend that answers it. `arm64` is the one word for both Linux's
-aarch64 and Apple's arm64_apple: the IL above them has no stake in the
-calling conventions that part them. Several words in one pair of
+Three dimensions hold the words: the system — `linux` or `darwin`,
+the libc the platform carries — and the machine — `amd64` or `arm64`,
+the qbe backend that answers it. `arm64` is the one word for both
+Linux's aarch64 and Apple's arm64_apple: the IL above them has no
+stake in the calling conventions that part them.
+
+The third is the build's own word: the mode — `debug` or `release`,
+`-r`'s say (`01-types.md`, Build Modes). On every item but a fn a mode
+word is the platform words' own cull: the declaration is absent in
+the modes it does not name, and a use that names it is the unknown
+name any absent thing is — a debug shape and a release shape are two
+declarations of one name, each compile reading exactly one. On a fn
+it is the other shape: the fn is kept, and in the modes it does not
+name every call to it is removed whole — the statement gone, the
+arguments with it, not evaluated and not checked — the door the
+body's pass owns (`01-types.md`, Mode-gated functions). A fn carries
+at most one `#[cfg]` that holds a mode word: the words of two would
+meet with `and` — a fn neither mode holds — while the call-site
+removal reads the two doors' words as one fn every mode holds, and
+the shapes do not compose.
+
+Several words in one pair of
 parentheses must all hold — `#[cfg(darwin, arm64)]` is Apple silicon,
 the system and the machine each named — and several `#[cfg]`s on one
-declaration meet the same way. There is no negation: a library lists
-the platforms it supports, not the ones it does not — "not this one"
-is every other platform written out — and two words from one dimension
-in one pair of parentheses is an error, the hand that meant
+declaration meet the same way. Two words from one dimension in one
+pair of parentheses is an error, the hand that meant
 `#[cfg(linux, amd64)]` worth stopping rather than meeting to a quiet
-false. A word the dimensions do not know is an error too, the same
+false. The same dimension across several `#[cfg]`s is the same
+error, and for the same hand: the attributes meet with `and` too,
+and the words of one dimension never hold together. A word the dimensions do not know is an error too, the same
 guard a typo wants; an uname the tables cannot name at all keeps every
 word false — the honest answer for a platform the compiler was never
 told about.
+
+The words have shapes beyond the bare list. `all(...)` is the list's
+own `and` spelled one shape deeper — `#[cfg(all(darwin, arm64))]`
+and `#[cfg(darwin, arm64)]` are the one condition — and a shape
+holding no word is refused: `all`, `any` and `not` take a word at
+least. `any(...)` is the `or` the bare list is not —
+`#[cfg(any(linux, darwin))]` holds where either word holds — and the
+same dimension is no error inside it: `#[cfg(any(amd64, arm64))]` is
+the machine's either arm, the one question `any` exists to ask, and
+the same-dimension guard takes no notice of an `any`'s or a `not`'s
+words — it walks the `and` shapes only. `not(...)` takes one word
+alone — a complement is one word's own — and holds wherever the word
+does not.
+
+A mode word keeps to the `and` shapes: bare, in the bare list, or
+inside an `all` however deep — and inside an `any` or a `not`, at
+any depth, it is refused. The mode is the fn's own door, its words
+answer the call removal, not the cull (`01-types.md`, Mode-gated
+functions) — an `any` or a `not` would read them as the platform
+words' own, a meeting or a complement, and the two shapes do not
+compose.
+
+`not` is honest about the unknown. An uname keeps every word false —
+said above — and the complement of a false word holds:
+`#[cfg(not(linux))]` is true on a platform the compiler was never
+told about. The recommended hand is still the whitelist — a library
+lists the platforms it supports — but the complement says what it
+says: the tables as they stand, not what they happen to hold today.
 
 The platform the words read is the one the compiler itself runs on:
 host and target are the same machine, a cross compile its own

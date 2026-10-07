@@ -1,0 +1,2 @@
+#[cfg(not(linux, darwin))] /* a complement is one word's own */
+fn a() {}

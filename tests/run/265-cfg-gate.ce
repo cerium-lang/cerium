@@ -1,0 +1,30 @@
+/* #[cfg]'s debug half (01-types.md, Mode-gated functions; 12-projects.md):
+ * every mode-gated fn the debug build keeps is an ordinary fn -- its
+ * value usable, its statement run -- while a release-only row's
+ * statement is the shape this same file's release twin removes. The
+ * tail form runs too: a () answer no one reads. 41+1, the answer and
+ * the ungated row. */
+
+use std::debug;
+
+#[cfg(debug)]
+fn answer() -> u32 { 41 }
+
+#[cfg(release)]
+fn gone() { panic("the debug build never runs the release half\n"); }
+
+fn plain() -> u32 { 1 } /* no mode words: every mode's own */
+
+fn tailform(v: u32) { debug::assert(v == 5) } /* the unit tail, a () no one reads */
+
+fn main() -> i32 {
+  let mut r: u32 = 0;
+
+  debug::assert(true);
+  debug::assert(2 > 1, "arithmetic broke\n");
+  gone(); /* a release row: its statement is not here (removed) */
+  r = r + answer();
+  r = r + plain();
+  tailform(5);
+  @cast<i32>(r - 42)
+}

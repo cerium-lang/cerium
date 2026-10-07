@@ -1,0 +1,22 @@
+/* a mode word on an impl is the same cull, the whole table gone in
+ * the modes it does not name (12-projects.md) -- and a fn's own mode
+ * words remove its calls, so the reader compiles away with the table
+ * it reads. The release twin of this file holds neither the impl nor
+ * the call that reached it */
+
+struct S { a: u32 }
+
+#[cfg(debug)]
+impl S {
+  fn loud(self: Self) { panic("the release build never runs this\n") }
+}
+
+#[cfg(debug)]
+fn shout(s: S) { s.loud() }
+
+fn main() -> i32 {
+  let s = S { a: 1 };
+
+  shout(s); /* the whole half: removed with shout's own words */
+  0
+}

@@ -1,0 +1,21 @@
+/* std::debug -- the mode-gated assertions (01-types.md, Mode-gated
+ * functions): a debug build's own word, and in release the call
+ * sites compiled away whole -- the statement gone, the arguments
+ * with it, neither evaluated nor checked. The failure is the one
+ * door every runtime check fails into, a panic, the message a full
+ * line, the newline its last byte. Two rows of one name: a bare
+ * word and one with a message of the caller's own. */
+
+#[cfg(debug)]
+pub fn assert(cond: bool) {
+  if !cond {
+    panic("assertion failed\n");
+  }
+}
+
+#[cfg(debug)]
+pub fn assert(cond: bool, msg: []u8) {
+  if !cond {
+    panic(msg);
+  }
+}
