@@ -426,6 +426,9 @@ fsymname(Sym *s, Ast *it)
  * built where the failure lands, the same shape a call site
  * spells (12-projects.md). */
 static int rel;
+static int istest; /* the test artifact's own word: a #[test] fn is
+                    * the artifact's to carry, and the library and
+                    * the executable do not (13-testing.md) */
 
 enum
 {
@@ -3925,6 +3928,12 @@ emitall(FILE *out, Srcfile **files, usize nfiles)
         continue; /* a gated fn this build holds away: no call
                    * survived to name it, its body never walks
                    * (01-types.md, Mode-gated functions) */
+      if (testheld(s, istest))
+        continue; /* a test is the artifact's own fn: beside is the
+                   * whole word, and the library and the executable
+                   * do not carry it (13-testing.md). Its body the
+                   * checker still read -- the tree holds it whole,
+                   * the product does not */
       if (s->ngparams)
         continue; /* a generic fn emits per instance, from its call
                    * sites (04-generics.md) */
@@ -4317,6 +4326,8 @@ emitfile(FILE *out, Srcfile **files, usize nfiles, int release, const char *proj
                   * them, release leaves them out (01-types.md). A
                   * test build never takes -r, so its shape is
                   * always the debug one (13-testing.md) */
+  istest = test; /* beside is the whole word: only the artifact
+                  * carries a test's code (13-testing.md) */
   ipass = 1;
   emitall(scratch, files, nfiles);
   if (test) /* the runner's own door, in the wrapper's place */

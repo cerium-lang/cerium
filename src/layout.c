@@ -137,6 +137,19 @@ modegated(Sym *s, int rel)
   return 1;
 }
 
+/* a test fn this build holds away: the artifact alone carries one,
+ * and the library and the executable do not -- beside is the whole
+ * word (13-testing.md). Its body the checker still read: the tree
+ * holds it whole, the product does not */
+int
+testheld(Sym *s, int test)
+{
+  if (!s || s->kind != Sfn || !s->decl)
+    return 0; /* a prelude fn carries no declaring node, no
+               * attribute either */
+  return !test && attrfind(s->decl->attrs, "test") != 0;
+}
+
 /* the modes a fn's #[cfg] names, as words for a diagnostic */
 void
 modewords(Sym *s, char *buf, usize sz)

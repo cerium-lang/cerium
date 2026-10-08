@@ -1251,17 +1251,13 @@ trysig(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, Va
  * trial's walk alike. */
 int gatedargs;
 
-/* a call's callee, read ahead of the value walk: the path a
- * mode-gated fn answers by, when every gated row of its chain is
- * closed in this build (01-types.md, Mode-gated functions) -- the
- * head Sym, the chain the pick below walks. The read mirrors the
- * Ncall walk's own: the local that shadows the name, the namespaces
- * the path walks, the privacy a qualified read crosses -- anything
- * the walk itself would refuse, this leaves alone too, the error the
- * walk's
- * own to say. */
-Sym *
-gatedcall(Ast *e, Fenv *fe)
+/* a call's callee chain, read ahead of the value walk: the local
+ * that shadows the name, the namespaces the path walks, the privacy
+ * a qualified read crosses -- anything the walk itself would
+ * refuse, this leaves alone too, the error the walk's own to say.
+ * The doors below each judge the chain their own way. */
+static Sym *
+callchain(Ast *e, Fenv *fe)
 {
   Ast  *f = e->v.call.f;
   Ast **segs;
@@ -1270,8 +1266,8 @@ gatedcall(Ast *e, Fenv *fe)
   Sym  *s;
 
   if (f->k != Npath)
-    return 0; /* a method's sugar, a local's fat call: a mode-gated
-               * fn is a free fn (01-types.md) */
+    return 0; /* a method's sugar, a local's fat call: a gated fn
+               * is a free fn (01-types.md) */
   segs = f->v.path.segs;
   nsegs = vlen(segs);
   k = nshead(segs, nsegs, &ns, f->v.path.root);
@@ -1289,14 +1285,42 @@ gatedcall(Ast *e, Fenv *fe)
   }
   if (!s || s->kind != Sfn || (k && !s->pub))
     return 0;
-  {
-    Sym *c;
+  return s;
+}
 
-    for (c = s; c; c = c->next)
-      if (!modegated(c, chk_rel))
-        return 0; /* a kept row answers the name: the call is real here */
-  }
-  return s; /* every row held away: the call names nothing in this mode */
+/* a mode-gated fn's own door: the path a gated fn answers by, when
+ * every gated row of its chain is closed in this build
+ * (01-types.md, Mode-gated functions) -- the head Sym, the chain
+ * the pick below walks */
+Sym *
+gatedcall(Ast *e, Fenv *fe)
+{
+  Sym *s = callchain(e, fe), *c;
+
+  if (!s)
+    return 0;
+  for (c = s; c; c = c->next)
+    if (!modegated(c, chk_rel))
+      return 0; /* a kept row answers the name: the call is real here */
+  return s;     /* every row held away: the call names nothing in this mode */
+}
+
+/* the artifact's own door, the statement shape: every row of the
+ * chain a test this build holds away, and the call has nothing
+ * outside the artifact to name (13-testing.md). The mode's removal
+ * is a feature, the statement gone whole -- a test reached from
+ * outside its artifact is a hand's error, and the hand hears it */
+static Sym *
+testcall(Ast *e, Fenv *fe)
+{
+  Sym *s = callchain(e, fe), *c;
+
+  if (!s)
+    return 0;
+  for (c = s; c; c = c->next)
+    if (!testheld(c, chk_test))
+      return 0; /* a row the product carries: the call is real here */
+  return s;     /* the artifact's rows alone: no call outside one */
 }
 
 /* the chain's own walk: one row a trial, the first that takes these
@@ -1313,7 +1337,7 @@ callpick(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, 
 
   if (constmode) {
     for (; s; s = s->next) {
-      if (modegated(s, chk_rel) || !fnconstparams(s)) {
+      if (modegated(s, chk_rel) || testheld(s, chk_test) || !fnconstparams(s)) {
         thawargs(svs, n);
         continue; /* the plain spellings wait below */
       }
@@ -1324,7 +1348,7 @@ callpick(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, 
     for (s = head; s; s = s->next) { /* the plain spellings: the
                                       * runtime arguments' own
                                       * (08-reflection.md) */
-      if (modegated(s, chk_rel) || fnconstparams(s)) {
+      if (modegated(s, chk_rel) || testheld(s, chk_test) || fnconstparams(s)) {
         thawargs(svs, n);
         continue; /* tried above */
       }
@@ -1334,7 +1358,7 @@ callpick(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, 
     }
   } else
     for (; s; s = s->next) {
-      if (modegated(s, chk_rel)) {
+      if (modegated(s, chk_rel) || testheld(s, chk_test)) {
         thawargs(svs, n);
         continue;
       }
@@ -1382,6 +1406,17 @@ callfn(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe)
            " does not exist in this mode (01-types.md)",
            nm, chk_rel ? "release" : "debug", modes);
     }
+    kept = 0; /* the artifact's own door beside the mode's: a test is
+               * the artifact's fn alone, and no call outside one
+               * reaches it (13-testing.md) */
+    for (q = s; q; q = q->next)
+      if (!testheld(q, chk_test))
+        kept = 1;
+    if (!kept)
+      berr(a,
+           "'%s' is a test, the artifact's own fn -- the library and the"
+           " executable do not carry it (13-testing.md)",
+           nm);
   }
 
   if (svs) { /* the borrow arguments' freezes go back with the call,
@@ -1704,6 +1739,17 @@ rexprpath1(Ast *e, Fenv *fe, char *name, Type *want, Ns *ns)
            " this mode (01-types.md)",
            name, chk_rel ? "release" : "debug", modes);
     }
+    kept = 0; /* the artifact's own door beside the mode's: a test
+               * is no value outside the artifact that collects it
+               * (13-testing.md) */
+    for (c = s; c; c = c->next)
+      if (!testheld(c, chk_test))
+        kept = 1;
+    if (!kept)
+      berr(e,
+           "'%s' is a test, the artifact's own fn -- the library and the"
+           " executable do not carry it (13-testing.md)",
+           name);
     if (fnconstparams(s)) /* a compile-time tool, no value: the baked
                            * arguments have nowhere to cross a pointer
                            * call, and the check it would silently
@@ -1725,9 +1771,10 @@ rexprpath1(Ast *e, Fenv *fe, char *name, Type *want, Ns *ns)
         Val  **gcvals = c->ngparams ? arenaalloc(c->ngparams * sizeof *gcvals) : 0;
         usize  i;
 
-        if (modegated(c, chk_rel))
-          continue; /* a row the mode holds away: not a fit to find
-                     * (01-types.md, Mode-gated functions) */
+        if (modegated(c, chk_rel) || testheld(c, chk_test))
+          continue; /* a row the mode holds away, or the artifact's
+                     * own: not a fit to find (01-types.md,
+                     * 13-testing.md) */
         if (!tys) { /* an ungeneric member: it fits or it does not */
           if (c->fnty->nargs == want->nargs && tysame(c->fnty, want)) {
             e->v.path.sym = c;
@@ -4663,6 +4710,18 @@ rstmt(Ast *st, Fenv *fe)
       st->v.blk.tail = 0;
       st->ty = tyunit();
       return;
+    }
+    if (st->v.n1.e->k == Ncall) {
+      Sym *ts = testcall(st->v.n1.e, fe);
+
+      if (ts) /* the artifact's own door (13-testing.md): a test the
+               * statement names is refused, not removed -- the
+               * removal is the mode's feature, and this call is the
+               * hand's error, the fn it names not carried here */
+        berr(st->v.n1.e,
+             "'%s' is a test, the artifact's own fn -- the library and the"
+             " executable do not carry it (13-testing.md)",
+             ts->name);
     }
     rexpr(st->v.n1.e, fe, 0);
     if (st->v.n1.e->ty && hasdrop(st->v.n1.e->ty)) /* a value no

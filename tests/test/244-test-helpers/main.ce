@@ -1,0 +1,24 @@
+/* the artifact's own helpers (13-testing.md): a plain fn the tests
+ * call as any caller does, and a test that names another -- the
+ * artifact carries every shape, its table the collected rows alone,
+ * and only the product holds the difference: a library and an
+ * executable carry none of it */
+
+fn seven() -> i32 { 7 }
+
+#[test]
+fn plain_helper_answers() {
+  if seven() != 7 {
+    panic("the helper changed its answer");
+  };
+}
+
+#[test]
+fn one_test_names_another() { checks_the_table(); }
+
+#[test]
+fn checks_the_table() {
+  if 2 + 2 != 4 {
+    panic("the table is wrong");
+  };
+}

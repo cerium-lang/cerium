@@ -149,6 +149,14 @@ runthem() { # $1: the directory; an .expect of "!" wants rejection,
       fail=1
       continue
     fi
+    s="${f%.ce}.nosym" # patterns (grep regexps, one a line) the
+    # binary must not carry: the artifact's own fns the library and
+    # the executable hold away (13-testing.md)
+    if [ -f "$s" ] && nm "$tmp/out" 2>/dev/null | grep -q -f "$s"; then
+      echo "FAIL $f (a symbol the build does not carry: $(nm "$tmp/out" | grep -f "$s" | head -1))"
+      fail=1
+      continue
+    fi
     echo "ok   $f"
   done
   for d in "$1"/*/; do # a project: one binary, the walk's every file

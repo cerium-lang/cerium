@@ -579,8 +579,11 @@ main(int argc, char **argv)
                                               * them -- debug shape
                                               * is its own (13) */
     return usage();
-  chk_rel = release; /* the mode's own word, held for every #[cfg]
-                      * mode door the passes open (01-types.md) */
+  chk_rel = release;      /* the mode's own word, held for every #[cfg]
+                           * mode door the passes open (01-types.md) */
+  chk_test = mode == 'x'; /* the artifact's own word: the doors that
+                           * ask whether a fn is the test artifact's
+                           * to carry (13-testing.md) */
   if ((mode == 't' || mode == 'a') && isdir(file)) {
     fprintf(stderr, "cerium: -t and -a read one file; a directory is a"
                     " project (-T, -s, -c)\n");
