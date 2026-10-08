@@ -1,5 +1,10 @@
 /* main.c -- cerium, stage 0: the driver.
  *
+ * One word ahead of the modes:
+ *   cerium test [dir] -- the test artifact built and run, the exit
+ *                  code through; no dir the empty project, the
+ *                  library's rows alone (13-testing.md)
+ *
  * Five modes:
  *   cerium -t file -- the token stream, one token a line (the lexer's
  *                  golden tests, tests/lex/ok, diff against this)
@@ -14,7 +19,9 @@
  *                  binaries, both by environment)
  *
  * -r rides the last two: release, the runtime checks left out
- * (01-types.md) -- debug is the default, the checks with it.
+ * (01-types.md) -- debug is the default, the checks with it. -S
+ * path names the standard library's root (12-projects.md), ahead
+ * of every mode and the test word alike.
  *
  * The last three read a project: one file, or a directory -- every
  * .ce under it a file of it, each in the namespace its path spells
@@ -46,7 +53,8 @@
 #include "emit.h"
 #include "lex.h"
 #include "parse.h"
-#include "sym.h" /* the namespace tree the walk builds into */
+#include "sym.h"  /* the namespace tree the walk builds into */
+#include "test.h" /* the test word, and the pipeline it borrows */
 #include "vec.h"
 
 static void
@@ -337,6 +345,11 @@ loadproject(const char *path, usize *nfilesp)
 {
   Srcfile **files = vnew(Srcfile *, 8);
 
+  if (!path) { /* the empty project: no file of a project's own, the
+                * sysroot the whole unit (13-testing.md) */
+    *nfilesp = 0;
+    return files;
+  }
   if (!isdir(path)) {
     Srcfile *sf = arenaalloc(sizeof *sf);
 
@@ -365,19 +378,24 @@ loadproject(const char *path, usize *nfilesp)
 static const char *argv0; /* the driver's own path, for the sysroot's
                            * search below */
 
-/* where the standard library lives: the environment names it, the
- * executable's own directory the usual install shape (the checkout's
- * too), the working directory the last resort (12-projects.md). The
- * std below it is source like any other -- the compiler reads it,
- * nothing is embedded */
+static const char *sysword; /* -S's own say, held out of the way ahead
+                             * of every mode and the test word alike:
+                             * the library's first answer, the
+                             * environment's old one gone
+                             * (12-projects.md) */
+
+/* where the standard library lives: -S names it on the command
+ * line, the executable's own directory the usual install shape
+ * (the checkout's too), the working directory the last resort
+ * (12-projects.md). The std below it is source like any other --
+ * the compiler reads it, nothing is embedded */
 static const char *
 sysrootpath(void)
 {
-  const char *env = getenv("CERIUM_SYSROOT");
   static char buf[512];
 
-  if (env && *env)
-    return env;
+  if (sysword && *sysword)
+    return sysword;
   if (argv0 && strchr(argv0, '/')) { /* beside the executable */
     char *slash = strrchr(argv0, '/');
     usize n = (usize) (slash - argv0);
@@ -406,7 +424,7 @@ stdwalk(Srcfile ***filesp)
   if (!isdir(root)) {
     fprintf(stderr,
             "cerium: the standard library is not found at %s"
-            " -- CERIUM_SYSROOT names where it lives (12-projects.md)\n",
+            " -- -S names where it lives (12-projects.md)\n",
             root);
     exit(1);
   }
@@ -431,7 +449,10 @@ checked(const char *path, usize *np, usize *nstdp)
   Srcfile **user;
   usize     nu, i;
 
-  projname = projectname(path);
+  projname = path ? projectname(path) : "std"; /* the empty project, the test word's own
+                                                * with no dir: the library itself the
+                                                * project, its reserved name the honest
+                                                * one (13-testing.md) */
   checkinit();
   stdwalk(&files);
   *nstdp = vlen(files);
@@ -458,13 +479,40 @@ dumpcheck_project(const char *path)
 static int
 usage(void)
 {
-  fprintf(stderr, "usage: cerium -t file | cerium -a file | cerium -T file | cerium -s file"
-                  " | cerium -c file -o out | cerium -x file -o out\n"
+  fprintf(stderr, "usage: cerium test [dir] | cerium -t file | cerium -a file | cerium -T file"
+                  " | cerium -s file | cerium -c file -o out | cerium -x file -o out\n"
                   "       the last four read a directory as a project\n"
-                  "       -r rides -s and -c: release, the runtime checks out\n"
+                  "       test builds the artifact and runs it, the exit code through"
+                  " -- no dir the empty project, the library's rows alone\n");
+  fprintf(stderr, "       -r rides -s and -c: release, the runtime checks out\n"
                   "       -x builds the test artifact, debug shape: every #[test] fn a"
-                  " runner walks (13-testing.md)\n");
+                  " runner walks (13-testing.md)\n"
+                  "       -S path names the standard library's root, every word's say\n");
   return 1;
+}
+
+/* -S path, held out of the way ahead of everything: the modes'
+ * getopt never sees it, the test word never parses it, and every
+ * order carries it the same -- before the mode, after it, beside
+ * the test word. A -S with no path behind it stays for getopt to
+ * reject, and so does a bare -S=. Returns the argc that remains */
+static int
+clipargs(int argc, char **argv)
+{
+  int i, j;
+
+  for (i = j = 1; i < argc; i++) {
+    if (strcmp(argv[i], "-S") == 0 && i + 1 < argc) {
+      sysword = argv[++i];
+      continue;
+    }
+    if (strncmp(argv[i], "-S=", 3) == 0 && argv[i][3]) {
+      sysword = argv[i] + 3;
+      continue;
+    }
+    argv[j++] = argv[i];
+  }
+  return j;
 }
 
 static int
@@ -480,8 +528,9 @@ emitssa_project(const char *path, int release)
 
 /* the pipeline: .ssa text through a pipe into qbe, the .s it writes
  * into the system cc, the executable named by -o. qbe reads stdin
- * as "-", so nothing touches the disk but the one .s and the out. */
-static int
+ * as "-", so nothing touches the disk but the one .s and the out.
+ * Declared in test.h: -c and -x ride it here, the test word there */
+int
 compile(const char *path, const char *out, int release, int test)
 {
   const char *qbebin = getenv("QBE_BIN");
@@ -542,7 +591,16 @@ main(int argc, char **argv)
   int         release = 0;
   int         c;
 
-  argv0 = argv[0]; /* the sysroot's search reads it below */
+  argv0 = argv[0];                                /* the sysroot's search reads it below */
+  argc = clipargs(argc, argv);                    /* -S out of the way, its word held */
+  if (argc > 1 && strcmp(argv[1], "test") == 0) { /* the one word
+                                                   * ahead of the
+                                                   * modes (13) */
+    if (argc > 3)                                 /* test [dir] and nothing more -- the modes' own
+                                                   * flags are not the word's */
+      return usage();
+    return ceriumtest(argc == 3 ? argv[2] : 0);
+  }
   while ((c = getopt(argc, argv, "a:c:o:rs:t:T:x:")) != -1) {
     switch (c) {
     case 'a':

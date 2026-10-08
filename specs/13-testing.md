@@ -1,7 +1,8 @@
 # Testing
 
 This chapter continues `12-projects.md`. It defines the test artifact, the
-functions that go into it, and how the runner reports their outcome.
+functions that go into it, how the runner reports their outcome, and the
+one word that builds and runs it.
 
 `#[test]` (`01-types.md`) marks a test function. A test may return `()`, or
 `E?()` for an error type of its choosing — the same two shapes `main` has, for
@@ -41,3 +42,17 @@ shape. There is no `test` build mode: the artifact is its own product, and
 the debug/release axis is not what distinguishes it. A `#[test]` fn itself
 is never mode-gated: a mode word on one is a compile error, for the
 artifact is the debug shape, the one mode a runner knows.
+
+## The word a user says
+
+`cerium test [dir]` builds the artifact and runs it: the report on stdout,
+the exit code through — the compiler's own hand on the product it built,
+the first word that runs one. `-c` and `-x` keep the older shape, the
+artifact left for the shell; `test` is the one word that closes the
+distance, and the only one.
+
+A dir is a project's, read as `-x` reads it. None is the empty project:
+the sysroot alone, no file of a project's own, the library's rows the
+whole artifact — the door an install owns without a project to point at
+(`12-projects.md`, std). The artifact the word builds is a passing file:
+made aside, run, and gone — nothing of it touches the project's tree.
