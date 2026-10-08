@@ -6,7 +6,7 @@
   (enum Color
     (variant Red = 0)
     (variant Blue = 1))
-  (fn make fn() -> Hidden)
-  (fn color fn() -> Color))
+  (fn make fn() -> a::Hidden)
+  (fn color fn() -> a::Color))
 (file
   (fn probe fn() -> i32))

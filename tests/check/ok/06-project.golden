@@ -13,6 +13,6 @@
   (use std::meta)
   (struct Conn
     (field port u16))
-  (impl Conn
-    (fn raw fn(Conn) -> i32))
-  (fn port fn(Conn) -> i32))
+  (impl net::pool::Conn
+    (fn raw fn(net::pool::Conn) -> i32))
+  (fn port fn(net::pool::Conn) -> i32))

@@ -2742,3 +2742,25 @@ third. The asking is the fix instead: the target stands phony, every
 `make qbe/qbe` walking in, and qbe's own Makefile decides what the
 walk owes -- a touched source its file, a stale ask a stat pass, five
 milliseconds the toll.
+
+## 2026-10-08, the name alone was not the type: qualified names in every printing
+
+Two namespaces held a Word each, and the diagnostic that told them
+apart printed them the same -- `'go' must be fn(Word) -> i32, not
+fn(Word) -> i32`, a rejection reading insane (X8). The name alone
+never was the type; the printing just never said so.
+
+One place says it now: sbname, tysprint's single point every named
+type walks through, prefixes the namespace's whole path whenever the
+sym lives outside the root -- `std::ops::Copy`, `a::Word`,
+`net::pool::Conn`, the primitives and the sugar untouched, the root's
+own staying bare the way it reads. The choice is always-qualified,
+not qualified-on-collision: a diagnostic prints its types one call
+apiece, none seeing the others, and a collision detector would have
+to thread a message's worth of context through every one -- rustc
+prints the whole path for the same reason.
+
+Four -T goldens regenerated, every diff a prefix and nothing else;
+check/err never read the text, its asks all exits. The pin:
+273-same-name-two-ns, two Words one signature apart, the rejection
+saying which is which.
