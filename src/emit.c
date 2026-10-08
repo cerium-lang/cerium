@@ -1386,6 +1386,29 @@ emaplace(Em *em, Ast *e)
       return t;
     }
   }
+  case Nrangeindex: {                         /* a tuple's tail, its own place: the rows
+                                               * before the range walked off, the same
+                                               * walk a row's address takes -- the bounds
+                                               * the checker folded, numbers on the node
+                                               * (01-types.md) */
+    Type *tt = derefthrough(e->v.ridx.e->ty); /* a *mut base: the rows
+                                               * the pointee's own */
+    char *b = aggbase(em, e->v.ridx.e);       /* an aggregate base is its address */
+    u64   lo = e->v.ridx.lo && e->v.ridx.lo->k == Nint ? e->v.ridx.lo->v.i.num : 0;
+    usize i, off = 0;
+
+    for (i = 0; i < lo && tt->k == Tytuple && i < tt->nargs; i++) {
+      off = alignto(off, alignof_(tt->args[i]));
+      off += sizeof_(tt->args[i]);
+    }
+    off = alignto(off, alignof_(e->ty));
+    {
+      char *t = newtmp(em);
+
+      fprintf(em->o, "\t%s =l add %s, %lu\n", t, b, (unsigned long) off);
+      return t;
+    }
+  }
   case Nun:
     if (e->v.un.op == Tstar)
       return emaexpr(em, e->v.un.e);

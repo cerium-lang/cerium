@@ -377,6 +377,41 @@ typroj(Sym *s, Type *self, char *name)
 }
 
 Type *
+tyspread(Ast *gp, Type *tmpl)
+{
+  Type x;
+
+  memset(&x, 0, sizeof x);
+  x.k = Tyspread;
+  x.gp = gp;
+  x.t = tmpl;
+  return intern(&x);
+}
+
+Ast *
+packin(Type *t)
+{
+  usize i;
+
+  if (!t)
+    return 0;
+  if (t->k == Typaram)
+    return t->gp && t->gp->v.gp.pack ? t->gp : 0;
+  if (t->k == Tyspread)
+    return t->gp; /* its own pack, by construction */
+  if (t->k == Typtr || t->k == Tyslice || t->k == Tymut || t->k == Tyarray || t->k == Typroj ||
+      t->k == Tyfn)
+    return packin(t->t);
+  for (i = 0; i < t->nargs; i++) {
+    Ast *gp = packin(t->args[i]);
+
+    if (gp)
+      return gp;
+  }
+  return 0;
+}
+
+Type *
 tyopt(Type *t)
 {
   Type **a = tyargs(1);
@@ -409,11 +444,101 @@ derefthrough(Type *t)
   return t;
 }
 
+/* the rows a spread takes under the table: its pack's binding the
+ * whole tuple, its elements one for one -- zero the empty pack; one
+ * argument when nothing binds the pack (04-generics.md). A pack
+ * parameter itself never spreads here: a reference gathers the rows
+ * into its own slot whole (packargs), and the substitution keeps
+ * that shape -- the two spellings one */
+static usize
+argrows(Type *a, Ast **gps, Type **tys, usize n)
+{
+  usize i;
+
+  if (a && a->k == Tyspread) {
+    for (i = 0; i < n; i++)
+      if (a->gp == gps[i] && tys[i]) {
+        if (tys[i]->k == Tytuple)
+          return tys[i]->nargs;
+        if (tys[i]->k == Tyunit)
+          return 0;
+        break; /* the slot itself: an identity a black box holds, the
+                * outer instance's rows to feed */
+      }
+  }
+  return 1;
+}
+
+/* the binding the table holds for a spread's pack */
+static Type *
+bindfor(Type *a, Ast **gps, Type **tys, usize n)
+{
+  usize i;
+
+  for (i = 0; i < n; i++)
+    if (a->gp == gps[i])
+      return tys[i];
+  return 0;
+}
+
+/* one row of a spread: the template's own substitution with the
+ * binding's row in the pack's slot (04-generics.md) */
+static Type *
+argrow(Type *a, Type *bind, usize k, Ast **gps, Type **tys, Val **gcvals, usize n)
+{
+  Type **ts = n ? tyargs(n) : 0;
+  usize  i;
+
+  for (i = 0; i < n; i++)
+    ts[i] = gps[i] == a->gp ? bind->args[k] : tys[i];
+  return gsubstv(a->t, gps, ts, gcvals, n);
+}
+
+/* the arguments under the table, a spread's rows among them: the
+ * count first, then the rows -- the binding feeding each row the
+ * template walks (04-generics.md) */
+static Type **
+substargs(Type **args, usize nargs, Ast **gps, Type **tys, Val **gcvals, usize n, usize *np)
+{
+  Type **as;
+  usize  i, k, m = 0, j = 0;
+
+  for (i = 0; i < nargs; i++)
+    m += argrows(args[i], gps, tys, n);
+  as = m ? tyargs(m) : 0;
+  for (i = 0; i < nargs; i++) {
+    Type *a = args[i];
+
+    if (a && a->k == Tyspread) {
+      Type *bind = bindfor(a, gps, tys, n);
+
+      if (!bind || (bind->k != Tytuple && bind->k != Tyunit)) { /*
+        nothing feeds the pack, or a parameter standing for it: the
+        spread stays, its template's own substitutions walking on
+        (04-generics.md) */
+        as[j++] = tyspread(a->gp, gsubstv(a->t, gps, tys, gcvals, n));
+        continue;
+      }
+      { /* the binding's own rows, one a one: a single row among
+         * them the same expansion -- the count alone never told
+         * the two apart (04-generics.md) */
+        usize rows = bind->k == Tytuple ? bind->nargs : 0;
+
+        for (k = 0; k < rows; k++)
+          as[j++] = argrow(a, bind, k, gps, tys, gcvals, n);
+      }
+    } else
+      as[j++] = gsubstv(a, gps, tys, gcvals, n);
+  }
+  *np = m;
+  return as;
+}
+
 Type *
 gsubstv(Type *t, Ast **gps, Type **tys, Val **gcvals, usize n)
 {
   Type **as;
-  usize  i;
+  usize  i, m;
 
   if (!t)
     return t;
@@ -429,6 +554,9 @@ gsubstv(Type *t, Ast **gps, Type **tys, Val **gcvals, usize n)
     return tyslice(gsubstv(t->t, gps, tys, gcvals, n));
   case Tymut:
     return tymut(gsubstv(t->t, gps, tys, gcvals, n));
+  case Tyspread: /* alone, never inside an argument list: the rows
+                  * wait where they stand (04-generics.md) */
+    return tyspread(t->gp, gsubstv(t->t, gps, tys, gcvals, n));
   case Typroj: /* Self::Item under the generics this walk binds: the
                 * Self the projection hangs on walks with them */
     return typroj(t->sym, gsubstv(t->t, gps, tys, gcvals, n), t->name);
@@ -447,27 +575,36 @@ gsubstv(Type *t, Ast **gps, Type **tys, Val **gcvals, usize n)
       return tyarrayp(t->gp, gsubstv(t->t, gps, tys, gcvals, n));
     }
     return tyarray(t->n, gsubstv(t->t, gps, tys, gcvals, n));
+  case Tyfn: { /* the pack's parameter keeps the whole tuple: a fn's
+                * own arguments are its own -- the spread the impl's
+                * own signature walk spells (tsubst), never a
+                * substitution's (04-generics.md) */
+    Type **fs = t->nargs ? tyargs(t->nargs) : 0;
+
+    for (i = 0; i < t->nargs; i++)
+      fs[i] = gsubstv(t->args[i], gps, tys, gcvals, n);
+    return tyfn(fs, t->nargs, gsubstv(t->t, gps, tys, gcvals, n));
+  }
   case Tytuple:
-  case Tyfn:
   case Tyenum:
   case Tystruct:
   case Tyunion:
   case Tytrait:
-  case Tydyn: /* the composite shapes: the arguments in step */
-    as = t->nargs ? tyargs(t->nargs) : 0;
-    for (i = 0; i < t->nargs; i++)
-      as[i] = gsubstv(t->args[i], gps, tys, gcvals, n);
+  case Tydyn: /* the composite shapes: the arguments in step, a
+               * pack's or a spread's rows among them (04-generics.md) */
+    as = substargs(t->args, t->nargs, gps, tys, gcvals, n, &m);
     switch (t->k) {
     case Tytuple:
-      return tytuple(as, t->nargs);
-    case Tyfn:
-      return tyfn(as, t->nargs, gsubstv(t->t, gps, tys, gcvals, n));
+      return m ? tytuple(as, m) : tyunit(); /* every row spent: the
+                                             * empty tuple's own one
+                                             * spelling, the literal's
+                                             * (01-types.md) */
     case Tydyn:
-      return tydyn(t->sym, as, t->nargs, t->mut);
+      return tydyn(t->sym, as, m, t->mut);
     default:
-      return tysym(t->sym, as, t->nargs); /* an enum stays itself:
-                                           * ?T is tysym(sym_option),
-                                           * not a shape of its own */
+      return tysym(t->sym, as, m); /* an enum stays itself:
+                                    * ?T is tysym(sym_option),
+                                    * not a shape of its own */
     }
   default:
     return t;
@@ -592,6 +729,10 @@ sbfmt(SBuf *b, Type *t)
     break;
   case Tymut: /* only under a slot; printed by its parent */
     sbputs(b, "mut ");
+    sbfmt(b, t->t);
+    break;
+  case Tyspread: /* only among a tuple's rows; the ... it was */
+    sbputs(b, "...");
     sbfmt(b, t->t);
     break;
   case Typtr:

@@ -1,0 +1,56 @@
+/* zip -- the adapters' own variadic (10-iteration.md's table): any
+ * count of Iter rows herded into one walk, each round a tuple, one
+ * row an iterator's own yield, the shortest row's end the whole
+ * walk's end. Zip is an Iter itself -- Item the tuple of the rows'
+ * Items, the projection spelled through the pack, (...Ts::Item)
+ * (04-generics.md) -- so a zip zips: the adapter composes with
+ * itself the way the table's own line says the adapters compose.
+ *
+ * The rows live in one tuple of writable slots, (...mut Ts): the
+ * field's own mut and each row's own, the spelling 01-types.md
+ * gives a mut tuple's rows. The constructor takes the iterators
+ * themselves, any count -- the pack's parameter its own two
+ * spellings (04-generics.md): the tail folded into one tuple
+ * argument at the call, or the tuple handed over whole -- and the
+ * literal (...its) spells the pack's rows as the field's own, the
+ * want's walk wrapping each one a slot. */
+pub struct Zip<...Ts: Iter> {
+  mut its: (...mut Ts)
+}
+
+impl<...Ts: Iter> Iter for Zip<...Ts> {
+  type Item = (...Ts::Item);
+  fn next(self: *mut Self) -> ?(...Ts::Item) {
+    const if @count(...Ts) == 0 {
+      None   /* the empty zip: no row to ask, the sequence over --
+             * not the Some(()) the walk's own base carries, which
+             * says the rows that were asked all answered */
+    } else {
+      advance(&mut self.its)
+    }
+  }
+}
+
+pub fn zip<...Ts: Iter>(its: ...Ts) -> Zip<...Ts> {
+  Zip { its: (...its) }
+}
+
+/* the rows walked together, the tuple the round gathers: the head
+ * row asked first, the tail handed on whole through its range
+ * place -- its[1..] a place in its own right, every row beneath
+ * the slice writable through it (04-generics.md) -- the empty tail
+ * the walk's success, Some(()) the base the recursion builds its
+ * tuples on, (x, ...rest) one row a level. */
+fn advance<...Ts: Iter>(its: *mut (...mut Ts)) -> ?(...Ts::Item) {
+  const if @count(...Ts) == 0 {
+    Some(())
+  } else {
+    match its.0.next() {
+      None => None,
+      Some(x) => match advance(&mut its[1..]) {
+        None => None,
+        Some(rest) => Some((x, ...rest)),
+      },
+    }
+  }
+}

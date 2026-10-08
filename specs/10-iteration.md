@@ -492,7 +492,7 @@ least:
 | ------- | ------ |
 | `map(f)` | `f` applied to each item |
 | `filter(f)` | the items `f` accepts |
-| `zip(other)` | a pair, one from each iterator |
+| `zip(a, b, ...)` | a tuple, one row each iterator, any count — the shortest row's end the walk's end |
 | `enumerate()` | a pair — the running count and the item |
 | `fold(init, f)` | one value, accumulated |
 

@@ -309,6 +309,21 @@ fn sum<...Ts>(ts: ...Ts) -> i64;
 unifies the pack with the tuple's elements — `sum(t)` where `t: (i32, u8)`
 instantiates `Ts = (i32, u8)`.
 
+The pack's rows can carry a shape of their own: `(...mut Ts)` spells the
+tuple a row per type, each row the template's own — a writable slot, the
+mut beside the template, the way a hand-written `(mut i32, mut u8)` row
+carries it (`01-types.md`). The mut never wraps the pack itself:
+`(mut ...Ts)` is a different shape, and the checker names the right one.
+
+The gather runs where such a tuple meets an argument: the spread walks the
+tail alone — a tuple type with `...τ` among its rows meets an argument
+tuple of any width at least the rows before it, those rows meeting one a
+one, every row after meeting τ alone, the pack bound to the tuple the
+meetings leave. `fn f<...Ts: Iter>(its: *mut (...mut Ts))` called on
+`&mut t` where `t: (mut []i32, mut []i32)` binds `Ts = ([]i32, []i32)`,
+the rows the meetings strip — the template's own `mut` is the slot's, put
+back where the instantiation spells the rows out.
+
 A trait's type parameters may be a pack too, and a pack the whole of them —
 `Fn<...Args>` takes its arguments that way (`05-traits.md`) — the last-word
 rule holding the same: a pack that is the list's only word breaks nothing.
@@ -322,7 +337,7 @@ A pack is manipulated with ordinary indexing and slicing, plus `@count`:
 | ---------- | ------- |
 | `@count(...Ts)` | the number of types in the pack, a compile-time constant |
 | `ts[0]` | the first element; an empty pack is a compile error |
-| `ts[1..]` | the tuple without its first element |
+| `ts[1..]` | the tuple without its first element — a place of its own when every spanned row is a writable slot, the tail handed on whole and written through the slice |
 
 `...` in expression position expands a tuple or a slice into individual
 arguments:
@@ -330,6 +345,12 @@ arguments:
 ```rust
 sum(...ts)   // passes every element of ts as one argument each
 ```
+
+The same `...` groups the pack's rows as a value: `(...its)` inside a
+generic body is the pack spelled as a tuple — the declaration's walk
+takes it on faith, the shape riding the binding, and the
+instantiation's re-check expands the rows where they stand, the same
+reads the `(x, ...rest)` spelling takes, each row read where it is.
 
 A bound on a pack applies to every element: `<...Ts: Show>` requires each
 type in the pack to implement `Show`.

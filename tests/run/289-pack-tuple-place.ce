@@ -1,0 +1,51 @@
+/* the rows the library's zip rides, spelled by hand (04): a
+ * parameter of tuple rows each one its own writable slot,
+ * (...mut Ts); the range place its[1..] -- a place in its own
+ * right, the tail handed on whole, every row beneath the slice
+ * writable through it; and the build Some((x, ...rest)), one row
+ * a level. The Iter here is the file's own: a local trait and the
+ * slice's row are not std's symbols (11-namespaces.md), the walk
+ * the same one either way. */
+trait Iter {
+  type Item;
+  fn next(self: *mut Self) -> ?Self::Item;
+}
+
+impl<T> Iter for []T {
+  type Item = *T;
+  fn next(self: *mut Self) -> ?*T {
+    if self.len == 0 {
+      None
+    } else {
+      let p = self.ptr;
+
+      *self = (*self)[1..];
+      Some(p)
+    }
+  }
+}
+
+fn adv<...Ts: Iter>(its: *mut (...mut Ts)) -> ?(...Ts::Item) {
+  const if @count(...Ts) == 0 {
+    Some(())   /* the empty tail: every row asked, every one
+                * answered -- the base the tuple builds from */
+  } else {
+    match its.0.next() {
+      None => None,
+      Some(x) => match adv(&mut its[1..]) {
+        None => None,
+        Some(rest) => Some((x, ...rest)),
+      },
+    }
+  }
+}
+
+fn main() -> i32 {
+  let mut t: (mut []i32, mut []i32) = ([]i32{1, 2, 3}, []i32{4, 5});
+  let mut s = 0;
+
+  for let Some(w) = adv(&mut t) {
+    s = s + *w.0 * 10 + *w.1;
+  }
+  s   /* 14 + 25 = 39 */
+}

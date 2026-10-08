@@ -51,6 +51,9 @@ enum
   Typroj,   /* Self::Item inside a trait: sym the trait, t the Self,
              * name the associated type (05-traits.md) */
   Tymut,    /* a writable slot inside ptr/slice/array/tuple; never alone */
+  Tyspread, /* ...τ among a tuple's rows: the template t walks the pack
+             * gp, each of its elements a row once the instance feeds
+             * it (04-generics.md); never outside a Tytuple's args */
   TYK_N
 };
 
@@ -114,6 +117,11 @@ Type *tyfn(Type **args, usize n, Type *ret);
 Type *tysym(Sym *s, Type **args, usize n); /* struct/union/enum/trait */
 Type *tydyn(Sym *s, Type **args, usize n, int mut);
 Type *typroj(Sym *s, Type *self, char *name); /* Self::Item, in a trait */
+Type *tyspread(Ast *gp, Type *tmpl);          /* ...τ, the pack gp the rows feed */
+
+/* the pack parameter a template walks: the first one it holds, none
+ * when it holds none (04-generics.md) */
+Ast *packin(Type *t);
 
 /* a family's signature read through a handle's own words: the pack's
  * parameter bound the whole tuple spelled out one row a parameter

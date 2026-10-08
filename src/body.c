@@ -225,6 +225,18 @@ rplace1(Ast *e, Fenv *fe)
       evalblackbox++;
       return 0;
     }
+    if (bt->k == Tytuple) { /* a spread's rows: the binding's own,
+                             * their count its answer -- a row's place,
+                             * a range's, defers with the read the
+                             * same way (04-generics.md) */
+      usize ri;
+
+      for (ri = 0; ri < bt->nargs; ri++)
+        if (bt->args[ri]->k == Tyspread) {
+          evalblackbox++;
+          return 0;
+        }
+    }
     if (e->k == Nindex && (bt->k == Tytuple || bt->k == Tyunit)) { /*
       a tuple's row by number, the dot's own spelling (04-generics.md):
       the rewrite the value walk lands, taken here too so a borrow
@@ -244,6 +256,59 @@ rplace1(Ast *e, Fenv *fe)
         e->v.tup.e = base;
         e->v.tup.idx = ix;
         return rplace(e, fe);
+      }
+    }
+    if (e->k == Nrangeindex && (bt->k == Tytuple || bt->k == Tyunit)) {
+      /* ts[1..]: the tail's own place, the rows the range holds --
+       * each one its slot, the borrow a pointer into the tuple
+       * itself, never the copy the value read builds
+       * (04-generics.md) */
+      usize n = bt->k == Tytuple ? bt->nargs : 0;
+      int   bb = evalblackbox;
+      u64   lo = 0, hi = n;
+
+      if (e->v.ridx.lo) { /* the bounds are compile-time facts, the
+                           * rows the type holds (01-types.md) */
+        Val v;
+
+        rexpr(e->v.ridx.lo, fe, 0);
+        v = ceval(e->v.ridx.lo, fe->env, tyint(IN_USIZE));
+        lo = v.i;
+      }
+      if (evalblackbox != bb)
+        return 0; /* a bound the binding answers: the place defers
+                   * with the read (04-generics.md) */
+      if (e->v.ridx.hi) {
+        Val v;
+
+        rexpr(e->v.ridx.hi, fe, 0);
+        v = ceval(e->v.ridx.hi, fe->env, tyint(IN_USIZE));
+        hi = v.i;
+      }
+      if (evalblackbox != bb)
+        return 0;
+      if (lo > n || hi > n || lo > hi)
+        berr(e, "rows %lu..%lu out of range for %s", (unsigned long) lo, (unsigned long) hi,
+             btys(bt));
+      { /* the bounds land as numbers on the node itself: the
+         * emitter's walk reads them where they stand, the rows'
+         * walk its own (01-types.md) */
+        if (e->v.ridx.lo) {
+          Ast *l = mknear(Nint, e->v.ridx.lo);
+
+          l->v.i.num = lo;
+          l->ty = tyint(IN_USIZE);
+          e->v.ridx.lo = l;
+        }
+        if (e->v.ridx.hi) {
+          Ast *h = mknear(Nint, e->v.ridx.hi);
+
+          h->v.i.num = hi;
+          h->ty = tyint(IN_USIZE);
+          e->v.ridx.hi = h;
+        }
+        e->ty = tytuple(lo < hi ? bt->args + lo : 0, hi - lo);
+        return e->ty;
       }
     }
     if (bt->k != Tyarray && bt->k != Tyslice)
@@ -302,6 +367,15 @@ rplace1(Ast *e, Fenv *fe)
     if (bt->k == Typaram && bt->gp->v.gp.pack) { /* the pack's rows:
                                                   * the binding's own,
                                                   * and the place defers
+                                                  * with the read
+                                                  * (04-generics.md) */
+      evalblackbox++;
+      return 0;
+    }
+    if (bt->k == Tytuple && e->v.tup.idx < bt->nargs &&
+        bt->args[e->v.tup.idx]->k == Tyspread) { /* a spread's row:
+                                                  * the binding's own,
+                                                  * the place defers
                                                   * with the read
                                                   * (04-generics.md) */
       evalblackbox++;
@@ -2029,8 +2103,82 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
   case Ntuple: {
     Ast  **es = e->v.list.ts;
     usize  n = vlen(es), i;
-    Type **ts = n ? tyargs(n) : 0;
+    Type **ts;
 
+    { /* the spread: (x, ...t) spells every row of a tuple as an
+       * element of its own (04-generics.md) -- the same rewrite the
+       * call's arguments take, the rows read where they stand */
+      int sp = 0;
+
+      for (i = 0; i < n; i++)
+        if (es[i]->k == Nspread)
+          sp = 1;
+      if (sp) {
+        Ast **as = vnew(Ast *, n + 1);
+
+        for (i = 0; i < n; i++) {
+          Ast *a = es[i];
+
+          if (a->k != Nspread) {
+            vappend(&as, &a);
+            continue;
+          }
+          { /* the operand read here is a look, not a take: the moves
+             * it spells on a non-Copy row are undone before the
+             * elements walk -- the real read happens there, once,
+             * where the element stands (03-move.md) */
+            int  *snap = movsnap(fe);
+            Type *t = rexpr(a->v.un.e, fe, 0);
+
+            movrestore(fe, snap);
+            if (!t)
+              berr(a->v.un.e, "the spread operand is not known here (04-generics.md)");
+            if (t->k == Tytuple) { /* the rows the type names, every
+                                    * one an element of its own, the
+                                    * reads the row's own checks
+                                    * hold (04-generics.md) */
+              usize k;
+
+              for (k = 0; k < t->nargs; k++) {
+                Ast *ix = mknear(Ntupidx, a);
+
+                ix->v.tup.e = a->v.un.e;
+                ix->v.tup.idx = k;
+                if (!sprrows)
+                  sprrows = vnew(Ast *, 16);
+                vappend(&sprrows, &ix); /* the spread's own row: the
+                                         * whole binding's move, this
+                                         * row its spelling (03, 04) */
+                if (!k) {
+                  if (!sprbases)
+                    sprbases = vnew(Ast *, 4);
+                  vappend(&sprbases, &a->v.un.e);
+                }
+                vappend(&as, &ix);
+              }
+              continue;
+            }
+            if (t->k == Tyunit) /* the unit: no rows at all */
+              continue;
+            if (t->k == Typaram && t->gp &&
+                t->gp->v.gp.pack) { /*
+                                     * the pack's own rows: the black box takes the spread
+                                     * on faith, the instance's re-check the rows
+                                     * (04-generics.md) */
+              vappend(&as, &a);
+              continue;
+            }
+            berr(a, "the ... spreads a tuple's rows, this is %s (04-generics.md)", btys(t));
+          }
+        }
+        e->v.list.ts = as; /* the widened list: every pass below
+                            * walks it as the one the words spelled,
+                            * the emitter included */
+        es = as;
+        n = vlen(as);
+      }
+    }
+    ts = n ? tyargs(n) : 0;
     for (i = 0; i < n; i++) {
       Type *wt = want && want->k == Tytuple && i < want->nargs ? want->args[i] : 0;
       Type *vt = wt;
@@ -2045,7 +2193,10 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                                           * [N]mut T literals do */
         ts[i] = tymut(ts[i]);
     }
-    return tytuple(ts, n);
+    return n ? tytuple(ts, n) : tyunit(); /* every row spent: the
+                                           * empty tuple's own one
+                                           * spelling, the literal's
+                                           * (01-types.md) */
   }
   case Nbin: {
     Tok   op = e->v.bin.op;
@@ -3579,6 +3730,18 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
       int   bb = evalblackbox;
       u64   lo = 0, hi = n;
 
+      if (bt->k == Tytuple) { /* a spread's rows: the binding's own,
+                               * their count its answer -- the view
+                               * defers to it (04-generics.md) */
+        usize ri;
+
+        for (ri = 0; ri < n; ri++)
+          if (bt->args[ri]->k == Tyspread) {
+            evalblackbox++;
+            return want ? want : tyunit();
+          }
+      }
+
       if (e->v.ridx.lo) { /* the bounds are compile-time facts -- the
                            * rows the type holds, a runtime bound names
                            * none of them */
@@ -3657,6 +3820,14 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
     bt = derefthrough(bt); /* a *mut base: the row the pointer lends,
                             * the same walk every base takes
                             * (01-types.md) */
+    if (bt->k == Tytuple && e->v.tup.idx < bt->nargs &&
+        bt->args[e->v.tup.idx]->k == Tyspread) { /* a spread's row: the
+                                                  * binding's own, the
+                                                  * read defers to it
+                                                  * (04-generics.md) */
+      evalblackbox++;
+      return want ? want : tyunit();
+    }
     if (bt->k != Tytuple)
       berr(e, "%s is not a tuple", btys(bt));
     if (e->v.tup.idx >= bt->nargs)
@@ -4181,10 +4352,39 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
       return e->ty = tysym(sym_range, tys, sym_range->ngparams);
     }
   }
-  case Nspread:
+  case Nspread: {            /* the pack's own rows, inside a black box: the
+                              * tuple's shape rides the binding, and the re-check
+                              * under the instance walks the rows for real
+                              * (04-generics.md) */
+    int *snap = movsnap(fe); /* the operand read here is a look, not
+                              * a take: the rows the re-check spells
+                              * read it for real, once, where they
+                              * stand (03-move.md) */
+    Type *t = rexpr(e->v.un.e, fe, 0);
+
+    movrestore(fe, snap);
+    if (t && t->k == Typaram && t->gp->v.gp.pack) {
+      evalblackbox++;
+      return want ? want : tyunit();
+    }
+    if (t && (t->k == Tytuple || t->k == Tyunit)) { /* the binding's
+                                                     * own rows, the re-check's walk: the group a
+                                                     * tuple literal of them -- the same expansion
+                                                     * the (x, ...t) spelling takes, every row read
+                                                     * where it stands (04-generics.md) */
+      Ast *tup = mknear(Ntuple, e);
+      Ast *sp = mknear(Nspread, e);
+
+      sp->v.un.e = e->v.un.e;
+      tup->v.list.ts = vnew(Ast *, 1);
+      vappend(&tup->v.list.ts, &sp);
+      *e = *tup; /* the splice: the walk below reads the tuple */
+      return rexpr(e, fe, want);
+    }
     berr(e, "pack spreads arrive with generics (04-generics.md)");
     return 0; /* unreachable */
-  default:    /* the type nodes: type values arrive with reflection */
+  }
+  default: /* the type nodes: type values arrive with reflection */
     berr(e, "this is a type, not an expression; $$ arrives with reflection (08)");
   }
   return 0; /* unreachable */
@@ -4374,6 +4574,27 @@ placewritable(Ast *p, Fenv *fe)
     bt = rplace(p->v.ridx.e, fe);
     if (!bt)
       bt = rexpr(p->v.ridx.e, fe, 0);
+    {
+      Type *tb = derefthrough(bt);
+
+      if (tb && tb->k == Tytuple) { /* the tail's rows: each one its
+                                     * own slot, the range writable
+                                     * when every row it spans is
+                                     * (01-types.md) -- the bounds
+                                     * the place's own walk folded,
+                                     * numbers on the node */
+        u64 lo = p->v.ridx.lo && p->v.ridx.lo->k == Nint ? p->v.ridx.lo->v.i.num : 0;
+        u64 hi = p->v.ridx.hi && p->v.ridx.hi->k == Nint ? p->v.ridx.hi->v.i.num : tb->nargs;
+        u64 k;
+
+        if (lo > tb->nargs || hi > tb->nargs || lo > hi)
+          return 0;
+        for (k = lo; k < hi; k++)
+          if (tb->args[k]->k != Tymut)
+            return 0;
+        return 1;
+      }
+    }
     return bt && bt->k == Tyarray && bt->t->k == Tymut;
   }
   case Nun:
