@@ -20,6 +20,14 @@ struct TestCase {
 }
 ```
 
+Beside is the whole word: the library and the executable carry none
+of a test's code. A `#[test]` fn is the artifact's own, and a name
+that reaches for one outside a test build is refused — the call and
+the value both, at the place the name is read: nothing is left for a
+linker to say. The tree holds the fn whole in every build — its
+shape checked, its body read — for the difference is the product's,
+not the checker's.
+
 The runner is the entry point of the artifact, the way the shim is for `main`:
 a project's own `fn main` is not involved and need not exist. A test that
 panics counts as failed — the report says so and the runner moves on — and a

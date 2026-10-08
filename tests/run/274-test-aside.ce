@@ -1,0 +1,10 @@
+/* the artifact's own fn, beside the executable (13-testing.md): a
+ * #[test] fn sits in the tree -- its body checked whole, every
+ * build reading it -- and the product carries none of it. The
+ * binary this builds answers 0, and the symbol the .nosym names is
+ * not in it: beside is the whole word */
+
+#[test]
+fn t() { if 1 != 1 { panic("x"); }; }
+
+fn main() -> i32 { 0 }

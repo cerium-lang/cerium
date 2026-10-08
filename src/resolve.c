@@ -2043,7 +2043,9 @@ declare(Ast **items, Ns *ns)
 /* pass 3's impl table, read by pass 4 (sym.h) */
 Sym **chk_impls;
 usize chk_nimpls;
-int   chk_rel; /* the build's own mode: -r's word, every mode door's say */
+int   chk_rel;  /* the build's own mode: -r's word, every mode door's say */
+int   chk_test; /* -x's own word: the test artifact's shape, every test
+                 * door's say (13-testing.md) */
 
 void
 checkinit(void)

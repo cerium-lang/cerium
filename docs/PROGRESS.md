@@ -2603,3 +2603,30 @@ says, not what the tables happen to hold today. 271 the any a
 declaration shares one shape across; 272 the not, the twin naming
 the word itself; 273 the Nest rows the reflection reads; 265
 through 270 the corners. Six hundred and six green.
+
+## 2026-10-08, beside is the whole word: the artifact's own fns, the products carrying none
+
+The test artifact had been a second product in name while the first
+one carried its freight: a #[test] fn sat in the emit walk like any
+fn, no caller in a library or an executable, dead bytes every build
+linked in. std was about to grow tests of its own, and every
+hello-world would have carried them. The word beside now means what
+it says -- the emit walk holds a test away from the library and the
+executable, and a name that reaches for one outside a test build is
+refused at the read: the statement call and the value use their own
+doors, nothing left for a linker to say. The tree holds the fn
+whole -- its shape checked, its body read, every build -- for the
+difference is the product's, not the checker's: the cull the mode
+words own removes, and this door refuses, a test reached from
+outside its artifact a hand's error the hand hears.
+
+gatedcall's name resolution came out into callchain -- the mode's
+door and the artifact's each judge the chain their own way, the one
+removing a statement whole (its own feature, 01-types.md), the other
+stopping it. The statement shape needed its own door beside
+callfn's: the mode's removal had swallowed the test call silently,
+and a wrong hand would have heard nothing. 274 the binary the
+.nosym probe reads, a grep the runner's own table never carried;
+271 and 272 the two doors the checker answers; 244 the artifact's
+helpers, a plain fn the tests call and a test another names -- the
+shape std's own tests are about to take.

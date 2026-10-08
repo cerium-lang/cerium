@@ -1,0 +1,11 @@
+/* the value use the same door refuses: a test is no value outside
+ * the artifact that collects it, a pointer to it nothing to point
+ * (13-testing.md) */
+
+#[test]
+fn t() { }
+
+fn main() -> i32 {
+  let f: fn() = t;
+  0
+}

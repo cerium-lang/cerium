@@ -294,6 +294,10 @@ extern usize chk_nimpls;
  * every pass that asks -- the #[cfg] mode doors read it (01-types.md) */
 extern int chk_rel;
 
+/* the test artifact's own word: -x's say, held for the doors that
+ * ask whether a fn is the artifact's to carry (13-testing.md) */
+extern int chk_test;
+
 /* Self's one generic parameter, built by syminit (sym.c) */
 extern Ast *sym_selfgp;
 

@@ -24,6 +24,7 @@ usize intwidth(Type *t); /* an integer's width in bytes, its alignment with it *
 Ast  *attrfind(Ast **attrs, const char *name); /* #[name] or #[name(arg)], or NULL */
 int   declmodes(Ast *decl);                    /* does its #[cfg] name a mode? */
 int   modegated(Sym *s, int rel);              /* is the fn held out of this mode? */
+int   testheld(Sym *s, int test);              /* is the fn the artifact's alone? (13) */
 void  modewords(Sym *s, char *buf, usize sz);  /* the modes its #[cfg] names, as words */
 void  layoutattrs(Ast *decl, int *packed, usize *alignk);
 int   nicheness(Type *t);

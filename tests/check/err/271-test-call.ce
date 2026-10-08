@@ -1,0 +1,11 @@
+/* a call from outside the artifact reaches nothing: the statement
+ * names a test, and the library and the executable do not carry it
+ * (13-testing.md) */
+
+#[test]
+fn t() { }
+
+fn main() -> i32 {
+  t();
+  0
+}
