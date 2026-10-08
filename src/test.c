@@ -1,6 +1,6 @@
-/* test.c -- the test word, the one word a user says (13-testing.md).
+/* test.c -- the test word, -t (13-testing.md).
  *
- * cerium test [dir] is the whole hand: the artifact built aside --
+ * cerium -t [dir] is the whole hand: the artifact built aside --
  * a passing file, the project's tree untouched -- run, and gone.
  * The report is the runner's own on stdout, the exit code through:
  * the compiler's first word that runs a product it built, the step

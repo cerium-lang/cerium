@@ -1,10 +1,10 @@
-/* test.h -- the test word: the artifact built and run, one word
+/* test.h -- the test word, -t: the artifact built and run
  * (13-testing.md). */
 
 #ifndef TEST_H
 #define TEST_H
 
-/* cerium test [dir]: the artifact of the project the dir names --
+/* cerium -t [dir]: the artifact of the project the dir names --
  * no dir the empty project, the sysroot alone, the library's rows
  * the whole artifact -- built aside and run, the report on stdout,
  * the exit code through. The compiler's first word that runs a

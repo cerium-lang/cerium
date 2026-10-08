@@ -7,7 +7,7 @@ how it got there. The specs hold what the language says; the merge log
 holds the patches. The repository grew up under the working codename
 `xyz`; the name landed as Cerium, its files `.ce`, with #63.
 
-The lexer and the parser are in: `cerium -t file.ce` dumps the token
+The lexer and the parser are in: `cerium -l file.ce` dumps the token
 stream — position, kind, value — and `cerium -a file.ce` dumps the parse
 tree as S-expressions, one node a line, children indented. The type
 checker is in through the bodies: `cerium -T file.ce` declares every
@@ -2684,3 +2684,21 @@ the same), CERIUM_SYSROOT gone. 12's three answers say the flag
 now; wordthem walks the word in CI -- the library's rows alone,
 the library named by word, a green project's dir, a failing one's
 exit come through.
+
+## 2026-10-08, -t to the test word, the token stream -l's
+
+One word, one letter: `cerium test [dir]` is `cerium -t [dir]` now,
+the subcommand's shape gone for the flag's. The word rides with -S
+ahead of the modes -- clipargs holds them both out of the getopt's
+way, every order the same: `-t -S std` the empty project with the
+library named, `-S std -t dir` a project's own rows. The dir behind
+-t is taken only when it does not lead with a dash, so the word's
+neighbors stay the flags' own; and after the word nothing rides --
+`cerium -t dir extra` a usage, a mode's flags not the word's own.
+The old spelling is rejected outright, both getopt worlds saying
+no: GNU permuting the leftover word into optind's mismatch, BSD
+stopping at it with no mode read.
+
+-t was the token stream's since the lexer first dumped one; the
+dumps took -l in the move -- the four of them -l, -a, -T, -s, a
+letter a pass: lex, parse, check, codegen.
