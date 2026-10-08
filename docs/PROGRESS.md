@@ -2656,3 +2656,31 @@ the std:: rows and retells the sum over what is left: the golden
 reads the project's alone, std's own pass and fail its own door's
 say -- and a std row failing fails every exit with it, the whole
 tree one artifact, the word 12 always said.
+
+## 2026-10-08, the test word: built and run, one word
+
+The question an install asks -- no 00-std directory of the repo's
+own to point at, how does a user run the library's rows? --
+answered at the compiler's level: `cerium test [dir]`, the artifact
+built aside and run, the report on stdout, the exit code through.
+The compiler's first word that runs a product it built, the step
+taken in one place and nowhere else: -c and -x keep the older
+shape, the artifact left for the shell. The word lives in
+src/test.c, the run its own fn -- a wait's two answers decoded, a
+signal the runner's own death said on stderr and answered a
+failure -- the build borrowed from main.c's pipeline, declared in
+test.h for the borrow.
+
+No dir is the empty project: the sysroot alone, no file of a
+project's own, the library's rows the whole artifact. checked
+learned the null path -- the empty project's name "std", the
+library itself the project, its reserved name the honest one;
+loadproject the null path too, no files of the project's own.
+
+The sysroot's first answer moved from the environment to the
+command line: -S path, held out of the way ahead of every mode and
+the test word alike (clipargs in main.c, every order carrying it
+the same), CERIUM_SYSROOT gone. 12's three answers say the flag
+now; wordthem walks the word in CI -- the library's rows alone,
+the library named by word, a green project's dir, a failing one's
+exit come through.

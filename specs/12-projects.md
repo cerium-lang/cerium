@@ -179,9 +179,10 @@ declarations of the one `pub fn`, each compile reading exactly one.
 The standard library is a directory the compiler reads like the project's
 first files — the same walk, the same declares, the same resolves, the same
 body checks, ahead of the project's own. Where the directory is, three
-answers, first match wins: the `CERIUM_SYSROOT` environment variable names it;
-`std` beside the compiler's own executable is the usual install shape, a
-checkout's too; `std` in the working directory is the last resort. Nothing
+answers, first match wins: the `-S` flag names it on the command line, any
+mode's word and `test`'s too; `std` beside the compiler's own executable is
+the usual install shape, a checkout's too; `std` in the working directory
+is the last resort. Nothing
 is embedded: std is source on disk, every compile reads it, and a project
 cannot turn it off. What it holds today is small — the language's citizens
 (`std::option.ce` and `std::result.ce`: `Option` and `Result`, what `?T`
