@@ -4152,9 +4152,32 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
     return rclosure(e, fe);
   case Nbuiltin:
     return rbuiltin(e, fe, want);
-  case Nrange:
-    berr(e, "ranges arrive with iteration (10-iteration.md)");
-    return 0; /* unreachable */
+  case Nrange: { /* a..b: the interval's own struct, the checker's
+                  * sugar -- two ends, one integer type, the value
+                  * std::ops::Range<T> holds (10-iteration.md). The
+                  * literal adapts the operator's way: one side
+                  * names the type, the other yields */
+    Type *ta = rexpr(e->v.bin.l, fe, 0);
+    Type *tb = rexpr(e->v.bin.r, fe, ta); /* the other side names the ends' type */
+
+    if (!tysame(ta, tb)) { /* a literal yields to the other side */
+      Type *c = recoerce(e->v.bin.l, tb, fe);
+
+      if (c)
+        ta = c;
+      else if ((c = recoerce(e->v.bin.r, ta, fe)))
+        tb = c;
+    }
+    if (!ta || !tysame(ta, tb) || !isintty(ta))
+      berr(e, "a range's ends are one integer type, these are %s and %s (10-iteration.md)",
+           btys(ta), btys(tb));
+    { /* the interval itself: the struct the sugar lands in */
+      Type **tys = tyargs(1);
+
+      tys[0] = ta;
+      return e->ty = tysym(sym_range, tys, sym_range->ngparams);
+    }
+  }
   case Nspread:
     berr(e, "pack spreads arrive with generics (04-generics.md)");
     return 0; /* unreachable */

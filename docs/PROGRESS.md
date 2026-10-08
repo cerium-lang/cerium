@@ -2873,3 +2873,32 @@ slice, the source's len answering after both), 279 (the mutable
 row, writes through the round's pointer landing in the array),
 280 (the Copy aggregate's own slot), check/err 276 (&arr's
 rejection). 630 green.
+
+## 2026-10-08, the interval lands: a..b a value, the loop its own consumer
+
+S2's third part gave `..` its value: `a..b` walks into
+`std::ops::Range<T>`, both ends the one integer type, the half-open
+interval the loop was made for. The walk stays in the checker's own
+hand -- no rewrite through a struct literal, which would drag name
+resolution behind it (`0..3` asking the user to `use` Range is no
+sugar at all) -- the node carries the type the way `?T` carries
+Option's, and the emitter lays the two ends into the struct's own
+slot. The literal end adapts the operator's way: one side names the
+type, the other yields to it, two typed ends must agree.
+
+The Iter rows are one a width -- i8 through u64, and usize the
+ninth, `0..s.len` the idiom the ninth was for. Not one a generic:
+the advance is a `<` and a `+1`, both the binop table's for a
+concrete width, and no bound a `T` could carry names the one a `+1`
+needs -- the spec's own one-impl sketch did not compile, and the
+blueprint now says so too: the Range section was rewritten around
+the rows (and the fields made `mut`, a `*mut Self` lending what the
+field already has).
+
+The range is a value first: stored, passed, and moved -- no impl
+Copy, so the loop takes it whole and the binding after is gone
+(check/err 279 pins the after). The pins: 281 (the rounds, the
+empty interval, the backwards one), 282 (usize over a len), 283
+(the literal yields, both directions), 284 (let-bound, then the
+loop's own), check/err 277 (a float end), 278 (two typed ends that
+disagree), 279 (the moved after). 637 green.

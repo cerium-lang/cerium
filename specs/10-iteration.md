@@ -322,17 +322,21 @@ matches `*[N]T` (`04-generics.md`) the read-only impl is what applies: `x` is
 ### Range
 
 `a..b` is an expression — one `..`, both ends required (`15-grammar.md`) —
-and its value is a `Range<T>` for the integer type of the ends:
+and its value is a `Range<T>` for the integer type of the ends. The ends
+settle the way an operator's operands do: an untyped literal yields to
+the side that names its type, and two typed ends must name the same one.
 
 ```rust
 // in std
-struct Range<T> { start: T, end: T }
+struct Range<T> { mut start: T, mut end: T }
 
-impl<T: Copy> Iter for Range<T> {
-  type Item = T;
-  fn next(self: *mut Self) -> ?T {
+// one row an integer width, i8 through u64 and usize -- the builtin
+// rows' own shape, the Ord and Add files' precedent; the i32 one:
+impl Iter for Range<i32> {
+  type Item = i32;
+  fn next(self: *mut Self) -> ?i32 {
     if self.start < self.end {
-      const v = self.start;
+      let v = self.start;
       self.start = self.start + 1;
       return Some(v);
     }
@@ -340,6 +344,14 @@ impl<T: Copy> Iter for Range<T> {
   }
 }
 ```
+
+The rows are one a width, not one a generic: the advance is a `<` and a
+`+1`, both the checker's binop table takes for a concrete width with no
+bound at all — and no bound a generic `T` could carry names the one a
+`+1` needs (`Ord` orders, `Add` adds, "the next value" is neither's
+shape). The fields are `mut` for the advance's own write: a `*mut Self`
+lends what the field already has, not what it never did
+(`01-types.md`).
 
 The interval is half-open: `0..3` yields 0, 1, 2. A range with `start >= end`
 yields nothing — the loop body never runs, and no error is raised. The most

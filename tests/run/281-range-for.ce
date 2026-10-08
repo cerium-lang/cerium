@@ -1,0 +1,18 @@
+/* a..b: the loop the interval was made for -- the ends' own
+ * integer type, half-open, the rounds 0, 1, 2, 3 summing 6; the
+ * empty interval (5..5) and the backwards one (4..2) no round at
+ * all (10-iteration.md) */
+fn main() -> i32 {
+  let mut sum = 0;
+
+  for i in 0..4 {
+    sum = sum + i;
+  }
+  for i in 5..5 {
+    sum = sum + 100;
+  }
+  for i in 4..2 {
+    sum = sum + 100;
+  }
+  sum
+}

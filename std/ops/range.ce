@@ -1,0 +1,136 @@
+/* std::ops::Range -- the interval the loop was made for
+ * (10-iteration.md): two ends, half-open, the value a struct both
+
+ * ends live in. a..b builds one for the ends' own integer type,
+ * the checker's own sugar -- this file is what it lands in.
+ *
+ * The Iter rows are one an integer width, the builtin rows' own
+ * shape (the Ord and Add files' precedent): the advance is a < and
+ * a +1, both the checker's binop table takes for a concrete width,
+ * and no bound a generic T could carry names the one a +1 needs --
+ * the spec's own one-impl sketch does not compile, the rows the
+ * answer. The fields are mut for the advance's write: a *mut does
+ * not lend what the field never had (01-types.md). */
+
+use std::iter::Iter;
+pub struct Range<T> {
+  mut start: T,
+  mut end: T,
+}
+
+impl Iter for Range<i8> {
+  type Item = i8;
+  fn next(self: *mut Self) -> ?i8 {
+    if self.start < self.end {
+      let v = self.start;
+
+      self.start = self.start + 1;
+      return Some(v);
+    }
+    return None;
+  }
+}
+
+impl Iter for Range<i16> {
+  type Item = i16;
+  fn next(self: *mut Self) -> ?i16 {
+    if self.start < self.end {
+      let v = self.start;
+
+      self.start = self.start + 1;
+      return Some(v);
+    }
+    return None;
+  }
+}
+
+impl Iter for Range<i32> {
+  type Item = i32;
+  fn next(self: *mut Self) -> ?i32 {
+    if self.start < self.end {
+      let v = self.start;
+
+      self.start = self.start + 1;
+      return Some(v);
+    }
+    return None;
+  }
+}
+
+impl Iter for Range<i64> {
+  type Item = i64;
+  fn next(self: *mut Self) -> ?i64 {
+    if self.start < self.end {
+      let v = self.start;
+
+      self.start = self.start + 1;
+      return Some(v);
+    }
+    return None;
+  }
+}
+
+impl Iter for Range<u8> {
+  type Item = u8;
+  fn next(self: *mut Self) -> ?u8 {
+    if self.start < self.end {
+      let v = self.start;
+
+      self.start = self.start + 1;
+      return Some(v);
+    }
+    return None;
+  }
+}
+
+impl Iter for Range<u16> {
+  type Item = u16;
+  fn next(self: *mut Self) -> ?u16 {
+    if self.start < self.end {
+      let v = self.start;
+
+      self.start = self.start + 1;
+      return Some(v);
+    }
+    return None;
+  }
+}
+
+impl Iter for Range<u32> {
+  type Item = u32;
+  fn next(self: *mut Self) -> ?u32 {
+    if self.start < self.end {
+      let v = self.start;
+
+      self.start = self.start + 1;
+      return Some(v);
+    }
+    return None;
+  }
+}
+
+impl Iter for Range<u64> {
+  type Item = u64;
+  fn next(self: *mut Self) -> ?u64 {
+    if self.start < self.end {
+      let v = self.start;
+
+      self.start = self.start + 1;
+      return Some(v);
+    }
+    return None;
+  }
+}
+
+impl Iter for Range<usize> {
+  type Item = usize;
+  fn next(self: *mut Self) -> ?usize {
+    if self.start < self.end {
+      let v = self.start;
+
+      self.start = self.start + 1;
+      return Some(v);
+    }
+    return None;
+  }
+}

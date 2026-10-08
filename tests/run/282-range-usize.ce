@@ -1,0 +1,12 @@
+/* the range over a slice's own len -- usize, the ninth row the
+ * library ships for the idiom the loop was made for
+ * (10-iteration.md) */
+fn main() -> i32 {
+  let s = []i32{1, 2, 3};
+  let mut n = 0;
+
+  for i in 0..s.len {
+    n = n + @cast<i32>(i);
+  }
+  n
+}
