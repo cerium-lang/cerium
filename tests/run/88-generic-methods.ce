@@ -12,7 +12,7 @@ trait Store {
 struct Map { mut v: u32, mut n: u32 }
 impl Store for Map {
   fn get<K>(self: *mut Self, k: *K) -> ?u32 {
-    if self.n == 0 { return None; };
+    if self.n == 0 { return None; }
     self.n = self.n - 1;
     return Some(self.v);
   }

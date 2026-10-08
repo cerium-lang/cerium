@@ -10,7 +10,7 @@ fn seven() -> i32 { 7 }
 fn plain_helper_answers() {
   if seven() != 7 {
     panic("the helper changed its answer");
-  };
+  }
 }
 
 #[test]
@@ -20,5 +20,5 @@ fn one_test_names_another() { checks_the_table(); }
 fn checks_the_table() {
   if 2 + 2 != 4 {
     panic("the table is wrong");
-  };
+  }
 }

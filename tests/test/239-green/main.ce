@@ -8,7 +8,7 @@ fn one_is_one() {
   let y = 1;
   if x != y {
     panic("not equal");
-  };
+  }
 }
 
 #[test("arithmetic, the small kind")]
@@ -16,5 +16,5 @@ fn two_plus_two() {
   let x = 2 + 2;
   if x != 4 {
     panic("wrong sum");
-  };
+  }
 }

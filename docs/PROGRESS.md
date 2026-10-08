@@ -2702,3 +2702,28 @@ stopping at it with no mode read.
 -t was the token stream's since the lexer first dumped one; the
 dumps took -l in the move -- the four of them -l, -a, -T, -s, a
 letter a pass: lex, parse, check, codegen.
+
+## 2026-10-08, the block-ended if and match: statements as they stand, the ; the statement's own
+
+The for ended a block and asked for no semicolon; the if and the
+match, statements the same way, asked for one -- the same `}` two
+readings (#119). The grammar's own arithmetics settles it: the `;` in
+`expression ";"` is the statement's, never the expression's -- which
+is why a `let`'s initializer carries one behind a block-ended
+expression, the `let`'s -- and a statement `if` or `match` reads the
+same way now, the `;` gone where it never belonged.
+
+The test is the node kind, nothing else: `if` and `match` return from
+expr() ahead of the binary chain, so an `Nif`, `Ncif` or `Nmatch`
+coming back means the expression just ended on a `}` -- the same
+token the block's tail decision turns on. A struct literal ends in
+`}` too, but it rides the binary chain like the rest, and it stays an
+expression statement, its `;` where it always was -- the one the
+block rejects without it (14-block-ended-structlit). The old spelling
+stands: a `;` behind a block-ended statement is one statement the
+same, both spellings one tree -- every golden untouched, the 120 `};`
+the corpus carried rewritten `}` across 31 files, the trees equal.
+
+The tail keeps its own: a block-ended `if` at a block's end is still
+the block's value, the exemption only where a statement follows
+(09-block-ended).

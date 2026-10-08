@@ -11,7 +11,7 @@ impl Iterator for Counter {
   type Item = u32;
   fn next(self: *mut Self) -> ?u32 {
     self.n = self.n + 1;
-    if self.n > self.top { return None; };
+    if self.n > self.top { return None; }
     return Some(self.n);
   }
 }
@@ -20,7 +20,7 @@ impl Iterator for Down {
   type Item = u32; /* the same slot, a different supply */
   fn next(self: *mut Self) -> ?u32 {
     self.n = self.n - 1;
-    if self.n == self.top { return None; };
+    if self.n == self.top { return None; }
     return Some(self.n);
   }
 }

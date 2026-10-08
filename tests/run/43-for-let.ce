@@ -12,7 +12,7 @@ fn main() -> i32 {
       *cp = Some(runs);   /* the next round's payload */
     } else {
       *cp = None;         /* the misfit stops the loop */
-    };
+    }
   }
   sum * 10 + runs    /* (0+1+2)*10 + 3 = 33 */
 }

@@ -6,7 +6,7 @@ fn main() -> i32 {
     n = n + 1;
     if *c == 108 {
       continue;
-    };
+    }
     ls = ls + 1;
   }
   n * 10 + ls

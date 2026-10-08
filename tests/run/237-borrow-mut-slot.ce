@@ -8,11 +8,11 @@ fn main() -> i32 {
     let p: *mut u32 = &mut a[0]; /* the same shape & lends it */
 
     *p = 7;
-  };
+  }
   if true {
     let q: *mut u32 = &a[1]; /* the slot's own mut, the & way */
 
-    if *q == 2 { }; /* a read is fine beside a shared borrow */
-  };
+    if *q == 2 { } /* a read is fine beside a shared borrow */
+  }
   @cast<i32>(a[0] + a[1]) /* 7 + 2 */
 }

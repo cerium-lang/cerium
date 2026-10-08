@@ -12,7 +12,7 @@ fn holes(const fmt: []u8) -> usize {
   for i < fmt.len {
     if fmt[i] == 123 { /* '{' */
       n = n + 1;
-    };
+    }
     i = i + 1;
   }
   n

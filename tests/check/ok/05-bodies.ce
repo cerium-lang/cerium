@@ -45,7 +45,7 @@ fn area(s: *Shape) -> f64 {
 fn narrowed(p: ?i32, d: i32) -> i32 {
   if p != None {
     return p;
-  };
+  }
   return d;
 }
 
@@ -94,7 +94,7 @@ fn find(arr: []i32) -> ?i32 {
   for v in arr {
     if *v > 3 {                /* v: *i32 -- a slice lends (10) */
       return Some(*v);
-    };
+    }
   }
   return None;
 }
@@ -121,7 +121,7 @@ fn early(p: *mut Point) -> () {
   if (*p).x > 1.0 {
     (*p).y = 1.0;
     return;
-  };
+  }
   (*p).y = 0.0;
 }
 
@@ -133,7 +133,7 @@ fn earlytake(k: Keep, flag: bool) -> i32 {
   if flag {
     usekeep(k);
     return 1;
-  };
+  }
   usekeep(k)
 }
 

@@ -65,7 +65,7 @@ fn shaped(const fmt: []u8) -> bool {
     if fmt[i] == 123 { /* '{' */
       if i + 1 == fmt.len {
         return false; /* the last { stands alone */
-      };
+      }
       if fmt[i + 1] == 123 || fmt[i + 1] == 125 { /* '{{' or '{}' */
         i = i + 2;
       } else if fmt[i + 1] == 58 { /* '{:' -- the spec */
@@ -74,7 +74,7 @@ fn shaped(const fmt: []u8) -> bool {
           i = i + 2; /* a fill, the alignment behind it */
         } else if i < fmt.len && (fmt[i] == 60 || fmt[i] == 62 || fmt[i] == 94) {
           i = i + 1; /* the alignment alone */
-        };
+        }
         for i < fmt.len && fmt[i] >= 48 && fmt[i] <= 57 {
           i = i + 1; /* the width, a decimal run */
         }
@@ -82,28 +82,28 @@ fn shaped(const fmt: []u8) -> bool {
           i = i + 1;
           if i >= fmt.len || fmt[i] < 48 || fmt[i] > 57 {
             return false; /* the dot names nothing */
-          };
+          }
           for i < fmt.len && fmt[i] >= 48 && fmt[i] <= 57 {
             i = i + 1;
           }
-        };
+        }
         if i < fmt.len && (fmt[i] == 120 || fmt[i] == 111 || fmt[i] == 98) {
           i = i + 1; /* x o b: the base -- the fill's x an alignment follows */
-        };
+        }
         if i >= fmt.len || fmt[i] != 125 {
           return false; /* the spec never closed, or holds what it should not */
-        };
+        }
         i = i + 1;
       } else {
         return false; /* neither a hole, a brace, nor a spec */
-      };
+      }
     } else {
       if fmt[i] == 125 && i + 1 < fmt.len && fmt[i + 1] == 125 {
         i = i + 2; /* '}}': one brace for two */
       } else {
         i = i + 1; /* a '}' alone, and every other byte: itself */
-      };
-    };
+      }
+    }
   }
   true
 }
@@ -130,7 +130,7 @@ fn holes(const fmt: []u8) -> usize {
       i = i + 2;
     } else {
       i = i + 1;
-    };
+    }
   }
   n
 }
@@ -149,18 +149,18 @@ fn lit(w: *mut Writer, fmt: []u8, from: usize) -> Result<usize, Error> {
         i = i + 2;
       } else {
         break; /* the hole's opening */
-      };
+      }
     } else if fmt[i] == 125 { /* '}' */
       w.write_u8(125)?;
       if i + 1 < fmt.len && fmt[i + 1] == 125 {
         i = i + 2; /* '}}': one brace for two */
       } else {
         i = i + 1; /* alone: the byte it is */
-      };
+      }
     } else {
       w.write_u8(fmt[i])?;
       i = i + 1;
-    };
+    }
   }
   Ok(i)
 }
@@ -194,7 +194,7 @@ fn spec(fmt: []u8, at: usize) -> Hole {
     } else if fmt[i] == 60 || fmt[i] == 62 || fmt[i] == 94 {
       h.align = fmt[i]; /* the alignment alone */
       i = i + 1;
-    };
+    }
     for i < fmt.len && fmt[i] >= 48 && fmt[i] <= 57 {
       h.width = h.width * 10 + @cast<usize>(fmt[i] - 48); /* the width, decimal */
       i = i + 1;
@@ -205,12 +205,12 @@ fn spec(fmt: []u8, at: usize) -> Hole {
         h.prec = h.prec * 10 + @cast<usize>(fmt[i] - 48);
         i = i + 1;
       }
-    };
+    }
     if i < fmt.len && (fmt[i] == 120 || fmt[i] == 111 || fmt[i] == 98) {
       h.base = fmt[i]; /* x o b: the base, the shape asked its letter */
       i = i + 1;
-    };
-  };
+    }
+  }
   h.end = i + 1; /* past the '}' the shape asked says stands */
   h
 }
@@ -287,7 +287,7 @@ fn pad<V: Fmt>(w: *mut Writer, v: *V, h: Hole) -> Result<(), Error> {
       fills(w, h.fill, before)?;
       v.fmt(w)?;
       fills(w, h.fill, padn - before)?;
-    };
+    }
     w.prec = 0;
     w.base = 0;
     Ok(())

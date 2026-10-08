@@ -16,7 +16,7 @@ fn mid<T: Copy, const N: usize>(v: [N]T) -> u32 {
 
 /* the statement form: no else, the untaken side nothing at all */
 fn bump<const N: usize>(v: [N]u32) -> u32 {
-  const if N > 2 { S = S + 10; };
+  const if N > 2 { S = S + 10; }
   v[0]
 }
 

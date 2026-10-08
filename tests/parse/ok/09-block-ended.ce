@@ -1,0 +1,16 @@
+// block-ended if and match statements carry no ; -- the for beside
+// them reads the same way (15-grammar.md); the ; an expression
+// statement carries is the statement's own, never the expression's
+fn cond() -> bool { true }
+
+fn main() -> i32 {
+  let a = 1;
+  if cond() { a = 2; }
+  if cond() { a = 3; };
+  const if 1 < 2 { a = 4; }
+  match a { _ => { a = 5; }, }
+  match a { _ => 6, }
+  match a { _ => 6, };
+  for a < 10 { a = a + 1; }
+  if cond() { a + 1 }
+}

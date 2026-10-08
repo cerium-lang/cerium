@@ -81,7 +81,7 @@ impl Writer {
                                       * itself a later milestone */
         } else {
           ds[i] = @cast<u8>(87 + d); /* 87+d: 'a' at ten */
-        };
+        }
         i = i + 1;
         v = v / b;
       }
@@ -122,7 +122,7 @@ impl Writer {
       self.write_u64_b(@cast<u64>(0 - n), self.base_num())?;
     } else {
       self.write_u64_b(@cast<u64>(n), self.base_num())?;
-    };
+    }
     Ok(())
   }
 
@@ -133,7 +133,7 @@ impl Writer {
       self.write_u64(n)?;
     } else {
       self.write_u64_b(n, self.base_num())?;
-    };
+    }
     Ok(())
   }
 
@@ -181,7 +181,7 @@ impl Writer {
     } else {
       if n < 0.0 {
         self.write_str("-")?;
-      };
+      }
       let a = if n < 0.0 { 0.0 - n } else { n };
 
       if a == 0.0 {
@@ -346,39 +346,39 @@ impl Writer {
     if a / p >= 1.0e256 {
       p = p * 1.0e256;
       e = e + 256;
-    };
+    }
     if a / p >= 1.0e128 {
       p = p * 1.0e128;
       e = e + 128;
-    };
+    }
     if a / p >= 1.0e64 {
       p = p * 1.0e64;
       e = e + 64;
-    };
+    }
     if a / p >= 1.0e32 {
       p = p * 1.0e32;
       e = e + 32;
-    };
+    }
     if a / p >= 1.0e16 {
       p = p * 1.0e16;
       e = e + 16;
-    };
+    }
     if a / p >= 1.0e8 {
       p = p * 1.0e8;
       e = e + 8;
-    };
+    }
     if a / p >= 1.0e4 {
       p = p * 1.0e4;
       e = e + 4;
-    };
+    }
     if a / p >= 100.0 {
       p = p * 100.0;
       e = e + 2;
-    };
+    }
     if a / p >= 10.0 {
       p = p * 10.0;
       e = e + 1;
-    };
+    }
     let mut m = a / p;
 
     if m >= 10.0 {
@@ -387,7 +387,7 @@ impl Writer {
     } else if m < 1.0 {
       m = m * 10.0;
       e = e - 1;
-    };
+    }
     self.write_exp(m, e)
   }
 
@@ -414,39 +414,39 @@ impl Writer {
       if a * p < 1.0e-256 {
         p = p * 1.0e256;
         e = e - 256;
-      };
+      }
       if a * p < 1.0e-128 {
         p = p * 1.0e128;
         e = e - 128;
-      };
+      }
       if a * p < 1.0e-64 {
         p = p * 1.0e64;
         e = e - 64;
-      };
+      }
       if a * p < 1.0e-32 {
         p = p * 1.0e32;
         e = e - 32;
-      };
+      }
       if a * p < 1.0e-16 {
         p = p * 1.0e16;
         e = e - 16;
-      };
+      }
       if a * p < 1.0e-8 {
         p = p * 1.0e8;
         e = e - 8;
-      };
+      }
       if a * p < 1.0e-4 {
         p = p * 1.0e4;
         e = e - 4;
-      };
+      }
       if a * p < 0.01 {
         p = p * 100.0;
         e = e - 2;
-      };
+      }
       if a * p < 0.1 {
         p = p * 10.0;
         e = e - 1;
-      };
+      }
       let mut m = a * p * 10.0;
 
       e = e - 1;
@@ -456,7 +456,7 @@ impl Writer {
       } else if m < 1.0 {
         m = m * 10.0;
         e = e - 1;
-      };
+      }
       self.write_exp(m, e)
     }
   }

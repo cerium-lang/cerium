@@ -18,8 +18,8 @@ fn work(n: i32) -> i32 {
 const W: i32 = work(4);                          /* the assignments: 30 */
 
 fn clamp(n: i32) -> i32 {
-  if n < 0 { return 0; };
-  if n > 9 { return 9; };
+  if n < 0 { return 0; }
+  if n > 9 { return 9; }
   n
 }
 const C: i32 = clamp(42) * 10 + clamp(-5);       /* the early return: 90 */
@@ -40,7 +40,7 @@ const G: i32 = later(5);                         /* the forward reference: 15 */
 fn later(n: i32) -> i32 { n * 3 }
 
 fn guard(n: i32) -> i32 {
-  if n < 0 { @compileError("negative") };
+  if n < 0 { @compileError("negative") }
   n
 }
 const U: i32 = guard(3);                         /* the branch around it: 3 */
