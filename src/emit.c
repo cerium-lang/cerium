@@ -1962,17 +1962,37 @@ emafor(Em *em, Ast *st)
     char *lc = newlbl(em), *lx = newlbl(em);
     int   agg, reached;
     char *v;
-    usize nbase;
+    usize nbase, nlocb = em->nlocs;
 
     while (et && et->k == Tymut)
       et = et->t;
     agg = isagg(et);
+    if (st->v.forx.it) { /* an iterator's own for-let: $.it bound
+                          * and its source's call run once, ahead of
+                          * the first round (10-iteration.md). The
+                          * binding's storage the call's own -- an
+                          * aggregate's buffer its address, the let's
+                          * own move (03) -- a word's a slot stored */
+      Type *it = st->v.forx.it;
+      char *iv = emaexpr(em, st->v.forx.via);
+
+      if (isagg(it))
+        locbind(em, "$.it", iv, it);
+      else {
+        char *slot = stackslot(em, sizeof_(it) ? sizeof_(it) : 1);
+
+        if (sizeof_(it))
+          fprintf(em->o, "\t%s %s, %s\n", stins(it), iv, slot);
+        locbind(em, "$.it", slot, it);
+      }
+    }
     em->loops[em->nloops].brk = lx;
     em->loops[em->nloops].cont = lc;
     em->nloops++;
     fprintf(em->o, "%s\n", lc);
     v = aggbase(em, st->v.forx.b); /* re-read every round: a static's
-                                    * own slot, a const's segment */
+                                    * own slot, a const's segment, an
+                                    * iterator's own call */
     nbase = em->nlocs;
     emapat(em, st->v.forx.a, et, agg ? v : 0, agg ? 0 : v, lx);
     emablockval(em, body, &reached);
@@ -1984,6 +2004,13 @@ emafor(Em *em, Ast *st)
       jump(em, lc);
     em->nloops--;
     fprintf(em->o, "%s\n", lx);
+    if (st->v.forx.it) { /* the iterator's own end: what it still
+                          * holds destructs here, break and natural
+                          * end alike -- the round's bindings died
+                          * their own deaths above (03, 10) */
+      emdrops(em, st->v.forx.itdrops);
+      em->nlocs = nlocb;
+    }
     return;
   }
   case FIN: {

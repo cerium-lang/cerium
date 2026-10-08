@@ -1,12 +1,31 @@
-/* std::iter -- the Iter family (10-iteration.md): one trait,
- * the sequence's own shape. The associated type says what it
- * yields, the one method advances and yields it, None the
- * sequence's end -- a loop over one a match on its answer, `for
- * let` the shape the sugar will one day ride. A slice is an
- * iterator over its elements the compiler itself spells; every
- * other type says so here, an impl a piece of ordinary code. */
-
+/* std::iter -- the Iter family (10-iteration.md): two traits, the
+ * sequence's own shape. Iter is the loop's own word -- the
+ * associated type says what it yields, the one method advances and
+ * yields it, None the sequence's end. IntoIter turns a container
+ * into its iterator, consuming it; an iterator is its own IntoIter,
+ * so the blanket row hands every Iter back.
+ *
+ * for-in rides both: the sugar spells c.into_iter() once, then
+ * it.next() a round, the answer matched -- Some runs the body, None
+ * ends the loop, exactly the desugar 10-iteration.md writes. What
+ * the loop does not take destructs with the iterator itself at the
+ * loop's exit, its fields the walk's own recursion (03-move.md).
+ *
+ * An owned array's ArrayIter waits on the one thing it needs: an
+ * impl's own const length, [N]T routed through the impl table
+ * (08-reflection.md). Until then an array iterates the compiler's
+ * own special case, element by element (10). */
 pub trait Iter {
   type Item;
   fn next(self: *mut Self) -> ?Self::Item;   /* None ends the sequence */
+}
+
+pub trait IntoIter {
+  type Iter;
+  fn into_iter(self: Self) -> Self::Iter;
+}
+
+impl<I: Iter> IntoIter for I {
+  type Iter = I;
+  fn into_iter(self: Self) -> I { self }
 }

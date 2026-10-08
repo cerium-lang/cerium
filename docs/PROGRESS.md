@@ -2764,3 +2764,68 @@ Four -T goldens regenerated, every diff a prefix and nothing else;
 check/err never read the text, its asks all exits. The pin:
 273-same-name-two-ns, two Words one signature apart, the rejection
 saying which is which.
+
+## 2026-10-08, the sugar was the shape: for-in over Iter, desugared to for-let
+
+`for PAT in c` rode `std::iter`'s own two traits (S2, part one of
+three): `Iter` with its `next`, `IntoIter` with its `into_iter`, and
+the blanket row -- `impl<I: Iter> IntoIter for I` -- that makes an
+iterator its own conversion. The checker's FIN arm grew its fourth
+case: a source none of slice, array, or `?T` takes the trait road.
+
+The design broke the way most good ones do -- by reading the spec
+again. 10-iteration.md spells the desugar out:
+
+    { let mut it = c.into_iter(); for let Some(x) = it.next() { body } }
+
+and that is a for-let, verbatim: `it.next()` re-evaluated every round
+is FLET's per-round aggbase, the `Some(x)` pattern is the niche match
+the emitter already lowers, the iterator's remains are a scope's own
+drops. So the sugar rewrites the AST instead of growing an emit
+branch: the into_iter call hangs on the for as `via` (run once, its
+prologue), the per-round source becomes a spelled
+`std::iter::Iter::next(&mut $.it)` walked the ordinary way -- a real
+borrow expression, a real pick, not a hand-built call -- and the
+user's pattern dresses in `Some`. Sixty lines of hand-written
+assembly avoided by reusing the machine; the emitter's whole
+addition is a prologue (bind `$.it`, run `via`) and an epilogue
+(the iterator's drops, the binding's pop).
+
+`$.it` is the checker's own binding both sides know: locpush in the
+walk, locbind in the emit, the dotted name nothing a program can
+spell -- mkdropmatch's precedent. The loop's base moves past it, so
+a break's scoped drops never touch the iterator the exit already
+owns, while a return's fnbase reach still finds it -- the unwinding
+frame destructs what the rounds did not take.
+
+Three old bugs surfaced, which is what a new caller through old
+machinery buys. The loop's own drops were collected from a base
+placed after the pattern's bindings -- `scopedrops` from there is
+always empty, so every for shape silently leaked its pattern
+bindings (a break dropped them, a round's end did not -- the
+inconsistency the probe caught); the base is the loop's own now.
+`hasdrop` stopped at `mut`: a `[N]mut D` field never read as
+destructible, so the iterator's remains -- the zeros a take leaves
+-- never dropped; the permission layer now passes the question
+through. And the deep one: a frame fork is a copy, and the source's
+move was recorded in the outer frame's copy only -- a `return`
+inside the loop, reading the fork's own copy, still saw the
+parameter alive and destructed the moved-out slot a second time.
+The source's walk now runs before the fork, so the copy carries the
+death along; iterating a parameter and returning through the loop
+prints each value exactly once.
+
+ArrayIter and the array rows wait where the spec put them -- a
+const generic on an impl is 08's own arrival; the struct is legal,
+the impls are not, and std holds only the two traits and the
+blanket. Spec 10 shed the bound syntax IntoIter never had (`type
+Iter;`, the Item tie living in the Iter side where the loop reads
+it) and gained the Iter row in the for-in table with the drop
+semantics spelled: the round's binding at the round's end, the
+iterator's remains at whichever exit the loop takes.
+
+The pins: 275 (a Countdown's sum), 276 (three ways out -- rounds
+out, break, return -- each value once, the same order every way,
+the third source a parameter), 277 (a generic's into_iter() sugar,
+an aggregate Item, a continue), and check/err 273-275 (no IntoIter,
+the source moved, a parameter's iteration 04's own arrival).

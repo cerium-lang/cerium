@@ -1,0 +1,14 @@
+/* what the loop iterates rides std::iter's own: a type no IntoIter
+ * names answers no rounds (10-iteration.md) */
+use std::iter::Iter;
+
+struct Plain { n: i32 }
+
+fn main() -> i32 {
+  let p = Plain { n: 1 };
+
+  for x in p {
+    let _ = x;
+  }
+  0
+}

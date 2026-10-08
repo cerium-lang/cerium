@@ -1,0 +1,28 @@
+/* the Iter's own for-in, the sugar 10-iteration.md spells: c rides
+ * std::iter's blanket -- a next a round, the None the end -- and the
+ * rounds sum what they see (the Countdown hands 2, 1, 0) */
+use std::iter::Iter;
+
+struct Countdown { mut n: i32 }
+
+impl Iter for Countdown {
+  type Item = i32;
+  fn next(self: *mut Self) -> ?i32 {
+    if self.n == 0 {
+      None
+    } else {
+      self.n = self.n - 1;
+      Some(self.n)
+    }
+  }
+}
+
+fn main() -> i32 {
+  let c = Countdown { n: 3 };
+  let mut sum = 0;
+
+  for x in c {
+    sum = sum + x;
+  }
+  sum
+}

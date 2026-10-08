@@ -1,0 +1,61 @@
+/* the sugar's own spellings, two in one: a generic's into_iter()
+ * call rides the blanket (I: Iter answers I itself), the take out
+ * of its items the mover's own -- and an aggregate Item binds by
+ * pattern, a continue dropping the round's binding at its jump.
+ * The Rounds hand their items one a round, the Doubles their
+ * (n, 10) rows, the first passing by (04-generics.md,
+ * 10-iteration.md) */
+use std::iter::Iter;
+
+struct Rounds<T> {
+  items: [3]mut T,
+  mut i: usize,
+}
+
+impl<T> Iter for Rounds<T> {
+  type Item = T;
+  fn next(self: *mut Self) -> ?T {
+    if self.i == 3 {
+      None
+    } else {
+      let n = self.i;
+
+      self.i = self.i + 1;
+      Some(@take(&mut self.items[n]))
+    }
+  }
+}
+
+struct Doubles { mut n: i32 }
+
+impl Iter for Doubles {
+  type Item = (i32, i32);
+  fn next(self: *mut Self) -> ?(i32, i32) {
+    if self.n == 3 {
+      None
+    } else {
+      let row = (self.n, 10);
+
+      self.n = self.n + 1;
+      Some(row)
+    }
+  }
+}
+
+fn main() -> i32 {
+  let mut sum = 0;
+  let rs = Rounds { items: [3]mut i32{1, 2, 3}, i: 0 };
+
+  for x in rs.into_iter() {
+    sum = sum + x;
+  }
+  let ds = Doubles { n: 0 };
+
+  for (a, b) in ds {
+    if a == 1 {
+      continue;
+    }
+    sum = sum + a + b;
+  }
+  sum
+}

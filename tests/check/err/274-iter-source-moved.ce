@@ -1,0 +1,27 @@
+/* the source moves into the loop's own iterator, once, before the
+ * first round: what it names is gone when the loop's done
+ * (03-move.md, 10-iteration.md) */
+use std::iter::Iter;
+
+struct Countdown { mut n: i32 }
+
+impl Iter for Countdown {
+  type Item = i32;
+  fn next(self: *mut Self) -> ?i32 {
+    if self.n == 0 {
+      None
+    } else {
+      self.n = self.n - 1;
+      Some(self.n)
+    }
+  }
+}
+
+fn main() -> i32 {
+  let c = Countdown { n: 3 };
+
+  for x in c {
+    let _ = x;
+  }
+  c.n
+}

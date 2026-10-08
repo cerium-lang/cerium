@@ -1,0 +1,80 @@
+/* the three ways out of an Iter's own for-in -- the rounds run to
+ * their None, a break leaves mid-way, a return unwinds the frame --
+ * each value drops exactly once, the same order every way: the
+ * round's own binding at the round's end (1), the live one at the
+ * break or the return (2), the iterator's remains at the exit or
+ * the unwind (3). The third source is a parameter -- its move into
+ * the loop's iterator the frame's own, the slot behind it dead:
+ * the return destructs what the iterator holds, never the stale
+ * slot a second time (03-move.md, 10-iteration.md) */
+#[extern(C)]
+fn write(fd: i32, buf: *u8, len: usize) -> usize;
+
+use std::iter::Iter;
+use std::ops::Drop;
+
+struct D { n: i32 }
+
+impl Drop for D {
+  fn drop(mut self: Self) {
+    let ds = "0123456789";
+
+    if self.n != 0 {
+      write(1, ds.ptr + @cast<usize>(self.n), 1);
+    }
+  }
+}
+
+struct Three {
+  items: [3]mut D,
+  mut i: usize,
+}
+
+impl Iter for Three {
+  type Item = D;
+  fn next(self: *mut Self) -> ?D {
+    if self.i == 3 {
+      None
+    } else {
+      let n = self.i;
+
+      self.i = self.i + 1;
+      Some(@take(&mut self.items[n]))
+    }
+  }
+}
+
+fn natural() -> i32 {   /* prints 123: each round's own, at its end */
+  let it = Three { items: [3]mut D{D{n: 1}, D{n: 2}, D{n: 3}}, i: 0 };
+
+  for d in it {
+    let _ = d.n;
+  }
+  0
+}
+
+fn broke() -> i32 {   /* prints 123: 1 the round's, 2 the break's, 3 the exit's */
+  let it = Three { items: [3]mut D{D{n: 1}, D{n: 2}, D{n: 3}}, i: 0 };
+
+  for d in it {
+    if d.n == 2 {
+      break;
+    }
+  }
+  0
+}
+
+fn early(f: Three) -> i32 {   /* prints 123: 1 the round's, 2 the return's, 3 the unwind's */
+  for d in f {
+    if d.n == 2 {
+      return 0;
+    }
+  }
+  0
+}
+
+fn main() -> i32 {
+  natural();
+  broke();
+  early(Three { items: [3]mut D{D{n: 1}, D{n: 2}, D{n: 3}}, i: 0 })
+}
