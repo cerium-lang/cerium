@@ -3,7 +3,7 @@
 #
 # tests/lex, tests/parse and tests/check split by pass: every lex/ok
 #/*.ce must dump exactly its .golden as a token stream (regenerate
-# one with: ./cerium -t tests/lex/ok/NN.ce > tests/lex/ok/NN.golden --
+# one with: ./cerium -l tests/lex/ok/NN.ce > tests/lex/ok/NN.golden --
 # after checking the dump by hand), every parse/ok/*.ce as an AST
 # (ditto with -a), every check/ok/*.ce as resolved declarations
 # (ditto with -T), and every err/*.ce under any of them must be
@@ -14,7 +14,7 @@
 # project tests live the same way -- check/ok/NN-name/ diffs against
 # the NN-name.golden beside it (one (file ...) block per file, -T
 # only), check/err/NN-name/ must reject, and tests/run/NN-name/
-# compiles to a binary whose exit code the NN-name.expect names. -t
+# compiles to a binary whose exit code the NN-name.expect names. -l
 # and -a read one file; a project tests through -T, -s and -c.
 #
 # tests/run is codegen's: every *.ce compiles to a binary whose
@@ -268,46 +268,61 @@ testthem() { # $1: the directory; every entry a directory project,
   rm -rf "$tmp"
 }
 
-wordthem() { # the test word itself (13-testing.md): the artifact
+wordthem() { # the test word itself, -t (13-testing.md): the artifact
   # built and run, one word, the exit code through. No dir the
   # empty project -- the library's rows alone, the door an install
   # owns; a dir a project's own rows with the library's; a failing
   # project's exit come through; -S the library named by word, any
-  # invocation's say (12-projects.md)
+  # invocation's say, either order the same (12-projects.md); the
+  # subcommand spelling -- the word's first shape, gone in the
+  # rename -- rejected outright
   tmp=$(mktemp -d)
-  if ./cerium test >"$tmp/stdout" 2>"$tmp/err" \
+  if ./cerium -t >"$tmp/stdout" 2>"$tmp/err" \
      && grep -q 'passed, 0 failed$' "$tmp/stdout"; then
-    echo "ok   cerium test (the library's rows alone)"
+    echo "ok   cerium -t (the library's rows alone)"
   else
-    echo "FAIL cerium test ($(head -1 "$tmp/err"))"
+    echo "FAIL cerium -t ($(head -1 "$tmp/err"))"
     fail=1
   fi
-  if ./cerium -S std test >"$tmp/stdout" 2>"$tmp/err" \
+  if ./cerium -S std -t >"$tmp/stdout" 2>"$tmp/err" \
      && grep -q 'passed, 0 failed$' "$tmp/stdout"; then
-    echo "ok   cerium -S std test (the library named by word)"
+    echo "ok   cerium -S std -t (the library named by word)"
   else
-    echo "FAIL cerium -S std test ($(head -1 "$tmp/err"))"
+    echo "FAIL cerium -S std -t ($(head -1 "$tmp/err"))"
     fail=1
   fi
-  if ./cerium test tests/test/239-green >"$tmp/stdout" 2>"$tmp/err"; then
-    echo "ok   cerium test tests/test/239-green"
+  if ./cerium -t -S std >"$tmp/stdout" 2>"$tmp/err" \
+     && grep -q 'passed, 0 failed$' "$tmp/stdout"; then
+    echo "ok   cerium -t -S std (the word ahead of the library's say)"
   else
-    echo "FAIL cerium test tests/test/239-green ($(head -1 "$tmp/err"))"
+    echo "FAIL cerium -t -S std ($(head -1 "$tmp/err"))"
     fail=1
   fi
-  if ./cerium test tests/test/240-fail >"$tmp/stdout" 2>"$tmp/err"; then
-    echo "FAIL cerium test tests/test/240-fail (exit 0 -- a failure must come through)"
+  if ./cerium -t tests/test/239-green >"$tmp/stdout" 2>"$tmp/err"; then
+    echo "ok   cerium -t tests/test/239-green"
+  else
+    echo "FAIL cerium -t tests/test/239-green ($(head -1 "$tmp/err"))"
+    fail=1
+  fi
+  if ./cerium -t tests/test/240-fail >"$tmp/stdout" 2>"$tmp/err"; then
+    echo "FAIL cerium -t tests/test/240-fail (exit 0 -- a failure must come through)"
     fail=1
   else
-    echo "ok   cerium test tests/test/240-fail (the failure through)"
+    echo "ok   cerium -t tests/test/240-fail (the failure through)"
+  fi
+  if ./cerium test >/dev/null 2>&1; then
+    echo "FAIL cerium test (accepted; the subcommand spelling is gone)"
+    fail=1
+  else
+    echo "ok   cerium test (the subcommand spelling rejected)"
   fi
   rm -rf "$tmp"
 }
 
-golden tests/lex/ok -t
+golden tests/lex/ok -l
 golden tests/parse/ok -a
 golden tests/check/ok -T
-rejected tests/lex/err -t
+rejected tests/lex/err -l
 rejected tests/parse/err -a
 rejected tests/check/err -T
 if [ -x qbe/qbe ]; then

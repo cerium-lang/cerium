@@ -45,10 +45,10 @@ artifact is the debug shape, the one mode a runner knows.
 
 ## The word a user says
 
-`cerium test [dir]` builds the artifact and runs it: the report on stdout,
+`cerium -t [dir]` builds the artifact and runs it: the report on stdout,
 the exit code through — the compiler's own hand on the product it built,
 the first word that runs one. `-c` and `-x` keep the older shape, the
-artifact left for the shell; `test` is the one word that closes the
+artifact left for the shell; `-t` is the one word that closes the
 distance, and the only one.
 
 A dir is a project's, read as `-x` reads it. None is the empty project:

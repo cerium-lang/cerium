@@ -1,12 +1,12 @@
 /* main.c -- cerium, stage 0: the driver.
  *
  * One word ahead of the modes:
- *   cerium test [dir] -- the test artifact built and run, the exit
+ *   cerium -t [dir] -- the test artifact built and run, the exit
  *                  code through; no dir the empty project, the
  *                  library's rows alone (13-testing.md)
  *
  * Five modes:
- *   cerium -t file -- the token stream, one token a line (the lexer's
+ *   cerium -l file -- the token stream, one token a line (the lexer's
  *                  golden tests, tests/lex/ok, diff against this)
  *   cerium -a file -- the AST as S-expressions (the parser's golden
  *                  tests, tests/parse/ok, diff against this)
@@ -20,12 +20,13 @@
  *
  * -r rides the last two: release, the runtime checks left out
  * (01-types.md) -- debug is the default, the checks with it. -S
- * path names the standard library's root (12-projects.md), ahead
- * of every mode and the test word alike.
+ * path names the standard library's root (12-projects.md), -t
+ * [dir] the test word -- both held ahead of every mode, the
+ * getopt never seeing either.
  *
  * The last three read a project: one file, or a directory -- every
  * .ce under it a file of it, each in the namespace its path spells
- * (12-projects.md). -T prints one (file ...) block per file; -t and
+ * (12-projects.md). -T prints one (file ...) block per file; -l and
  * -a stay single-file, a directory's tokens and AST its files' own.
  *
  * The first four formats are contracts -- changing one rewrites
@@ -384,6 +385,13 @@ static const char *sysword; /* -S's own say, held out of the way ahead
                              * environment's old one gone
                              * (12-projects.md) */
 
+static int testword; /* -t's own say, held with -S's: the test word,
+                      * the modes' getopt never seeing it
+                      * (13-testing.md) */
+
+static const char *testdir; /* the dir -t carried, null the empty
+                             * project */
+
 /* where the standard library lives: -S names it on the command
  * line, the executable's own directory the usual install shape
  * (the checkout's too), the working directory the last resort
@@ -479,10 +487,10 @@ dumpcheck_project(const char *path)
 static int
 usage(void)
 {
-  fprintf(stderr, "usage: cerium test [dir] | cerium -t file | cerium -a file | cerium -T file"
+  fprintf(stderr, "usage: cerium -t [dir] | cerium -l file | cerium -a file | cerium -T file"
                   " | cerium -s file | cerium -c file -o out | cerium -x file -o out\n"
                   "       the last four read a directory as a project\n"
-                  "       test builds the artifact and runs it, the exit code through"
+                  "       -t builds the artifact and runs it, the exit code through"
                   " -- no dir the empty project, the library's rows alone\n");
   fprintf(stderr, "       -r rides -s and -c: release, the runtime checks out\n"
                   "       -x builds the test artifact, debug shape: every #[test] fn a"
@@ -491,11 +499,15 @@ usage(void)
   return 1;
 }
 
-/* -S path, held out of the way ahead of everything: the modes'
- * getopt never sees it, the test word never parses it, and every
- * order carries it the same -- before the mode, after it, beside
- * the test word. A -S with no path behind it stays for getopt to
- * reject, and so does a bare -S=. Returns the argc that remains */
+/* -S path and -t [dir], held out of the way ahead of everything:
+ * the modes' getopt never sees them, and every order carries them
+ * the same -- before the mode, after it, beside each other. -S
+ * takes the word behind it outright; a -S with no path behind it
+ * stays for getopt to reject, and so does a bare -S=. -t's dir is
+ * taken only when it does not lead with a dash -- `-t -S std` the
+ * empty project with the library named, not a dir spelled "-S" --
+ * and after the word nothing rides, a mode's flags not the word's
+ * own. Returns the argc that remains */
 static int
 clipargs(int argc, char **argv)
 {
@@ -508,6 +520,12 @@ clipargs(int argc, char **argv)
     }
     if (strncmp(argv[i], "-S=", 3) == 0 && argv[i][3]) {
       sysword = argv[i] + 3;
+      continue;
+    }
+    if (strcmp(argv[i], "-t") == 0) {
+      testword = 1;
+      if (i + 1 < argc && argv[i + 1][0] != '-')
+        testdir = argv[++i];
       continue;
     }
     argv[j++] = argv[i];
@@ -591,22 +609,22 @@ main(int argc, char **argv)
   int         release = 0;
   int         c;
 
-  argv0 = argv[0];                                /* the sysroot's search reads it below */
-  argc = clipargs(argc, argv);                    /* -S out of the way, its word held */
-  if (argc > 1 && strcmp(argv[1], "test") == 0) { /* the one word
-                                                   * ahead of the
-                                                   * modes (13) */
-    if (argc > 3)                                 /* test [dir] and nothing more -- the modes' own
-                                                   * flags are not the word's */
+  argv0 = argv[0];             /* the sysroot's search reads it below */
+  argc = clipargs(argc, argv); /* -S and -t out of the way, their
+                                * words held */
+  if (testword) {              /* the one word ahead of the modes
+                                * (13): it rides alone, a mode's
+                                * flags not the word's own */
+    if (argc > 1)
       return usage();
-    return ceriumtest(argc == 3 ? argv[2] : 0);
+    return ceriumtest(testdir);
   }
-  while ((c = getopt(argc, argv, "a:c:o:rs:t:T:x:")) != -1) {
+  while ((c = getopt(argc, argv, "a:c:l:o:rs:T:x:")) != -1) {
     switch (c) {
     case 'a':
     case 'c':
+    case 'l':
     case 's':
-    case 't':
     case 'T':
     case 'x':
       if (mode) /* one mode, one file */
@@ -642,13 +660,13 @@ main(int argc, char **argv)
   chk_test = mode == 'x'; /* the artifact's own word: the doors that
                            * ask whether a fn is the test artifact's
                            * to carry (13-testing.md) */
-  if ((mode == 't' || mode == 'a') && isdir(file)) {
-    fprintf(stderr, "cerium: -t and -a read one file; a directory is a"
+  if ((mode == 'l' || mode == 'a') && isdir(file)) {
+    fprintf(stderr, "cerium: -l and -a read one file; a directory is a"
                     " project (-T, -s, -c)\n");
     return 1;
   }
   switch (mode) {
-  case 't':
+  case 'l':
     return dumptoks(file);
   case 'a':
     return dumpast_file(file);

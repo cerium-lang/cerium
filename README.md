@@ -38,7 +38,7 @@ container layer, the compiler emitting `.ssa` that `qbe` lowers and the
 system `cc` links. The goal is self-hosting, with LLVM a v1+ backend
 rather than a v0 dependency.
 
-Five flags, one pass each: `-t` the token stream, `-a` the parse tree,
+Five flags, one pass each: `-l` the token stream, `-a` the parse tree,
 `-T` what checking made of every item, `-s` a project's whole `.ssa`,
 and `-c file.ce -o out` the pipeline end to end. `-r` rides `-s` and
 `-c`: release, the runtime checks out.

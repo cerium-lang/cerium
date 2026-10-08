@@ -180,7 +180,7 @@ The standard library is a directory the compiler reads like the project's
 first files — the same walk, the same declares, the same resolves, the same
 body checks, ahead of the project's own. Where the directory is, three
 answers, first match wins: the `-S` flag names it on the command line, any
-mode's word and `test`'s too; `std` beside the compiler's own executable is
+mode's word and `-t`'s too; `std` beside the compiler's own executable is
 the usual install shape, a checkout's too; `std` in the working directory
 is the last resort. Nothing
 is embedded: std is source on disk, every compile reads it, and a project
