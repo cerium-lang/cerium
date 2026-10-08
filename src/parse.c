@@ -1503,6 +1503,21 @@ block(void)
         done = 1;
         break;
       }
+      if (e->k == Nif || e->k == Ncif ||
+          e->k == Nmatch) { /* a block-ended expression: a statement
+                             * as it stands, the for beside it reading the same -- the ; an
+                             * expression statement carries is the statement's own, never
+                             * the if's, and one that carries it was taken above
+                             * (15-grammar.md). The node kinds are the whole test: if
+                             * and match return from expr() ahead of the binary chain,
+                             * so one of these kinds means the expression just ended on
+                             * a } */
+        Ast *s = mk(Nexprstmt);
+
+        s->v.n1.e = e;
+        npush(&n->v.blk.stmts, s);
+        continue;
+      }
       perr("expected \";\" or \"}\" after the expression");
     }
   }

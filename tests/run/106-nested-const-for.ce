@@ -10,7 +10,7 @@ fn main() -> i32 {
   const for x in A {
     if x > 0 {
       const for y in A { s = s + y; }
-    };
+    }
     s = s + x;
   }
   s

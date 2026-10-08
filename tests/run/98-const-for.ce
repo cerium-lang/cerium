@@ -85,7 +85,7 @@ fn nested() -> i32 { /* an inner const for, the outer's round spelled: 10 */
 
 fn early() -> i32 { /* a return in a round returns from the fn: 6 */
   const for x in [3]i32{5, 6, 7} {
-    if x > 5 { return x; };
+    if x > 5 { return x; }
   }
   0
 }

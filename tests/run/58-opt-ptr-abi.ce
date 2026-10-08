@@ -2,7 +2,7 @@
  * pointer in a register on the way out, a stored slot again on arrival */
 fn find(p: *mut i32) -> ?*mut i32 {
   let v = *p;
-  if v > 0 { return Some(p); };
+  if v > 0 { return Some(p); }
   return None;
 }
 fn main() -> i32 {

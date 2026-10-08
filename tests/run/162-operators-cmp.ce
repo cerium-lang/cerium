@@ -12,10 +12,10 @@ struct V3 { x: i32, y: i32 }
 impl Copy for V3 { }
 impl Ord for V3 {
   fn cmp(self: V3, other: V3) -> Ordering {
-    if self.x < other.x { return Ordering::Less; };
-    if self.x > other.x { return Ordering::Greater; };
-    if self.y < other.y { return Ordering::Less; };
-    if self.y > other.y { return Ordering::Greater; };
+    if self.x < other.x { return Ordering::Less; }
+    if self.x > other.x { return Ordering::Greater; }
+    if self.y < other.y { return Ordering::Less; }
+    if self.y > other.y { return Ordering::Greater; }
     Ordering::Equal
   }
 }
@@ -27,12 +27,12 @@ fn main() -> i32 {
   let b = V3{ x: 1, y: 3 };
   let c = V3{ x: 1, y: 2 };
   let mut r = 0;
-  if a < b { r += 1; };
-  if a <= b { r += 2; };
-  if b > a { r += 4; };
-  if b >= a { r += 8; };
-  if a == c { r += 16; };
-  if a != b { r += 32; };
-  if !(a > b) { r += 64; };
+  if a < b { r += 1; }
+  if a <= b { r += 2; }
+  if b > a { r += 4; }
+  if b >= a { r += 8; }
+  if a == c { r += 16; }
+  if a != b { r += 32; }
+  if !(a > b) { r += 64; }
   r
 }

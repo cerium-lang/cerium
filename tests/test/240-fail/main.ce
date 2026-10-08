@@ -10,7 +10,7 @@ fn fine() {
   let a = [3]i32{1, 2, 3};
   if a[1] != 2 {
     panic("wrong");
-  };
+  }
 }
 
 #[test("this one dies on purpose")]

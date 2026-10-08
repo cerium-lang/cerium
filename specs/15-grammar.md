@@ -272,7 +272,9 @@ match_expr  = "match" expression "{" { arm "," } "}" ;
 arm         = pattern "=>" ( block | expression ) ;
 
 block       = "{" { statement } [ expression ] "}" ;
-statement   = let_statement | assignment | expression ";" ;
+statement   = let_statement | assignment
+            | if_expr | match_expr
+            | expression ";" ;
 
 or_expr     = and_expr { "||" and_expr } ;
 and_expr    = cmp_expr { "&&" cmp_expr } ;
@@ -331,10 +333,21 @@ An `if` is an expression: both branches have one type, and an `if` without an
 `else` yields `()` on the untaken path, so it is written as a statement
 (`10-iteration.md`). A `match` is an expression the same way, and an arm with
 several statements is a block whose last expression is its value
-(`09-match.md`). A block appears where a value is expected only as an `if`
-branch, a `match` arm, or a function body — a bare `{ ... }` is not an
-expression, so no binding takes one as its value. That absence is what makes
-the bare struct literal unambiguous: `{ a: 1 }` in expression position is
+(`09-match.md`). Both end in `}`, and a block-ended expression is a statement
+as it stands, the `for` beside it reading the same way: the `;` in
+`expression ";"` is the statement's own, never the expression's — which is
+why a `let`'s initializer carries one behind a block-ended expression (the
+`let`'s), and a statement `if` or `match` may carry one too, both spellings
+one statement. Nothing is ambiguous in the exemption: the decision rests on
+whether a `}` follows — the same test that picks the block's tail — and a
+bare `{ ... }` is not an expression, so an `if` followed by a block cannot
+be misread. The exemption is the `if`'s and the `match`'s alone: a struct
+literal ends in `}` too, but it stays an expression statement like the rest,
+its `;` where it always was. A block appears where a value is expected only
+as an `if` branch, a `match` arm, or a function body — a bare `{ ... }` is
+not an expression, so no binding takes one as its value. That absence is
+what makes the bare struct literal unambiguous: `{ a: 1 }` in expression
+position is
 `X{ a: 1 }` with the name left out, valid only where the type is already
 known (`01-types.md`) — and needing parentheses where a block is about to
 open. The condition of an `if`

@@ -8,7 +8,7 @@ fn helper() -> i32 {
 fn sees_the_helper() {
   if helper() != 7 {
     panic("helper broke");
-  };
+  }
 }
 
 #[test]

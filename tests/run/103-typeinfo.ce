@@ -58,13 +58,13 @@ fn bits_of(t: type) -> u16 {
 fn scalars() -> u32 { /* Int, Pointer, Slice, Array, the sugar pair,
                        * Voidptr, and the value slot: 1+2+3+4+5+5+6+1 */
   let mut r: u32 = 0;
-  match TI { TypeInfo::Int { bits, signed } => { if bits == 64 && signed { r += 1; }; }, _ => {}, };
-  match TP { TypeInfo::Pointer { child, mutable } => { if mutable { r += 2; }; }, _ => {}, };
-  match TS { TypeInfo::Slice { mutable, .. } => { if !mutable { r += 3; }; }, _ => {}, };
-  match TA { TypeInfo::Array { len, .. } => { if len == 3 { r += 4; }; }, _ => {}, };
-  match TO { TypeInfo::Optional { child, .. } => { r += 5; }, _ => {}, };
-  match TR { TypeInfo::Result { ok, .. } => { r += 5; }, _ => {}, };
-  match TV { TypeInfo::Voidptr => { r += 6; }, _ => {}, };
+  match TI { TypeInfo::Int { bits, signed } => { if bits == 64 && signed { r += 1; } }, _ => {}, }
+  match TP { TypeInfo::Pointer { child, mutable } => { if mutable { r += 2; } }, _ => {}, }
+  match TS { TypeInfo::Slice { mutable, .. } => { if !mutable { r += 3; } }, _ => {}, }
+  match TA { TypeInfo::Array { len, .. } => { if len == 3 { r += 4; } }, _ => {}, }
+  match TO { TypeInfo::Optional { child, .. } => { r += 5; }, _ => {}, }
+  match TR { TypeInfo::Result { ok, .. } => { r += 5; }, _ => {}, }
+  match TV { TypeInfo::Voidptr => { r += 6; }, _ => {}, }
   r + TVC
 }
 
@@ -72,10 +72,10 @@ fn counted() -> u32 { /* the shapes a count tells apart: the unit's
                        * no rows, the tuple's two, the fn's one arg,
                        * the union's two fields: 0+2+1+2 */
   let mut r: u32 = 0;
-  match TU { TypeInfo::Tuple { fields, .. } => { for f in fields { r += 1; } }, _ => {}, };
-  match TT { TypeInfo::Tuple { fields, .. } => { for f in fields { r += 1; } }, _ => {}, };
-  match TF { TypeInfo::Fn { args, .. } => { for a in args { r += 1; } }, _ => {}, };
-  match @typeinfo<U>() { TypeInfo::Union { fields, .. } => { for f in fields { r += 1; } }, _ => {}, };
+  match TU { TypeInfo::Tuple { fields, .. } => { for f in fields { r += 1; } }, _ => {}, }
+  match TT { TypeInfo::Tuple { fields, .. } => { for f in fields { r += 1; } }, _ => {}, }
+  match TF { TypeInfo::Fn { args, .. } => { for a in args { r += 1; } }, _ => {}, }
+  match @typeinfo<U>() { TypeInfo::Union { fields, .. } => { for f in fields { r += 1; } }, _ => {}, }
   r
 }
 
@@ -96,8 +96,8 @@ fn fieldwalk() -> u32 { /* the const for over the extracted fields:
                          * offsets 0 and 8, both immutable: 21+22 */
   let mut r: u32 = 0;
   const for f in FS {
-    if f.offset == 0 && !f.mutable { r += 21; };
-    if f.offset == 8 { r += 22; };
+    if f.offset == 0 && !f.mutable { r += 21; }
+    if f.offset == 8 { r += 22; }
   }
   r
 }
@@ -134,7 +134,7 @@ fn attrwalk() -> u32 { /* both marks, the 16 the align's own arg, the
   const for a in ABS {
     r += 1;
     for g in a.args {
-      match *g { AttrArg::Int(n) => { if n == 16 { r += 20; }; }, AttrArg::Ident(s) => { r += 21; }, _ => {}, }
+      match *g { AttrArg::Int(n) => { if n == 16 { r += 20; } }, AttrArg::Ident(s) => { r += 21; }, _ => {}, }
     }
   }
   r

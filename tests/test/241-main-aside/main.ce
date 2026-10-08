@@ -6,7 +6,7 @@
 fn one() {
   if 1 != 1 {
     panic("math broke");
-  };
+  }
 }
 
 fn main() -> i32 {

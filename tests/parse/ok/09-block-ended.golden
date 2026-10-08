@@ -1,0 +1,76 @@
+(file
+(fn cond ()
+  (path bool)
+  (block
+    (bool true)))
+
+(fn main ()
+  (path i32)
+  (block
+    (let
+      (ppath (path a))
+      (int 1))
+    (expr
+      (if
+        (call
+          (path cond))
+        (block
+          (assign =
+            (path a)
+            (int 2)))))
+    (expr
+      (if
+        (call
+          (path cond))
+        (block
+          (assign =
+            (path a)
+            (int 3)))))
+    (expr
+      (const-if
+        (bin <
+          (int 1)
+          (int 2))
+        (block
+          (assign =
+            (path a)
+            (int 4)))))
+    (expr
+      (match
+        (path a)
+        (arm
+          (wild)
+          (block
+            (assign =
+              (path a)
+              (int 5))))))
+    (expr
+      (match
+        (path a)
+        (arm
+          (wild)
+          (int 6))))
+    (expr
+      (match
+        (path a)
+        (arm
+          (wild)
+          (int 6))))
+    (for
+      (bin <
+        (path a)
+        (int 10))
+      (block
+        (assign =
+          (path a)
+          (bin +
+            (path a)
+            (int 1)))))
+    (if
+      (call
+        (path cond))
+      (block
+        (bin +
+          (path a)
+          (int 1))))))
+)

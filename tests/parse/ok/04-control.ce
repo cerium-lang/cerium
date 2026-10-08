@@ -3,12 +3,12 @@ fn cond() -> bool { true }
 fn next() -> ?i32 { None }
 
 fn main() -> i32 {
-  if cond() { 1 } else if true { 2 } else { 3 };
-  const if 1 < 2 { } else { };
+  if cond() { 1 } else if true { 2 } else { 3 }
+  const if 1 < 2 { } else { }
   match opt {
     Some(v) => v,
     None => 0,
-  };
+  }
   match shape {
     Circle(r) => r,
     Rect { w, h } => w,
@@ -16,14 +16,14 @@ fn main() -> i32 {
     (a, b) => a,
     One | Two | Three => 4,
     _ => 0,
-  };
+  }
   match opt {
     Some(v) => { let x = v; x },
     None => { 0 },
-  };
+  }
   const FACTOR: i32 = 4;
   sum = sum + FACTOR;
-  if done { return; };
+  if done { return; }
   for a < 10 { a = a + 1; }
   for let Some(v) = next() { use_it(v); }
   for i in 0..10 { sum = sum + i; }

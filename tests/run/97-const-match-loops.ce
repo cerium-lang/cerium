@@ -79,10 +79,10 @@ fn loopy(a: [5]i32, t: i32) -> i32 {
   for x in a {
     if x == 0 {
       continue;
-    };
+    }
     if x > t {
       break;
-    };
+    }
     n = n + x;
   }
   let mut i = 0;
@@ -91,7 +91,7 @@ fn loopy(a: [5]i32, t: i32) -> i32 {
     for j < i {
       if j == 1 {
         break;
-      };
+      }
       n = n + 1;
       j = j + 1;
     }
