@@ -2727,3 +2727,18 @@ the corpus carried rewritten `}` across 31 files, the trees equal.
 The tail keeps its own: a block-ended `if` at a block's end is still
 the block's value, the exemption only where a statement follows
 (09-block-ended).
+
+## 2026-10-08, the witness asks every time: the dependencies qbe's own Makefile holds
+
+`qbe/qbe` was up to date the moment it existed -- no prerequisites,
+no rebuild, a touch to qbe's sources through the pipe answering with
+silence (#141). CI never saw it, its checkouts born without the
+binary; the local increment sat on the wart alone.
+
+The mirror was the obvious fix -- two wildcards, cerium listing qbe's
+sources -- and the wrong one: a guess at another Makefile's shape,
+one directory level deep, asking to go stale the day qbe grows a
+third. The asking is the fix instead: the target stands phony, every
+`make qbe/qbe` walking in, and qbe's own Makefile decides what the
+walk owes -- a touched source its file, a stale ask a stat pass, five
+milliseconds the toll.

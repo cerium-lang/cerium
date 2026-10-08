@@ -23,6 +23,9 @@ $(BIN): $(OBJ)
 
 $(OBJ): $(wildcard src/*.h)
 
+# phony on purpose: qbe's own Makefile holds the real dependencies, so
+# every ask goes in -- a touched source rebuilds, a stale ask costs a
+# sub-second stat pass (#141)
 $(QBE_BIN):
 	@cd qbe >/dev/null 2>&1 || { \
 	    echo "qbe/ is empty -- run: git submodule update --init"; exit 1; }
@@ -43,4 +46,4 @@ hooks:
 clean:
 	rm -f $(OBJ) $(BIN)
 
-.PHONY: all test fmt fmt-check hooks clean
+.PHONY: all test fmt fmt-check hooks clean $(QBE_BIN)
