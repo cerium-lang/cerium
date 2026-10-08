@@ -27,16 +27,17 @@ fn main() {
 ```bash
 git clone --recurse-submodules https://github.com/cerium-lang/cerium
 cd cerium && make             # gcc; make CC=clang works too
-make qbe/qbe                  # the backend, on demand
 make test                     # the goldens and the run tests
 ```
 
 `qbe/` is the backend submodule, [a fork](https://github.com/mivinci/qbe)
-tracking upstream master; without it `make test` skips the run section.
+tracking upstream master, its objects linked into the compiler whole:
+the backend one call away (`src/qbe.c`), no binary beside, no pipe
+between. It is [Quentin Carbonneaux](https://c9x.me/compile/)'s, MIT.
 Stage 0 carries no host framework: one bare Makefile, `src/vec.h` the
-container layer, the compiler emitting `.ssa` that `qbe` lowers and the
-system `cc` links. The goal is self-hosting, with LLVM a v1+ backend
-rather than a v0 dependency.
+container layer, the compiler emitting `.ssa` that the linked-in `qbe`
+lowers and the system `cc` links. The goal is self-hosting, with LLVM
+a v1+ backend rather than a v0 dependency.
 
 Five flags, one pass each: `-l` the token stream, `-a` the parse tree,
 `-T` what checking made of every item, `-s` a project's whole `.ssa`,

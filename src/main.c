@@ -14,9 +14,10 @@
  *                  fields, variants, impl heads (the checker's golden
  *                  tests, tests/check/ok, diff against this)
  *   cerium -s file -- the .ssa text, qbe's input (codegen's)
- *   cerium -c file -o out -- the pipeline: emit, run qbe on it, link
- *                  with the system cc (QBE_BIN and CC override the
- *                  binaries, both by environment)
+ *   cerium -c file -o out -- the pipeline: emit, qbe's passes in
+ *                  the process (the backend linked in, src/qbe.c),
+ *                  link with the system cc (CC overrides the
+ *                  binary, by environment)
  *
  * -r rides the last two: release, the runtime checks left out
  * (01-types.md) -- debug is the default, the checks with it. -S
@@ -54,6 +55,7 @@
 #include "emit.h"
 #include "lex.h"
 #include "parse.h"
+#include "qbe.h"  /* the backend's door, the passes one call away */
 #include "sym.h"  /* the namespace tree the walk builds into */
 #include "test.h" /* the test word, and the pipeline it borrows */
 #include "vec.h"
@@ -544,21 +546,22 @@ emitssa_project(const char *path, int release)
   return 0;
 }
 
-/* the pipeline: .ssa text through a pipe into qbe, the .s it writes
- * into the system cc, the executable named by -o. qbe reads stdin
- * as "-", so nothing touches the disk but the one .s and the out.
- * Declared in test.h: -c and -x ride it here, the test word there */
+/* the pipeline: the .ssa text through qbe's passes in the process
+ * (src/qbe.c, the backend linked in -- no binary beside, no
+ * QBE_BIN to name one), the .s it writes into the system cc, the
+ * executable named by -o. The .ssa itself never leaves memory;
+ * nothing touches the disk but the one .s and the out. Declared
+ * in test.h: -c and -x ride it here, the test word there */
 int
 compile(const char *path, const char *out, int release, int test)
 {
-  const char *qbebin = getenv("QBE_BIN");
   const char *cc = getenv("CC");
   char        cmd[512], base[] = "/tmp/ceriumXXXXXX", ssa[64];
-  FILE       *p;
+  char       *mem = 0;
+  size_t      len = 0;
+  FILE       *ms, *inf, *of;
   int         fd;
 
-  if (!qbebin || !*qbebin)
-    qbebin = "qbe/qbe";
   if (!cc || !*cc)
     cc = "cc";
   fd = mkstemp(base); /* the X's must end the template, so the .s is
@@ -571,11 +574,10 @@ compile(const char *path, const char *out, int release, int test)
   close(fd);
   unlink(base);
   snprintf(ssa, sizeof ssa, "%s.s", base);
-  snprintf(cmd, sizeof cmd, "%s -o %s -", qbebin, ssa);
-  p = popen(cmd, "w");
-  if (!p) {
-    fprintf(stderr, "cerium: cannot run %s\n", qbebin);
-    unlink(ssa);
+  ms = open_memstream(&mem, &len); /* the .ssa in memory: the backend
+                                    * reads a stream, not a pipe */
+  if (!ms) {
+    fprintf(stderr, "cerium: cannot hold the .ssa\n");
     return 1;
   }
   {
@@ -583,13 +585,27 @@ compile(const char *path, const char *out, int release, int test)
                     * panic included */
     Srcfile **files = checked(path, &n, &nstd);
 
-    emitfile(p, files, n, release, projname, test);
+    emitfile(ms, files, n, release, projname, test);
   }
-  if (pclose(p) != 0) {
-    fprintf(stderr, "cerium: %s rejected the .ssa\n", qbebin);
+  fclose(ms);
+  inf = fmemopen(mem, len, "r");
+  of = fopen(ssa, "w");
+  if (!inf || !of) {
+    fprintf(stderr, "cerium: cannot open the backend's streams\n");
+    free(mem);
+    if (of)
+      fclose(of);
+    return 1;
+  }
+  qberun(inf, of);
+  fclose(inf);
+  if (fclose(of) != 0) {
+    fprintf(stderr, "cerium: cannot write %s\n", ssa);
+    free(mem);
     unlink(ssa);
     return 1;
   }
+  free(mem);
   snprintf(cmd, sizeof cmd, "%s %s -o %s", cc, ssa, out);
   if (system(cmd) != 0) {
     fprintf(stderr, "cerium: %s failed to link\n", cc);

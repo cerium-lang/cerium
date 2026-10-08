@@ -24,8 +24,7 @@
 # -r -- the runtime checks out, the wrap a release owns
 # (01-types.md) -- and an optional .stderr holds the bytes it must
 # write there, a runtime check's panic among them: abort's own exit
-# is 134. It needs qbe/qbe built -- a checkout without it skips
-# the section rather than failing.
+# is 134.
 #
 # tests/test is the test artifact's (13-testing.md): every entry a
 # directory project, -x compiling it to the runner over its #[test]
@@ -325,12 +324,8 @@ golden tests/check/ok -T
 rejected tests/lex/err -l
 rejected tests/parse/err -a
 rejected tests/check/err -T
-if [ -x qbe/qbe ]; then
-  runthem tests/run
-  testthem tests/test
-  wordthem
-else
-  echo "skipped tests/run and tests/test -- build qbe first: make qbe/qbe"
-fi
+runthem tests/run
+testthem tests/test
+wordthem
 
 exit $fail

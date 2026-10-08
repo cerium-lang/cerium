@@ -21,6 +21,5 @@ jobs:
                                  # clang-format, and a format verdict
                                  # is version-sensitive -- one
                                  # platform, one version, one answer
-      - run: make qbe/qbe
       - run: make CC=${{ matrix.cc }}
       - run: make test

@@ -2702,3 +2702,32 @@ stopping at it with no mode read.
 -t was the token stream's since the lexer first dumped one; the
 dumps took -l in the move -- the four of them -l, -a, -T, -s, a
 letter a pass: lex, parse, check, codegen.
+
+## 2026-10-08, the backend inside: qbe linked in, the pipe gone
+
+The .ssa used to leave the process -- a pipe into the qbe binary,
+the shell's own shape -- and come back a .s. The binary is the
+process's own now: qbe's objects linked in (its Makefile's list,
+main.o out), src/qbe.c driving the passes verbatim from its main.c
+-- the pipeline and the callbacks pinned by the submodule, the one
+place the backend may change from. What its main.o held that the
+passes reach for -- the target the config picks, the debug words --
+the driver holds, the debug all zero: qbe's -d hands stayed behind
+with its main.
+
+compile() holds the .ssa in memory: open_memstream under the emit,
+fmemopen over it into qberun, the .s the only file the disk sees
+beside the out. The pipe, the subprocess, QBE_BIN -- gone; CC
+alone names a linker. The .s is the tool's own bytes, a project
+cmp-clean against the external run; the objects meet the
+compiler's without a collision, qbe's die a macro over die_, its
+name landing clear of cerium's own.
+
+The price is one file outside the C89 the rest hold -- src/qbe.c
+speaks qbe's C99, its headers' words, built by its own rule -- and
+a binary that strips to 784K, three targets linked whole (amd64,
+arm64, rv64), the native one the config picks at run. The witness
+is qbe's own binary: the Makefile builds its objects with its
+Makefile, a touch to qbe's sources rebuilding both, cerium
+relinking after. The gates that minded the binary beside -- the
+test script's, CI's own -- went with it.
