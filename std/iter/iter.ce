@@ -11,6 +11,10 @@
  * the loop does not take destructs with the iterator itself at the
  * loop's exit, its fields the walk's own recursion (03-move.md).
  *
+ * A slice is an Iter down here, its header the cursor -- the loop
+ * over one rides the same desugar the rest do, the source's own
+ * header untouched behind the copy the iterator walks (10).
+ *
  * An owned array's ArrayIter waits on the one thing it needs: an
  * impl's own const length, [N]T routed through the impl table
  * (08-reflection.md). Until then an array iterates the compiler's
@@ -28,4 +32,39 @@ pub trait IntoIter {
 impl<I: Iter> IntoIter for I {
   type Iter = I;
   fn into_iter(self: Self) -> I { self }
+}
+
+/* a slice is an iterator over its elements (10): the header is the
+ * cursor. A slice views, never owns -- the header is a pair of
+ * scalars, a copy of it as harmless as the view itself -- so
+ * iterating lends each element out, a pointer a round, and what the
+ * loop walked over stays whole behind it. The mutable row is the
+ * more specific one: it wins for []mut T the same way *T wins over
+ * T (04-generics.md). */
+impl<T> Iter for []T {
+  type Item = *T;
+  fn next(self: *mut Self) -> ?*T {
+    if self.len == 0 {
+      None
+    } else {
+      let p = self.ptr;
+
+      *self = (*self)[1..];
+      Some(p)
+    }
+  }
+}
+
+impl<T> Iter for []mut T {
+  type Item = *mut T;
+  fn next(self: *mut Self) -> ?*mut T {
+    if self.len == 0 {
+      None
+    } else {
+      let p = self.ptr;
+
+      *self = (*self)[1..];
+      Some(p)
+    }
+  }
 }

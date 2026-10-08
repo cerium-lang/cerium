@@ -1,0 +1,24 @@
+/* a Copy aggregate's let is a copy, not a name for the same
+ * storage: the checker's read already said so (a Copy reads out a
+ * copy, 01-types.md), and two names one slot would let a write
+ * through one change what the other sees. Both aggregate kinds a
+ * Copy arrives in: the slice a ptr/len pair, the struct that
+ * carries its own impl -- the binding's own slot either way
+ * (03-move.md) */
+use std::ops::Copy;
+
+struct Pt { mut x: i32, y: i32 }
+
+impl Copy for Pt { }
+
+fn main() -> i32 {
+  let s = []i32{1, 2, 3};
+  let mut v = s;          /* the header copied: advancing v leaves s whole */
+
+  v = v[1..];
+  let a = Pt { x: 1, y: 2 };
+  let mut b = a;          /* the fields copied: a write through b is b's own */
+
+  b.x = 90;
+  @cast<i32>(s.len) + (a.x + b.x)   /* 3 + 93: 96, both sources whole */
+}

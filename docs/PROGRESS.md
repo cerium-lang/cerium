@@ -2829,3 +2829,47 @@ out, break, return -- each value once, the same order every way,
 the third source a parameter), 277 (a generic's into_iter() sugar,
 an aggregate Item, a continue), and check/err 273-275 (no IntoIter,
 the source moved, a parameter's iteration 04's own arrival).
+
+## 2026-10-08, the slice rides the library now: Iter for []T, and the fourth old bug
+
+S2's second part landed the borrowed iteration: `impl<T> Iter for
+[]T` and `impl<T> Iter for []mut T` in std, the header the cursor --
+`*self = (*self)[1..]` the whole advance, the pointer handed out a
+round. The mutable row is the more specific one and wins for
+`[]mut T`, the same way `*T` wins over `T`; the writes go home
+through the pointer the round binds. `*[N]T` and `*mut [N]mut T`
+wait where ArrayIter does -- an impl's own const length is 08's
+arrival, and `for x in &arr` rejects with the words it has
+(check/err 276 pins the boundary).
+
+The bigger move is what left the checker: the FIN arm's slice
+special case, gone. A slice source falls to the Iter road now,
+through the blanket -- into_iter copies the header, next advances
+the copy -- and the loop over a slice rides the same desugar every
+other Iter does. What made the delete safe was already true: a
+slice is a Copy (two scalars, a view twice as harmless), so the
+source's read never kills it, and the loop's own iterator is the
+copy. The emitter's hand-written slice walk went with it -- FIN's
+remaining emit is the array and the option, each still its own
+case. Every slice for-in the suite had (46, 60, 66, 202) came
+through byte-for-byte.
+
+And the fourth old bug, the deepest yet: a Copy aggregate's let
+bound the initializer's storage -- two names, one slot. The
+checker had always promised otherwise (a Copy read copies, the
+source stays whole), so any write through the new name changed
+what the old one sees: `let mut it = s; it.next()` was eating the
+source's length through the alias, the second loop over `s` finding
+it zero. The slice iterator was the first writer through such an
+alias -- structs with their own `impl Copy` had it too, silently,
+nothing having written through the copy yet. The one-name let now
+copies a Copy aggregate into a slot of its own, slotput's blit;
+a non-Copy aggregate keeps the move it always was. The pin is
+280: a slice advanced behind a copy and a struct's field written
+through one, both sources whole after.
+
+The pins: 278 (next spelled by hand and the sugar over the same
+slice, the source's len answering after both), 279 (the mutable
+row, writes through the round's pointer landing in the array),
+280 (the Copy aggregate's own slot), check/err 276 (&arr's
+rejection). 630 green.

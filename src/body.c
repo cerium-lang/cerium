@@ -4668,20 +4668,19 @@ rstmt(Ast *st, Fenv *fe)
         et = et->t;
       if (!et)
         break;
-      if (et->k == Tyslice) /* a slice lends each element out: the
-                             * binding is a pointer, never a move (10) */
-        rpat(st->v.forx.a, typtr(et->t), &fb, 0);
-      else if (et->k == Tyarray) /* an owned array yields each element
-                                  * itself, and is consumed -- a place
-                                  * of non-Copy elements is the mover's
-                                  * to @take (10, 03) */
+      if (et->k == Tyarray) /* an owned array yields each element
+                             * itself, and is consumed -- a place
+                             * of non-Copy elements is the mover's
+                             * to @take (10, 03) */
         rpat(st->v.forx.a, et->t, &fb, 0);
       else if (et->k == Tyenum && et->sym == sym_option)
         rpat(st->v.forx.a, et->args[0], &fb, 0); /* ?T iterates T or ends */
       else { /* the Iter path: the sugar rides std::iter's own, the
               * desugar 10-iteration.md spells -- c.into_iter() once,
               * it.next() a round, for let Some(x) the shape it all
-              * becomes (10) */
+              * becomes (10). A slice rides it too: the library's
+              * own Iter for []T hands the pointers out, the header
+              * a copy the source keeps whole (10) */
         Sym    *iimp, *timp;
         Type  **tys, **ttys;
         Member *im = implfind(sym_intoiter, et, "into_iter", &iimp, &tys);

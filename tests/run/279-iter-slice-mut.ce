@@ -1,0 +1,18 @@
+/* the mutable row: []mut T's pointers write through, and for-in
+ * over one rides the same desugar -- x a *mut T the whole way, the
+ * more specific impl winning for the mutable slice (04-generics.md,
+ * 10-iteration.md). The slice views the array; the writes land in
+ * the array's own slots */
+fn main() -> i32 {
+  let m = [3]mut i32{1, 2, 3};
+  let w: []mut i32 = @slice(&m[0], 3);
+  let mut sum = 0;
+
+  for x in w {
+    *x = *x * 10;
+  }
+  for v in [3]i32{m[0], m[1], m[2]} {
+    sum = sum + v;
+  }
+  sum   /* 10+20+30: the writes went home */
+}

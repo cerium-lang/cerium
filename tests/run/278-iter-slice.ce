@@ -1,0 +1,19 @@
+/* the slice's own Iter, both doors: the library row itself --
+ * next() spelled by hand, the header advancing by re-slicing -- and
+ * the for-in over one, the same desugar the rest of the family
+ * rides. The header is a pair of scalars, so the iterator walks a
+ * copy and the source stays whole behind it: s.len answers after
+ * (10-iteration.md) */
+fn main() -> i32 {
+  let s = []i32{1, 2, 3};
+  let mut it = s;
+  let mut sum = 0;
+
+  for let Some(p) = it.next() {   /* the hand spelling: 6 */
+    sum = sum + *p;
+  }
+  for p in s {                    /* the sugar: +6 = 12 */
+    sum = sum + *p;
+  }
+  sum + @cast<i32>(s.len)   /* 15: the source whole behind the copies */
+}

@@ -1186,6 +1186,9 @@ int mustexit(Ast *st);                     /* flow.c's syntactic judgement, body
                                             * header itself stays unwelcome here -- its
                                             * locfind is the checker's, this file's its
                                             * own (10-iteration.md) */
+int iscopy(Type *t);                       /* body.h's own too: a Copy read copies,
+                                            * the let below binds its own slot on one
+                                            * (03-move.md) -- same unwelcome, same door */
 
 /* the end of the text a diverging statement writes, read for what
  * closed it: the ret or jump the walk itself wrote -- a return, a
@@ -2067,7 +2070,9 @@ emafor(Em *em, Ast *st)
       fprintf(em->o, "%s\n", lx);
       return;
     }
-    { /* a slice or an array: ptr/len stepped by the element size */
+    { /* an array: ptr/len stepped by the element size -- a slice
+       * rides the library's own Iter now, the desugar's FLET
+       * carrying it (10-iteration.md) */
       Type *it = et->t;
       usize sz = sizeof_(it);
       char *sv = aggbase(em, st->v.forx.b); /* the storage it sits at */
@@ -2076,16 +2081,9 @@ emafor(Em *em, Ast *st)
       int   reached;
       usize nbase;
 
-      if (et->k == Tyslice) { /* its two named slots (01-types.md) */
-        ptr = newtmp(em);
-        len = newtmp(em);
-        fprintf(em->o, "\t%s =l loadl %s\n", ptr, sv);
-        fprintf(em->o, "\t%s =l loadl %s\n", len, addrplus(em, sv, WORD));
-      } else { /* the length comes from the type */
-        ptr = sv;
-        len = newtmp(em);
-        fprintf(em->o, "\t%s =l copy %lu\n", len, (unsigned long) et->n);
-      }
+      ptr = sv; /* the length comes from the type */
+      len = newtmp(em);
+      fprintf(em->o, "\t%s =l copy %lu\n", len, (unsigned long) et->n);
       islot = stackslot(em, 8);
       fprintf(em->o, "\tstorel 0, %s\n", islot);
       em->loops[em->nloops].brk = lx;
@@ -2099,27 +2097,21 @@ emafor(Em *em, Ast *st)
       fprintf(em->o, "\tjnz %s, %s, %s\n", c, lb, lx);
       fprintf(em->o, "%s\n", lb);
       nbase = em->nlocs;
-      { /* the element's address, ptr + i*size: a slice lends it out
-         * as a pointer (10-iteration.md), an owned array yields the
-         * element itself -- the loop consumed it (10) */
+      { /* the element's address, ptr + i*size: an owned array
+         * yields the element itself -- the loop consumes it (10) */
         char *m = newtmp(em);
         char *ea = newtmp(em);
+        char *sa, *svv;
 
         fprintf(em->o, "\t%s =l mul %s, %lu\n", m, i, (unsigned long) sz);
         fprintf(em->o, "\t%s =l add %s, %s\n", ea, ptr, m);
-        if (et->k == Tyarray) {
-          char *sa, *svv;
-
-          subval(em, it, ea, 0, st->v.forx.a, &sa, &svv);
-          emapat(em, st->v.forx.a, it, sa, svv, lx);
-        } else
-          emapat(em, st->v.forx.a, typtr(it), 0, ea, lx);
+        subval(em, it, ea, 0, st->v.forx.a, &sa, &svv);
+        emapat(em, st->v.forx.a, it, sa, svv, lx);
       }
       emablockval(em, body, &reached);
       if (reached) /* the round reached its end: the element's own
-                    * bindings die with it -- a slice lends a
-                    * pointer, which owns nothing, an owned array
-                    * yields the element, which the round drops
+                    * bindings die with it -- the array yielded the
+                    * element, and the round drops it
                     * (03-move.md, 10-iteration.md) */
         emdrops(em, st->v.forx.drops);
       em->nlocs = nbase;
@@ -3352,14 +3344,18 @@ emastmt(Em *em, Ast *st)
       nm = pat->v.ppath.path->v.path.segs[0]->v.seg.name;
     if (nm) { /* the one-name form: the binding is the value's */
       v = st->v.let.e ? emaexpr(em, st->v.let.e) : 0;
-      if (isagg(t)) /* the initializer's storage is the binding's: a
-                     * move, not a copy (03-move.md) */
+      if (isagg(t) && !iscopy(t)) /* the initializer's storage is the
+                                   * binding's: a move, not a copy
+                                   * (03-move.md) */
         locbind(em, nm, v, t);
-      else {
+      else { /* a scalar, or a Copy aggregate: the binding its own
+              * slot, the value copied in -- a Copy read leaves the
+              * source whole behind it, and two names one storage
+              * would not (01-types.md, 03-move.md) */
         char *slot = stackslot(em, sizeof_(t) ? sizeof_(t) : 1);
 
         if (v && sizeof_(t))
-          fprintf(em->o, "\t%s %s, %s\n", stins(t), v, slot);
+          slotput(em, t, v, slot);
         locbind(em, nm, slot, t);
       }
       return;
