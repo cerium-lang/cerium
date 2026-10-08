@@ -6,6 +6,10 @@
  * variants, not names in scope: a bare Some rides the sugar's owner
  * lookup, not a use (01-types.md). */
 
+use std::debug::assert; /* the tests' own word: the artifact is the
+                         * debug shape, the one the assertions live in
+                         * (01-types.md, 13-testing.md) */
+
 pub enum Option<T> {
   None,
   Some(T),
@@ -22,18 +26,14 @@ pub enum Option<T> {
 fn option_some_roundtrip() {
   let x: ?i32 = Some(3);
   let r = match x { Some(n) => n, None => 0, };
-  if r != 3 {
-    panic("Some lost its payload");
-  };
+  assert(r == 3, "Some lost its payload");
 }
 
 #[test("the empty half: a None reads as itself")]
 fn option_none_reads_empty() {
   let x: ?i32 = None;
   let r = match x { Some(n) => n, None => 7, };
-  if r != 7 {
-    panic("None took a payload");
-  };
+  assert(r == 7);
 }
 
 #[test("a slot of its own: the empty and the full trade places")]
@@ -42,7 +42,5 @@ fn option_slot_trades() {
   x = None;
   x = Some(2);
   let r = match x { Some(n) => n, None => 0, };
-  if r != 2 {
-    panic("the last Some did not stay");
-  };
+  assert(r == 2, "the last Some did not stay");
 }

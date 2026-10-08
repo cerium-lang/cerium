@@ -15,6 +15,8 @@
 
 use std::ops::Fn; /* the family name the bound spells, the file's own
                    * word that it uses it (05-traits.md) */
+use std::debug::assert; /* the tests' own word, the artifact the debug
+                         * shape the assertions live in (13-testing.md) */
 
 pub enum Result<T, E> {
   Ok(T),
@@ -39,27 +41,21 @@ impl<T, E> Result<T, E> {
 fn result_ok_roundtrip() {
   let x: i32?i32 = Ok(3);
   let r = match x { Ok(v) => v, Err(w) => w, };
-  if r != 3 {
-    panic("Ok lost its payload");
-  };
+  assert(r == 3, "Ok lost its payload");
 }
 
 #[test("the Err half: the error rides inside")]
 fn result_err_carries() {
   let x: i32?i32 = Err(7);
   let r = match x { Ok(v) => v, Err(w) => w, };
-  if r != 7 {
-    panic("Err lost its error");
-  };
+  assert(r == 7);
 }
 
 #[test("? hands the Ok through whole, an E?()'s own pass")]
 fn result_try_hands_ok() -> i32?() {
   let x: i32?i32 = Ok(3);
   let v = x?;
-  if v != 3 {
-    return Err(1);
-  };
+  assert(v == 3);
   Ok(())
 }
 
@@ -70,15 +66,11 @@ fn result_map_err_both_arms() {
     Ok(v)  => v,
     Err(w) => w,
   };
-  if m != 18 {
-    panic("map_err lost the mapping");
-  };
+  assert(m == 18, "map_err lost the mapping");
   let b: i32?i32 = Ok(4);
   let k = match b.map_err(fn[](e: i32) -> i32 { e * 2 }) {
     Ok(v)  => v,
     Err(w) => w,
   };
-  if k != 4 {
-    panic("map_err touched the Ok half");
-  };
+  assert(k == 4, "map_err touched the Ok half");
 }
