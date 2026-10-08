@@ -2541,6 +2541,10 @@ checkproject(Srcfile **files, usize nfiles)
      * without them cannot say what a for-in means */
     sym_iter = nsitem(nsopen("std::iter"), "Iter");
     sym_intoiter = nsitem(nsopen("std::iter"), "IntoIter");
+    sym_range = nsitem(nsopen("std::ops"), "Range"); /* the interval
+                                                      * a .. lands in, the
+                                                      * checker's own sugar
+                                                      * (10-iteration.md) */
     { /* the operator traits, the sugar's own (07-operators.md), and
        * the two the compiler calls on its own -- Copy at a move,
        * Drop at a scope's end (03-move.md): the rewrite spells the
@@ -2573,11 +2577,11 @@ checkproject(Srcfile **files, usize nfiles)
     }
     if (!sym_option || !sym_result || !sym_copy || !sym_drop || !sym_typeinfo || !sym_panic ||
         !sym_fmt || !sym_exit || !sym_entry_unit || !sym_entry_i32 || !sym_entry_err || !sym_fn ||
-        !sym_fnmut || !sym_fnonce || !sym_iter || !sym_intoiter) {
+        !sym_fnmut || !sym_fnonce || !sym_iter || !sym_intoiter || !sym_range) {
       fprintf(stderr, "cerium: the standard library is incomplete: Option, Result, Copy, Drop,"
-                      " meta::TypeInfo, panic, fmt's Fmt, iter's Iter and IntoIter, exit, entry's"
-                      " three runs, ops' Fn family -- one is missing from the sysroot"
-                      " (12-projects.md)\n");
+                      " meta::TypeInfo, panic, fmt's Fmt, iter's Iter and IntoIter, ops' Range,"
+                      " exit, entry's three runs, ops' Fn family -- one is missing from the"
+                      " sysroot (12-projects.md)\n");
       exit(1);
     }
   }

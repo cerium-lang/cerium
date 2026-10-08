@@ -1,0 +1,11 @@
+/* one integer type the ends: i32 and u8 are two (10-iteration.md) */
+fn main() -> i32 {
+  let a: i32 = 0;
+  let b: u8 = 3;
+  let mut sum = 0;
+
+  for i in a..b {
+    sum = sum + i;
+  }
+  sum
+}

@@ -3013,6 +3013,30 @@ emaexpr(Em *em, Ast *e)
     }
     return t;
   }
+  case Nrange: { /* the two ends into the interval's own storage:
+                  * the struct the checker's sugar landed in, a
+                  * scalar a field, the offsets the layout's own */
+    Type *st = e->ty;
+    usize sz = sizeof_(st) ? sizeof_(st) : 1;
+    char *t = stackslot(em, sz);
+    char *lv = emaexpr(em, e->v.bin.l);
+    char *rv = emaexpr(em, e->v.bin.r);
+    Type *ft = st->args[0]; /* both ends the one integer type */
+
+    fprintf(em->o, "\t%s %s, %s\n", stins(ft), lv, t);
+    { /* the end field at its offset */
+      usize off = fieldoffof(st, 1);
+
+      if (off) {
+        char *p = newtmp(em);
+
+        fprintf(em->o, "\t%s =l add %s, %lu\n", p, t, (unsigned long) off);
+        fprintf(em->o, "\t%s %s, %s\n", stins(ft), rv, p);
+      } else
+        fprintf(em->o, "\t%s %s, %s\n", stins(ft), rv, t);
+    }
+    return t;
+  }
   case Nstructlit: { /* storage first, then a field at a time */
     Type *st = e->ty;
     usize sz = sizeof_(st) ? sizeof_(st) : 1;

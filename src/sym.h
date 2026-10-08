@@ -332,6 +332,10 @@ extern Sym *sym_panic;
  * read by pointer, never spelled by hand in the walk */
 extern Sym *sym_iter, *sym_intoiter;
 
+/* std::ops's Range, the interval a .. lands in: the checker builds
+ * the type for the sugar, no name a program spells (10) */
+extern Sym *sym_range;
+
 /* std::fmt's two, read by pointer wherever an E?() main meets its
  * ends (prelude.c, 12-projects.md): the Fmt its error type must
  * implement -- the Err half prints through it -- and the exit the

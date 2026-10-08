@@ -37,6 +37,8 @@ Sym *sym_fmt;                         /* std::fmt's Fmt, the Err half's own word
 Sym *sym_iter, *sym_intoiter;         /* std::iter's two, for-in's own words
                                        * (10-iteration.md): the desugar's two
                                        * rows, found by the walk at each sugar */
+Sym *sym_range;                       /* std::ops's own, the interval a ..
+                                       * lands in (10-iteration.md) */
 Sym *sym_exit;                        /* std's exit (entry.ce), the ending answered as
                                        * the platform takes it -- run_err hands it the
                                        * ending; the prelude asks only that it stands */

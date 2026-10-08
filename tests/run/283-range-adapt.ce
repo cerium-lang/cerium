@@ -1,0 +1,15 @@
+/* a literal end yields to the typed one, the binop's own rule a
+ * range rides: 0..n and n..5 both u8, the sums 3 and 7
+ * (10-iteration.md) */
+fn main() -> i32 {
+  let n: u8 = 3;
+  let mut s: u8 = 0;
+
+  for i in 0..n {
+    s = s + i;
+  }
+  for i in n..5 {
+    s = s + i;
+  }
+  @cast<i32>(s)
+}
