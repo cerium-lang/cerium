@@ -1,0 +1,7 @@
+/* the std tests' own door: an empty project, nothing of the
+ * project's own to collect, the artifact's runner walking the
+ * library's rows alone (13-testing.md) -- every #[test] fn the
+ * std sources carry, the report reading them std:: by name. The
+ * .expect beside this directory says zero: every one of them
+ * passes, and no .stdout names the report -- a new test changes no
+ * golden bytes, the runner's report its own moving text */

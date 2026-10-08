@@ -215,7 +215,14 @@ runthem() { # $1: the directory; an .expect of "!" wants rejection,
 
 testthem() { # $1: the directory; every entry a directory project,
   # the .expect its exit, an optional .stdout the report lines, an
-  # optional .stderr the failures' own words (13-testing.md)
+  # optional .stderr the failures' own words (13-testing.md).
+  #
+  # std's rows the tree collects with the project's own (12-
+  # projects.md, 13-testing.md): the golden reads the project's
+  # alone, the std:: rows stripped and the sum retold over what is
+  # left -- std's own pass and fail its own door says, the 00-std
+  # project's .expect, and a std row failing fails every exit with
+  # it, the whole tree one artifact
   tmp=$(mktemp -d)
   for d in "$1"/*/; do
     [ -d "$d" ] || continue
@@ -239,10 +246,16 @@ testthem() { # $1: the directory; every entry a directory project,
       continue
     fi
     s="${d%/}.stdout"
-    if [ -f "$s" ] && ! cmp -s "$s" "$tmp/stdout"; then
-      echo "FAIL $d (stdout $(head -c 40 "$tmp/stdout" | tr '\n' ' ')...)"
-      fail=1
-      continue
+    if [ -f "$s" ]; then
+      awk '!/std::/ { if ($0 ~ /^ok/) p++; else if ($0 ~ /^FAIL/) f++; lines[++n] = $0 }
+           END { for (i = 1; i < n; i++) print lines[i]
+                 printf "%d passed, %d failed\n", p, f }' \
+        "$tmp/stdout" >"$tmp/mine"
+      if ! cmp -s "$s" "$tmp/mine"; then
+        echo "FAIL $d (stdout $(head -c 40 "$tmp/mine" | tr '\n' ' ')...)"
+        fail=1
+        continue
+      fi
     fi
     s="${d%/}.stderr"
     if [ -f "$s" ] && ! cmp -s "$s" "$tmp/stderr"; then

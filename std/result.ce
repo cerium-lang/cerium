@@ -29,3 +29,56 @@ impl<T, E> Result<T, E> {
     }
   }
 }
+
+/* -- the tests (13-testing.md) ------------------------------------------------
+ * the pass shapes alone here too, both endings a test may return:
+ * the plain (), and an E?() whose Ok is the pass -- the ? inside
+ * riding the same sugar these rows read (13-testing.md) */
+
+#[test("the Ok half: a payload through and back")]
+fn result_ok_roundtrip() {
+  let x: i32?i32 = Ok(3);
+  let r = match x { Ok(v) => v, Err(w) => w, };
+  if r != 3 {
+    panic("Ok lost its payload");
+  };
+}
+
+#[test("the Err half: the error rides inside")]
+fn result_err_carries() {
+  let x: i32?i32 = Err(7);
+  let r = match x { Ok(v) => v, Err(w) => w, };
+  if r != 7 {
+    panic("Err lost its error");
+  };
+}
+
+#[test("? hands the Ok through whole, an E?()'s own pass")]
+fn result_try_hands_ok() -> i32?() {
+  let x: i32?i32 = Ok(3);
+  let v = x?;
+  if v != 3 {
+    return Err(1);
+  };
+  Ok(())
+}
+
+#[test("map_err: the Err half through the fn, the Ok untouched")]
+fn result_map_err_both_arms() {
+  let a: i32?i32 = Err(9);
+  let m = match a.map_err(fn[](e: i32) -> i32 { e * 2 }) {
+    Ok(v)  => v,
+    Err(w) => w,
+  };
+  if m != 18 {
+    panic("map_err lost the mapping");
+  };
+  let b: i32?i32 = Ok(4);
+  let k = match b.map_err(fn[](e: i32) -> i32 { e * 2 }) {
+    Ok(v)  => v,
+    Err(w) => w,
+  };
+  if k != 4 {
+    panic("map_err touched the Ok half");
+  };
+}

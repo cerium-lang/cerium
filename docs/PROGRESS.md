@@ -2630,3 +2630,29 @@ and a wrong hand would have heard nothing. 274 the binary the
 271 and 272 the two doors the checker answers; 244 the artifact's
 helpers, a plain fn the tests call and a test another names -- the
 shape std's own tests are about to take.
+
+## 2026-10-08, std's own rows: the tests live in the library now
+
+The library grew tests of its own, the first two files' worth:
+option's three -- the Some round trip, the None read as itself, the
+empty and the full trading a slot -- and result's four, map_err's
+two arms among them and an E?() test riding ? to its own pass, the
+runner's second ending in a row of its own. They live in the
+sources, the shape 244 named; the report reads them std:: by name,
+and the library and the executable carry none of it, yesterday's
+word already said.
+
+The door they run through: tests/test/00-std, an empty project --
+nothing of a project's own to collect, the runner walking the
+library's rows alone, .expect zero and no .stdout at all, a new
+test changing no golden bytes. CI needs nothing said: make test
+walks the directory like any other.
+
+The golden reports of the project tests needed the one honest
+adjustment: the tree collects std's rows with the project's own --
+every namespace, 13's word -- and a full-diff .stdout would have
+gone red at every std row and every retold sum. testthem strips
+the std:: rows and retells the sum over what is left: the golden
+reads the project's alone, std's own pass and fail its own door's
+say -- and a std row failing fails every exit with it, the whole
+tree one artifact, the word 12 always said.
