@@ -4360,6 +4360,22 @@ placewritable(Ast *p, Fenv *fe)
   }
 }
 
+/* $.it, the iterator's own binding (10-iteration.md): a name with a
+ * dot, nothing a program declared can meet. Bound mut -- next
+ * writes through it -- and past the loop's own base: a break
+ * destructs the round's bindings alone, the iterator itself
+ * outliving the break, its own destructors the exit's. A return
+ * still finds it -- the fn's base sits below every loop's */
+static void
+itpush(Fenv *fb, Type *it)
+{
+  locpush(fb, "$.it", it, 1);
+  fb->loopbs[fb->nloopbs - 1] = fb->n; /* the loop's base moves past
+                                        * the iterator: the round's
+                                        * bindings alone are a
+                                        * break's own to destruct */
+}
+
 void
 rstmt(Ast *st, Fenv *fe)
 {
@@ -4598,9 +4614,21 @@ rstmt(Ast *st, Fenv *fe)
     return;
   case Nfor: {
     Ast  *body = st->v.forx.body;
-    Fenv  fb = fefork(fe);
-    usize nbase = fb.n;
-    usize nbody;
+    Type *et = 0;
+    Fenv  fb;
+    usize nbase;
+
+    /* an Iter source consumes once, before the loop -- the sugar's
+     * own walk, or the re-check's copy via's -- and the move the
+     * outer frame's own: the read lands here, ahead of the fork,
+     * so the copy below carries the death along -- a frame the
+     * fork's own copy missed would destruct the moved-out slot a
+     * second time at its exit (03-move.md) */
+    if (st->v.forx.shape == FIN || st->v.forx.it)
+      et = rexpr(st->v.forx.shape == FIN ? st->v.forx.b : st->v.forx.via, fe, 0);
+
+    fb = fefork(fe);
+    nbase = fb.n;
 
     /* the loop marks: moves of bindings from before the outermost
      * loop repeat every round (03-move.md) */
@@ -4619,21 +4647,23 @@ rstmt(Ast *st, Fenv *fe)
         berr(st->v.forx.a, "a for condition is a bool, this is %s", btys(ct));
       break;
     }
-    case FLET: { /* for let pat = e: e is matched every round (10) */
-      Type *et = rexpr(st->v.forx.b, &fb, 0);
-
+    case FLET: {         /* for let pat = e: e is matched every round (10) */
+      if (st->v.forx.it) /* an iterator's own for-let, the sugar's
+                          * making or the re-check's copy: the next
+                          * call reads the binding by name (10) */
+        itpush(&fb, st->v.forx.it);
+      et = rexpr(st->v.forx.b, &fb, 0);
       while (et && et->k == Tymut) /* a *mut read: the emitter
                                     * strips this too (emafor) */
         et = et->t;
       rpat(st->v.forx.a, et, &fb, 0);
       break;
     }
-    case FIN: {                              /* for pat in e: what e yields, one binding a round */
-      Type *et = rexpr(st->v.forx.b, fe, 0); /* the source is consumed
-                                              * once, before the first round -- an
-                                              * owned array moves in here, and is
-                                              * not re-read every round (10) */
-
+    case FIN: { /* for pat in e: what e yields, one binding a round */
+      /* the source is consumed once, before the first round -- an
+       * owned array moves in here, and is not re-read every round
+       * (10) -- the walk itself ran before the fork above, its
+       * move the outer frame's own */
       while (et && et->k == Tymut) /* ditto */
         et = et->t;
       if (!et)
@@ -4648,20 +4678,141 @@ rstmt(Ast *st, Fenv *fe)
         rpat(st->v.forx.a, et->t, &fb, 0);
       else if (et->k == Tyenum && et->sym == sym_option)
         rpat(st->v.forx.a, et->args[0], &fb, 0); /* ?T iterates T or ends */
-      else
-        berr(st->v.forx.b, "iterating %s arrives with its iterators (10)", btys(et));
+      else { /* the Iter path: the sugar rides std::iter's own, the
+              * desugar 10-iteration.md spells -- c.into_iter() once,
+              * it.next() a round, for let Some(x) the shape it all
+              * becomes (10) */
+        Sym    *iimp, *timp;
+        Type  **tys, **ttys;
+        Member *im = implfind(sym_intoiter, et, "into_iter", &iimp, &tys);
+        Member *tm;
+        Type   *sig, *it, *ret, *nt;
+        Ast    *place, *recv, *borrow, *f, *c;
+
+        if (et->k == Typaram) /* the bound's own signature carries a
+                               * generic's method calls (04) -- the
+                               * iterable's ride arrives with that
+                               * milestone */
+          berr(st->v.forx.b,
+               "iterating the parameter '%s' arrives with a later milestone (04-generics.md)",
+               et->gp->v.gp.name);
+        if (!im)
+          berr(st->v.forx.b, "iterating %s takes an IntoIter (10-iteration.md)", btys(et));
+        sig = iimp->ngparams ? gsubst(im->ty, iimp->gparams, tys, iimp->ngparams) : im->ty;
+        it = projopen(sig->t, st->v.forx.b); /* a row may answer in a
+                                              * projection of its own (04) */
+        if (!it)
+          berr(st->v.forx.b, "the IntoIter for %s names no iterator (10-iteration.md)", btys(et));
+        tm = implfind(sym_iter, it, "next", &timp, &ttys);
+        if (!tm)
+          berr(st->v.forx.b, "the iterator %s is no Iter (10-iteration.md)", btys(it));
+        sig = timp->ngparams ? gsubst(tm->ty, timp->gparams, ttys, timp->ngparams) : tm->ty;
+        ret = projopen(sig->t, st->v.forx.b);
+        if (!ret || ret->k != Tyenum || ret->sym != sym_option)
+          berr(st->v.forx.b, "'next' for %s must answer ?Item, not %s (10-iteration.md)", btys(it),
+               btys(ret));
+
+        st->v.forx.it = it; /* the emitter's own gate: the prologue
+                             * and the exit the iterator asks */
+        itpush(&fb, it);    /* $.it: past the loop's base, a break's own
+                             * destructors the round's alone (03, 10) */
+
+        /* via: c.into_iter(), the trait's own spelling -- the row
+         * this find landed, the emitter's instance its own. The
+         * source node itself rides as the argument: the read above
+         * moved it, this call the move's destination (03) */
+        f = opnode(Npath, st->v.forx.b);
+        f->v.path.segs = vnew(Ast *, 4);
+        opvpush(&f->v.path.segs, opseg("std", st->v.forx.b));
+        opvpush(&f->v.path.segs, opseg("iter", st->v.forx.b));
+        opvpush(&f->v.path.segs, opseg("IntoIter", st->v.forx.b));
+        opvpush(&f->v.path.segs, opseg("into_iter", st->v.forx.b));
+        c = opnode(Ncall, st->v.forx.b);
+        c->v.call.f = f;
+        c->v.call.args = vnew(Ast *, 1);
+        opvpush(&c->v.call.args, st->v.forx.b);
+        c->v.call.sym = im->sym;
+        c->v.call.tys = iimp->ngparams ? tys : 0;
+        c->ty = it;
+        st->v.forx.via = c;
+
+        /* the iterator's own destructors, the exit's: what it still
+         * holds destructs there, break and natural end alike (03) */
+        place = opnode(Npath, st->v.forx.b);
+        place->v.path.segs = vnew(Ast *, 1);
+        opvpush(&place->v.path.segs, opseg("$.it", st->v.forx.b));
+        place->ty = it;
+        dropcalls(place, it, &st->v.forx.itdrops, st->v.forx.b);
+
+        /* the round's own call, the trait spelled whole: the
+         * receiver a real borrow of the checker's own binding, the
+         * pick this walk's -- the sugar itself re-walked no other
+         * way than a program's own spelling (10) */
+        recv = opnode(Npath, st->v.forx.b);
+        recv->v.path.segs = vnew(Ast *, 1);
+        opvpush(&recv->v.path.segs, opseg("$.it", st->v.forx.b));
+        recv->ty = it;
+        borrow = opnode(Nun, st->v.forx.b);
+        borrow->v.un.op = Tamp;
+        borrow->v.un.mut = 1;
+        borrow->v.un.e = recv;
+        f = opnode(Npath, st->v.forx.b);
+        f->v.path.segs = vnew(Ast *, 4);
+        opvpush(&f->v.path.segs, opseg("std", st->v.forx.b));
+        opvpush(&f->v.path.segs, opseg("iter", st->v.forx.b));
+        opvpush(&f->v.path.segs, opseg("Iter", st->v.forx.b));
+        opvpush(&f->v.path.segs, opseg("next", st->v.forx.b));
+        c = opnode(Ncall, st->v.forx.b);
+        c->v.call.f = f;
+        c->v.call.args = vnew(Ast *, 1);
+        opvpush(&c->v.call.args, borrow);
+        st->v.forx.b = c; /* the source's node rides via's argument above */
+
+        { /* the pattern dressed in Some: the payload's bindings the
+           * user's own, the scrutinee -- ?Item -- picking the
+           * variant out itself (09) */
+          Ast *user = st->v.forx.a;
+
+          st->v.forx.a = opnode(Nppath, user);
+          f = opnode(Npath, user);
+          f->v.path.segs = vnew(Ast *, 1);
+          opvpush(&f->v.path.segs, opseg("Some", user));
+          st->v.forx.a->v.ppath.path = f;
+          st->v.forx.a->v.ppath.payload = vnew(Ast *, 1);
+          opvpush(&st->v.forx.a->v.ppath.payload, user);
+        }
+
+        st->v.forx.shape = FLET;          /* the desugar's own shape: from
+                                           * here an ordinary for-let, the
+                                           * re-check's copy walking this way */
+        nt = rexpr(st->v.forx.b, &fb, 0); /* the FLET walk's own
+                                           * lines, spelled here: the
+                                           * switch chose FIN */
+        while (nt && nt->k == Tymut)
+          nt = nt->t;
+        rpat(st->v.forx.a, nt, &fb, 0);
+      }
       break;
     }
     default:
       berr(st, "this for shape is not one of the three");
     }
-    nbody = fb.n; /* past the pattern: the body's own block ends its
-                   * own bindings, this loop's end the pattern's */
-    rblock(body, &fb, 0);
-    st->v.forx.drops = scopedrops(&fb, nbody, st); /* the pattern's
-                                                    * bindings, every
-                                                    * round at its
-                                                    * end (03, 10) */
+    rblock(body, &fb, 0); /* the body's own block ends its own
+                           * bindings at its closing brace, this
+                           * loop's end the pattern's */
+    st->v.forx.drops = scopedrops(&fb, fb.loopbs[fb.nloopbs - 1], st); /* the pattern's
+                                                                        * bindings, every
+                                                                        * round at its
+                                                                        * end: the loop's
+                                                                        * own base, the
+                                                                        * same base a
+                                                                        * continue's --
+                                                                        * past an
+                                                                        * iterator's
+                                                                        * $.it, whose
+                                                                        * own end the
+                                                                        * exit's (03,
+                                                                        * 10) */
     locpop(&fb, nbase); /* what the round bound -- and froze -- ends here */
     return;
   }

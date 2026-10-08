@@ -357,15 +357,27 @@ struct Ast
       Ast *a, *b; /* per shape: the condition; the pattern and the
                       source; the iterable */
       Ast  *body;
-      Ast **unroll; /* Ncfor only: the statements the iteration
-                     * spelled, each round's let and the body -- a
-                     * round's own copy of the body's statements, for
-                     * the passes write what they walk (the builtins'
-                     * rewrites answer per round), and what one round
-                     * wrote the next must not read (10-iteration.md) */
-      Ast **drops;  /* the pattern's own bindings, destructed every
-                       round at its end -- the body's block did its
-                       own before this (03-move.md) */
+      Ast **unroll;  /* Ncfor only: the statements the iteration
+                      * spelled, each round's let and the body -- a
+                      * round's own copy of the body's statements, for
+                      * the passes write what they walk (the builtins'
+                      * rewrites answer per round), and what one round
+                      * wrote the next must not read (10-iteration.md) */
+      Ast **drops;   /* the pattern's own bindings, destructed every
+                        round at its end -- the body's block did its
+                        own before this (03-move.md) */
+      Ast *via;      /* FIN's iterator path only: the into_iter call,
+                      * run once before the first round -- the source
+                      * its argument, the walk's own move the arg's
+                      * (10-iteration.md). The loop's b is the next
+                      * call itself, spelled the trait's way */
+      Type *it;      /* the iterator's type, $.it's own -- NULL: no
+                      * iterator, an ordinary for-let or a FIN special
+                      * case. Gates the $.it binding both walks make
+                      * and the emitter's prologue and exit */
+      Ast **itdrops; /* the iterator's own destructors, the loop's
+                      * exit -- break and natural end alike, what it
+                      * still holds destructing there (03, 10) */
     } forx;
     struct
     {

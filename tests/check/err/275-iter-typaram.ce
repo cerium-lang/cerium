@@ -1,0 +1,15 @@
+/* a generic's own parameter iterates only through its bounds --
+ * the bound's signature carries the method calls, a milestone the
+ * reflection work owns (04-generics.md) */
+use std::iter::Iter;
+
+fn walk<T>(t: T) -> i32 {
+  for x in t {
+    let _ = x;
+  }
+  0
+}
+
+fn main() -> i32 {
+  walk(3)
+}

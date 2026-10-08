@@ -326,6 +326,12 @@ Type       *typeinfoty(void);
  * it is a broken one, said at checkproject's own face-taking */
 extern Sym *sym_panic;
 
+/* std::iter's two, the for-in sugar's own (10-iteration.md): the
+ * walk finds the IntoIter row the source answers, the Iter row the
+ * iterator it hands back answers -- the desugar's two calls, both
+ * read by pointer, never spelled by hand in the walk */
+extern Sym *sym_iter, *sym_intoiter;
+
 /* std::fmt's two, read by pointer wherever an E?() main meets its
  * ends (prelude.c, 12-projects.md): the Fmt its error type must
  * implement -- the Err half prints through it -- and the exit the

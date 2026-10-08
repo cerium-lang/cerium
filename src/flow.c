@@ -865,6 +865,11 @@ hasdrop(Type *t)
   if (!t)
     return 0;
   switch (t->k) {
+  case Tymut: /* a permission layer, not a type of its own: an
+               * element's mut ness changes nothing about its
+               * destructor, the structural walk peeling it the same
+               * way (03-move.md) */
+    return hasdrop(t->t);
   case Tystruct: {
     Sym *s = t->sym;
 

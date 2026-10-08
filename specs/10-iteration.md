@@ -91,23 +91,18 @@ consuming it:
 
 ```rust
 trait IntoIter {
-  type Item;
-  type Iter: Iter<Item = Self::Item>;
+  type Iter;
   fn into_iter(self: Self) -> Self::Iter;
 }
 ```
 
-The bound `Iter<Item = Self::Item>` ties the two associated types: what
-the iterator yields is exactly what the container holds. `Iter<Item = T>`
-is an associated-type equality bound — `IntoIter` implements `Iter`, and
-its `Item` is `T`.
-
-An iterator is its own `IntoIter`, so `for` over a slice needs no
-conversion:
+What the iterator yields is the `Iter` side's own `Item` — the loop
+reads it there, so `IntoIter` itself needs no second associated type
+tying the two. An iterator is its own `IntoIter`, so `for` over one
+needs no conversion:
 
 ```rust
 impl<I: Iter> IntoIter for I {
-  type Item = I::Item;
   type Iter = I;
   fn into_iter(self: Self) -> I { self }
 }
@@ -284,10 +279,15 @@ for (x, y) in zip(xs, ys) {
 ```
 
 `x` is a fresh binding per iteration; its type is the container's `Item`.
+The round's own binding drops at the round's end — at a `break` or a
+`continue`, the jump drops it — and whatever the iterator still holds
+when the loop ends, by its rounds running out, a `break`, or a `return`
+unwinding the frame, drops with the iterator itself (`03-move.md`).
 Whether the container is used up depends on what is iterated:
 
 | loop | iterated thing | `x` | used up? |
 | ---- | -------------- | --- | -------- |
+| `for x in c`, `c: I` — an `Iter` | the iterator itself | `I::Item` | ✅ the iterator is consumed |
 | `for x in arr` | `[N]T` — an owned array | `T` | ✅ the array is consumed |
 | `for x in &arr` | `*[N]T` | `*T` | ❌ |
 | `for x in &mut arr` | `*mut [N]mut T` | `*mut T` | ❌ |
