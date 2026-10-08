@@ -268,6 +268,42 @@ testthem() { # $1: the directory; every entry a directory project,
   rm -rf "$tmp"
 }
 
+wordthem() { # the test word itself (13-testing.md): the artifact
+  # built and run, one word, the exit code through. No dir the
+  # empty project -- the library's rows alone, the door an install
+  # owns; a dir a project's own rows with the library's; a failing
+  # project's exit come through; -S the library named by word, any
+  # invocation's say (12-projects.md)
+  tmp=$(mktemp -d)
+  if ./cerium test >"$tmp/stdout" 2>"$tmp/err" \
+     && grep -q 'passed, 0 failed$' "$tmp/stdout"; then
+    echo "ok   cerium test (the library's rows alone)"
+  else
+    echo "FAIL cerium test ($(head -1 "$tmp/err"))"
+    fail=1
+  fi
+  if ./cerium -S std test >"$tmp/stdout" 2>"$tmp/err" \
+     && grep -q 'passed, 0 failed$' "$tmp/stdout"; then
+    echo "ok   cerium -S std test (the library named by word)"
+  else
+    echo "FAIL cerium -S std test ($(head -1 "$tmp/err"))"
+    fail=1
+  fi
+  if ./cerium test tests/test/239-green >"$tmp/stdout" 2>"$tmp/err"; then
+    echo "ok   cerium test tests/test/239-green"
+  else
+    echo "FAIL cerium test tests/test/239-green ($(head -1 "$tmp/err"))"
+    fail=1
+  fi
+  if ./cerium test tests/test/240-fail >"$tmp/stdout" 2>"$tmp/err"; then
+    echo "FAIL cerium test tests/test/240-fail (exit 0 -- a failure must come through)"
+    fail=1
+  else
+    echo "ok   cerium test tests/test/240-fail (the failure through)"
+  fi
+  rm -rf "$tmp"
+}
+
 golden tests/lex/ok -t
 golden tests/parse/ok -a
 golden tests/check/ok -T
@@ -277,6 +313,7 @@ rejected tests/check/err -T
 if [ -x qbe/qbe ]; then
   runthem tests/run
   testthem tests/test
+  wordthem
 else
   echo "skipped tests/run and tests/test -- build qbe first: make qbe/qbe"
 fi
