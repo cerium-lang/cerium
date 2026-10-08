@@ -24,8 +24,8 @@
     (fn show fn(*File)))
   (impl Show for T
     (fn show fn(*T)))
-  (impl Copy for Range)
-  (impl Drop for File
+  (impl std::ops::Copy for Range)
+  (impl std::ops::Drop for File
     (fn drop fn(File)))
   (impl Marker for File)
   (impl Range

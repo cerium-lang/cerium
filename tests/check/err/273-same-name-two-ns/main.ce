@@ -1,0 +1,14 @@
+/* two namespaces hold a Word each; the impl answers with the
+ * wrong one, and the rejection must say which is which */
+use a;
+use b;
+
+trait Conv {
+  fn go(w: a::Word) -> i32;
+}
+
+impl Conv for i32 {
+  fn go(w: b::Word) -> i32 { w.w }
+}
+
+fn main() -> i32 { 0 }

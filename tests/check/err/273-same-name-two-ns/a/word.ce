@@ -1,0 +1,1 @@
+pub struct Word { v: i32 }

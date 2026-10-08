@@ -545,6 +545,14 @@ sbname(SBuf *b, Type *t)
 {
   usize i;
 
+  if (t->sym && t->sym->ownns && t->sym->ownns->parent) { /* outside the root, the whole path:
+                                                           * two namespaces' same-named types
+                                                           * are not the same type, and a
+                                                           * diagnostic that prints them alike
+                                                           * reads insane (X8) */
+    sbputs(b, nsname(t->sym->ownns));
+    sbputs(b, "::");
+  }
   sbputs(b, t->sym ? t->sym->name : "?");
   if (t->nargs == 0)
     return;
