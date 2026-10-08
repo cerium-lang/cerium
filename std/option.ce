@@ -6,7 +6,41 @@
  * variants, not names in scope: a bare Some rides the sugar's owner
  * lookup, not a use (01-types.md). */
 
+use std::debug::assert; /* the tests' own word: the artifact is the
+                         * debug shape, the one the assertions live in
+                         * (01-types.md, 13-testing.md) */
+
 pub enum Option<T> {
   None,
   Some(T),
+}
+
+/* -- the tests (13-testing.md) ------------------------------------------------
+ * the artifact's own rows, the runner collecting them from every
+ * namespace: this file's report reads std:: and the name, and the
+ * library and the executable carry none of it. The pass shapes
+ * alone live here -- a deliberate panic belongs to the project
+ * tests that walk a runner's failure path whole (tests/test/240) */
+
+#[test("the sugar's own shape: a Some carries its payload back")]
+fn option_some_roundtrip() {
+  let x: ?i32 = Some(3);
+  let r = match x { Some(n) => n, None => 0, };
+  assert(r == 3, "Some lost its payload");
+}
+
+#[test("the empty half: a None reads as itself")]
+fn option_none_reads_empty() {
+  let x: ?i32 = None;
+  let r = match x { Some(n) => n, None => 7, };
+  assert(r == 7);
+}
+
+#[test("a slot of its own: the empty and the full trade places")]
+fn option_slot_trades() {
+  let mut x: ?i32 = Some(1);
+  x = None;
+  x = Some(2);
+  let r = match x { Some(n) => n, None => 0, };
+  assert(r == 2, "the last Some did not stay");
 }
