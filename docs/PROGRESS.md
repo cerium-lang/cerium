@@ -2902,3 +2902,32 @@ empty interval, the backwards one), 282 (usize over a len), 283
 (the literal yields, both directions), 284 (let-bound, then the
 loop's own), check/err 277 (a float end), 278 (two typed ends that
 disagree), 279 (the moved after). 637 green.
+
+## 2026-10-09, the walks beneath a pointer: five derefthroughs, two registry numbers
+
+The Zip shapes found them, which is what asking the language for a
+new shape is for. A `*mut` base lends its rows to every walk that
+goes through it -- but four of the walks stopped at the pointer:
+placewritable's element and row (a store through `p[1] = v`, or
+`q.0 = v` behind a `*mut q`, was refused -- the check said no where
+the language says yes), the emitter's index address, row read and
+range view (the check passed, and the emitter then read the Typtr's
+absent args and laid out nothing at all), and the value walk's own
+row read (`q.0` as an expression said the pointer was not a tuple).
+Each of the five sites now derefsthroughs the base -- the same walk
+every place takes, Typtr and Tymut layers both transparent, the row
+beneath the answer.
+
+Two more in the ABI registry, both found by the aggregate Zip
+shapes too: a variant's payload union took its number without
+holding it, so a nested payload's registration landed on the same
+number and qbe's second definition silently overwrote the first --
+the union now holds its number before anything it contains
+registers. And a mut tuple row crossed a call as the letter `l`:
+the mut layer takes no space, but fieldty read the layer, not the
+shape beneath it -- the registry now writes each row's own shape, a
+slice both its words.
+
+The pins: 285 (the rows beneath a pointer, written and read), 286
+(the payload union's own number, a nested payload the silent
+overwrite), 287 (a mut row's whole shape across a call). 640 green.

@@ -1,0 +1,26 @@
+/* a variant's payload union takes its number before the payload's
+ * own nested types register: the declarations stay distinct, the
+ * aggregate rides the call whole (02-layout.md) */
+fn take(v: ?([]i32, []i32)) -> i32 {
+  let mut s = 0;
+
+  match v {
+    Some((a, b)) => {
+      for x in a {
+        s = s + *x;
+      }
+      for y in b {
+        s = s + *y;
+      }
+    },
+    None => { },
+  }
+  s
+}
+
+fn main() -> i32 {
+  let xs = []i32{1, 2};
+  let ys = []i32{10, 20};
+
+  take(Some((xs, ys)))
+}
