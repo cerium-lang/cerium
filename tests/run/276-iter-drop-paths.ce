@@ -20,7 +20,7 @@ impl Drop for D {
     let ds = "0123456789";
 
     if self.n != 0 {
-      write(1, ds.ptr + @cast<usize>(self.n), 1);
+      write(1, ds.as_ptr() + @cast<usize>(self.n), 1);
     }
   }
 }

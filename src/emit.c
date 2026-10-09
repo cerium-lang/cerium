@@ -937,6 +937,13 @@ tymang2(Type *t, char *buf, usize o, usize n)
       o = tymang2(t->args[i], buf, o, n);
     return tymang2(t->t, buf, o, n);
   }
+  case Tymut: /* a binding's own row: impl<T> []T takes []mut U with
+               * T bound the mut layer whole, and the instance's name
+               * spells it -- the permission a letter of its own, for
+               * it never stands under a slot here, where the slots'
+               * own tags (p P, s S, a A) name it instead */
+    buf[o++] = 'm';
+    return tymang2(t->t, buf, o, n);
   case Tytype:
     buf[o++] = 'q';
     return o;

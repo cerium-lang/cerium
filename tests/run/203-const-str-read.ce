@@ -9,7 +9,7 @@ fn holes(const fmt: []u8) -> usize {
   let mut n: usize = 0;
   let mut i: usize = 0;
 
-  for i < fmt.len {
+  for i < fmt.len() {
     if fmt[i] == 123 { /* '{' */
       n = n + 1;
     }
@@ -21,7 +21,7 @@ fn holes(const fmt: []u8) -> usize {
 const OUTSIDE: usize = holes("{} and {}"); /* 2: no binding at all */
 
 fn inside(const fmt: []u8) -> usize {
-  const if fmt.len == 5 { /* the re-check's own fold, the branch picked there */
+  const if fmt.len() == 5 { /* the re-check's own fold, the branch picked there */
     holes(fmt) * 10
   } else {
     holes(fmt) + 100

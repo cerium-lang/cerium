@@ -24,5 +24,5 @@ fn main() -> i32 {
   let w: []mut u32 = @slice(&m[0], 2);
 
   w[1] = 20; /* through the view, into the array */
-  sum(s) + @cast<i32>(s.len) + @cast<i32>(make(&a[1], 2).len) + @cast<i32>(m[1])
+  sum(s) + @cast<i32>(s.len()) + @cast<i32>(make(&a[1], 2).len()) + @cast<i32>(m[1])
 }

@@ -93,7 +93,9 @@ p.len();            // inherent method — no trait import
 ```
 
 The target is a shape pattern, exactly as in a struct declaration
-(`04-generics.md`). A specialized struct gets one inherent impl per
+(`04-generics.md`), or a built-in shape spelled whole — `impl<T> []T` attaches
+to every slice, the mut slices riding the same row with `T` bound the mut
+layer (`01-types.md`). A specialized struct gets one inherent impl per
 specialization, each target repeating the same pattern:
 
 ```rust

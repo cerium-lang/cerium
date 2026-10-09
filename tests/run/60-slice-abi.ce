@@ -14,7 +14,7 @@ fn main() -> i32 {
   let b = first("");                         /* None */
   let e = match a { Some(v) => @cast<i32>(v), None => 0, };   /* 104 */
   let f = match b { Some(v) => @cast<i32>(v), None => 3, };   /* 3 */
-  let n = @cast<i32>(id("hi").len);          /* 2 */
-  let m = @cast<i32>(id(hi()).len);          /* 2: built in the callee */
+  let n = @cast<i32>(id("hi").len());          /* 2 */
+  let m = @cast<i32>(id(hi()).len());          /* 2: built in the callee */
   e + f + n + m                              /* 104 + 3 + 2 + 2 = 111 */
 }

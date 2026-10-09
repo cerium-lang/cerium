@@ -187,8 +187,16 @@ rplace1(Ast *e, Fenv *fe)
     {
       Type *sf = slicefield(bt, e->v.fld.name);
 
-      if (sf)
-        return sf; /* the slice's own two (01-types.md) */
+      if (sf) { /* the slice's own two: the library's own slots, its
+                 * tree alone reads them -- len() and get() the
+                 * surface every other file takes (01-types.md) */
+        if (!nsinstd(nscuring()))
+          berr(e,
+               "'%s' is one of a slice's own two slots: len() and get() are the "
+               "surface -- the slots are the runtime's own (01-types.md)",
+               e->v.fld.name);
+        return sf;
+      }
     }
     if (bt->k != Tystruct && bt->k != Tyunion)
       berr(e, "%s has no fields", btys(bt));
@@ -3782,8 +3790,16 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
     {
       Type *sf = slicefield(bt, e->v.fld.name);
 
-      if (sf)
-        return sf; /* ptr and len: scalars both, Copy */
+      if (sf) { /* ptr and len: scalars both, Copy -- but the
+                 * library's own, its tree alone reading them
+                 * (01-types.md) */
+        if (!nsinstd(nscuring()))
+          berr(e,
+               "'%s' is one of a slice's own two slots: len() and get() are the "
+               "surface -- the slots are the runtime's own (01-types.md)",
+               e->v.fld.name);
+        return sf;
+      }
     }
     if (bt->k != Tystruct && bt->k != Tyunion)
       berr(e, "%s has no fields", btys(bt));

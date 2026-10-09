@@ -1,0 +1,31 @@
+/* the surface every other file takes: the count, the bounds-checked
+ * row, the C door -- the slots themselves the std tree's alone to
+ * read (01-types.md). The mut slice rides the same row: T bound the
+ * mut layer, get answering a *mut the writes go through (04) */
+
+#[extern(C)]
+fn write(fd: i32, buf: *u8, n: usize) -> usize;
+
+fn main() -> i32 {
+  let s = "abc";
+  let n = s.len();  /* 3: the count, the call the library lends */
+
+  let first = match s.get(0) {
+    Some(p) => *p,  /* 97, 'a' */
+    None => 0,
+  };
+  let past = match s.get(3) {
+    Some(p) => 1,
+    None => 0,      /* the ask past the end: None, the bounds held */
+  };
+
+  let m = [3]mut i32{1, 2, 3};
+  let w: []mut i32 = @slice(&m[0], 3);
+  match w.get(1) {
+    Some(p) => { *p = 20; },  /* the mut row: the write lands home */
+    None => {},
+  }
+
+  write(1, s.as_ptr(), s.len());  /* the C door: abc, three bytes */
+  @cast<i32>(n * 100 + @cast<usize>(first) + @cast<usize>(past) + @cast<usize>(m[0] + m[1] + m[2]))  /* 421, the exit the byte counts: 165 */
+}

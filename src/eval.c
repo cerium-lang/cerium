@@ -3329,6 +3329,20 @@ callval(Ast *e, Env env)
   FrSaved     save;
   Val         r;
 
+  /* the slice's own surface first: len() spelled as the call the
+   * library lends, its body the slot's own read ({ self.len }), so
+   * the fold the slot's read takes answers here too -- the count
+   * rides the value, and the call that only names it is as known as
+   * the slot (01-types.md, 08-reflection.md). get answers a pointer
+   * and as_ptr a borrow: neither has a compile-time value, and a
+   * slice no other method to spell */
+  if (f->k == Naccess && na == 0 && strcmp(f->v.fld.name, "len") == 0) {
+    Val b = ceval(f->v.fld.e, env, 0);
+
+    if (b.t->k == Tyslice)
+      return valint(b.len, tyint(IN_USIZE));
+  }
+
   /* the callee: a plain fn by name. A method, a trait member, a
    * spelling with generic arguments -- anything the impl table or a
    * substitution answers -- arrives with the passes that know them */

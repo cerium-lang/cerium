@@ -5,7 +5,7 @@ fn main() -> i32 {
   let s = []i32{1, 2, 3};
   let mut n = 0;
 
-  for i in 0..s.len {
+  for i in 0..s.len() {
     n = n + @cast<i32>(i);
   }
   n

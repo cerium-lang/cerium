@@ -1,0 +1,48 @@
+/* std::slice -- the slice's own surface. The two slots the runtime
+ * carries, the pointer and the length, are the std tree's own to
+ * read -- every other file takes the methods (01-types.md). len
+ * answers the count; get the bounds-checked element, None the ask
+ * past the end; as_ptr the C door, the pointer the first element
+ * would have, a whole-slice handoff its one use (12-projects.md).
+ * One row carries the mut slices too: []mut T is []T with T bound
+ * the mut layer, and & on a mut slot lends *mut whole (01) -- the
+ * get of a mut slice answers ?*mut T by the same row. */
+
+impl<T> []T {
+  fn len(self: *Self) -> usize { self.len }
+
+  fn get(self: *Self, i: usize) -> ?*T {
+    if i < self.len {
+      Some(&(*self)[i])
+    } else {
+      None
+    }
+  }
+
+  fn as_ptr(self: *Self) -> *T { self.ptr }
+}
+
+/* -- the tests (13-testing.md) ------------------------------- */
+
+use std::debug::assert;
+
+#[test("len counts the rows")]
+fn len_counts() {
+  let s = []i32 { 1, 2, 3 };
+  assert(s.len() == 3, "len lost rows");
+}
+
+#[test("get the asked row, None past the end")]
+fn get_rows() {
+  let s = []i32 { 5, 6 };
+  let a = match s.get(1) { Some(p) => *p, None => 0, };
+  let b = match s.get(2) { Some(p) => *p, None => 7, };
+  assert(a == 6, "get lost the row");
+  assert(b == 7, "get walked past the end");
+}
+
+#[test("a string's length by its own door")]
+fn str_len() {
+  let s = "hello";
+  assert(s.len() == 5, "the literal's rows miscounted");
+}

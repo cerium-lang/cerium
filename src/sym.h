@@ -247,8 +247,10 @@ int nsreexp(Ns *ns, const char *name, Sym *target, Ast *at); /* make one: 0
                                                               * reports, for it
                                                               * holds the position */
 char *nsname(Ns *ns);                                        /* its full path, std::meta */
-Sym **nstable(Ns *ns, usize *np);                            /* every declaration of it,
-                                                              * a glob's walk (11) */
+int   nsinstd(Ns *ns);            /* inside the std tree: the runtime's own slots
+                                   * read there alone (01-types.md) */
+Sym **nstable(Ns *ns, usize *np); /* every declaration of it,
+                                   * a glob's walk (11) */
 Sym *nsdecl(Ns *ns, const char *name, int kind, Ast *decl, Ast **gparams,
             usize ngparams); /* declare into it -- symdecl's own, one
                               * namespace over */

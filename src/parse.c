@@ -2064,9 +2064,15 @@ parseitem(void)
     next();
     if (peek() == Tlt)
       n->v.impl.gparams = genericparams();
-    n->v.impl.path = typepath();
-    if (accept(Tfor))
-      n->v.impl.fort = type_();
+    if (peek() == Tlbracket) /* the built-in shapes take no name: an
+                              * inherent impl whose target is spelled
+                              * whole, []T or [N]T (05-traits.md) */
+      n->v.impl.path = type_();
+    else {
+      n->v.impl.path = typepath();
+      if (accept(Tfor))
+        n->v.impl.fort = type_();
+    }
     want(Tlbrace, "{");
     while (peek() != Trbrace && peek() != Teof) {
       Ast *m = implmember();

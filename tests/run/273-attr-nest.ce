@@ -24,12 +24,12 @@ fn nestwalk() -> u32 { /* the names say themselves, any 3 and all 3,
     for g in at.args {
       match *g {
         AttrArg::Nest { name, args } => {
-          r += @cast<u32>(name.len);
+          r += @cast<u32>(name.len());
           for w in args {
             match *w {
               AttrArg::Ident(s) => { r += 1; },
               AttrArg::Nest { name: nm, args: deeper } => {
-                r += @cast<u32>(nm.len);
+                r += @cast<u32>(nm.len());
                 for d in deeper {
                   match *d {
                     AttrArg::Int(n) => { r += @cast<u32>(n); },

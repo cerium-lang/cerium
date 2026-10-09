@@ -33,7 +33,10 @@ assert(sum == 6);
 ```
 
 User functions are callable at compile time when their arguments are
-compile-time known. The function itself needs no annotation:
+compile-time known. The function itself needs no annotation. A method rides
+the same rule by what it is: `s.len()` is the count the slice's own slot
+carries, so it folds wherever the slice does — `get` answers a pointer and
+`as_ptr` a borrow, and neither has a compile-time value (`01-types.md`).
 
 ```rust
 fn twice(x: u32) -> u32 {
