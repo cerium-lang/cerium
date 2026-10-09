@@ -2985,3 +2985,22 @@ pattern for, three rows, heterogeneous ones, a zip zipped, the
 empty zip, the whole tuple), 289 (the rows spelled by hand: the
 `(...mut Ts)` parameter, the range place, the build), check/err 280
 (the misspelling, the right one named). 643 green.
+
+The review over the whole shape turned the design inside out: the
+gather belongs to the unifier alone, never the call. `f(a, b, c)`
+folds the tail into the pack's tuple argument, `f(...t)` spreads a
+tuple's rows as the arguments, and a tuple handed over on its own is
+that fold's one row -- `sum(t)` binds the pack one wide, the same
+reading the type site takes of `Zip<(A, B)>` against `Zip<A, B>`.
+One action for `...` at every site it stands; the compiler's rewrites
+and the user's words spell the same language.
+
+Deleting the call-side gather surfaced what it had been papering
+over: the folded view a trial writes back was folded again by the
+re-check under the binding -- eprint in a generic body lived only
+because the old direct branch caught its own double fold by accident.
+The call now carries a folded mark; the re-check meets the rows as
+the fold left them. The pins move with the design: 113 and 288 spell
+the spread, check/err 281 refuses the tuple one row, 290 passes the
+pack's rows through a spread spelled out and reads the type site's
+own fold. 645 green, the library's 16 rows with them.

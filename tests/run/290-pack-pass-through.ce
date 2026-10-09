@@ -1,0 +1,31 @@
+/* the pack's value handed to another pack's fn: the rows walk
+ * through a spread spelled out -- width(...its) inside a generic
+ * body, the binding's own shape riding the call (04-generics.md).
+ * The type site spells the pack's tuple the folded way, Zip<A, B> --
+ * the same fold the call site's tail takes, both sides of one
+ * coin: a tuple a row one wide is spelled Zip<(A, B)>, a row that
+ * is no Iter (11-namespaces.md's two readings, one each side) */
+use std::iter::Iter;
+use std::iter::Zip;
+use std::iter::zip;
+
+fn width<...Ts: Iter>(its: ...Ts) -> i32 {
+  @cast<i32>(@count(...Ts))
+}
+
+fn wrap<...Ts: Iter>(its: ...Ts) -> i32 {
+  width(...its)   /* the spread's own faith: the rows the re-check reads */
+}
+
+fn main() -> i32 {
+  let a = []i32{1};
+  let b = []u8{2};
+  let c = []i32{3};
+  let mut z: Zip<[]i32, []i32> = zip(a, c);   /* the type site's fold */
+  let mut r = 0;
+
+  for (x, y) in z {
+    r = r + *x + *y;   /* 4 */
+  }
+  r + wrap(a, b) * 10 + width(a, b, c) * 50   /* 4 + 20 + 150 = 174 */
+}

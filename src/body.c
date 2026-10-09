@@ -1059,13 +1059,11 @@ cargval(Ast *a, Fenv *fe, Val *out)
  * answer is the call's type, or 0 when it does not. cvals holds the
  * const parameters' own test -- a runtime argument there fails the
  * signature and notes it, the black box defers with the pick (08).
- * packslot: this trial feeds the pack's own parameter slot one
- * argument on its own -- the binding must be the tuple its rows
- * came in (04-generics.md); nfreeze is the caller's argument count,
- * the freezes to unwind -- the rolled trial walks a folded view */
+ * nfreeze is the caller's argument count, the freezes to unwind --
+ * the rolled trial walks a folded view */
 static Type *
 tryonesig(Sym *s, Ast *a, Ast **args, usize n, usize nfreeze, Fenv *fe, Ast *seg, Frzsave *svs,
-          Val **cvals, int *runtime, int packslot)
+          Val **cvals, int *runtime)
 {
   Type  *fnty = s->fnty;
   Type **tys = s->ngparams ? tyargs(s->ngparams) : 0;
@@ -1161,15 +1159,6 @@ tryonesig(Sym *s, Ast *a, Ast **args, usize n, usize nfreeze, Fenv *fe, Ast *seg
         } /* CV_BOX: the slot stays NULL, the re-check's to fill */
       }
   }
-  if (ok && packslot) { /* the pack's parameter took the last
-                         * argument on its own: a tuple, its rows the
-                         * binding -- anything else is not this
-                         * spelling (04-generics.md) */
-    Type *pb = tys ? tys[s->ngparams - 1] : 0;
-
-    if (!pb || (pb->k != Tytuple && pb->k != Tyunit))
-      ok = 0;
-  }
   if (ok) {
     for (i = 0; i < s->ngparams; i++) /* a const generic's slot fills
                                        * when the unifier meets its
@@ -1230,9 +1219,11 @@ tryonesig(Sym *s, Ast *a, Ast **args, usize n, usize nfreeze, Fenv *fe, Ast *seg
 
 /* one signature's trial against a call: the plain signature, or --
  * when the fn's last parameter takes the pack -- the pack's own two
- * spellings. A tuple landing in the pack's slot on its own binds the
- * pack to its rows; any other shape folds the tail arguments into
- * one tuple argument, the empty tail the unit (04-generics.md) */
+ * spellings. The spread's rows walk on faith, the re-check under the
+ * binding reading them for real; any other shape folds the tail
+ * arguments into one tuple argument, the empty tail the unit -- a
+ * tuple handed over on its own is that fold's one row, the pack one
+ * wide (04-generics.md) */
 static Type *
 trysig(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, Val **cvals,
        int *runtime)
@@ -1241,6 +1232,12 @@ trysig(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, Va
   usize np = vlen(ps);
   Type *r;
 
+  if (a->v.call.folded) /* the arguments already the pack's folded
+                         * view -- a walk's own writeback, this one
+                         * its re-check: the rows stand as the fold
+                         * left them, met as they are, no fold again
+                         * (04-generics.md) */
+    return tryonesig(s, a, args, n, n, fe, seg, svs, cvals, runtime);
   if (np && ps[np - 1]->v.param.t->k == Ntpack) { /* the pack is
                                                    * last (the parser
                                                    * saw to it) */
@@ -1276,13 +1273,6 @@ trysig(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, Va
         return ret;
       }
     }
-    if (n == s->fnty->nargs) { /* the direct spelling: the last
-                                * argument lands in the slot alone,
-                                * a tuple -- its rows the binding */
-      r = tryonesig(s, a, args, n, n, fe, seg, svs, cvals, runtime, 1);
-      if (r)
-        return r;
-    }
     if (n + 1 >= s->fnty->nargs) { /* the folded spelling: the
                                     * parameters before the pack keep
                                     * their arguments, the rest fold
@@ -1304,10 +1294,11 @@ trysig(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, Va
 
         vappend(&rargs, &u);
       }
-      r = tryonesig(s, a, rargs, np, n, fe, seg, svs, cvals, runtime, 0);
+      r = tryonesig(s, a, rargs, np, n, fe, seg, svs, cvals, runtime);
       if (r) { /* the fold stands: matching and emit read the
                 * folded view (the spread's own writeback, 01) */
         a->v.call.args = rargs;
+        a->v.call.folded = 1;
         return r;
       }
       return 0;
@@ -1315,7 +1306,7 @@ trysig(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, Va
     thawargs(svs, n);
     return 0;
   }
-  return tryonesig(s, a, args, n, n, fe, seg, svs, cvals, runtime, 0);
+  return tryonesig(s, a, args, n, n, fe, seg, svs, cvals, runtime);
 }
 
 /* inside a mode-gated fn's arguments: @take may not appear there,

@@ -181,6 +181,11 @@ struct Ast
                      * NULL when the generic is a type or its length a
                      * black box, the outer instance's re-check binding
                      * it (08-reflection.md) */
+      int folded;   /* Ncall: the arguments already the pack's folded
+                     * view -- this walk's own writeback, the rows
+                     * standing as the fold left them; the re-check
+                     * under the binding meets them as they are, no
+                     * fold again (04-generics.md) */
     } call;
     struct
     {

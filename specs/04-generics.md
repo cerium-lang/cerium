@@ -305,9 +305,16 @@ last in both parameter lists:
 fn sum<...Ts>(ts: ...Ts) -> i64;
 ```
 
-`ts` is a tuple of type `(...Ts)`. Passing a tuple to a pack parameter
-unifies the pack with the tuple's elements — `sum(t)` where `t: (i32, u8)`
-instantiates `Ts = (i32, u8)`.
+`ts` is a tuple of type `(...Ts)`, and the call site spells that tuple
+two ways: the arguments fold into it — `sum(1, 2, 3)` instantiates
+`Ts = (i32, i32, i32)` — or a `...` spreads a tuple's rows as the
+arguments themselves, `sum(...t)` below. A tuple handed over on its own
+is the fold's one row: `sum(t)` where `t: (i32, u8)` instantiates
+`Ts = ((i32, u8),)` — the tuple a type one wide, the same reading the
+type site takes of `Zip<(A, B)>` against `Zip<A, B>` (`11-namespaces.md`
+spells both sides the same: a tuple is one thing, its rows are not it).
+Rows gather only where a type meets a type — the unifier's own ground,
+the paragraph below.
 
 The pack's rows can carry a shape of their own: `(...mut Ts)` spells the
 tuple a row per type, each row the template's own — a writable slot, the
@@ -315,14 +322,15 @@ mut beside the template, the way a hand-written `(mut i32, mut u8)` row
 carries it (`01-types.md`). The mut never wraps the pack itself:
 `(mut ...Ts)` is a different shape, and the checker names the right one.
 
-The gather runs where such a tuple meets an argument: the spread walks the
-tail alone — a tuple type with `...τ` among its rows meets an argument
-tuple of any width at least the rows before it, those rows meeting one a
-one, every row after meeting τ alone, the pack bound to the tuple the
-meetings leave. `fn f<...Ts: Iter>(its: *mut (...mut Ts))` called on
-`&mut t` where `t: (mut []i32, mut []i32)` binds `Ts = ([]i32, []i32)`,
-the rows the meetings strip — the template's own `mut` is the slot's, put
-back where the instantiation spells the rows out.
+The gather is the unifier's own — it runs where such a tuple meets a
+type, never at the call: the spread walks the tail alone — a tuple type
+with `...τ` among its rows meets an argument tuple of any width at
+least the rows before it, those rows meeting one a one, every row after
+meeting τ alone, the pack bound to the tuple the meetings leave.
+`fn f<...Ts: Iter>(its: *mut (...mut Ts))` called on `&mut t` where
+`t: (mut []i32, mut []i32)` binds `Ts = ([]i32, []i32)`, the rows the
+meetings strip — the template's own `mut` is the slot's, put back
+where the instantiation spells the rows out.
 
 A trait's type parameters may be a pack too, and a pack the whole of them —
 `Fn<...Args>` takes its arguments that way (`05-traits.md`) — the last-word
@@ -339,7 +347,7 @@ A pack is manipulated with ordinary indexing and slicing, plus `@count`:
 | `ts[0]` | the first element; an empty pack is a compile error |
 | `ts[1..]` | the tuple without its first element — a place of its own when every spanned row is a writable slot, the tail handed on whole and written through the slice |
 
-`...` in expression position expands a tuple or a slice into individual
+`...` in expression position expands a tuple or an array into individual
 arguments:
 
 ```rust

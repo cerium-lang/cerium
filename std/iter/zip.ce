@@ -11,9 +11,9 @@
  * gives a mut tuple's rows. The constructor takes the iterators
  * themselves, any count -- the pack's parameter its own two
  * spellings (04-generics.md): the tail folded into one tuple
- * argument at the call, or the tuple handed over whole -- and the
- * literal (...its) spells the pack's rows as the field's own, the
- * want's walk wrapping each one a slot. */
+ * argument at the call, or a tuple spread with `...`, its rows the
+ * arguments -- and the literal (...its) spells the pack's rows as
+ * the field's own, the want's walk wrapping each one a slot. */
 
 use std::debug::assert; /* the tests' own word: the artifact is the
                          * debug shape, the one the assertions live in
@@ -67,8 +67,9 @@ fn advance<...Ts: Iter>(its: *mut (...mut Ts)) -> ?(...Ts::Item) {
  * tests that walk a runner's failure path whole (tests/test/240).
  * Every spelling the spec gives the walk gets its own row: the
  * pattern for over the round's tuple, the for-let-Some over the
- * adapter itself, and the pack's two call spellings -- rows spread
- * at the call, or the tuple handed over whole (04-generics.md) */
+ * adapter itself, and the pack's two call spellings -- the tail
+ * folded at the call, or a tuple spread, its rows the arguments
+ * (04-generics.md) */
 
 #[test("two rows in lockstep: each round one tuple, a row each")]
 fn zip_two_rows_lockstep() {
@@ -172,13 +173,13 @@ fn zip_nested_zip() {
   assert(s == 27, "the inner zip lost its tuples");
 }
 
-#[test("the pack's other spelling: the tuple handed over whole")]
-fn zip_whole_tuple_argument() {
+#[test("the pack's other spelling: the tuple spread on the call")]
+fn zip_whole_tuple_spread() {
   let t = ([]i32{5, 6}, []i32{7, 8});
   let mut s = 0;
 
-  for (x, y) in zip(t) {
+  for (x, y) in zip(...t) {
     s = s + *x * 10 + *y;   /* 57 + 68 */
   }
-  assert(s == 125, "the whole tuple lost its rows");
+  assert(s == 125, "the spread tuple lost its rows");
 }
