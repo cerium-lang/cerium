@@ -3036,3 +3036,21 @@ the most-specific order the spec names is its own debt. The pins: 292
 both declaration orders), check/err 284 (the chain's end, a bound's
 own words) and 285 (the inference's). 651 green, the library's 17
 with them.
+
+The chains carry their own order now. A name's overloads were the
+declaration's own list, the call walking it first-fit -- and when two
+signatures both took a call, whichever stood first answered, the
+answer riding on an order no spec names. The order the spec does
+name is the impl table's own: the more specific signature first, a
+signature that takes fewer calls before one that takes more, the
+walk the impls already run borrowed whole. Once the bodies walk, the
+chains stand sorted, most specific first, the declaration order the
+tie -- and the call's first fit reads the order the spec names.
+Rows the order cannot place keep the declaration's own: the const
+spellings are the call's two rounds' to sort, not the chain's, and
+a pair the same shape and the same bounds is a rename -- rejected
+on the spot, the way the impl table rejects its own. The pins: 293
+(the pointer's own row and the fallback's, the pack and the plain
+one, both declaration orders, a const initializer's own pick among
+them, the arity's own peel unmoved), check/err 286 (the rename).
+653 green, the library's 17 with them.
