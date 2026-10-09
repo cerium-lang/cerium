@@ -68,3 +68,16 @@ impl<T> Iter for []mut T {
     }
   }
 }
+
+/* a mut borrow is an iterator over the thing it borrows (10): the
+ * pointer forwards each round to the iterator beneath it, the state
+ * that iterator holds. The loop over one -- for x in &mut c, the
+ * borrower's own spelling -- rides the same desugar the values do,
+ * the loop lending the sequence out instead of taking it. */
+impl<T: Iter> Iter for *mut T {
+  type Item = T::Item;
+  fn next(self: *mut Self) -> ?T::Item {
+    Iter::next(*self)   /* the borrowed iterator's own round, the
+                         * pointer the value it takes */
+  }
+}

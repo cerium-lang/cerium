@@ -4942,10 +4942,15 @@ rstmt(Ast *st, Fenv *fe)
                                                           * reached its end (03-move.md) */
     return;
   case Nfor: {
-    Ast  *body = st->v.forx.body;
-    Type *et = 0;
-    Fenv  fb;
-    usize nbase;
+    Ast    *body = st->v.forx.body;
+    Type   *et = 0;
+    Fenv    fb;
+    usize   nbase;
+    Frzsave sv; /* the source's own borrow, when it was one: what it
+                 * froze lives the loop's life alone -- the rounds
+                 * lend the owner out, the exit hands it back
+                 * (01-types.md) */
+    int srcthaw = 0;
 
     /* an Iter source consumes once, before the loop -- the sugar's
      * own walk, or the re-check's copy via's -- and the move the
@@ -4953,6 +4958,12 @@ rstmt(Ast *st, Fenv *fe)
      * so the copy below carries the death along -- a frame the
      * fork's own copy missed would destruct the moved-out slot a
      * second time at its exit (03-move.md) */
+    if (st->v.forx.shape == FIN) /* the source a mut borrow: its
+                                  * freeze unwinds at the loop's exit,
+                                  * not the frame's -- the borrowed
+                                  * iterator ends where the loop does
+                                  * (10-iteration.md) */
+      srcthaw = argborrow(st->v.forx.b, fe, &sv);
     if (st->v.forx.shape == FIN || st->v.forx.it)
       et = rexpr(st->v.forx.shape == FIN ? st->v.forx.b : st->v.forx.via, fe, 0);
 
@@ -5151,6 +5162,10 @@ rstmt(Ast *st, Fenv *fe)
                                                                         * exit's (03,
                                                                         * 10) */
     locpop(&fb, nbase); /* what the round bound -- and froze -- ends here */
+    if (srcthaw)
+      frzrestore(&sv); /* the source's own borrow: the loop's exit
+                        * its own end, the owner whole behind the
+                        * rounds (01-types.md, 10-iteration.md) */
     return;
   }
   case Ncfor: { /* the iteration already ran (eval.c); what it

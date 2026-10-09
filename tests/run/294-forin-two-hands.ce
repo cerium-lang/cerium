@@ -1,0 +1,70 @@
+/* the loop's own two hands: a value it takes, a borrow it lends --
+ * both ride the one desugar (10-iteration.md) */
+use std::iter::{Iter, zip};
+
+struct Count { mut n: u32, max: u32 }
+
+impl Iter for Count {
+  type Item = u32;
+  fn next(self: *mut Self) -> ?u32 {
+    if self.n < self.max {
+      self.n = self.n + 1;
+      Some(self.n)
+    } else {
+      None
+    }
+  }
+}
+
+fn borrowed() -> u32 {          /* the borrow: the owner keeps its own */
+  let mut c = Count { n: 0, max: 4 };
+  let mut total: u32 = 0;
+
+  for x in &mut c {
+    total = total + x;
+  }
+  total + c.n                   /* the loop read through the borrow:
+                                  * the owner's own state still whole,
+                                  * its cursor the max it reached */
+}
+
+fn taken() -> u32 {             /* the value: the iterator its own
+                                 * IntoIter, consumed as it yields */
+  let mut total: u32 = 0;
+  let c = Count { n: 0, max: 3 };
+
+  for x in c {
+    total = total + x;
+  }
+  total
+}
+
+fn zipped() -> u32 {            /* the zip's rounds, a tuple a round */
+  let xs = []u32 { 1, 2 };
+  let ys = []u32 { 10, 20 };
+  let mut total: u32 = 0;
+
+  for (a, b) in zip(xs, ys) {
+    total = total + *a + *b;
+  }
+  total
+}
+
+fn walked() -> u32 {            /* the slice and the array, their own
+                                 * doors the loop still takes */
+  let mut total: u32 = 0;
+  let xs = []u32 { 5, 6 };
+  let arr = [2]u32 { 7, 8 };
+
+  for p in xs {
+    total = total + *p;
+  }
+  for v in arr {
+    total = total + v;
+  }
+  total
+}
+
+fn main() -> i32 {
+  @cast<i32>(borrowed() + taken() + zipped() + walked())
+}

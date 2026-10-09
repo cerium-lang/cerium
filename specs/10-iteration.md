@@ -283,6 +283,11 @@ The round's own binding drops at the round's end — at a `break` or a
 `continue`, the jump drops it — and whatever the iterator still holds
 when the loop ends, by its rounds running out, a `break`, or a `return`
 unwinding the frame, drops with the iterator itself (`03-move.md`).
+
+A mut borrow is an iterator over the thing it borrows — `*mut T` forwards
+its rounds to the `T` beneath it — so `for x in &mut c` lends the sequence
+out instead of taking it, the iterator the borrow itself and the loop's
+exit unwinding nothing the owner still holds.
 Whether the container is used up depends on what is iterated:
 
 | loop | iterated thing | `x` | used up? |
