@@ -3654,6 +3654,9 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
       bt = rexpr(e->v.tup.e, fe, 0); /* a computed base: f().0, a value */
     if (!bt)
       return 0;
+    bt = derefthrough(bt); /* a *mut base: the row the pointer lends,
+                            * the same walk every base takes
+                            * (01-types.md) */
     if (bt->k != Tytuple)
       berr(e, "%s is not a tuple", btys(bt));
     if (e->v.tup.idx >= bt->nargs)
@@ -4332,6 +4335,9 @@ placewritable(Ast *p, Fenv *fe)
     bt = rplace(p->v.n2.a, fe);
     if (!bt)
       bt = rexpr(p->v.n2.a, fe, 0);
+    bt = derefthrough(bt); /* a *mut base: the row the pointer lends,
+                            * the field walk's own shape ahead
+                            * (01-types.md) */
     if (!bt)
       return 0;
     if (bt->k == Tyslice || bt->k == Tyarray)
@@ -4348,7 +4354,13 @@ placewritable(Ast *p, Fenv *fe)
     bt = rplace(p->v.tup.e, fe);
     if (!bt)
       bt = rexpr(p->v.tup.e, fe, 0);
-    if (!bt || bt->k != Tytuple || p->v.tup.idx >= bt->nargs)
+    bt = derefthrough(bt); /* a *mut base, the same lend: the field
+                            * walk derefsthrough its own base, the row
+                            * its own slot behind the pointer
+                            * (01-types.md) */
+    if (!bt)
+      return 0;
+    if (bt->k != Tytuple || p->v.tup.idx >= bt->nargs)
       return 0;
     return bt->args[p->v.tup.idx]->k == Tymut;
   }

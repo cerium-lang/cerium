@@ -1288,7 +1288,10 @@ aggbase(Em *em, Ast *e)
 static char *
 idxaddr(Em *em, Ast *e)
 {
-  Type *bt = e->v.n2.a->ty;
+  Type *bt = derefthrough(e->v.n2.a->ty); /* a *mut base: the row the
+                                           * pointer lends, its shape
+                                           * the pointee's own
+                                           * (01-types.md) */
   Type *et = bt->t;
   usize sz;
   char *b = aggbase(em, e->v.n2.a);
@@ -1363,11 +1366,12 @@ emaplace(Em *em, Ast *e)
     return t;
   }
   case Nindex:
-    return idxaddr(em, e); /* the element's own slot */
-  case Ntupidx: {          /* the row's address: the offset walk emaexpr takes,
-                            * stopping before the load (01-types.md) */
-    Type *tt = e->v.tup.e->ty;
-    char *b = aggbase(em, e->v.tup.e); /* an aggregate base is its address */
+    return idxaddr(em, e);                   /* the element's own slot */
+  case Ntupidx: {                            /* the row's address: the offset walk emaexpr takes,
+                                              * stopping before the load (01-types.md) */
+    Type *tt = derefthrough(e->v.tup.e->ty); /* a *mut base: the rows
+                                              * the pointee's own */
+    char *b = aggbase(em, e->v.tup.e);       /* an aggregate base is its address */
     usize i, off = 0;
 
     for (i = 0; i < e->v.tup.idx; i++) {
@@ -3102,8 +3106,10 @@ emaexpr(Em *em, Ast *e)
     }
     return t;
   }
-  case Ntupidx: { /* the row's offset, then the row */
-    Type *tt = e->v.tup.e->ty;
+  case Ntupidx: {                            /* the row's offset, then the row */
+    Type *tt = derefthrough(e->v.tup.e->ty); /* a *mut base: the
+                                              * rows the pointee's
+                                              * own (01-types.md) */
     char *b = emaexpr(em, e->v.tup.e);
     usize i, off = 0;
 
@@ -3123,8 +3129,9 @@ emaexpr(Em *em, Ast *e)
 
     return slotload(em, e->ty, e, p);
   }
-  case Nrangeindex: { /* a view: the data plus lo, the length hi-lo */
-    Type *bt = e->v.ridx.e->ty;
+  case Nrangeindex: {                         /* a view: the data plus lo, the length hi-lo */
+    Type *bt = derefthrough(e->v.ridx.e->ty); /* a *mut base: the view
+                                               * the pointee lends */
     Type *et = bt->t;
     usize sz;
     char *b = aggbase(em, e->v.ridx.e);

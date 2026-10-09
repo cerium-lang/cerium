@@ -1,0 +1,19 @@
+/* a *mut base lends its rows to every walk that goes through it:
+ * the array's element and the tuple's row -- written and read --
+ * each find the shape beneath the pointer, never the pointer
+ * itself (01-types.md) */
+fn main() -> i32 {
+  let mut a = [3]mut i32 { 1, 2, 3 };
+  let p = &mut a;
+  let mut s = 0;
+
+  p[1] = 5;
+  s = s + p[0] + p[1] + p[2];
+  let mut t: (mut i32, mut i32) = (1, 2);
+  let q = &mut t;
+
+  q.0 = 10;
+  q.1 = 20;
+  s = s + q.0 + q.1;
+  s
+}

@@ -127,6 +127,8 @@ fieldty(Type *ft)
   static char b[2][16];
   static int  r = 0;
 
+  while (ft && ft->k == Tymut)
+    ft = ft->t; /* a mut slot: the shape beneath takes no space from it */
   r = (r + 1) % 2;
   if (!isabb(ft)) {
     if (ft->k == Tyenum) { /* the niche shape: one pointer */
@@ -208,6 +210,8 @@ typereg(Type *t)
     for (i = 0; i < nf; i++) {
       Type *ft = gsubst(fs[i].ty, t->sym->gparams, t->args, t->nargs);
 
+      while (ft && ft->k == Tymut)
+        ft = ft->t; /* a mut field's slot: the shape beneath it */
       if (isagg(ft))
         typereg(ft); /* the nested one names itself first */
       o += sprintf(buf + o, "%s%s", i ? ", " : "", fieldty(ft));
@@ -220,9 +224,13 @@ typereg(Type *t)
   case Tytuple:
     o = sprintf(buf, "type %s = align %lu { ", nm, (unsigned long) alignof_(t));
     for (i = 0; i < t->nargs; i++) {
-      if (isagg(t->args[i]))
-        typereg(t->args[i]);
-      o += sprintf(buf + o, "%s%s", i ? ", " : "", fieldty(t->args[i]));
+      Type *ft = t->args[i];
+
+      while (ft && ft->k == Tymut)
+        ft = ft->t; /* a mut row: the slot's shape is its own beneath */
+      if (isagg(ft))
+        typereg(ft);
+      o += sprintf(buf + o, "%s%s", i ? ", " : "", fieldty(ft));
       if (o + 32 >= sizeof buf)
         die("a tuple too wide for the emitter's line");
     }
@@ -243,6 +251,8 @@ typereg(Type *t)
     for (i = 0; i < nf; i++) { /* every member its own group */
       Type *ft = gsubst(fs[i].ty, t->sym->gparams, t->args, t->nargs);
 
+      while (ft && ft->k == Tymut)
+        ft = ft->t; /* a mut member's slot: the shape beneath it */
       if (isagg(ft))
         typereg(ft);
       o += sprintf(buf + o, "%s{ %s }", i ? " " : "", fieldty(ft));
@@ -258,6 +268,8 @@ typereg(Type *t)
   case Tyarray: {
     Type *et = t->t;
 
+    while (et && et->k == Tymut)
+      et = et->t; /* []mut T: the element's own type */
     if (!t->n)
       die("an empty array crossing a call arrives with its iterators");
     if (isagg(et))
@@ -322,45 +334,55 @@ typereg(Type *t)
         break;
       }
       sprintf(un, ":t.%lu", (unsigned long) vlen(tydefs));
-      if (packed || !natural) { /* opaque: memory always carries a
-                                 * shape the types cannot spell */
-        char ub[128];
+      { /* the number taken before anything the union holds
+         * registers: a nested payload would otherwise land on the
+         * same one -- the entry's own shape, the walk above's
+         * (typereg's own take) */
+        usize unidx;
 
-        sprintf(ub, "type %s = align %lu { %lu }", un, packed ? 1ul : (unsigned long) pal,
-                (unsigned long) pmax);
-        cp = arenaalloc(strlen(ub) + 1);
-        strcpy(cp, ub);
         du.ty = 0;
         du.name = arenaalloc(strlen(un) + 1);
         strcpy(du.name, un);
-        du.decl = cp;
+        du.decl = 0; /* the decl lands below, once made */
         vappend(&tydefs, &du);
-      } else {
-        char ub[2048];
-        int  firstgrp = 1;
+        unidx = vlen(tydefs) - 1;
+        if (packed || !natural) { /* opaque: memory always carries a
+                                   * shape the types cannot spell */
+          char ub[128];
 
-        o = sprintf(ub, "type %s = align %lu { ", un, (unsigned long) pal);
-        for (i = 0; i < nv; i++) {
-          if (!nps[i])
-            continue; /* a payloadless side joins nothing */
-          o += sprintf(ub + o, "%s{ ",
-                       firstgrp ? "" : " "); /* qbe
-                                              * juxtaposes union members -- no commas */
-          firstgrp = 0;
-          for (j = 0; j < nps[i]; j++) {
-            if (isagg(inst[i][j]))
-              typereg(inst[i][j]);
-            o += sprintf(ub + o, "%s%s", j ? ", " : "", fieldty(inst[i][j]));
+          sprintf(ub, "type %s = align %lu { %lu }", un, packed ? 1ul : (unsigned long) pal,
+                  (unsigned long) pmax);
+          cp = arenaalloc(strlen(ub) + 1);
+          strcpy(cp, ub);
+          tydefs[unidx].decl = cp;
+        } else {
+          char ub[2048];
+          int  firstgrp = 1;
+
+          o = sprintf(ub, "type %s = align %lu { ", un, (unsigned long) pal);
+          for (i = 0; i < nv; i++) {
+            if (!nps[i])
+              continue; /* a payloadless side joins nothing */
+            o += sprintf(ub + o, "%s{ ",
+                         firstgrp ? "" : " "); /* qbe
+                                                * juxtaposes union members -- no commas */
+            firstgrp = 0;
+            for (j = 0; j < nps[i]; j++) {
+              Type *ft = inst[i][j];
+
+              while (ft && ft->k == Tymut)
+                ft = ft->t; /* a mut payload slot: the shape beneath */
+              if (isagg(ft))
+                typereg(ft);
+              o += sprintf(ub + o, "%s%s", j ? ", " : "", fieldty(ft));
+            }
+            o += sprintf(ub + o, " }");
           }
-          o += sprintf(ub + o, " }");
+          sprintf(ub + o, " }");
+          cp = arenaalloc(strlen(ub) + 1);
+          strcpy(cp, ub);
+          tydefs[unidx].decl = cp;
         }
-        sprintf(ub + o, " }");
-        du.ty = 0;
-        du.name = arenaalloc(strlen(un) + 1);
-        strcpy(du.name, un);
-        du.decl = arenaalloc(strlen(ub) + 1);
-        strcpy(du.decl, ub);
-        vappend(&tydefs, &du);
       }
       sprintf(buf, "type %s = align %lu { %c, %s }", nm, (unsigned long) alignof_(t),
               qbefty(tagtyof(t)), un);

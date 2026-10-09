@@ -1,0 +1,25 @@
+/* a mut tuple row keeps its whole shape where it crosses a call:
+ * the permission takes no space, each slice rides both its words,
+ * and the copy the call takes carries them all (01-types.md) */
+struct P {
+  mut its: (mut []i32, mut []i32),
+}
+
+fn sum(p: P) -> i32 {
+  let mut s = 0;
+
+  for x in p.its.0 {
+    s = s + *x;
+  }
+  for y in p.its.1 {
+    s = s + *y;
+  }
+  s
+}
+
+fn main() -> i32 {
+  let xs = []i32{1, 2};
+  let ys = []i32{10, 20};
+
+  sum(P { its: (xs, ys) })
+}
