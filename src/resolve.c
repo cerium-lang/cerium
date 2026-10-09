@@ -563,6 +563,10 @@ rpath(Ast *p, Env *env)
           cerrat(p, "'%s' takes no type arguments", nm1);
         return hit->val;
       }
+      cerrat(p, "'%s' is not an associated type of '%s'", nm1,
+             nm0); /* the
+                    * binding's own instance: the member the
+                    * impls supplied, and this is not one */
     }
     if (s && s->kind == Strait)
       cerrat(p,
@@ -590,14 +594,28 @@ rpath(Ast *p, Env *env)
           cerrat(p, "'%s' takes no type arguments", nm1);
         return hit->val;
       }
+      cerrat(p, "'%s' is not an associated type of '%s'", nm1,
+             nm0); /* the
+                    * type's own two segments, and the second
+                    * no member an impl supplied */
     }
   }
-  if (!s) { /* the bare name's own path: the whole single-file
-             * namespace, the prelude's std half still answering a
-             * bare name through symfind's fallthrough
-             * (11-namespaces.md) */
-    if (nsegs != 1)
-      cerrat(p, "a qualified type name needs its namespace (not yet)");
+  if (!s) {           /* the bare name's own path: the whole single-file
+                       * namespace, the prelude's std half still answering a
+                       * bare name through symfind's fallthrough
+                       * (11-namespaces.md) */
+    if (nsegs != 1) { /* the head neither a namespace this file
+                       * reached nor a name it can see: the nearest
+                       * thing it is, in its own words */
+      char *h = segs[0]->v.seg.name;
+      Sym  *hs = symfind(h);
+
+      if (hs && (hs->kind == Stype || hs->kind == Strait))
+        cerrat(p, "the path ends at the type '%s'; nothing follows it (11-namespaces.md)", h);
+      if (hs)
+        cerrat(p, "'%s' is not a type", h);
+      cerrat(p, "unknown namespace '%s' (11-namespaces.md)", h);
+    }
     seg = segs[0];
     name = seg->v.seg.name;
     {

@@ -3092,3 +3092,20 @@ the repeated variable, the pair that names nothing of each other
 holding its declaration order under both orders of its own, the two
 packs at two counts, the crosswise bounds beside one another). 655
 green, the library's 17 with them.
+
+The names a type takes. A qualified name in a type position was a
+thing the report said the language did not have -- "a qualified type
+name needs its namespace (not yet)" -- and the ledger kept an open
+line on the pub check hiding behind it. Both were already true: the
+namespace walk takes lib::Hidden and ::lib::Hidden and
+std::iter::Iter alike, and the private item stays its own
+('Hidden' is private to lib), the not-yet left only for a path
+whose head was neither a namespace nor a name the file could see.
+The report's words caught up with the walk's: an unknown head names
+itself unknown, a type's second segment that no impl supplied says
+so (P::X, both the binding's instance and the type's own), and a
+path carrying on past a type ends where the type did. The pins:
+287 (the private type named across the line, a project), 288 (the
+segment that is no associated type), 289 (the head no namespace
+answers), 227 (the pub type crossing whole, its signature spelled
+with its namespace). 659 green, the library's 17 with them.

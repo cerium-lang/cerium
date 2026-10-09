@@ -1,0 +1,4 @@
+/* the path's head neither a namespace this file reached nor a name
+ * it can see (11-namespaces.md) */
+
+fn main() -> i32 { let z: nope::Hidden = 3; return z; }
