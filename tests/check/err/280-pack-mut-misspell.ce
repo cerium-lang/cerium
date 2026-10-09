@@ -1,0 +1,5 @@
+/* the mut wraps the pack itself, a shape no tuple has: the
+ * spelling puts it beside the rows' own template, (...mut Ts) --
+ * each row its own writable slot, not the pack one slot
+ * (01-types.md, 04-generics.md) */
+fn f<...Ts>(t: (mut ...Ts)) {}

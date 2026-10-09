@@ -2931,3 +2931,76 @@ slice both its words.
 The pins: 285 (the rows beneath a pointer, written and read), 286
 (the payload union's own number, a nested payload the silent
 overwrite), 287 (a mut row's whole shape across a call). 640 green.
+
+## 2026-10-09, the variadic lands: any count of Iter rows, std::iter::zip
+
+The ask was std::iter::zip over any count of iterators, and the
+honest answer was the language's: a pack whose rows are places of
+their own. Four pieces came with it.
+
+The spelling first: `(...mut Ts)` -- a tuple a row per type in the
+pack, each row the template's own, a writable slot; the mut sits
+beside the template the way a hand-written row's does, and
+`(mut ...Ts)` -- the mut around the pack -- is a different shape the
+checker now names the right spelling for. Then the gather: a
+signature tuple with `...tau` among its rows meets an argument
+tuple of any width at least the rows before it, those rows meeting
+one a one, every row after meeting the spread's template alone --
+the meetings' bindings merging back, the pack's alone gathering
+into the tuple the binding is. A generic body calling another
+generic with its own pack unbound passes through: template meets
+template, the real binding the instance's re-check makes. Then the
+range place: `its[1..]` on a tuple is a place in its own right --
+the type the spanned rows, writable when every one of them is a
+mut slot, the emitter walking the leading rows' offsets to the
+tail's own address. And the value grouping: `(...its)` inside a
+generic body is the pack spelled as a tuple -- the declaration's
+walk takes it on faith, and the re-check expands the rows through
+the same machinery `(x, ...rest)` takes, each row read where it
+stands, the want's walk wrapping each one the slot the field
+declares.
+
+Two bugs the probes caught on the way, both in the substitution:
+a spread's binding was told apart from a standing parameter by its
+row count, and one row is both -- a pack bound to exactly one type
+looked unbound, its instantiation leaving the spread unexpanded.
+The dispatch now reads the binding's own shape. And the empty pack
+substituted to a zero-row tuple while `()` the literal is the unit
+-- two spellings of one shape, tysame never seeing them equal; the
+spent rows now land in the literal's own spelling. A third was the
+walk's own logic: the recursion's empty tail had to be the walk's
+success (`Some(())` -- every row asked, every one answered), or any
+nonempty zip poisoned its whole chain at the bottom.
+
+The library rides it: std/iter/zip.ce, Zip an Iter whose Item is
+the projection through the pack, `(...Ts::Item)`; the walk peels
+the head row, hands the tail on through its range place, builds the
+round's tuple one row a level. The empty zip is the empty sequence
+-- None, not the Some(()) the walk's base carries, which is the
+recursion's inside contract, not the iterator's public one. The
+constructor takes the iterators any count, the pack's own two
+spellings both open -- the tail folded at the call, or the tuple
+handed over whole. The pins: 288 (the library end to end -- the
+pattern for, three rows, heterogeneous ones, a zip zipped, the
+empty zip, the whole tuple), 289 (the rows spelled by hand: the
+`(...mut Ts)` parameter, the range place, the build), check/err 280
+(the misspelling, the right one named). 643 green.
+
+The review over the whole shape turned the design inside out: the
+gather belongs to the unifier alone, never the call. `f(a, b, c)`
+folds the tail into the pack's tuple argument, `f(...t)` spreads a
+tuple's rows as the arguments, and a tuple handed over on its own is
+that fold's one row -- `sum(t)` binds the pack one wide, the same
+reading the type site takes of `Zip<(A, B)>` against `Zip<A, B>`.
+One action for `...` at every site it stands; the compiler's rewrites
+and the user's words spell the same language.
+
+Deleting the call-side gather surfaced what it had been papering
+over: the folded view a trial writes back was folded again by the
+re-check under the binding -- eprint in a generic body lived only
+because the old direct branch caught its own double fold by accident.
+The call now carries a folded mark; the re-check meets the rows as
+the fold left them. The pins move with the design: 113 and 288 spell
+the spread, check/err 281 refuses the tuple one row, 290 passes the
+pack's rows through a spread spelled out and reads the type site's
+own fold. 645 green, the library's 16 rows with them.

@@ -632,6 +632,22 @@ rpath(Ast *p, Env *env)
   }
   if (s->kind == Stype && s->tykind == TYalias)
     return aliasinst(s, args, nargs, p);
+  if (s->ngparams && s->gparams[s->ngparams - 1]
+                         ->v.gp.pack) { /*
+                                         * the pack: a reference spells the elements one for one,
+                                         * any number -- zero included -- and they gather into the
+                                         * pack's own slot, the whole tuple; a pack parameter spread
+                                         * among the arguments stays the rows themselves, the match
+                                         * or the substitution walking them out (04-generics.md) */
+    if (!(nargs == 1 && args && args[0]->k == Typaram && args[0]->gp->v.gp.pack)) {
+      usize k;
+
+      for (k = nargs; k + 1 < s->ngparams; k++)
+        cerrat(p, "missing type argument '%s'", s->gparams[k]->v.gp.name);
+      return tysym(s, packargs(s, args, nargs), s->ngparams);
+    }
+    return tysym(s, args, nargs);
+  }
   if (nargs > s->ngparams)
     cerrat(p, "'%s' takes %lu type argument%s, not %lu", name, (unsigned long) s->ngparams,
            s->ngparams == 1 ? "" : "s", (unsigned long) nargs);
@@ -718,7 +734,8 @@ rty(Ast *t, Env *env)
     if (p && (p->k == Tytuple || p->k == Tyunit)) /* the binding, the
                                                    * rows it stands for */
       return p;
-    cerrat(t, "the ... names a pack: a generic parameter's (04-generics.md)");
+    cerrat(t, "the ... names a pack: a generic parameter's -- a template's rows walk in a "
+              "tuple, (...τ) the spelling (04-generics.md)");
     return 0; /* unreachable */
   }
   case Ntarray: {
@@ -753,24 +770,45 @@ rty(Ast *t, Env *env)
     Type **ts = n ? tyargs(n) : 0;
     usize  i;
 
-    if (n == 1 && t->v.list.ts[0]->k == Ntpack) /* (...Ts): the
-                                                 * impl target's
-                                                 * spelling -- the
-                                                 * pack itself, the
-                                                 * rows standing as
-                                                 * the tuple's own
-                                                 * (04-generics.md) */
-      return rty(t->v.list.ts[0], env);
-    if (n > 1 && t->v.list.ts[0]->k == Ntpack) /* (...Ts, U): the
-                                                * pack among rows is
-                                                * no type -- it
-                                                * stands for the
-                                                * whole tuple or
-                                                * nothing
-                                                * (04-generics.md) */
-      cerrat(t, "the pack stands for the whole tuple: (...Ts) alone (04-generics.md)");
-    for (i = 0; i < n; i++)
-      ts[i] = rty(t->v.list.ts[i], env);
+    for (i = 0; i < n; i++) {
+      Ast *el = t->v.list.ts[i];
+
+      if (el->k != Ntpack) {
+        if (el->k == Ntmut && el->v.un.e->k == Ntpack)
+          cerrat(el, "the mut wraps the pack itself: (...mut Ts) the "
+                     "spelling, each row its own slot (01-types.md)");
+        ts[i] = rty(el, env);
+        continue;
+      }
+      { /* a spread row: the pack itself -- the target's spelling --
+         * or the template the pack walks, a row in waiting
+         * (04-generics.md) */
+        Type *p = rty(el->v.un.e, env);
+
+        if (p && p->k == Typaram) {
+          if (!p->gp->v.gp.pack)
+            cerrat(el, "'%s' is not a pack; the ... wants one (04-generics.md)", p->gp->v.gp.name);
+          if (n == 1)
+            return p; /* (...Ts): the impl target's spelling -- the
+                       * pack itself, the rows standing as the
+                       * tuple's own (04-generics.md) */
+          cerrat(el, "the pack stands for the whole tuple: (...Ts) alone (04-generics.md)");
+        }
+        if (p && (p->k == Tytuple || p->k == Tyunit)) /* a binding:
+                                                       * the whole
+                                                       * tuple or
+                                                       * nothing */
+          cerrat(el, "the pack stands for the whole tuple: (...Ts) alone (04-generics.md)");
+        { /* the template: the pack it walks, each row the
+           * instance's binding feeds (04-generics.md) */
+          Ast *gp = packin(p);
+
+          if (!gp)
+            cerrat(el, "the ... names a pack: a generic parameter's (04-generics.md)");
+          ts[i] = tyspread(gp, p);
+        }
+      }
+    }
     return tytuple(ts, n);
   }
   case Ntfn: {

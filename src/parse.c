@@ -345,11 +345,21 @@ prefixtype(void)
     return n;
   }
   case Tdotdotdot: { /* ...Ts: the pack parameter's own rows
-                      * (04-generics.md) */
+                      * (04-generics.md); ...mut Ts the same rows, each
+                      * one a writable slot -- the row's own mut, the
+                      * tuple's spelling (01-types.md) */
     Ast *n;
 
     next();
     n = mk(Ntpack);
+    if (accept(Tmut)) { /* ...mut Ts: each row a mut slot */
+      Ast *m = mk(Ntmut);
+
+      m->v.un.mut = 1;
+      m->v.un.e = prefixtype();
+      n->v.un.e = m;
+      return n;
+    }
     n->v.un.e = prefixtype();
     return n;
   }
@@ -1230,8 +1240,16 @@ primary(void)
           if (peek() == Trparen)
             break;
           {
-            Ast *e = expr();
+            Ast *e;
 
+            if (peek() == Tdotdotdot) { /* (x, ...ts): a spread among
+                                         * the tuple's own elements
+                                         * (04-generics.md) */
+              next();
+              e = mk(Nspread);
+              e->v.un.e = expr();
+            } else
+              e = expr();
             npush(&n->v.list.ts, e);
           }
         }

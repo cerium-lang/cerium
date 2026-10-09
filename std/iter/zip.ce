@@ -1,0 +1,185 @@
+/* zip -- the adapters' own variadic (10-iteration.md's table): any
+ * count of Iter rows herded into one walk, each round a tuple, one
+ * row an iterator's own yield, the shortest row's end the whole
+ * walk's end. Zip is an Iter itself -- Item the tuple of the rows'
+ * Items, the projection spelled through the pack, (...Ts::Item)
+ * (04-generics.md) -- so a zip zips: the adapter composes with
+ * itself the way the table's own line says the adapters compose.
+ *
+ * The rows live in one tuple of writable slots, (...mut Ts): the
+ * field's own mut and each row's own, the spelling 01-types.md
+ * gives a mut tuple's rows. The constructor takes the iterators
+ * themselves, any count -- the pack's parameter its own two
+ * spellings (04-generics.md): the tail folded into one tuple
+ * argument at the call, or a tuple spread with `...`, its rows the
+ * arguments -- and the literal (...its) spells the pack's rows as
+ * the field's own, the want's walk wrapping each one a slot. */
+
+use std::debug::assert; /* the tests' own word: the artifact is the
+                         * debug shape, the one the assertions live in
+                         * (01-types.md, 13-testing.md) */
+pub struct Zip<...Ts: Iter> {
+  mut its: (...mut Ts)
+}
+
+impl<...Ts: Iter> Iter for Zip<...Ts> {
+  type Item = (...Ts::Item);
+  fn next(self: *mut Self) -> ?(...Ts::Item) {
+    const if @count(...Ts) == 0 {
+      None   /* the empty zip: no row to ask, the sequence over --
+             * not the Some(()) the walk's own base carries, which
+             * says the rows that were asked all answered */
+    } else {
+      advance(&mut self.its)
+    }
+  }
+}
+
+pub fn zip<...Ts: Iter>(its: ...Ts) -> Zip<...Ts> {
+  Zip { its: (...its) }
+}
+
+/* the rows walked together, the tuple the round gathers: the head
+ * row asked first, the tail handed on whole through its range
+ * place -- its[1..] a place in its own right, every row beneath
+ * the slice writable through it (04-generics.md) -- the empty tail
+ * the walk's success, Some(()) the base the recursion builds its
+ * tuples on, (x, ...rest) one row a level. */
+fn advance<...Ts: Iter>(its: *mut (...mut Ts)) -> ?(...Ts::Item) {
+  const if @count(...Ts) == 0 {
+    Some(())
+  } else {
+    match its.0.next() {
+      None => None,
+      Some(x) => match advance(&mut its[1..]) {
+        None => None,
+        Some(rest) => Some((x, ...rest)),
+      },
+    }
+  }
+}
+
+/* -- the tests (13-testing.md) ------------------------------------------------
+ * the artifact's own rows, the runner collecting them from every
+ * namespace: this file's report reads std::iter and the name, and
+ * the library and the executable carry none of it. The pass shapes
+ * alone live here -- a deliberate panic belongs to the project
+ * tests that walk a runner's failure path whole (tests/test/240).
+ * Every spelling the spec gives the walk gets its own row: the
+ * pattern for over the round's tuple, the for-let-Some over the
+ * adapter itself, and the pack's two call spellings -- the tail
+ * folded at the call, or a tuple spread, its rows the arguments
+ * (04-generics.md) */
+
+#[test("two rows in lockstep: each round one tuple, a row each")]
+fn zip_two_rows_lockstep() {
+  let a = []i32{1, 2};
+  let b = []i32{4, 5};
+  let mut s = 0;
+
+  for (x, y) in zip(a, b) {
+    s = s + *x * 10 + *y;   /* 14 + 25 */
+  }
+  assert(s == 39, "the rounds mislaid their tuples");
+}
+
+#[test("the shortest row's end the whole walk's end")]
+fn zip_shortest_row_ends() {
+  let a = []i32{1, 2, 3};
+  let b = []i32{4};
+  let mut rounds = 0;
+  let mut s = 0;
+
+  for (x, y) in zip(a, b) {
+    rounds = rounds + 1;
+    s = s + *x * 10 + *y;
+  }
+  assert(rounds == 1, "the walk outlived its shortest row");
+  assert(s == 14);
+}
+
+#[test("three rows, the pattern one tuple a round")]
+fn zip_three_rows_pattern() {
+  let a = []i32{1, 2};
+  let b = []i32{4, 5};
+  let c = []i32{7, 8};
+  let mut s = 0;
+
+  for (x, y, z) in zip(a, b, c) {
+    s = s + *x * 4 + *y * 2 + *z;   /* 19 + 26 */
+  }
+  assert(s == 45, "the wide round lost a row");
+}
+
+#[test("the for-let-Some spelling: the adapter an Iter itself")]
+fn zip_for_let_some() {
+  let a = []i32{1, 2, 3};
+  let b = []i32{4, 5, 6};
+  let c = []i32{7, 8};
+  let mut s = 0;
+  let mut it = zip(a, b, c);
+
+  for let Some(w) = it.next() {
+    s = s + *w.0 * 4 + *w.1 * 2 + *w.2;   /* 19 + 26 */
+  }
+  assert(s == 45, "the walk's own spelling mislaid a row");
+}
+
+#[test("heterogeneous rows: the tuple each row's own Item")]
+fn zip_heterogeneous_rows() {
+  let u = []u8{1, 2};
+  let v = []i64{10, 20};
+  let mut s = 0;
+
+  for (x, y) in zip(u, v) {
+    s = s + @cast<i32>(*x) * @cast<i32>(*y);   /* 10 + 40 */
+  }
+  assert(s == 50, "the rows did not keep their own types");
+}
+
+#[test("one row: the pack a row of its own, the pattern (x,)")]
+fn zip_one_row() {
+  let a = []i32{1, 2, 3};
+  let mut s = 0;
+
+  for (x,) in zip(a) {
+    s = s + *x;   /* 1 + 2 + 3 */
+  }
+  assert(s == 6, "the lone row lost its yield");
+}
+
+#[test("the empty zip: the sequence over before it began")]
+fn zip_empty_walks_none() {
+  let mut rounds = 0;
+  let mut it = zip();
+
+  for let Some(w) = it.next() {
+    rounds = rounds + 1;
+  }
+  assert(rounds == 0, "the empty zip walked a round");
+}
+
+#[test("a zip zips: the adapter composes with itself")]
+fn zip_nested_zip() {
+  let a = []i32{1, 2, 3};
+  let b = []i32{4, 5, 6};
+  let c = []i32{7, 8};
+  let mut s = 0;
+  let mut it = zip(zip(a, b), c);
+
+  for let Some(w) = it.next() {
+    s = s + *w.0.0 + *w.0.1 + *w.1;   /* 12 + 15 */
+  }
+  assert(s == 27, "the inner zip lost its tuples");
+}
+
+#[test("the pack's other spelling: the tuple spread on the call")]
+fn zip_whole_tuple_spread() {
+  let t = ([]i32{5, 6}, []i32{7, 8});
+  let mut s = 0;
+
+  for (x, y) in zip(...t) {
+    s = s + *x * 10 + *y;   /* 57 + 68 */
+  }
+  assert(s == 125, "the spread tuple lost its rows");
+}

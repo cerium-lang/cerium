@@ -1,0 +1,53 @@
+/* std::iter::zip, the adapters' own variadic (10-iteration.md):
+ * any count of Iter rows one walk, each round a tuple, the
+ * shortest row's end the whole walk's. Pinned here: the pattern
+ * for the spec's own idiom, for (x, y) in zip(xs, ys); the
+ * for-let-Some spelling over the same adapter; three rows and
+ * heterogeneous ones, the projection a tuple of each row's own
+ * Item; a zip zipped -- the adapter composing with itself; the
+ * empty zip, no round at all, never the Some(()) the walk's own
+ * base carries; and the pack's second spelling, the tuple handed
+ * over whole -- zip(t) the rows the binding (04-generics.md). */
+use std::iter::zip;
+
+fn main() -> i32 {
+  let a = []i32{1, 2, 3};
+  let b = []i32{4, 5, 6};
+  let c = []i32{7, 8};
+  let u = []u8{1, 2};
+  let v = []i64{10, 20};
+  let mut s = 0;
+  let mut it3 = zip(a, b, c);
+
+  for let Some(w) = it3.next() {
+    s = s + *w.0 * 4 + *w.1 * 2 + *w.2;   /* 19 + 26 = 45 */
+  }
+  let mut it2 = zip(u, v);
+
+  for let Some(w) = it2.next() {
+    s = s + @cast<i32>(*w.0) * @cast<i32>(*w.1);   /* 10 + 40 = 50 */
+  }
+  let mut one = zip(a);
+
+  for let Some(w) = one.next() {
+    s = s + *w.0;   /* 1 + 2 + 3 = 6 */
+  }
+  let mut nested = zip(zip(a, b), c);   /* a zip zips: the adapter
+                                          * composes with itself */
+
+  for let Some(w) = nested.next() {
+    s = s + *w.0.0 + *w.0.1 + *w.1;   /* 12 + 15 = 27 */
+  }
+  let mut none = zip();
+
+  for let Some(w) = none.next() {
+    s = s + 100;   /* the empty zip: no round at all */
+  }
+  let t = ([]i32{5, 6}, []i32{7, 8});   /* the tuple spread on the
+                                          * call, its rows the pack's */
+
+  for (x, y) in zip(...t) {
+    s = s + *x * 10 + *y;   /* 57 + 68 = 125 */
+  }
+  s   /* 45 + 50 + 6 + 27 + 125 = 253 */
+}

@@ -1386,6 +1386,29 @@ emaplace(Em *em, Ast *e)
       return t;
     }
   }
+  case Nrangeindex: {                         /* a tuple's tail, its own place: the rows
+                                               * before the range walked off, the same
+                                               * walk a row's address takes -- the bounds
+                                               * the checker folded, numbers on the node
+                                               * (01-types.md) */
+    Type *tt = derefthrough(e->v.ridx.e->ty); /* a *mut base: the rows
+                                               * the pointee's own */
+    char *b = aggbase(em, e->v.ridx.e);       /* an aggregate base is its address */
+    u64   lo = e->v.ridx.lo && e->v.ridx.lo->k == Nint ? e->v.ridx.lo->v.i.num : 0;
+    usize i, off = 0;
+
+    for (i = 0; i < lo && tt->k == Tytuple && i < tt->nargs; i++) {
+      off = alignto(off, alignof_(tt->args[i]));
+      off += sizeof_(tt->args[i]);
+    }
+    off = alignto(off, alignof_(e->ty));
+    {
+      char *t = newtmp(em);
+
+      fprintf(em->o, "\t%s =l add %s, %lu\n", t, b, (unsigned long) off);
+      return t;
+    }
+  }
   case Nun:
     if (e->v.un.op == Tstar)
       return emaexpr(em, e->v.un.e);
@@ -4233,12 +4256,18 @@ emittest(FILE *o)
     fprintf(o, "%s\n", line);
   }
   /* the counter's own words, a count in decimal -- the sum line's
-   * helper, digits built from the end of a buffer the caller owns.
-   * A zero spells its one digit, the loop's own last round */
+   * helper, digits built from the end of a buffer the caller owns
+   * and copied to its head, the write reading the front: built
+   * low-order first, the walk itself runs right to left and the copy
+   * left to right, the two together the number the report spells --
+   * one written the other way would read its own digits backwards,
+   * a two-digit count the first to say so. A zero spells its one
+   * digit, the loop's own last round */
   fprintf(o, "function l $u64str(w %%n, l %%buf) {\n@start\n"
              "\t%%ps =l alloc8 8\n"
              "\t%%cs =l alloc4 4\n"
-             "\tstorel %%buf, %%ps\n"
+             "\t%%end =l add %%buf, 23\n"
+             "\tstorel %%end, %%ps\n"
              "\tstorew %%n, %%cs\n"
              "@loop\n"
              "\t%%p0 =l load %%ps\n"
@@ -4248,14 +4277,35 @@ emittest(FILE *o)
              "\t%%dp =l add $test.dec, %%dl\n"
              "\t%%ch =w loadub %%dp\n"
              "\tstoreb %%ch, %%p0\n"
-             "\t%%p1 =l add %%p0, 1\n"
+             "\t%%p1 =l sub %%p0, 1\n"
              "\tstorel %%p1, %%ps\n"
              "\t%%c1 =w udiv %%c0, 10\n"
              "\tstorew %%c1, %%cs\n"
-             "\tjnz %%c1, @loop, @done\n");
-  fprintf(o, "@done\n"
-             "\t%%p2 =l load %%ps\n"
-             "\t%%r =l sub %%p2, %%buf\n"
+             "\tjnz %%c1, @loop, @rev\n");
+  fprintf(o, "@rev\n"
+             "\t%%hip =l alloc8 8\n"
+             "\t%%pp =l alloc8 8\n"
+             "\t%%h0 =l load %%ps\n"
+             "\t%%h1 =l add %%h0, 1\n"
+             "\tstorel %%h1, %%hip\n"
+             "\tstorel %%buf, %%pp\n"
+             "\t%%past =l add %%buf, 24\n"
+             "@copy\n"
+             "\t%%h2 =l load %%hip\n"
+             "\t%%more =w csltl %%h2, %%past\n"
+             "\tjnz %%more, @mv, @fin\n"
+             "@mv\n"
+             "\t%%d0 =l load %%pp\n"
+             "\t%%b0 =w loadub %%h2\n"
+             "\tstoreb %%b0, %%d0\n"
+             "\t%%d1 =l add %%d0, 1\n"
+             "\tstorel %%d1, %%pp\n"
+             "\t%%h3 =l add %%h2, 1\n"
+             "\tstorel %%h3, %%hip\n"
+             "\tjmp @copy\n"
+             "@fin\n"
+             "\t%%r0 =l load %%pp\n"
+             "\t%%r =l sub %%r0, %%buf\n"
              "\tret %%r\n"
              "}\n\n");
   /* the runner: the fork a test, the wait its ending, the line the

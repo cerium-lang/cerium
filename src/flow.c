@@ -723,14 +723,113 @@ gunifyv(Type *sig, Type *arg, Ast **gps, Type **tys, Val **gcvals, usize n)
     if (sig->n != arg->n)
       return 0;
     return gunifyv(sig->t, arg->t, gps, tys, gcvals, n);
-  case Tytuple:
+  case Tytuple: { /* a spread row among the sig's: the pack the rows
+                   * walk, the argument's own rows from the same
+                   * place feeding it -- each row meeting the
+                   * template alone (the ...mut Ts spelling's wrapper
+                   * among the meetings), the pack bound to the rows
+                   * the meetings leave, the same gather a
+                   * reference's arguments take (04-generics.md) */
+    usize sp = sig->nargs;
+
+    if (!sig->nargs && arg->k == Tyunit)
+      return 1; /* the empty rows, both spellings of them */
+    for (i = 0; i < sig->nargs; i++)
+      if (sig->args[i]->k == Tyspread) {
+        sp = i;
+        break;
+      }
+    if (sp == sig->nargs) { /* no spread walks here: the rows meet
+                             * one a one */
+      if (sig->nargs != arg->nargs)
+        return 0;
+      for (i = 0; i < sig->nargs; i++)
+        if (!gunifyv(sig->args[i], arg->args[i], gps, tys, gcvals, n))
+          return 0;
+      return 1;
+    }
+    if (sp != sig->nargs - 1 || arg->nargs < sp)
+      return 0; /* the spread walks the tail alone -- one pack a
+                 * tuple's own (04-generics.md) */
+    for (i = 0; i < sp; i++)
+      if (!gunifyv(sig->args[i], arg->args[i], gps, tys, gcvals, n))
+        return 0;
+    {
+      Ast   *gp = sig->args[sp]->gp;
+      Type  *tmpl = sig->args[sp]->t;
+      usize  nr = arg->nargs - sp;
+      usize  j = n;
+      Type **rows;
+
+      for (i = 0; i < n; i++)
+        if (gps[i] == gp) {
+          j = i;
+          break;
+        }
+      if (nr == 1 && arg->args[sp]->k == Tyspread)
+        /* the argument's own spread: template meets template -- a
+         * generic body's pass-through, the packs standing for each
+         * other, the real binding the instance's re-check makes
+         * (04-generics.md) */
+        return gunifyv(tmpl, arg->args[sp]->t, gps, tys, gcvals, n);
+      if (j == n)
+        return 1; /* someone else's pack: nothing here to bind */
+      rows = nr ? tyargs(nr) : 0;
+      { /* each row meets the template alone: the meeting's own
+         * bindings -- the pack's its row, the rest this call's --
+         * merge back, the pack's alone gathering into the tuple
+         * the binding is */
+        usize k;
+
+        for (k = 0; k < nr; k++) {
+          Type **loc = n ? tyargs(n) : 0;
+          Val  **lcv = gcvals ? arenaalloc(n * sizeof *lcv) : 0;
+
+          memcpy(loc, tys, n * sizeof *loc);
+          if (lcv)
+            memcpy(lcv, gcvals, n * sizeof *lcv);
+          loc[j] = 0; /* the pack's slot fresh: this row its own */
+          if (lcv)
+            lcv[j] = 0;
+          if (!gunifyv(tmpl, arg->args[sp + k], gps, loc, lcv, n))
+            return 0;
+          rows[k] = loc[j];
+          if (!rows[k])
+            return 0; /* the template names the pack: a row that
+                       * binds it nothing fits none of them */
+          {           /* the other slots: a binding the meeting added joins,
+                       * one it clashed with the walk already refused */
+            usize q;
+
+            for (q = 0; q < n; q++)
+              if (q != j) {
+                if (!tys[q])
+                  tys[q] = loc[q];
+                if (lcv && !gcvals[q])
+                  gcvals[q] = lcv[q];
+              }
+          }
+        }
+      }
+      { /* the gather: the pack's binding the rows the meetings
+         * left -- a binding an earlier argument already made, the
+         * same rows must repeat (04-generics.md) */
+        Type *g = tytuple(rows, nr);
+
+        if (tys[j] && !tysame(tys[j], g))
+          return 0;
+        tys[j] = g;
+      }
+      return 1;
+    }
+  }
   case Tyfn:
     if (sig->nargs != arg->nargs)
       return 0;
     for (i = 0; i < sig->nargs; i++)
       if (!gunifyv(sig->args[i], arg->args[i], gps, tys, gcvals, n))
         return 0;
-    return sig->k == Tyfn ? gunifyv(sig->t, arg->t, gps, tys, gcvals, n) : 1;
+    return gunifyv(sig->t, arg->t, gps, tys, gcvals, n);
   case Tystruct:
   case Tyenum:
   case Tyunion:
