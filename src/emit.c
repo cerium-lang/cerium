@@ -3059,6 +3059,26 @@ emaexpr(Em *em, Ast *e)
       fprintf(em->o, "\tstorel %s, %s\n", n, w);
       return t;
     }
+    if (strcmp(nm, "len") == 0) { /* the count half of the fat
+                                   * pointer, the word the view
+                                   * carries beside its reach
+                                   * (01-types.md) */
+      char *a = emaexpr(em, e->v.blt.args[0]);
+      char *w = newtmp(em);
+      char *t = newtmp(em);
+
+      fprintf(em->o, "\t%s =l add %s, 8\n", w, a);
+      fprintf(em->o, "\t%s =l loadl %s\n", t, w);
+      return t;
+    }
+    if (strcmp(nm, "ptr") == 0) { /* the reach half, the first word
+                                   * (01-types.md) */
+      char *a = emaexpr(em, e->v.blt.args[0]);
+      char *t = newtmp(em);
+
+      fprintf(em->o, "\t%s =l loadl %s\n", t, a);
+      return t;
+    }
     cerrat(e, "this builtin arrives with a later milestone");
     return 0; /* unreachable */
   }

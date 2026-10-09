@@ -10,10 +10,10 @@ use std::iter::Iter;
 impl<T> Iter for []T {
   type Item = *T;
   fn next(self: *mut Self) -> ?*T {
-    if self.len == 0 {
+    if @len(*self) == 0 {
       None
     } else {
-      let p = self.ptr;
+      let p = @ptr(*self);
 
       *self = (*self)[1..];
       Some(p)

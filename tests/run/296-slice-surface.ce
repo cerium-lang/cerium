@@ -8,8 +8,10 @@ fn write(fd: i32, buf: *u8, n: usize) -> usize;
 
 fn main() -> i32 {
   let s = "abc";
-  let n = s.len();  /* 3: the count, the call the library lends */
-
+  let n = @len(s);   /* 3: @len the language's own door, public --
+                      * @slice writes the count, @len reads it back */
+  let m = s.len();   /* 3 again: the call the library lends over it */
+  let n2 = n + m;    /* 6: the two doors, one count */
   let first = match s.get(0) {
     Some(p) => *p,  /* 97, 'a' */
     None => 0,
@@ -27,5 +29,5 @@ fn main() -> i32 {
   }
 
   write(1, s.ptr(), s.len());  /* the C door: abc, three bytes */
-  @cast<i32>(n * 100 + @cast<usize>(first) + @cast<usize>(past) + @cast<usize>(m[0] + m[1] + m[2]))  /* 421, the exit the byte counts: 165 */
+  @cast<i32>(n2 * 100 + @cast<usize>(first) + @cast<usize>(past) + @cast<usize>(m[0] + m[1] + m[2]))  /* 721: the exit the byte counts, 209 */
 }

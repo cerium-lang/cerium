@@ -1,6 +1,7 @@
 /* std::slice -- the slice's own surface. The two slots the runtime
  * carries, the pointer and the length, are the std tree's own to
- * read -- every other file takes the methods (01-types.md). len
+ * read, by its own doors -- @len and @ptr, no field spelling -- and
+ * every other file takes the methods (01-types.md). len
  * answers the count; get the bounds-checked element, None the ask
  * past the end; ptr the C door, the pointer the first element
  * would have, a whole-slice handoff its one use (12-projects.md).
@@ -9,17 +10,17 @@
  * get of a mut slice answers ?*mut T by the same row. */
 
 impl<T> []T {
-  fn len(self: *Self) -> usize { self.len }
+  fn len(self: *Self) -> usize { @len(*self) }
 
   fn get(self: *Self, i: usize) -> ?*T {
-    if i < self.len {
+    if i < @len(*self) {
       Some(&(*self)[i])
     } else {
       None
     }
   }
 
-  fn ptr(self: *Self) -> *T { self.ptr }
+  fn ptr(self: *Self) -> *T { @ptr(*self) }
 }
 
 /* -- the tests (13-testing.md) ------------------------------- */

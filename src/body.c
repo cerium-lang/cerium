@@ -187,15 +187,15 @@ rplace1(Ast *e, Fenv *fe)
     {
       Type *sf = slicefield(bt, e->v.fld.name);
 
-      if (sf) { /* the slice's own two: the library's own slots, its
-                 * tree alone reads them -- len() and get() the
-                 * surface every other file takes (01-types.md) */
-        if (!nsinstd(nscuring()))
-          berr(e,
-               "'%s' is one of a slice's own two slots: len() and get() are the "
-               "surface -- the slots are the runtime's own (01-types.md)",
-               e->v.fld.name);
-        return sf;
+      if (sf) { /* the slice's own two: not fields anymore, for the
+                 * library either -- @len and @ptr its own doors,
+                 * len() and get() and ptr() the surface every file
+                 * takes (01-types.md) */
+        berr(e,
+             "'%s' is one of a slice's own two slots: len(), get() and ptr() are "
+             "the surface -- the std library reads the slots by its own doors, "
+             "@len and @ptr (01-types.md)",
+             e->v.fld.name);
       }
     }
     if (bt->k != Tystruct && bt->k != Tyunion)
@@ -3790,15 +3790,15 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
     {
       Type *sf = slicefield(bt, e->v.fld.name);
 
-      if (sf) { /* ptr and len: scalars both, Copy -- but the
-                 * library's own, its tree alone reading them
-                 * (01-types.md) */
-        if (!nsinstd(nscuring()))
-          berr(e,
-               "'%s' is one of a slice's own two slots: len() and get() are the "
-               "surface -- the slots are the runtime's own (01-types.md)",
-               e->v.fld.name);
-        return sf;
+      if (sf) { /* ptr and len: scalars both, Copy -- but not
+                 * fields, for the library either: @len and @ptr its
+                 * own doors, len() and get() and ptr() the surface
+                 * every file takes (01-types.md) */
+        berr(e,
+             "'%s' is one of a slice's own two slots: len(), get() and ptr() are "
+             "the surface -- the std library reads the slots by its own doors, "
+             "@len and @ptr (01-types.md)",
+             e->v.fld.name);
       }
     }
     if (bt->k != Tystruct && bt->k != Tyunion)

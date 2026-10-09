@@ -1722,23 +1722,20 @@ ceval(Ast *e, Env env, Type *want)
     return b.elems[e->v.tup.idx];
   }
   case Naccess: { /* a field by name: the struct's rows in their
-                   * declaration order, the union's one, the slice's
-                   * two -- the len a number the walk holds (a
-                   * literal's own, a const's, a call's: the bytes and
-                   * the count ride together, 08-reflection.md), the
-                   * ptr a borrow of storage no address names at
-                   * compile time (01) */
+                   * declaration order, the union's one -- the
+                   * slice's two not fields at all, @len and @ptr
+                   * the doors the library reads them by, doors no
+                   * field spelling names (01-types.md) */
     Val   b = ceval(e->v.fld.e, env, 0);
     char *nm = e->v.fld.name;
     usize i;
 
-    if (b.t->k == Tyslice) {
-      if (strcmp(nm, "len") == 0)
-        return valint(b.len, tyint(IN_USIZE));
+    if (b.t->k == Tyslice) /* unreachable past the checker: the
+                            * checker's own words name the doors */
       cerrat(e,
-             "'%s' of a slice is a borrow of its storage: evaluation takes none (08-reflection.md)",
+             "'%s' is one of a slice's own two slots: @len and @ptr read them, "
+             "the std library's own doors (01-types.md)",
              nm);
-    }
     if (b.t->k != Tystruct && b.t->k != Tyunion)
       cerrat(e, "%s has no fields (01-types.md)", tnm(b.t));
     if (b.t->nargs != (usize) b.t->sym->ngparams) /* a generic's rows
@@ -2075,6 +2072,22 @@ ceval(Ast *e, Env env, Type *want)
       v = strcmp(nm, "sizeof") == 0 ? sizeof_(t) : alignof_(t);
       return valint(v, tyint(IN_USIZE));
     }
+    if (strcmp(nm, "len") == 0) { /* the count half of the fat pointer,
+                                   * riding the value as @slice wrote
+                                   * it -- the fold the slot's read
+                                   * always was (01, 08) */
+      Val b;
+
+      if (vlen(e->v.blt.args) != 1)
+        cerrat(e, "@len takes one slice (01-types.md)");
+      b = ceval(e->v.blt.args[0], env, 0);
+      if (b.t->k != Tyslice)
+        cerrat(e->v.blt.args[0], "@len wants a []T here (01-types.md)");
+      return valint(b.len, tyint(IN_USIZE));
+    }
+    if (strcmp(nm, "ptr") == 0)
+      cerrat(e, "@ptr answers a pointer: a borrow of storage no address "
+                "names at compile time (08-reflection.md)");
     if (strcmp(nm, "count") == 0) { /* the pack's own length, the
                                      * binding's rows (04-generics.md) */
       Env   e2 = env;
@@ -3329,13 +3342,12 @@ callval(Ast *e, Env env)
   FrSaved     save;
   Val         r;
 
-  /* the slice's own surface first: len() spelled as the call the
-   * library lends, its body the slot's own read ({ self.len }), so
-   * the fold the slot's read takes answers here too -- the count
-   * rides the value, and the call that only names it is as known as
-   * the slot (01-types.md, 08-reflection.md). get answers a pointer
-   * and as_ptr a borrow: neither has a compile-time value, and a
-   * slice no other method to spell */
+  /* the slice's own surface first: len() the call the library lends
+   * over @len -- its body the builtin's own read ({ @len(*self) }),
+   * so the fold @len takes answers here too, the count riding the
+   * value (01-types.md, 08-reflection.md). get answers a pointer
+   * and ptr a borrow: neither has a compile-time value, and a slice
+   * no other method to spell */
   if (f->k == Naccess && na == 0 && strcmp(f->v.fld.name, "len") == 0) {
     Val b = ceval(f->v.fld.e, env, 0);
 
