@@ -1,0 +1,58 @@
+/* the order's whole shape: the bounds order equal shapes the way the
+ * impl table's do, a repeated variable lands once, and an equal pair
+ * never moves -- the declaration's own order the answer it keeps
+ * (04-generics.md, Overloading) */
+use std::iter::{Iter, zip};
+use std::ops::Add;
+
+struct C { mut n: u32, max: u32 }   /* Iter and Add both */
+struct D { mut n: u32, max: u32 }   /* Iter alone */
+
+impl Iter for C {
+  type Item = u32;
+  fn next(self: *mut Self) -> ?u32 {
+    if self.n < self.max { self.n = self.n + 1; Some(self.n) } else { None }
+  }
+}
+impl Add for C {
+  type Output = C;
+  fn add(self: Self, other: Self) -> Self::Output { other }
+}
+impl Iter for D {
+  type Item = u32;
+  fn next(self: *mut Self) -> ?u32 {
+    if self.n < self.max { self.n = self.n + 1; Some(self.n) } else { None }
+  }
+}
+
+fn ga<T: Iter + Add>(x: T) -> i32 { 1 }   /* the wider bounds first */
+fn ga<T: Iter>(x: T) -> i32 { 0 }
+
+fn gb<T: Iter>(x: T) -> i32 { 0 }         /* and after: one answer */
+fn gb<T: Iter + Add>(x: T) -> i32 { 1 }
+
+fn h<T>(x: T, y: T) -> i32 { 1 }          /* (T, T) the narrower */
+fn h<A, B>(x: A, y: B) -> i32 { 0 }
+
+fn ki<T: Iter>(x: T) -> i32 { 0 }         /* nothing of each other: */
+fn ki<T: Add>(x: T) -> i32 { 1 }          /* the declaration holds */
+
+fn ka<T: Add>(x: T) -> i32 { 1 }          /* and its mirror order */
+fn ka<T: Iter>(x: T) -> i32 { 0 }
+
+fn m<...Ts>(ts: ...Ts) -> i32 { 0 }       /* two packs, two counts: */
+fn m<T, ...Ts>(x: T, ts: ...Ts) -> i32 { 1 }  /* the counts order nothing */
+
+fn s<T: Iter, U>(x: T, y: U) -> i32 { 1 } /* crosswise bounds: apart, */
+fn s<A, B: Iter>(x: A, y: B) -> i32 { 2 } /* no rename, the declaration */
+
+fn main() -> i32 {
+  let a = ga(C { n: 0, max: 2 });         /* both take: the bounds pick */
+  let b = gb(C { n: 0, max: 2 });         /* the same row, declared after */
+  let c = h(3, 4);                        /* the repeated variable wins */
+  let d = ki(C { n: 0, max: 2 });         /* both take: the first stands */
+  let e = ka(C { n: 0, max: 2 });         /* and here the first is Add's */
+  let f = m(1);                           /* the counts apart: the first */
+  let g = s(C { n: 0, max: 2 }, D { n: 0, max: 2 });
+  return a * 64 + b * 32 + c * 16 + d * 8 + e * 4 + f * 2 + g;
+}

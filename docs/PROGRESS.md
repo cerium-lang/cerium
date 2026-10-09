@@ -3070,3 +3070,25 @@ the desugar itself the same one shape for both hands, exactly as
 the owner read after them, the taken value, the zip's tuples, the
 slice and the array through their own doors). 654 green, the
 library's 17 with them.
+
+The order's whole shape. The overload chains carried their
+specificity in the signature alone -- the shape a pattern walk, the
+bounds beside it unread -- and a pair the shape could not order it
+moved anyway: the insertion slid the later row ahead, so two
+declarations of the same two signatures could answer two different
+ways, the declaration order no tie at all. The joint order the impl
+table always ran is the chains' own now: the one walk the slots
+share -- a repeated variable landing once, (T, T) the narrower
+pattern than (A, B) -- and, shapes equal, the wider bounds the
+narrower signature, {Iter, Add} over {Iter}, the bindings the walk
+landed pairing the two sides' variables. What neither orders keeps
+the declaration's own order, the first declared the one a
+both-matching call takes; the rename is the pair equal both ways,
+its pairing the walk's own, not the names' position. The report
+grew its half too: a row's refusal names the signature whole, the
+variables' own bounds in the angle brackets the type's own printing
+never carried. The pins: 295 (the bounds' order both ways declared,
+the repeated variable, the pair that names nothing of each other
+holding its declaration order under both orders of its own, the two
+packs at two counts, the crosswise bounds beside one another). 655
+green, the library's 17 with them.
