@@ -3121,3 +3121,13 @@ wear says its size against the fn's own. Every refusal the report
 joins, one seam, each row its own words. The pins: 290 (the plain
 counts, the pack's least), 291 (the slot's two sides, the
 spelling's size). 661 green, the library's 17 with them.
+
+The open list's own words. The ledger empty, the spec's own open
+list went under the same light: every line held against the walk it
+names. Five stood -- the macro question, the libraries outside, the
+walk's cost, the two-trait handle, the v1 work behind #[extern(C)]
+-- but the sixth named a lack the language had long outgrown: the
+Output associated type and the rest of the operator table, % and
+the bitwise ones and the shifts, all spelled in their chapter, all
+impl'd in the library's rows, all pinned by 168's whole table. The
+line came out; the list says what is open, no more.
