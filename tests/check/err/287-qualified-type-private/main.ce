@@ -1,0 +1,4 @@
+fn main() -> i32 {
+  let h: lib::Hidden = lib::make();
+  h.n
+}

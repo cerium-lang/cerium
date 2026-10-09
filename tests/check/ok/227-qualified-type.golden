@@ -1,0 +1,7 @@
+(file
+  (fn main fn() -> i32))
+(file
+  (struct Shown
+    (field n i32))
+  (fn make fn() -> lib::Shown)
+  (fn read fn(lib::Shown) -> i32))

@@ -1,0 +1,6 @@
+/* the qualified type name in a type position: pub crossing the
+ * namespace line whole (11-namespaces.md) */
+pub struct Shown { n: i32 }
+
+pub fn make() -> Shown { Shown { n: 7 } }
+pub fn read(s: Shown) -> i32 { s.n }

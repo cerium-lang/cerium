@@ -1,0 +1,8 @@
+/* the type private to its directory: a qualified name in a type
+ * position crosses namespaces all the same, and what is private to
+ * one stays its own (11-namespaces.md) -- the value path's rule
+ * (218), the type's own here */
+pub struct Shown { n: i32 }
+struct Hidden { n: i32 }
+
+pub fn make() -> Hidden { Hidden { n: 7 } }

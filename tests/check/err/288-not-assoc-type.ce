@@ -1,0 +1,6 @@
+/* a type's own two segments name an associated type, one an impl
+ * supplied (05-traits.md) -- and 'X' is not one of P's */
+
+struct P { x: i32 }
+
+fn main() -> i32 { let z: P::X = 3; return z; }
