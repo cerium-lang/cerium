@@ -3020,3 +3020,19 @@ nested one, the unit tail, mut rows written through the gather, a
 for's own head over zip's rounds), check/err 282 (the rest not
 last) and 283 (more heads than rows), the zip's own rows one richer.
 648 green, the library's 17 with them.
+
+The chain walks on. A row whose bounds the landing fails, or whose
+binding the call never made, steps aside the way any mismatch does --
+the next row reads the call anew, whatever the declaration order. The
+hard error that ate the chain is gone: the old-generic spell of it too
+(`fn n<T: Iter>` beside `fn n(i32)`, the binding landing on a type the
+bound refuses), and the pack's own folded row among them. When no row
+takes the call, the report names each row's own refusal, the signature
+before the reason; the arity and unify refusals stay the old words'
+own. The order-independence this buys is the one-fit kind: two rows
+that both genuinely take the call still answer by declaration order --
+the most-specific order the spec names is its own debt. The pins: 292
+(the steps aside, pack and plain and the old generic and the inference,
+both declaration orders), check/err 284 (the chain's end, a bound's
+own words) and 285 (the inference's). 651 green, the library's 17
+with them.

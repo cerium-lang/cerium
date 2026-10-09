@@ -1,0 +1,7 @@
+/* the chain's own end: the binding the call never made -- the row's
+ * own words, the report's to name (04-generics.md) */
+fn h<T>() -> i32 { 0 }
+
+fn main() -> i32 {
+  h()
+}
