@@ -1,0 +1,10 @@
+/* the pointer slot too: ptr() is the C door the surface lends,
+ * the slot itself the std tree's own (01-types.md) */
+
+#[extern(C)]
+fn write(fd: i32, buf: *u8, n: usize) -> usize;
+
+fn main() -> i32 {
+  let s = "x";
+  @cast<i32>(write(1, s.ptr, s.len()))
+}

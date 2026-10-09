@@ -361,10 +361,11 @@ fitsv(u64 v, Type *t)
  * mut slot mut T, so that layer comes off too (01-types.md). Lives
  * in type.c now -- the emitter's field walks need it too. */
 
-/* a slice's two named slots (01-types.md): s.ptr is *T -- *mut T
- * for a []mut T, which is the Tymut child -- and s.len a usize.
- * Both read for every ABI that hands a pair to C; neither writes --
- * @slice builds the view whole. */
+/* a slice's two named halves (01-types.md): @ptr answers *T -- *mut T
+ * for a []mut T, which is the Tymut child -- and @len a usize. Not
+ * fields: the doors are builtins, @ptr the std library's own, and no
+ * field spelling reaches either -- @slice builds the view whole, and
+ * no half writes. */
 Type *
 slicefield(Type *t, char *name)
 {

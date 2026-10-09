@@ -3131,3 +3131,30 @@ Output associated type and the rest of the operator table, % and
 the bitwise ones and the shifts, all spelled in their chapter, all
 impl'd in the library's rows, all pinned by 168's whole table. The
 line came out; the list says what is open, no more.
+
+The slice's own doors. The runtime's two slots were every file's to
+read -- len and ptr spelled bare, no pub about them. Now the tree
+that owns them reads them alone: one row, impl<T> []T, lends the
+surface every other file takes -- len() the count, get(i) the
+bounds-checked row (?*T, None past the end, the mut slices riding
+with T bound the mut layer), ptr() the C door. The parser takes
+a built-in shape spelled whole where an impl's target goes; the
+mangler learned the bare mut layer a binding carries (a letter of
+its own, for the slots' tags name it only under them); len() folds
+at compile time wherever the slice does, the count riding the value
+as the slot's read always did. Twenty tests took the doors, the
+library's own home moved -- std::slice its surface, its Iter with
+it. The pins: 296 (the surface, the mut row's write home), 292 and
+293 (the slots kept). 664 green, the library's 20 with them.
+
+The halves' own doors. The slots the field spelling carried became
+builtins: @len the count half, every file's own -- @slice writes it,
+@len reads it back, the fold the value's count always was -- and
+@ptr the reach half, the std library's alone, for the raw pointer
+is what the surface closes. The field spelling went out whole: no
+file reads the halves that way now, the library either -- its
+methods lend the doors, len() over @len, ptr() over @ptr -- and the
+two read gates the field walk carried fold into one check the
+builtin takes. Thirteen builtins the language spells (08). The
+pins: 294 (@ptr kept outside the tree), 296's @len beside the call
+it lends. 665 green, the library's 20 with them.

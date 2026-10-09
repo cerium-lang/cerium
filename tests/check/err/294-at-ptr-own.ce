@@ -1,0 +1,11 @@
+/* @ptr is the std library's own door: the raw pointer is what this
+ * round closed, the door every other file takes is ptr()
+ * (01-types.md) */
+
+#[extern(C)]
+fn write(fd: i32, buf: *u8, n: usize) -> usize;
+
+fn main() -> i32 {
+  let s = "x";
+  @cast<i32>(write(1, @ptr(s), s.len()))
+}

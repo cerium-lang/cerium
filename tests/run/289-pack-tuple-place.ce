@@ -14,10 +14,10 @@ trait Iter {
 impl<T> Iter for []T {
   type Item = *T;
   fn next(self: *mut Self) -> ?*T {
-    if self.len == 0 {
+    if self.len() == 0 {
       None
     } else {
-      let p = self.ptr;
+      let p = self.ptr();
 
       *self = (*self)[1..];
       Some(p)

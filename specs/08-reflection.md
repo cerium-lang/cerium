@@ -33,7 +33,11 @@ assert(sum == 6);
 ```
 
 User functions are callable at compile time when their arguments are
-compile-time known. The function itself needs no annotation:
+compile-time known. The function itself needs no annotation. A builtin folds
+by what it reads: `@len(s)` is the count riding the slice's value, so it
+folds wherever the slice does; the surface's `s.len()` is `@len` in the
+library's spelling and folds the same — `get` answers a pointer and `ptr`
+a borrow, and neither has a compile-time value (`01-types.md`).
 
 ```rust
 fn twice(x: u32) -> u32 {
@@ -390,6 +394,8 @@ There are eleven, and each is defined where it belongs:
 | `@offset<T>("field")` | field offset in bytes | `02-layout.md` |
 | `@cast<T>(a)` | a well-defined conversion | `01-types.md` |
 | `@slice(p, n)` | build a `[]T` from a pointer and a length | `01-types.md` |
+| `@len(s)` | a slice's length, the count half of the fat pointer | `01-types.md` |
+| `@ptr(s)` | a slice's pointer — the std library's own, `ptr()` every other file's door | `01-types.md` |
 | `@typeinfo<T>()`, `@typeinfo(a)` | the `TypeInfo` of a type | this chapter |
 | `@typeof(a)` | the type of a value, as a reference | this chapter |
 | `@field(v, "name")` | the address of field `name` | this chapter |
@@ -398,7 +404,8 @@ There are eleven, and each is defined where it belongs:
 | `@compileError(msg)` | report a compile error | this chapter |
 
 Grouped by what they are for: layout — `@sizeof`, `@alignof`, `@offset`;
-conversion — `@cast`; slices — `@slice`; reflection — `@typeinfo`, `@typeof`,
+conversion — `@cast`; slices — `@slice`, `@len`, `@ptr`; reflection —
+`@typeinfo`, `@typeof`,
 `@field`; packs — `@count`; ownership — `@take`; const — `@compileError`. A
 conditional is ordinary `if` (`10-iteration.md`), not a builtin.
 

@@ -61,36 +61,36 @@ pub fn eprint_one<T: Fmt>(v: *T) -> Result<usize, Error> {
 fn shaped(const fmt: []u8) -> bool {
   let mut i: usize = 0;
 
-  for i < fmt.len {
+  for i < fmt.len() {
     if fmt[i] == 123 { /* '{' */
-      if i + 1 == fmt.len {
+      if i + 1 == fmt.len() {
         return false; /* the last { stands alone */
       }
       if fmt[i + 1] == 123 || fmt[i + 1] == 125 { /* '{{' or '{}' */
         i = i + 2;
       } else if fmt[i + 1] == 58 { /* '{:' -- the spec */
         i = i + 2;
-        if i + 1 < fmt.len && (fmt[i + 1] == 60 || fmt[i + 1] == 62 || fmt[i + 1] == 94) {
+        if i + 1 < fmt.len() && (fmt[i + 1] == 60 || fmt[i + 1] == 62 || fmt[i + 1] == 94) {
           i = i + 2; /* a fill, the alignment behind it */
-        } else if i < fmt.len && (fmt[i] == 60 || fmt[i] == 62 || fmt[i] == 94) {
+        } else if i < fmt.len() && (fmt[i] == 60 || fmt[i] == 62 || fmt[i] == 94) {
           i = i + 1; /* the alignment alone */
         }
-        for i < fmt.len && fmt[i] >= 48 && fmt[i] <= 57 {
+        for i < fmt.len() && fmt[i] >= 48 && fmt[i] <= 57 {
           i = i + 1; /* the width, a decimal run */
         }
-        if i < fmt.len && fmt[i] == 46 { /* '.': the precision, a decimal run behind it */
+        if i < fmt.len() && fmt[i] == 46 { /* '.': the precision, a decimal run behind it */
           i = i + 1;
-          if i >= fmt.len || fmt[i] < 48 || fmt[i] > 57 {
+          if i >= fmt.len() || fmt[i] < 48 || fmt[i] > 57 {
             return false; /* the dot names nothing */
           }
-          for i < fmt.len && fmt[i] >= 48 && fmt[i] <= 57 {
+          for i < fmt.len() && fmt[i] >= 48 && fmt[i] <= 57 {
             i = i + 1;
           }
         }
-        if i < fmt.len && (fmt[i] == 120 || fmt[i] == 111 || fmt[i] == 98) {
+        if i < fmt.len() && (fmt[i] == 120 || fmt[i] == 111 || fmt[i] == 98) {
           i = i + 1; /* x o b: the base -- the fill's x an alignment follows */
         }
-        if i >= fmt.len || fmt[i] != 125 {
+        if i >= fmt.len() || fmt[i] != 125 {
           return false; /* the spec never closed, or holds what it should not */
         }
         i = i + 1;
@@ -98,7 +98,7 @@ fn shaped(const fmt: []u8) -> bool {
         return false; /* neither a hole, a brace, nor a spec */
       }
     } else {
-      if fmt[i] == 125 && i + 1 < fmt.len && fmt[i + 1] == 125 {
+      if fmt[i] == 125 && i + 1 < fmt.len() && fmt[i + 1] == 125 {
         i = i + 2; /* '}}': one brace for two */
       } else {
         i = i + 1; /* a '}' alone, and every other byte: itself */
@@ -116,17 +116,17 @@ fn holes(const fmt: []u8) -> usize {
   let mut n: usize = 0;
   let mut i: usize = 0;
 
-  for i < fmt.len {
-    if fmt[i] == 123 && i + 1 < fmt.len && fmt[i + 1] == 123 { /* '{{': the brace */
+  for i < fmt.len() {
+    if fmt[i] == 123 && i + 1 < fmt.len() && fmt[i + 1] == 123 { /* '{{': the brace */
       i = i + 2;
     } else if fmt[i] == 123 { /* a hole, bare or spec'd -- the shape says the braces close */
       n = n + 1;
       i = i + 1; /* past the '{': the spec's own words, or the bare '}' itself */
-      for i < fmt.len && fmt[i] != 125 {
+      for i < fmt.len() && fmt[i] != 125 {
         i = i + 1;
       }
       i = i + 1; /* past the '}' */
-    } else if fmt[i] == 125 && i + 1 < fmt.len && fmt[i + 1] == 125 { /* '}}' */
+    } else if fmt[i] == 125 && i + 1 < fmt.len() && fmt[i + 1] == 125 { /* '}}' */
       i = i + 2;
     } else {
       i = i + 1;
@@ -142,9 +142,9 @@ fn holes(const fmt: []u8) -> usize {
 fn lit(w: *mut Writer, fmt: []u8, from: usize) -> Result<usize, Error> {
   let mut i = from;
 
-  for i < fmt.len {
+  for i < fmt.len() {
     if fmt[i] == 123 { /* '{' */
-      if i + 1 < fmt.len && fmt[i + 1] == 123 {
+      if i + 1 < fmt.len() && fmt[i + 1] == 123 {
         w.write_u8(123)?; /* '{{': the brace itself */
         i = i + 2;
       } else {
@@ -152,7 +152,7 @@ fn lit(w: *mut Writer, fmt: []u8, from: usize) -> Result<usize, Error> {
       }
     } else if fmt[i] == 125 { /* '}' */
       w.write_u8(125)?;
-      if i + 1 < fmt.len && fmt[i + 1] == 125 {
+      if i + 1 < fmt.len() && fmt[i + 1] == 125 {
         i = i + 2; /* '}}': one brace for two */
       } else {
         i = i + 1; /* alone: the byte it is */
@@ -187,7 +187,7 @@ fn spec(fmt: []u8, at: usize) -> Hole {
 
   if fmt[i] == 58 { /* ':' -- the spec's own words */
     i = i + 1;
-    if i + 1 < fmt.len && (fmt[i + 1] == 60 || fmt[i + 1] == 62 || fmt[i + 1] == 94) {
+    if i + 1 < fmt.len() && (fmt[i + 1] == 60 || fmt[i + 1] == 62 || fmt[i + 1] == 94) {
       h.fill = fmt[i]; /* the fill, the alignment behind it */
       h.align = fmt[i + 1];
       i = i + 2;
@@ -195,18 +195,18 @@ fn spec(fmt: []u8, at: usize) -> Hole {
       h.align = fmt[i]; /* the alignment alone */
       i = i + 1;
     }
-    for i < fmt.len && fmt[i] >= 48 && fmt[i] <= 57 {
+    for i < fmt.len() && fmt[i] >= 48 && fmt[i] <= 57 {
       h.width = h.width * 10 + @cast<usize>(fmt[i] - 48); /* the width, decimal */
       i = i + 1;
     }
-    if i < fmt.len && fmt[i] == 46 { /* '.': the precision, the shape asked its run */
+    if i < fmt.len() && fmt[i] == 46 { /* '.': the precision, the shape asked its run */
       i = i + 1;
-      for i < fmt.len && fmt[i] >= 48 && fmt[i] <= 57 {
+      for i < fmt.len() && fmt[i] >= 48 && fmt[i] <= 57 {
         h.prec = h.prec * 10 + @cast<usize>(fmt[i] - 48);
         i = i + 1;
       }
     }
-    if i < fmt.len && (fmt[i] == 120 || fmt[i] == 111 || fmt[i] == 98) {
+    if i < fmt.len() && (fmt[i] == 120 || fmt[i] == 111 || fmt[i] == 98) {
       h.base = fmt[i]; /* x o b: the base, the shape asked its letter */
       i = i + 1;
     }
@@ -227,8 +227,8 @@ impl Write for Count {
   fn write(self: *mut Self, buf: []u8) -> Result<usize, Error> { /* the sink's
     * contract the walk's own (write.ce), the failure the door's
     * (error.ce) -- one house, no crossing */
-    self.n = self.n + buf.len;
-    Ok(buf.len)
+    self.n = self.n + buf.len();
+    Ok(buf.len())
   }
 }
 

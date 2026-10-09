@@ -9,7 +9,7 @@ pub struct Stdout { }
 
 impl Write for Stdout {
   fn write(self: *mut Self, buf: []u8) -> Result<usize, Error> {
-    let n = sys::write(1, buf.ptr, buf.len);
+    let n = sys::write(1, buf.ptr(), buf.len());
 
     if n < 0 {
       Err(Error::Sys(sys::errno()))

@@ -20,5 +20,5 @@ fn main() -> i32 {
   let mut b = a;          /* the fields copied: a write through b is b's own */
 
   b.x = 90;
-  @cast<i32>(s.len) + (a.x + b.x)   /* 3 + 93: 96, both sources whole */
+  @cast<i32>(s.len()) + (a.x + b.x)   /* 3 + 93: 96, both sources whole */
 }

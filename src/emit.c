@@ -937,6 +937,13 @@ tymang2(Type *t, char *buf, usize o, usize n)
       o = tymang2(t->args[i], buf, o, n);
     return tymang2(t->t, buf, o, n);
   }
+  case Tymut: /* a binding's own row: impl<T> []T takes []mut U with
+               * T bound the mut layer whole, and the instance's name
+               * spells it -- the permission a letter of its own, for
+               * it never stands under a slot here, where the slots'
+               * own tags (p P, s S, a A) name it instead */
+    buf[o++] = 'm';
+    return tymang2(t->t, buf, o, n);
   case Tytype:
     buf[o++] = 'q';
     return o;
@@ -3050,6 +3057,26 @@ emaexpr(Em *em, Ast *e)
       fprintf(em->o, "\tstorel %s, %s\n", p, t);
       fprintf(em->o, "\t%s =l add %s, 8\n", w, t);
       fprintf(em->o, "\tstorel %s, %s\n", n, w);
+      return t;
+    }
+    if (strcmp(nm, "len") == 0) { /* the count half of the fat
+                                   * pointer, the word the view
+                                   * carries beside its reach
+                                   * (01-types.md) */
+      char *a = emaexpr(em, e->v.blt.args[0]);
+      char *w = newtmp(em);
+      char *t = newtmp(em);
+
+      fprintf(em->o, "\t%s =l add %s, 8\n", w, a);
+      fprintf(em->o, "\t%s =l loadl %s\n", t, w);
+      return t;
+    }
+    if (strcmp(nm, "ptr") == 0) { /* the reach half, the first word
+                                   * (01-types.md) */
+      char *a = emaexpr(em, e->v.blt.args[0]);
+      char *t = newtmp(em);
+
+      fprintf(em->o, "\t%s =l loadl %s\n", t, a);
       return t;
     }
     cerrat(e, "this builtin arrives with a later milestone");

@@ -12,6 +12,6 @@ use std::sys;
 
 #[noreturn]
 pub fn panic(msg: []u8) {
-  sys::write(2, msg.ptr, msg.len);
+  sys::write(2, msg.ptr(), msg.len());
   sys::abort();
 }

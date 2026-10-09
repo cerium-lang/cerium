@@ -4,6 +4,6 @@ fn main() -> i32 {
   let o = Out { i: In { a: 3, b: 4 }, k: 9 };
   o.i.b = o.i.b * 10;
   let s = "abcdef";
-  let n = @cast<i32>(s.len);
+  let n = @cast<i32>(s.len());
   o.i.a * 1000 + @cast<i32>(o.i.b) + @cast<i32>(o.k) * 100 + n
 }

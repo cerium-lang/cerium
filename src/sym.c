@@ -334,6 +334,17 @@ nsname(Ns *ns)
   return n;
 }
 
+int
+nsinstd(Ns *ns) /* inside the standard library's own tree: the
+                 * reserved name no project enters (12-projects.md),
+                 * the one place the runtime's own slots are readable
+                 * (01-types.md) */
+{
+  while (ns && ns->parent && ns->parent->parent)
+    ns = ns->parent; /* down to the root's own child */
+  return ns && ns->parent && strcmp(ns->name, "std") == 0;
+}
+
 void
 syminit(void)
 {

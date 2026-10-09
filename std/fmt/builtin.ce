@@ -50,10 +50,10 @@ impl Fmt for bool {
 impl Fmt for []u8 {
   fn fmt(self: *Self, w: *mut Writer) -> Result<(), Error> {
     let s = *self;
-    let end = if w.prec > 0 && s.len > w.prec {
+    let end = if w.prec > 0 && s.len() > w.prec {
       w.prec /* the asking cuts the str to its own bytes; the other values take no notice */
     } else {
-      s.len
+      s.len()
     };
 
     w.write_str(s[..end])?;

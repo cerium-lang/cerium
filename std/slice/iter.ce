@@ -1,0 +1,22 @@
+/* std::slice -- the slice's own iteration (10-iteration.md): the
+ * header is the cursor. A slice views, never owns -- the header a
+ * pair of scalars, a copy of it as harmless as the view itself --
+ * so iterating lends each element out, a pointer a round, and what
+ * the loop walked over stays whole behind it. The mutable row is
+ * the more specific one: it wins for []mut T the same way *T wins
+ * over T (04-generics.md). */
+use std::iter::Iter;
+
+impl<T> Iter for []T {
+  type Item = *T;
+  fn next(self: *mut Self) -> ?*T {
+    if @len(*self) == 0 {
+      None
+    } else {
+      let p = @ptr(*self);
+
+      *self = (*self)[1..];
+      Some(p)
+    }
+  }
+}

@@ -1024,14 +1024,14 @@ closure(void) /* the "fn" is peeked */
   return n;
 }
 
-/* the eleven the language provides (08-reflection.md) -- a misspelling
+/* the thirteen the language provides (08-reflection.md) -- a misspelling
  * parses silently otherwise, and a golden test froze one for a week */
 static int
 isbuiltin(const char *name)
 {
-  static const char *const names[] = {"sizeof",   "alignof",      "offset", "cast",
-                                      "typeinfo", "typeof",       "field",  "count",
-                                      "take",     "compileError", "slice",  0};
+  static const char *const names[] = {"sizeof", "alignof", "offset", "cast", "typeinfo",
+                                      "typeof", "field",   "count",  "take", "compileError",
+                                      "slice",  "len",     "ptr",    0};
   usize                    i;
 
   for (i = 0; names[i]; i++)
@@ -2064,9 +2064,15 @@ parseitem(void)
     next();
     if (peek() == Tlt)
       n->v.impl.gparams = genericparams();
-    n->v.impl.path = typepath();
-    if (accept(Tfor))
-      n->v.impl.fort = type_();
+    if (peek() == Tlbracket) /* the built-in shapes take no name: an
+                              * inherent impl whose target is spelled
+                              * whole, []T or [N]T (05-traits.md) */
+      n->v.impl.path = type_();
+    else {
+      n->v.impl.path = typepath();
+      if (accept(Tfor))
+        n->v.impl.fort = type_();
+    }
     want(Tlbrace, "{");
     while (peek() != Trbrace && peek() != Teof) {
       Ast *m = implmember();

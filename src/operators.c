@@ -89,6 +89,38 @@ rbuiltin(Ast *e, Fenv *fe, Type *want)
                                           * stands */
     return tyslice(pt->t);
   }
+  if (strcmp(nm, "len") == 0) { /* the count half of the fat pointer,
+                                 * read where it sits (01-types.md) --
+                                 * every file's own door, the count no
+                                 * secret: @slice writes it, @len reads
+                                 * it back */
+    Type *st;
+
+    if (nt != 0 || na != 1)
+      berr(e, "@len takes one slice (01-types.md)");
+    st = rexpr(args[0], fe, 0);
+    if (!st || st->k != Tyslice)
+      berr(args[0], "@len wants a []T here, this is %s", btys(st));
+    return tyint(IN_USIZE);
+  }
+  if (strcmp(nm, "ptr") == 0) { /* the reach half -- the std library's
+                                 * own door: the raw pointer is what
+                                 * this round closed, and the surface
+                                 * every other file takes is ptr()
+                                 * (01-types.md) */
+    Type *st;
+
+    if (nt != 0 || na != 1)
+      berr(e, "@ptr takes one slice (01-types.md)");
+    if (!nsinstd(nscuring()))
+      berr(e, "@ptr is the std library's own: the door every other file takes is "
+              "ptr() (01-types.md)");
+    st = rexpr(args[0], fe, 0);
+    if (!st || st->k != Tyslice)
+      berr(args[0], "@ptr wants a []T here, this is %s", btys(st));
+    return typtr(st->t); /* *mut T for a []mut T: the mut layer the
+                          * slice carries stays on (01-types.md) */
+  }
   if (strcmp(nm, "compileError") == 0) {
     Type *st;
 

@@ -1,0 +1,8 @@
+/* the two slots the runtime carries are the std tree's own: a user
+ * file takes the surface, len() and get() -- the slot itself, read
+ * from outside, is the runtime's (01-types.md) */
+
+fn main() -> i32 {
+  let s = "x";
+  @cast<i32>(s.len)
+}
