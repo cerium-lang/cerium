@@ -427,12 +427,16 @@ opseg(const char *nm, Ast *at)
 
 /* std::ops::<x>, three segments so far -- the trait, or Ordering --
  * the whole path spelled, so the operator needs no use
- * (11-namespaces.md) */
+ * (11-namespaces.md). Rooted, ::spelled: the rewrite's own words are
+ * the compiler's, not the file's -- a std file sits in its own
+ * namespace, where a bare std names nothing, and the root's door is
+ * the one path every file reads the same (11-namespaces.md) */
 Ast *
 oppath(const char *x, Ast *at)
 {
   Ast *p = opnode(Npath, at);
 
+  p->v.path.root = 1;
   p->v.path.segs = vnew(Ast *, 4);
   opvpush(&p->v.path.segs, opseg("std", at));
   opvpush(&p->v.path.segs, opseg("ops", at));

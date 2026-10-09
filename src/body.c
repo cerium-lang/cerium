@@ -4977,6 +4977,11 @@ rstmt(Ast *st, Fenv *fe)
          * source node itself rides as the argument: the read above
          * moved it, this call the move's destination (03) */
         f = opnode(Npath, st->v.forx.b);
+        f->v.path.root = 1; /* the sugar's own words, ::spelled: a
+                             * std file sits inside std::iter, where
+                             * a bare std names nothing -- the root's
+                             * door the one path every file reads the
+                             * same (11-namespaces.md) */
         f->v.path.segs = vnew(Ast *, 4);
         opvpush(&f->v.path.segs, opseg("std", st->v.forx.b));
         opvpush(&f->v.path.segs, opseg("iter", st->v.forx.b));
@@ -5012,6 +5017,10 @@ rstmt(Ast *st, Fenv *fe)
         borrow->v.un.mut = 1;
         borrow->v.un.e = recv;
         f = opnode(Npath, st->v.forx.b);
+        f->v.path.root = 1; /* ditto: the compiler's own naming,
+                             * absolute from the root, so the walk
+                             * reads the same inside std and out
+                             * (11-namespaces.md) */
         f->v.path.segs = vnew(Ast *, 4);
         opvpush(&f->v.path.segs, opseg("std", st->v.forx.b));
         opvpush(&f->v.path.segs, opseg("iter", st->v.forx.b));

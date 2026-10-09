@@ -43,6 +43,10 @@ mkdropcall(Ast *place, Type *ty, Ast *at)
   if (!m)
     return 0;
   f = opnode(Npath, at);
+  f->v.path.root = 1; /* the destructor's own words, ::spelled: the
+                       * compiler's naming reads from the root, so a
+                       * Drop inside std itself leaves the same way
+                       * one outside does (11-namespaces.md) */
   f->v.path.segs = vnew(Ast *, 3);
   opvpush(&f->v.path.segs, opseg("std", at));
   opvpush(&f->v.path.segs, opseg("Drop", at));
