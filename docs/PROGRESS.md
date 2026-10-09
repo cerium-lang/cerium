@@ -3054,3 +3054,19 @@ on the spot, the way the impl table rejects its own. The pins: 293
 one, both declaration orders, a const initializer's own pick among
 them, the arity's own peel unmoved), check/err 286 (the rename).
 653 green, the library's 17 with them.
+
+The loop's own two hands. A value it takes, a borrow it lends: for
+x in c consumes the iterator the sugar spelled, and for x in &mut c
+-- the borrower's own spelling -- walks the same rounds with the
+sequence lent out instead, the owner whole behind them. A mut
+borrow is an iterator over the thing it borrows, the pointer
+forwarding each round to the one beneath it; the freeze the borrow
+laid lives the loop's life alone now, handed back at the exit --
+the owner readable the moment the last round ends, its own state
+whatever the rounds did through the pointer. The library's one
+blanket row does it, the checker's one save-and-restore beside it;
+the desugar itself the same one shape for both hands, exactly as
+10-iteration.md spells it. The pins: 294 (the borrowed rounds and
+the owner read after them, the taken value, the zip's tuples, the
+slice and the array through their own doors). 654 green, the
+library's 17 with them.
