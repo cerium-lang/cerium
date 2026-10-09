@@ -14,7 +14,7 @@ impl Drop for D {
   fn drop(mut self: Self) {
     let ds = "0123456789";
 
-    write(1, ds.as_ptr() + @cast<usize>(self.n), 1);
+    write(1, ds.ptr() + @cast<usize>(self.n), 1);
   }
 }
 

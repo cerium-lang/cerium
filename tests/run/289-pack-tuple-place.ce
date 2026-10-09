@@ -17,7 +17,7 @@ impl<T> Iter for []T {
     if self.len() == 0 {
       None
     } else {
-      let p = self.as_ptr();
+      let p = self.ptr();
 
       *self = (*self)[1..];
       Some(p)

@@ -1,4 +1,4 @@
-/* the pointer slot too: as_ptr() is the C door the surface lends,
+/* the pointer slot too: ptr() is the C door the surface lends,
  * the slot itself the std tree's own (01-types.md) */
 
 #[extern(C)]

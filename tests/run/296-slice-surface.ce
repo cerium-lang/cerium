@@ -26,6 +26,6 @@ fn main() -> i32 {
     None => {},
   }
 
-  write(1, s.as_ptr(), s.len());  /* the C door: abc, three bytes */
+  write(1, s.ptr(), s.len());  /* the C door: abc, three bytes */
   @cast<i32>(n * 100 + @cast<usize>(first) + @cast<usize>(past) + @cast<usize>(m[0] + m[1] + m[2]))  /* 421, the exit the byte counts: 165 */
 }

@@ -3137,7 +3137,7 @@ read -- len and ptr spelled bare, no pub about them. Now the tree
 that owns them reads them alone: one row, impl<T> []T, lends the
 surface every other file takes -- len() the count, get(i) the
 bounds-checked row (?*T, None past the end, the mut slices riding
-with T bound the mut layer), as_ptr() the C door. The parser takes
+with T bound the mut layer), ptr() the C door. The parser takes
 a built-in shape spelled whole where an impl's target goes; the
 mangler learned the bare mut layer a binding carries (a letter of
 its own, for the slots' tags name it only under them); len() folds

@@ -31,7 +31,7 @@ struct Mem { } /* the sink: whatever it is handed, out the door it goes */
 
 impl Write for Mem {
   fn write(self: *mut Self, buf: []u8) -> Result<usize, Error> {
-    let r = sys::write(2, buf.as_ptr(), buf.len());
+    let r = sys::write(2, buf.ptr(), buf.len());
 
     if r < 0 {
       Err(Error::Sys(sys::errno()))

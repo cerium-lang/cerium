@@ -112,7 +112,7 @@ elements owned by something else, so it never allocates. The two parts are
 named — `s.ptr` is `*T` (`*mut T` for `[]mut T`) and `s.len` is a `usize` — and
 they are the std library's own to read, the one tree whose files build the
 surface every other file takes: `len()` answers the count, `get(i)` the
-element — `?*T`, None past the end — and `as_ptr()` the pointer, the C door.
+element — `?*T`, None past the end — and `ptr()` the pointer, the C door.
 Neither slot writes, anywhere, for two written halves would leave a view
 pointing one way and counting another. A
 slice is built whole: `@slice(p, n)` from a `*T` and a length — a `*mut T`

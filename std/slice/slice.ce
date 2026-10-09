@@ -2,7 +2,7 @@
  * carries, the pointer and the length, are the std tree's own to
  * read -- every other file takes the methods (01-types.md). len
  * answers the count; get the bounds-checked element, None the ask
- * past the end; as_ptr the C door, the pointer the first element
+ * past the end; ptr the C door, the pointer the first element
  * would have, a whole-slice handoff its one use (12-projects.md).
  * One row carries the mut slices too: []mut T is []T with T bound
  * the mut layer, and & on a mut slot lends *mut whole (01) -- the
@@ -19,7 +19,7 @@ impl<T> []T {
     }
   }
 
-  fn as_ptr(self: *Self) -> *T { self.ptr }
+  fn ptr(self: *Self) -> *T { self.ptr }
 }
 
 /* -- the tests (13-testing.md) ------------------------------- */
