@@ -1,0 +1,35 @@
+/* the chain's own order: the most specific signature first, the
+ * declaration order unable to change the answer (04-generics.md) */
+struct Point { x: i32, y: i32 }
+
+fn show(p: *Point) -> i32 { 1 }
+fn show<T>(t: T) -> i32 { 2 }
+
+fn wshow<T>(t: T) -> i32 { 2 }
+fn wshow(p: *Point) -> i32 { 1 }
+
+fn v<...Ts>(ts: ...Ts) -> i32 { 0 }
+fn v(x: (i32, i32)) -> i32 { 7 }
+
+fn w(x: (i32, i32)) -> i32 { 7 }
+fn w<...Ts>(ts: ...Ts) -> i32 { 0 }
+
+fn pick<...Ts>(ts: ...Ts) -> i32 { 0 }
+fn pick(x: (i32, i32)) -> i32 { 7 }
+
+const A: i32 = pick((3, 4)); /* a const initializer's own call, the
+                              * order holding there too */
+
+fn peel() -> i64 { 0 }
+fn peel<First, ...Rest>(first: First, rest: ...Rest) -> i64 {
+  @cast<i64>(first) + peel(...rest)
+}
+
+fn main() -> i32 {
+  let p = Point { x: 1, y: 2 };
+  show(&p) + wshow(&p)       /* the pointer's own row, either order */
+  + show(3) + wshow(4)       /* the fallback's, either order */
+  + v((3, 4)) + w((3, 4))    /* the plain row, either order */
+  + A                        /* the const's own pick */
+  + @cast<i32>(peel() + peel(1) + peel(1, 2, 3))  /* arity's own peel */
+}

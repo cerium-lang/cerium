@@ -1,0 +1,8 @@
+/* the same shape twice, the bounds the same words: a rename is all
+ * that holds the two apart -- no call can (04-generics.md) */
+use std::iter::Iter;
+
+fn f<T: Iter>(x: T) -> i32 { 0 }
+fn f<U: Iter>(x: U) -> i32 { 1 }
+
+fn main() -> i32 { 0 }

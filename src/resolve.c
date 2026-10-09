@@ -1972,6 +1972,127 @@ checkoverlap(Sym *a, Sym *b)
     cerrat(a->decl, "conflicting inherent impls for %s", tysprint1(fa));
 }
 
+/* -- fn overload order (04-generics.md, Overloading) -------------------- */
+
+/* is a's signature the more specific pattern -- every call a takes,
+ * b takes too? The slots pair one a one, a's parameter the thing,
+ * b's the pattern, the same walk the impl table runs. The const
+ * spellings are not this order's to place: the call's own two
+ * rounds take them, one a round (08-reflection.md). Rows that
+ * disagree on the slot count are not ordered here either: only a
+ * pack could take the same call at two counts, and its two
+ * foldings are a corner the declaration order holds. */
+static int
+fnspecific(Sym *a, Sym *b)
+{
+  Ast **pa = a->decl->v.fn.params, **pb = b->decl->v.fn.params;
+  usize i;
+
+  if (a->fnty->nargs != b->fnty->nargs)
+    return 0;
+  for (i = 0; i < a->fnty->nargs; i++)
+    if (!!pa[i]->v.param.cnst != !!pb[i]->v.param.cnst)
+      return 0; /* one row's spelling const, the other's not: the
+                 * rounds own them, not the order */
+  for (i = 0; i < a->fnty->nargs; i++)
+    if (!specializes(a->fnty->args[i], b->fnty->args[i]))
+      return 0;
+  return 1;
+}
+
+/* two signatures the same shape: the bounds the same words too --
+ * each parameter's own traits, the names alone. A rename of one is
+ * the same words; anything else the declaration order holds, the
+ * bounds' own implications a deeper walk the impl table keeps. */
+static int
+fnboundssame(Sym *a, Sym *b)
+{
+  usize g, i, j;
+
+  if (a->ngparams != b->ngparams)
+    return 0;
+  for (g = 0; g < a->ngparams; g++) {
+    Ast **ba = a->gparams[g]->v.gp.bounds;
+    Ast **bb = b->gparams[g]->v.gp.bounds;
+
+    if (vlen(ba) != vlen(bb))
+      return 0;
+    for (i = 0; i < vlen(ba); i++) { /* each of a's bounds, one of
+                                      * b's own under the same name */
+      int found = 0;
+
+      for (j = 0; j < vlen(bb); j++)
+        if (ba[i]->v.path.sym == bb[j]->v.path.sym)
+          found = 1;
+      if (!found)
+        return 0;
+    }
+  }
+  return 1;
+}
+
+/* one name's chain, most specific first: a signature that takes
+ * fewer calls stands before one that takes more, and the call's own
+ * first fit reads the order the spec names (04-generics.md). Rows
+ * the order cannot place keep the declaration's own. A pair the
+ * same shape and the same bounds is a rename -- rejected on the
+ * spot, the way the impl table rejects its own (04). */
+static void
+orderfnchain(Sym **slot)
+{
+  Sym  *s, **rows;
+  usize n, i, j;
+
+  for (n = 0, s = *slot; s; s = s->next)
+    n++;
+  if (n < 2)
+    return;
+  rows = vnew(Sym *, n);
+  for (s = *slot; s; s = s->next)
+    vappend(&rows, &s);
+  for (i = 1; i < n; i++) /* the same shape both ways: the bounds
+                           * the same words, or the order keeps them
+                           * apart and the call decides */
+    for (j = 0; j < i; j++)
+      if (fnspecific(rows[i], rows[j]) && fnspecific(rows[j], rows[i]) &&
+          fnboundssame(rows[i], rows[j])) {
+        lexsetpath(rows[i]->ownsf->path); /* the row's own file: the
+                                           * words say where (12) */
+        cerrat(rows[i]->decl,
+               "two signatures of '%s' take the same calls -- the shape and the "
+               "bounds the same words (04-generics.md)",
+               rows[i]->name);
+      }
+  for (i = 1; i < n; i++) /* insertion, the declaration order the
+                           * tie: a row slides past the ones it
+                           * strictly outspecifies, none other */
+    for (j = i; j > 0 && fnspecific(rows[i], rows[j - 1]); j--) {
+      Sym *t = rows[j];
+
+      rows[j] = rows[j - 1];
+      rows[j - 1] = t;
+    }
+  for (i = 0; i < n - 1; i++)
+    rows[i]->next = rows[i + 1];
+  rows[n - 1]->next = 0;
+  *slot = rows[0];
+}
+
+/* every namespace's every chain, the fns' signatures all read --
+ * pass 2's lazy answers included, the last shape standing before
+ * the bodies walk and their calls pick. */
+static void
+orderfns(Ns *ns)
+{
+  usize i, k;
+
+  for (i = 0; i < ns->cap; i++)
+    if (ns->tbl[i] && ns->tbl[i]->next)
+      orderfnchain(&ns->tbl[i]);
+  for (k = 0; k < vlen(ns->subs); k++)
+    orderfns(ns->subs[k]);
+}
+
 /* -- pass 1 ------------------------------------------------------------- */
 
 /* every item's Sym, parallel to the items; NULL for use and trait
@@ -2804,6 +2925,9 @@ checkproject(Srcfile **files, usize nfiles)
   checktestslate(nsroot()); /* every test's own ends, the impl table
                              * built -- the main's two checks, a
                              * test's shape over (13-testing.md) */
+  orderfns(nsroot());       /* the overload chains, most specific first:
+                             * every signature read, the bodies' calls
+                             * about to pick through them (04-generics.md) */
 
   /* pass 4: fn bodies, against the impl table pass 3 just built --
    * each file in its own context again, the same switch. std's panic
