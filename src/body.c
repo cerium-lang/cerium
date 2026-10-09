@@ -1126,6 +1126,43 @@ boundwhy(Sym *s, Type *ty, Sym *tr, Type **ta)
   return b;
 }
 
+/* the row the count alone turned away: its own parameters' count
+ * beside the call's -- a pack's head row says the least it can take,
+ * the pack itself any count past it */
+static char *
+aritywhy(Sym *s, usize want, usize got, int atleast)
+{
+  char *b = arenaalloc(512);
+
+  snprintf(b, 512, "%s: wants %s%lu argument%s, %lu given", sgnwhy(s), atleast ? "at least " : "",
+           (unsigned long) want, want == 1 ? "" : "s", (unsigned long) got);
+  return b;
+}
+
+/* the slot the landing missed: the argument's own type beside the
+ * parameter's, the row's words the chain's end joins (04-generics.md) */
+static char *
+unifywhy(Sym *s, usize slot, Type *got, Type *want)
+{
+  char *b = arenaalloc(512);
+
+  snprintf(b, 512, "%s: argument %lu is %s, the parameter is %s", sgnwhy(s),
+           (unsigned long) slot + 1, btys(got), btys(want));
+  return b;
+}
+
+/* a spelled-out binding the row cannot wear: the call's own generic
+ * count beside the fn's -- the row steps aside for one its size */
+static char *
+segwhy(Sym *s, usize gave)
+{
+  char *b = arenaalloc(512);
+
+  snprintf(b, 512, "%s: the call spells %lu generic argument%s, the fn takes %lu", sgnwhy(s),
+           (unsigned long) gave, gave == 1 ? "" : "s", (unsigned long) s->ngparams);
+  return b;
+}
+
 /* one row's refusal joined to those before it, the arena's own
  * strings, "; " the seam */
 static char *
@@ -1174,6 +1211,9 @@ tryonesig(Sym *s, Ast *a, Ast **args, usize n, usize nfreeze, Fenv *fe, Ast *seg
   int ok = n == fnty->nargs;
 
   if (!ok) {
+    if (why) /* the count's own refusal, left for the chain's end
+              * (04-generics.md) */
+      *why = aritywhy(s, fnty->nargs, n, 0);
     thawargs(svs, nfreeze);
     return 0;
   }
@@ -1184,6 +1224,9 @@ tryonesig(Sym *s, Ast *a, Ast **args, usize n, usize nfreeze, Fenv *fe, Ast *seg
   if (seg && seg->v.seg.args) { /* f<i32>(...): the binding is the
                                  * call's own words, not inference */
     if (vlen(seg->v.seg.args) != s->ngparams) {
+      if (why) /* the spelling's own size, this row the wrong one to
+                * wear it (04-generics.md) */
+        *why = segwhy(s, vlen(seg->v.seg.args));
       thawargs(svs, nfreeze);
       return 0; /* an overload this spelling does not fit */
     }
@@ -1226,8 +1269,12 @@ tryonesig(Sym *s, Ast *a, Ast **args, usize n, usize nfreeze, Fenv *fe, Ast *seg
         continue;
       }
     }
-    if (!gunifyv(sigs[i], ats[i], s->gparams, tys, gcvals, s->ngparams))
+    if (!gunifyv(sigs[i], ats[i], s->gparams, tys, gcvals, s->ngparams)) {
+      if (why) /* the slot's own two sides, the row's refusal for the
+                * chain's end (04-generics.md) */
+        *why = unifywhy(s, i, ats[i], sigs[i]);
       ok = 0;
+    }
   }
   if (ok && cvals) { /* the const parameters' own test: the argument
                       * names a compile-time value, or the box the
@@ -1408,6 +1455,9 @@ trysig(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, Va
       return 0;
     }
     thawargs(svs, n);
+    if (why) /* the head alone the fold never reached: the pack takes
+              * any count past it, the head none short of its own */
+      *why = aritywhy(s, s->fnty->nargs - 1, n, 1);
     return 0;
   }
   return tryonesig(s, a, args, n, n, fe, seg, svs, cvals, runtime, why);
@@ -1560,11 +1610,15 @@ callpick(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, 
     }
   if (*runtime)
     berr(a, "the argument is not compile-time known; '%s' takes it const (08-reflection.md)", nm);
-  if (why) /* the rows that came close, each its own refusal -- the
-            * arity and unify refusals the old words hold below */
+  if (why) /* every row its own refusal -- the count, the slot's two
+            * sides, the bound the landing failed, the binding the call
+            * never made (04-generics.md) */
     berr(a, "no '%s' takes these arguments -- %s", nm, why);
-  berr(a, "no '%s' takes these argument types", nm);
-  return 0; /* unreachable */
+  berr(a, "no '%s' takes these argument types", nm); /* the defense:
+                                                      * no row tried,
+                                                      * no words to
+                                                      * join */
+  return 0;                                          /* unreachable */
 }
 
 /* a call to a named fn, overload chain and all. tys holds the

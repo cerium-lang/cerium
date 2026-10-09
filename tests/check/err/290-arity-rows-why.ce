@@ -1,0 +1,10 @@
+/* the count's own refusal: every row turned away by the arguments'
+ * count alone, the chain's end report carrying each row's own
+ * words -- the plain rows their parameters' count, the pack's row
+ * the least its head can take (04-generics.md) */
+
+fn f(x: i32) -> i32 { x }
+fn f(x: u8) -> u8 { x }
+fn g<...Ts>(x: i32, ts: ...Ts) -> i32 { x }
+
+fn main() -> i32 { f(1, 2, 3) }

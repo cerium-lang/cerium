@@ -297,7 +297,9 @@ signature stands, its own resolution beside the chain's.
 A signature that fits by shape but fails a bound — or whose binding the call
 never lands — steps aside the way any mismatch does, unwinding what its walk
 moved; the chain walks on. When no signature takes the call, the report names
-each row's own refusal, a failed bound among them.
+each row's own refusal: the count its parameters wanted, the slot's argument
+against its parameter, the bound the landing failed, the binding the call
+never made or spelled to another size.
 
 ```rust
 fn show(p: *Point) { ... }

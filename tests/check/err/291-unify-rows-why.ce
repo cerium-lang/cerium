@@ -1,0 +1,11 @@
+/* the slot's own two sides: rows the count let walk, the landing
+ * missed -- the argument's own type beside the parameter's, the
+ * spelled-out binding the row cannot wear, each row its own words
+ * at the chain's end (04-generics.md) */
+
+fn f(x: i32) -> i32 { x }
+fn f(x: u8) -> u8 { x }
+fn h<T>(t: T) -> i32 { 1 }
+fn h(x: i32, y: i32) -> i32 { x }
+
+fn main() -> i32 { f("s") + h<i32, u32>(1) }
