@@ -285,6 +285,15 @@ the most specific matching signature wins, and two signatures that match
 equally specifically is a compile error. A call that matches no signature is,
 of course, also a compile error.
 
+The order itself is the impl table's whole joint order. A narrower shape
+stands first — a repeated type variable the one new pattern, `(T, T)`
+narrower than `(A, B)` the way a struct's is — and, shapes equal, the wider
+bounds are the narrower signature, `{Iter, Add}` over `{Iter}`. Signatures
+that neither order — bounds naming nothing of each other, say — keep their
+declaration order, the first declared the one a both-matching call takes. A
+parameter the pattern never lands is a parameter no call ever binds: its
+signature stands, its own resolution beside the chain's.
+
 A signature that fits by shape but fails a bound — or whose binding the call
 never lands — steps aside the way any mismatch does, unwinding what its walk
 moved; the chain walks on. When no signature takes the call, the report names

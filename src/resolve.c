@@ -1974,16 +1974,19 @@ checkoverlap(Sym *a, Sym *b)
 
 /* -- fn overload order (04-generics.md, Overloading) -------------------- */
 
-/* is a's signature the more specific pattern -- every call a takes,
- * b takes too? The slots pair one a one, a's parameter the thing,
- * b's the pattern, the same walk the impl table runs. The const
- * spellings are not this order's to place: the call's own two
- * rounds take them, one a round (08-reflection.md). Rows that
- * disagree on the slot count are not ordered here either: only a
- * pack could take the same call at two counts, and its two
- * foldings are a corner the declaration order holds. */
+/* the shape's own answer: a's parameters specialize b's pattern, the
+ * one walk the slots share -- a repeated variable lands once and the
+ * second landing reads the first, (T, T) the narrower pattern than
+ * (A, B) the way a struct's is (04). The bindings land in s: every
+ * variable b's signature names, the type a's own slot gave it -- the
+ * bounds walk below reads them. The const spellings are not this
+ * order's to place: the call's own two rounds take them
+ * (08-reflection.md). Rows that disagree on the slot count are not
+ * ordered here either: only a pack takes the same call at two
+ * counts, and its two foldings are a corner the declaration order
+ * holds. */
 static int
-fnspecific(Sym *a, Sym *b)
+fnspecific(Sym *a, Sym *b, SpecSub *s)
 {
   Ast **pa = a->decl->v.fn.params, **pb = b->decl->v.fn.params;
   usize i;
@@ -1994,41 +1997,95 @@ fnspecific(Sym *a, Sym *b)
     if (!!pa[i]->v.param.cnst != !!pb[i]->v.param.cnst)
       return 0; /* one row's spelling const, the other's not: the
                  * rounds own them, not the order */
+  memset(s, 0, sizeof *s);
   for (i = 0; i < a->fnty->nargs; i++)
-    if (!specializes(a->fnty->args[i], b->fnty->args[i]))
+    if (!spec1(a->fnty->args[i], b->fnty->args[i], s))
       return 0;
   return 1;
 }
 
-/* two signatures the same shape: the bounds the same words too --
- * each parameter's own traits, the names alone. A rename of one is
- * the same words; anything else the declaration order holds, the
- * bounds' own implications a deeper walk the impl table keeps. */
+/* a's bounds ⊇ b's, the shape's bindings the pairing: every variable
+ * b names landed on one of a's own -- an equal shape always lands a
+ * variable on a variable, a concrete landing ordered the shape alone
+ * -- and each bound b's words name for it, a's own words name too.
+ * The names alone, the way the impl table reads its rows: the
+ * bounds' own implications a deeper walk the impl table keeps
+ * (04-generics.md). A variable the shape never lands holds no order
+ * here -- its binding is one the call never makes either. */
 static int
-fnboundssame(Sym *a, Sym *b)
+fnboundsincl(Sym *a, Sym *b, SpecSub *s)
 {
-  usize g, i, j;
+  usize g, i, j, k;
 
-  if (a->ngparams != b->ngparams)
-    return 0;
-  for (g = 0; g < a->ngparams; g++) {
-    Ast **ba = a->gparams[g]->v.gp.bounds;
-    Ast **bb = b->gparams[g]->v.gp.bounds;
+  for (g = 0; g < b->ngparams; g++) {
+    Ast  *gb = b->gparams[g];
+    Ast **bb = gb->v.gp.bounds;
+    Type *ty = 0;
+    Ast  *ag;
 
-    if (vlen(ba) != vlen(bb))
-      return 0;
-    for (i = 0; i < vlen(ba); i++) { /* each of a's bounds, one of
-                                      * b's own under the same name */
-      int found = 0;
+    for (i = 0; i < s->n; i++)
+      if (s->gp[i] == gb)
+        ty = s->ty[i];
+    if (!ty)
+      continue; /* the shape never lands it: no order from it */
+    if (ty->k != Typaram && ty->k != Tyspread)
+      return 0; /* defensive: an equal shape never lands concrete */
+    ag = ty->gp;
+    for (k = 0; k < a->ngparams; k++)
+      if (a->gparams[k] == ag)
+        break;
+    if (k == a->ngparams)
+      return 0; /* not one of a's own: defensive */
+    {           /* each of b's bounds, one of a's own under the landing */
+      Ast **ab = a->gparams[k]->v.gp.bounds;
 
-      for (j = 0; j < vlen(bb); j++)
-        if (ba[i]->v.path.sym == bb[j]->v.path.sym)
-          found = 1;
-      if (!found)
-        return 0;
+      for (j = 0; j < vlen(bb); j++) {
+        int found = 0;
+
+        for (i = 0; i < vlen(ab); i++)
+          if (bb[j]->v.path.sym == ab[i]->v.path.sym)
+            found = 1;
+        if (!found)
+          return 0;
+      }
     }
   }
   return 1;
+}
+
+enum
+{
+  FN_APART,  /* neither names the other: the declaration order holds */
+  FN_AFIRST, /* a the more specific: it stands first */
+  FN_BFIRST, /* b the more specific */
+  FN_SAME    /* the two one signature, spelled twice */
+};
+
+/* two signatures' whole order, the shape first and the bounds under
+ * it -- the joint order the impl table runs (04-generics.md): a
+ * strictly narrower shape stands first; an equal shape asks the
+ * bounds, the wider set the narrower signature, the way {Copy, Ord}
+ * over {Ord} is; bounds that name nothing of each other order
+ * nothing, the declaration's own order the tie. Equal both ways --
+ * and no variable beyond the shape, whose calls the one takes and
+ * the other never could -- is the rename the chain rejects. */
+static int
+fnorder(Sym *a, Sym *b)
+{
+  SpecSub sab, sba;
+  int     ab, ba;
+
+  ab = fnspecific(a, b, &sab);
+  ba = fnspecific(b, a, &sba);
+  if (ab && ba) { /* the shapes equal: the bounds order them */
+    int bi = fnboundsincl(a, b, &sab);
+    int ib = fnboundsincl(b, a, &sba);
+
+    if (bi && ib && a->ngparams == b->ngparams)
+      return FN_SAME;
+    return bi ? FN_AFIRST : ib ? FN_BFIRST : FN_APART;
+  }
+  return ab ? FN_AFIRST : ba ? FN_BFIRST : FN_APART;
 }
 
 /* one name's chain, most specific first: a signature that takes
@@ -2050,12 +2107,9 @@ orderfnchain(Sym **slot)
   rows = vnew(Sym *, n);
   for (s = *slot; s; s = s->next)
     vappend(&rows, &s);
-  for (i = 1; i < n; i++) /* the same shape both ways: the bounds
-                           * the same words, or the order keeps them
-                           * apart and the call decides */
+  for (i = 1; i < n; i++) /* the rename: both orders the same words */
     for (j = 0; j < i; j++)
-      if (fnspecific(rows[i], rows[j]) && fnspecific(rows[j], rows[i]) &&
-          fnboundssame(rows[i], rows[j])) {
+      if (fnorder(rows[i], rows[j]) == FN_SAME) {
         lexsetpath(rows[i]->ownsf->path); /* the row's own file: the
                                            * words say where (12) */
         cerrat(rows[i]->decl,
@@ -2065,8 +2119,10 @@ orderfnchain(Sym **slot)
       }
   for (i = 1; i < n; i++) /* insertion, the declaration order the
                            * tie: a row slides past the ones it
-                           * strictly outspecifies, none other */
-    for (j = i; j > 0 && fnspecific(rows[i], rows[j - 1]); j--) {
+                           * strictly outspecifies, none other -- an
+                           * equal pair never moves, its declaration
+                           * order the answer it keeps */
+    for (j = i; j > 0 && fnorder(rows[i], rows[j - 1]) == FN_AFIRST; j--) {
       Sym *t = rows[j];
 
       rows[j] = rows[j - 1];

@@ -1059,12 +1059,60 @@ cargval(Ast *a, Fenv *fe, Val *out)
  * own name, the chain's end joining them (04-generics.md,
  * Overloading). The arity and unify refusals leave no words; the old
  * report's own still holds them. */
+
+/* the signature's own spelling, its parameters' words included: a
+ * variable without its bounds was half the answer. tysprint's fn
+ * carries no angle brackets -- the variables live on the symbol, not
+ * the type -- so the row's report spells them itself
+ * (04-generics.md) */
+static char *
+sgnwhy(Sym *s)
+{
+  char *b = arenaalloc(512);
+  char  t[128];
+  usize i, j, n;
+
+  strcpy(b, "fn");
+  if (s->ngparams) {
+    strcat(b, "<");
+    for (i = 0; i < s->ngparams; i++) {
+      Ast *gp = s->gparams[i];
+
+      if (i > 0)
+        strcat(b, ", ");
+      if (gp->v.gp.cnst) { /* const N, a value parameter (08): its
+                            * own words enough -- the type an Ast,
+                            * the report's own walk not this one's */
+        snprintf(t, sizeof t, "const %s", gp->v.gp.name);
+        strcat(b, t);
+        continue;
+      }
+      snprintf(t, sizeof t, "%s%s", gp->v.gp.pack ? "..." : "", gp->v.gp.name);
+      strcat(b, t);
+      for (j = 0; j < vlen(gp->v.gp.bounds); j++) { /* the bounds,
+                                                     * + the seam */
+        Ast *bd = gp->v.gp.bounds[j];
+
+        snprintf(t, sizeof t, "%s%s", j ? " + " : ": ",
+                 bd->v.path.sym ? bd->v.path.sym->name : "?");
+        strcat(b, t);
+      }
+    }
+    strcat(b, ">");
+  }
+  n = strlen(b);
+  snprintf(b + n, 512 - n, "%s", btys(s->fnty) + 2); /* past the fn's
+                                                      * own word, its
+                                                      * "(" kept */
+  return b;
+}
+
 static char *
 inferwhy(Sym *s, Ast *gp)
 {
   char *b = arenaalloc(256);
 
-  snprintf(b, 256, "%s: cannot infer '%s' from the call", btys(s->fnty), gp->v.gp.name);
+  snprintf(b, 256, "%s: cannot infer '%s' from the call", sgnwhy(s), gp->v.gp.name);
   return b;
 }
 
@@ -1073,7 +1121,7 @@ boundwhy(Sym *s, Type *ty, Sym *tr, Type **ta)
 {
   char *b = arenaalloc(512);
 
-  snprintf(b, 512, "%s: '%s' does not implement '%s'", btys(s->fnty), btys(ty),
+  snprintf(b, 512, "%s: '%s' does not implement '%s'", sgnwhy(s), btys(ty),
            btys(tysym(tr, ta, tr->ngparams)));
   return b;
 }
