@@ -360,6 +360,12 @@ takes it on faith, the shape riding the binding, and the
 instantiation's re-check expands the rows where they stand, the same
 reads the `(x, ...rest)` spelling takes, each row read where it is.
 
+One verb, four sites: the type site spells the rows, the value site
+spreads them, the call site spreads them as arguments, and the pattern
+site gathers them — `(a, ...rest)` binds the tail whole
+(`09-match.md`), the value site's spread read backwards. What the
+constructor scatters, the pattern re-gathers.
+
 A bound on a pack applies to every element: `<...Ts: Show>` requires each
 type in the pack to implement `Show`.
 

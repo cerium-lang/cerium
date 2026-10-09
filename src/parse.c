@@ -1622,8 +1622,28 @@ unitpattern(void)
     next();
     if (peek() != Trparen) {
       for (;;) {
-        Ast *p = pattern();
+        Ast *p;
 
+        if (peek() == Tdotdotdot) { /* (a, ...rest): the rest pattern,
+                                     * the value site's own spread read
+                                     * backwards -- the rows the tail
+                                     * holds gathered into the binding,
+                                     * or dropped when none is named.
+                                     * The rest comes last, the pack
+                                     * parameter's own rule
+                                     * (04-generics.md) */
+          next();
+          p = mk(Nspread);
+          if (peek() != Trparen && peek() != Tcomma)
+            p->v.un.e = pattern();
+          npush(&n->v.list.ts, p);
+          if (peek() == Tcomma)
+            next();
+          if (peek() != Trparen)
+            perr("the rest pattern comes last (09-match.md)");
+          break;
+        }
+        p = pattern();
         npush(&n->v.list.ts, p);
         if (peek() == Tcomma) {
           next();

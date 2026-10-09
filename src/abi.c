@@ -28,6 +28,11 @@ qbety(Type *ret, Ast *at)
 {
   if (!ret)
     return 0;
+  while (ret->k == Tymut) /* the permission layer stays behind: the
+                           * value's own shape what loads -- a mut
+                           * row dropped, a wildcard's own read
+                           * (01-types.md) */
+    ret = ret->t;
   if (ret->k == Tyunit || ret->k == Tytype) /* a type's value is a
                                              * ZST like (): a word
                                              * keeps the registers

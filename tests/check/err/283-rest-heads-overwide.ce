@@ -1,0 +1,7 @@
+/* the rows before the rest must have rows to bind: two heads, one
+ * row to give (09-match.md) */
+fn main() -> i32 {
+  let t = (1,);
+  let (a, b, ...rest) = t;
+  a + b
+}

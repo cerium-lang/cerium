@@ -104,6 +104,17 @@ match p {
 `_` skips an element — `(x, _, y)`. The scrutinee's type fixes the arity, so a
 tuple pattern always fits and needs no wildcard arm of its own.
 
+The last row may be a rest: `(a, ...rest)` binds `a` the first element and
+`rest` the tuple of the rest, `()` when no element is left. The bare `...`
+drops what it holds — `(a, ...)` keeps the head alone. The rest's own operand
+is a pattern again: `(a, ...(b, c))` gathers the tail, then takes it apart —
+the value site's spread, read backwards (`04-generics.md`):
+
+```rust
+let (a, ...rest) = t;   // t is (i32, i32, i32): a is i32, rest is (i32, i32)
+let (a, ...)      = t;  // the head kept, the tail dropped
+```
+
 A pattern also appears wherever a value is bound — `let`, `for x in c`, and
 `for let` (`10-iteration.md`) — not only in `match`.
 

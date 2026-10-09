@@ -3004,3 +3004,19 @@ the fold left them. The pins move with the design: 113 and 288 spell
 the spread, check/err 281 refuses the tuple one row, 290 passes the
 pack's rows through a spread spelled out and reads the type site's
 own fold. 645 green, the library's 16 rows with them.
+
+The pattern site takes its own rest: `(a, ...rest)` binds the head
+one a one and gathers the tail into the tuple the binding holds, ()
+when no row is left; the bare `...` drops what it holds, and the
+rest's operand is a pattern again, the tail's shape under it. The
+same `...` the value site scatters with, read backwards -- one verb,
+four sites, and what the constructor scatters the pattern re-
+gathers. Two old walls fell on the way: the empty tuple pattern
+against a unit never fit (`()` is the unit's own pattern, the empty
+tuple's one spelling), and qbety did not look past a row's own mut
+-- a wildcard dropping a mut row could not even name its width. The
+pins: 291 (the shapes end to end -- let, match, the bare rest, the
+nested one, the unit tail, mut rows written through the gather, a
+for's own head over zip's rounds), check/err 282 (the rest not
+last) and 283 (more heads than rows), the zip's own rows one richer.
+648 green, the library's 17 with them.
