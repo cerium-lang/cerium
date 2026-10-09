@@ -1054,16 +1054,59 @@ cargval(Ast *a, Fenv *fe, Val *out)
   }
 }
 
+/* a row's own refusal, in the row's own words: the signature named
+ * before the reason -- the report the hard error gave, each row its
+ * own name, the chain's end joining them (04-generics.md,
+ * Overloading). The arity and unify refusals leave no words; the old
+ * report's own still holds them. */
+static char *
+inferwhy(Sym *s, Ast *gp)
+{
+  char *b = arenaalloc(256);
+
+  snprintf(b, 256, "%s: cannot infer '%s' from the call", btys(s->fnty), gp->v.gp.name);
+  return b;
+}
+
+static char *
+boundwhy(Sym *s, Type *ty, Sym *tr, Type **ta)
+{
+  char *b = arenaalloc(512);
+
+  snprintf(b, 512, "%s: '%s' does not implement '%s'", btys(s->fnty), btys(ty),
+           btys(tysym(tr, ta, tr->ngparams)));
+  return b;
+}
+
+/* one row's refusal joined to those before it, the arena's own
+ * strings, "; " the seam */
+static char *
+whyjoin(char *a, char *b)
+{
+  usize la = a ? strlen(a) : 0, lb = strlen(b);
+  char *j = arenaalloc(la + lb + 3);
+
+  if (la) {
+    memcpy(j, a, la);
+    memcpy(j + la, "; ", 2);
+  }
+  memcpy(j + la + (la ? 2 : 0), b, lb + 1);
+  return j;
+}
+
 /* one signature's trial: the arguments walked against it, the
  * binding it spells picked and written back when it takes them. The
  * answer is the call's type, or 0 when it does not. cvals holds the
  * const parameters' own test -- a runtime argument there fails the
  * signature and notes it, the black box defers with the pick (08).
  * nfreeze is the caller's argument count, the freezes to unwind --
- * the rolled trial walks a folded view */
+ * the rolled trial walks a folded view. why holds the row's own
+ * refusal when it had one: a bound the landing failed, a binding
+ * the call never made -- the chain's end report joins them, a
+ * signature that steps aside leaving its reason behind (04) */
 static Type *
 tryonesig(Sym *s, Ast *a, Ast **args, usize n, usize nfreeze, Fenv *fe, Ast *seg, Frzsave *svs,
-          Val **cvals, int *runtime)
+          Val **cvals, int *runtime, char **why)
 {
   Type  *fnty = s->fnty;
   Type **tys = s->ngparams ? tyargs(s->ngparams) : 0;
@@ -1165,45 +1208,58 @@ tryonesig(Sym *s, Ast *a, Ast **args, usize n, usize nfreeze, Fenv *fe, Ast *seg
                                        * length -- a number or a black
                                        * box; an empty one was never
                                        * met at all */
-      if (!tys[i])
-        berr(a, "cannot infer '%s' for '%s' from the call", s->gparams[i]->v.gp.name, s->name);
-    { /* every bound, once the binding is known: does the type the
-       * call landed implement the trait (04-generics.md)? The
-       * impl table answers -- a bound nobody can satisfy was
-       * already diagnosed where the fn was declared */
-      Ast **gps = s->decl->v.fn.gparams;
-      usize gi, bi;
+      if (!tys[i]) {                  /* the binding the call never made: this row's
+                                       * own refusal, not the chain's end -- the next
+                                       * row's walk reads the call anew (04-generics.md) */
+        if (why)
+          *why = inferwhy(s, s->gparams[i]);
+        ok = 0;
+        break;
+      }
+  }
+  if (ok) { /* every bound, once the binding is known: does the type
+             * the call landed implement the trait (04-generics.md)? The
+             * impl table answers -- a bound nobody can satisfy was
+             * already diagnosed where the fn was declared. A bound the
+             * landing fails is this row's own refusal too: the row
+             * steps aside, its reason left for the chain's end (04) */
+    Ast **gps = s->decl->v.fn.gparams;
+    usize gi, bi;
 
-      for (gi = 0; gi < vlen(gps); gi++) {
-        Ast **bs = gps[gi]->v.gp.bounds;
-        int   pk = gps[gi]->v.gp.pack;
-        usize ri, rn = 0;
+    for (gi = 0; ok && gi < vlen(gps); gi++) {
+      Ast **bs = gps[gi]->v.gp.bounds;
+      int   pk = gps[gi]->v.gp.pack;
+      usize ri, rn = 0;
 
-        if (pk && tys[gi]) /* a pack's bound is every row's own
-                            * (04-generics.md): the binding holds the
-                            * tuple the rows came in */
-          rn = tys[gi]->k == Tytuple ? tys[gi]->nargs : 0;
-        for (bi = 0; bi < vlen(bs); bi++) {
-          Sym   *tr = bs[bi]->v.path.sym; /* the bound's own cache (04) */
-          Type **ta;
+      if (pk && tys[gi]) /* a pack's bound is every row's own
+                          * (04-generics.md): the binding holds the
+                          * tuple the rows came in */
+        rn = tys[gi]->k == Tytuple ? tys[gi]->nargs : 0;
+      for (bi = 0; ok && bi < vlen(bs); bi++) {
+        Sym   *tr = bs[bi]->v.path.sym; /* the bound's own cache (04) */
+        Type **ta;
 
-          if (pk) {
-            for (ri = 0; ri < rn; ri++)
-              if (!boundsatisfies(bs[bi], tys[gi]->args[ri], s->gparams, tys, s->ngparams, &ta, 0,
-                                  0, 0))
-                berr(a, "'%s' does not implement '%s'; '%s' cannot take it",
-                     btys(tys[gi]->args[ri]), btys(tysym(tr, ta, tr->ngparams)), s->name);
-            continue; /* the empty pack: no row, no bound to fail */
-          }
-          if (!boundsatisfies(bs[bi], tys[gi], s->gparams, tys, s->ngparams, &ta, 0, 0, 0))
-            berr(a, "'%s' does not implement '%s'; '%s' cannot take it", btys(tys[gi]),
-                 btys(tysym(tr, ta, tr->ngparams)), s->name);
+        if (pk) {
+          for (ri = 0; ok && ri < rn; ri++)
+            if (!boundsatisfies(bs[bi], tys[gi]->args[ri], s->gparams, tys, s->ngparams, &ta, 0, 0,
+                                0)) {
+              if (why)
+                *why = boundwhy(s, tys[gi]->args[ri], tr, ta);
+              ok = 0;
+            }
+          continue; /* the empty pack: no row, no bound to fail */
+        }
+        if (!boundsatisfies(bs[bi], tys[gi], s->gparams, tys, s->ngparams, &ta, 0, 0, 0)) {
+          if (why)
+            *why = boundwhy(s, tys[gi], tr, ta);
+          ok = 0;
         }
       }
     }
-    /* the emitter's pick: which overload, which instantiation. The
-     * tys live in the arena, so the writeback outlives the walk
-     * (04-generics.md) */
+  }
+  if (ok) { /* the emitter's pick: which overload, which
+             * instantiation. The tys live in the arena, so the
+             * writeback outlives the walk (04-generics.md) */
     a->v.call.sym = s;
     a->v.call.tys = s->ngparams ? tys : 0;
     a->v.call.cvals = cvals;
@@ -1226,7 +1282,7 @@ tryonesig(Sym *s, Ast *a, Ast **args, usize n, usize nfreeze, Fenv *fe, Ast *seg
  * wide (04-generics.md) */
 static Type *
 trysig(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, Val **cvals,
-       int *runtime)
+       int *runtime, char **why)
 {
   Ast **ps = s->decl->v.fn.params;
   usize np = vlen(ps);
@@ -1237,7 +1293,7 @@ trysig(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, Va
                          * its re-check: the rows stand as the fold
                          * left them, met as they are, no fold again
                          * (04-generics.md) */
-    return tryonesig(s, a, args, n, n, fe, seg, svs, cvals, runtime);
+    return tryonesig(s, a, args, n, n, fe, seg, svs, cvals, runtime, why);
   if (np && ps[np - 1]->v.param.t->k == Ntpack) { /* the pack is
                                                    * last (the parser
                                                    * saw to it) */
@@ -1294,7 +1350,7 @@ trysig(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, Va
 
         vappend(&rargs, &u);
       }
-      r = tryonesig(s, a, rargs, np, n, fe, seg, svs, cvals, runtime);
+      r = tryonesig(s, a, rargs, np, n, fe, seg, svs, cvals, runtime, why);
       if (r) { /* the fold stands: matching and emit read the
                 * folded view (the spread's own writeback, 01) */
         a->v.call.args = rargs;
@@ -1306,7 +1362,7 @@ trysig(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, Va
     thawargs(svs, n);
     return 0;
   }
-  return tryonesig(s, a, args, n, n, fe, seg, svs, cvals, runtime);
+  return tryonesig(s, a, args, n, n, fe, seg, svs, cvals, runtime, why);
 }
 
 /* inside a mode-gated fn's arguments: @take may not appear there,
@@ -1392,13 +1448,18 @@ testcall(Ast *e, Fenv *fe)
  * arguments answers (04-generics.md). A gated row this mode
  * holds away never answers -- a trial is the arguments' own walk,
  * and a call that does not exist walks nothing
- * (01-types.md, Mode-gated functions). */
+ * (01-types.md, Mode-gated functions). A row whose binding the call
+ * never made, or whose bounds the landing failed, steps aside the
+ * same way, its refusal left behind: the chain's end report joins
+ * them, each row its own words (04). */
 static Type *
 callpick(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, Val **cvals,
          int constmode, int *runtime, const char *nm)
 {
   Sym  *head = s;
   Type *r;
+  char *why = 0; /* the rows' own refusals, joined -- the chain's end
+                  * report, when no row takes the call */
 
   if (constmode) {
     for (; s; s = s->next) {
@@ -1406,9 +1467,15 @@ callpick(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, 
         thawargs(svs, n);
         continue; /* the plain spellings wait below */
       }
-      r = trysig(s, a, args, n, fe, seg, svs, cvals, runtime);
-      if (r)
-        return r;
+      {
+        char *rowwhy = 0;
+
+        r = trysig(s, a, args, n, fe, seg, svs, cvals, runtime, &rowwhy);
+        if (r)
+          return r;
+        if (rowwhy)
+          why = whyjoin(why, rowwhy);
+      }
     }
     for (s = head; s; s = s->next) { /* the plain spellings: the
                                       * runtime arguments' own
@@ -1417,9 +1484,15 @@ callpick(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, 
         thawargs(svs, n);
         continue; /* tried above */
       }
-      r = trysig(s, a, args, n, fe, seg, svs, 0, 0);
-      if (r)
-        return r;
+      {
+        char *rowwhy = 0;
+
+        r = trysig(s, a, args, n, fe, seg, svs, 0, 0, &rowwhy);
+        if (r)
+          return r;
+        if (rowwhy)
+          why = whyjoin(why, rowwhy);
+      }
     }
   } else
     for (; s; s = s->next) {
@@ -1427,12 +1500,21 @@ callpick(Sym *s, Ast *a, Ast **args, usize n, Fenv *fe, Ast *seg, Frzsave *svs, 
         thawargs(svs, n);
         continue;
       }
-      r = trysig(s, a, args, n, fe, seg, svs, 0, 0);
-      if (r)
-        return r;
+      {
+        char *rowwhy = 0;
+
+        r = trysig(s, a, args, n, fe, seg, svs, 0, 0, &rowwhy);
+        if (r)
+          return r;
+        if (rowwhy)
+          why = whyjoin(why, rowwhy);
+      }
     }
   if (*runtime)
     berr(a, "the argument is not compile-time known; '%s' takes it const (08-reflection.md)", nm);
+  if (why) /* the rows that came close, each its own refusal -- the
+            * arity and unify refusals the old words hold below */
+    berr(a, "no '%s' takes these arguments -- %s", nm, why);
   berr(a, "no '%s' takes these argument types", nm);
   return 0; /* unreachable */
 }

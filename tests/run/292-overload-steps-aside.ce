@@ -1,0 +1,24 @@
+/* the chain walks on: a row whose bounds the landing fails, or
+ * whose binding the call never made, steps aside -- the next row
+ * reads the call anew, whatever the declaration order (04) */
+use std::iter::Iter;
+
+fn m<...Ts: Iter>(ts: ...Ts) -> i32 { 0 }
+fn m(x: (i32, i32)) -> i32 { 7 }
+
+fn r(x: (i32, i32)) -> i32 { 7 }
+fn r<...Ts: Iter>(ts: ...Ts) -> i32 { 0 }
+
+fn n<T: Iter>(x: T) -> i32 { 0 }
+fn n(x: i32) -> i32 { 7 }
+
+fn h<T>() -> i32 { 0 }
+fn h() -> i32 { 7 }
+
+fn main() -> i32 {
+  let a = m((3, 4));   /* the pack's row not Iter: it steps aside */
+  let b = r((3, 4));   /* the same, the rows the other way round */
+  let c = n(3);        /* the old generic's own bound, the same */
+  let d = h();         /* the binding the call never made */
+  a + b + c + d
+}

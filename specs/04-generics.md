@@ -285,6 +285,11 @@ the most specific matching signature wins, and two signatures that match
 equally specifically is a compile error. A call that matches no signature is,
 of course, also a compile error.
 
+A signature that fits by shape but fails a bound — or whose binding the call
+never lands — steps aside the way any mismatch does, unwinding what its walk
+moved; the chain walks on. When no signature takes the call, the report names
+each row's own refusal, a failed bound among them.
+
 ```rust
 fn show(p: *Point) { ... }
 fn show<T>  (t: T)  { ... }
