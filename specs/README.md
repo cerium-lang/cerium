@@ -66,8 +66,6 @@ not where they are instantiated, and `mut`, though part of the type, is not deep
   project's first files every compile, right while std is small; a
   symbol cache when it is not (`12-projects.md`)
 - The chapter-level items deferred with their chapters: `dyn A + B` and a
-  `@typeinfo<dyn A>` variant (`06-dispatch.md`); an `Output` associated type
-  and traits for `%`, the bitwise operators, and shifts (`07-operators.md`);
-  the compile-time `assert` (`14-macros.md`, deferred); concurrency, atomics,
-  `volatile`, and inline assembly are v1+ work, behind `#[extern(C)]` until
-  then (`12-projects.md`)
+  `@typeinfo<dyn A>` variant (`06-dispatch.md`); the compile-time `assert`
+  (`14-macros.md`, deferred); concurrency, atomics, `volatile`, and inline
+  assembly are v1+ work, behind `#[extern(C)]` until then (`12-projects.md`)
