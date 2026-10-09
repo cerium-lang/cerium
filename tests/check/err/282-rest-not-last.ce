@@ -1,0 +1,7 @@
+/* the rest pattern comes last, the pack parameter's own rule: a
+ * row after it has no row to come from (09-match.md) */
+fn main() -> i32 {
+  let t = (1, 2, 3);
+  let (...a, b) = t;
+  a.0 + b
+}

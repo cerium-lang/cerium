@@ -155,7 +155,42 @@ rpat(Ast *p, Type *t, Fenv *fe, int mut)
   case Nptuple: {
     Ast **ps = p->v.list.ts;
     usize n = vlen(ps), i;
+    Ast  *sp = n && ps[n - 1]->k == Nspread ? ps[n - 1] : 0;
+    usize nh = sp ? n - 1 : n;
 
+    if (sp && t && t->k == Tyunit && !nh) { /* no row at all: the rest
+                                             * binds (), the empty
+                                             * tuple's own spelling
+                                             * (01-types.md) */
+      sp->ty = tyunit();
+      if (sp->v.un.e)
+        rpat(sp->v.un.e, sp->ty, fe, mut);
+      return;
+    }
+    if (sp) { /* the rest pattern: the rows before it one a one, the
+               * rows after gathered into the tuple the binding holds,
+               * () the spelling when no row is left. The parser saw
+               * the rest last (09-match.md) */
+      Type *rt;
+
+      if (!t || t->k != Tytuple || t->nargs < nh)
+        berr(p, "this pattern fits at least %lu things, the type is %s", (unsigned long) nh,
+             btys(t));
+      rt = t->nargs > nh ? tytuple(t->args + nh, t->nargs - nh) : tyunit();
+      sp->ty = rt; /* the tail's own shape, one source: the emit and the
+                    * evaluator read it here */
+      for (i = 0; i < nh; i++)
+        rpat(ps[i], t->args[i], fe, mut);
+      if (sp->v.un.e) /* a binding, or the tail's own pattern -- the
+                       * whole walk again, the rows' own shape under
+                       * it */
+        rpat(sp->v.un.e, rt, fe, mut);
+      return;
+    }
+    if (t && t->k == Tyunit && !n) /* the unit's own pattern: () the
+                                    * empty tuple's one spelling
+                                    * (01-types.md) */
+      return;
     if (!t || t->k != Tytuple || t->nargs != n)
       berr(p, "this pattern fits %lu things, the type is %s", (unsigned long) n, btys(t));
     for (i = 0; i < n; i++)
@@ -239,6 +274,9 @@ patbinds(Ast *p, Sym *scr) /* scr: the enum a short name may pick
     return 0;
   case Npath:
     return 1;
+  case Nspread: /* the rest pattern: the binding it names, when it
+                 * names one -- the bare ... binds nothing */
+    return p->v.un.e ? 1 : 0;
   case Nppath:
     if (vlen(p->v.ppath.path->v.path.segs) == 1 && !p->v.ppath.payload && !p->v.ppath.named) {
       if (scr && varfind(scr, p->v.ppath.path->v.path.segs[0]->v.seg.name))

@@ -1,0 +1,74 @@
+/* the rest pattern: (a, ...rest) -- the value site's own spread,
+ * read backwards. The rows before it one a one, the rows after
+ * gathered into the tuple the binding holds, () the spelling when
+ * no row is left; the bare ... drops what it holds; the rest's own
+ * operand is a pattern again, the tail's shape under it. The rest
+ * comes last, the pack parameter's own rule (09-match.md,
+ * 04-generics.md) */
+
+use std::iter::zip;
+
+fn letpeel() -> i32 {
+  let t = (10, 20, 30);
+  let (a, ...rest) = t;
+
+  a + rest.0 + rest.1   /* 60 */
+}
+
+fn matchpeel() -> i32 {
+  let t = (1, 2, 3);
+  match t {
+    (a, b, ...tail) => a + b + tail.0,   /* 6 */
+    _ => 0,
+  }
+}
+
+fn baredrop() -> i32 {
+  let t = (5, 6, 7);
+  let (a, ...) = t;
+
+  a   /* 5 */
+}
+
+fn nestedrest() -> i32 {
+  let t = (1, 2, 3, 4);
+  let (a, ...(b, c, d)) = t;
+
+  a + b + c + d   /* 10: the tail destructured again */
+}
+
+fn unitrest() -> i32 {
+  let t = (7,);
+  let (a, ...rest) = t;   /* no row left: rest binds () */
+
+  a + (match rest { () => 35, _ => 0, })   /* 42 -- () the unit's
+                                          * own pattern, the empty
+                                          * tuple's one spelling */
+}
+
+fn mutrows() -> i32 {
+  let mut t: (mut i32, mut i32, mut i32) = (10, 20, 30);
+  let (_, ...rest) = t;
+
+  rest.0 = 50;   /* the row's own mut the gather kept: written
+                  * through the rest's tuple */
+  rest.0 + rest.1   /* 80 */
+}
+
+fn forzip() -> i32 {
+  let a = []i32{1, 2};
+  let b = []i32{3, 4};
+  let c = []i32{5, 6};
+  let mut s = 0;
+
+  for (x, ...more) in zip(a, b, c) {
+    s = s + *x * 10 + *more.0 + *more.1;   /* 18 + 30: the rows'
+                                    * Items are pointers, both sides */
+  }
+  s   /* 48: the rest inside a for's own pattern */
+}
+
+fn main() -> i32 {
+  letpeel() + matchpeel() + baredrop() + nestedrest() + unitrest() +
+    mutrows() + forzip()   /* 60+6+5+10+42+80+48 = 251 */
+}

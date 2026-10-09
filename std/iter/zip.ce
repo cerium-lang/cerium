@@ -183,3 +183,16 @@ fn zip_whole_tuple_spread() {
   }
   assert(s == 125, "the spread tuple lost its rows");
 }
+
+#[test("a round taken apart: the rest pattern in the for's own head")]
+fn zip_round_with_rest() {
+  let a = []i32{2, 3};
+  let b = []i32{4, 5};
+  let c = []i32{6, 7};
+  let mut s = 0;
+
+  for (head, ...tail) in zip(a, b, c) {
+    s = s + *head + *tail.0 + *tail.1;   /* 12 + 15 */
+  }
+  assert(s == 27, "the rest lost the round's other rows");
+}

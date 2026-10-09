@@ -1312,10 +1312,22 @@ patfits(Ast *p, Val v)
   case Nptuple: {
     Ast **ps = p->v.list.ts;
     usize n = vlen(ps), i;
+    Ast  *sp = n && ps[n - 1]->k == Nspread ? ps[n - 1] : 0;
+    usize nh = sp ? n - 1 : n;
 
-    for (i = 0; i < n; i++)
+    for (i = 0; i < nh; i++)
       if (!patfits(ps[i], v.elems[i]))
         return 0;
+    if (sp) { /* the rest: the tail's rows one value, its own pattern
+               * under it -- the value site's spread, read backwards
+               * (09-match.md) */
+      Val rv = v;
+
+      rv.t = sp->ty;
+      rv.elems = v.elems + nh;
+      if (sp->v.un.e && !patfits(sp->v.un.e, rv))
+        return 0;
+    }
     return 1;
   }
   case Npstruct: {
@@ -1405,9 +1417,20 @@ bindpat(Ast *p, Val v, int mut)
   case Nptuple: {
     Ast **ps = p->v.list.ts;
     usize n = vlen(ps), i;
+    Ast  *sp = n && ps[n - 1]->k == Nspread ? ps[n - 1] : 0;
+    usize nh = sp ? n - 1 : n;
 
-    for (i = 0; i < n; i++)
+    for (i = 0; i < nh; i++)
       bindpat(ps[i], v.elems[i], mut);
+    if (sp) { /* the rest: the tail's rows gathered into one value,
+               * the binding (or pattern) under it taking it whole */
+      Val rv = v;
+
+      rv.t = sp->ty;
+      rv.elems = v.elems + nh;
+      if (sp->v.un.e)
+        bindpat(sp->v.un.e, rv, mut);
+    }
     return;
   }
   case Npstruct: {
@@ -3009,9 +3032,20 @@ bindround(Ast *p, Val v, int mut, Rbind **out)
   case Nptuple: { /* by position */
     Ast **ps = p->v.list.ts;
     usize n = vlen(ps);
+    Ast  *sp = n && ps[n - 1]->k == Nspread ? ps[n - 1] : 0;
+    usize nh = sp ? n - 1 : n;
 
-    for (i = 0; i < n && i < v.t->nargs; i++)
+    for (i = 0; i < nh && i < v.t->nargs; i++)
       bindround(ps[i], v.elems[i], mut, out);
+    if (sp) { /* the rest: the tail's rows one value, a plain name
+               * with it -- the round's own let is a flat one */
+      Val rv = v;
+
+      rv.t = sp->ty;
+      rv.elems = v.elems + nh;
+      if (sp->v.un.e)
+        bindround(sp->v.un.e, rv, mut, out);
+    }
     return;
   }
   case Npstruct: { /* by field name */

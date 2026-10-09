@@ -1658,6 +1658,11 @@ patboundnames(Ast *p, PBind **out)
       patboundnames(ps[i], out);
     return;
   }
+  case Nspread: /* the rest pattern: the names its own pattern binds,
+                 * none when the ... stands bare */
+    if (p->v.un.e)
+      patboundnames(p->v.un.e, out);
+    return;
   case Npstruct: {
     Ast **fs = p->v.pstruct.fields;
     usize n = vlen(fs), i;
@@ -1818,8 +1823,10 @@ emapat(Em *em, Ast *p, Type *t, char *addr, char *val, char *fail)
   case Nptuple: { /* the tuple rows, in order */
     Ast **ps = p->v.list.ts;
     usize n = vlen(ps), i, off = 0;
+    Ast  *sp = n && ps[n - 1]->k == Nspread ? ps[n - 1] : 0;
+    usize nh = sp ? n - 1 : n;
 
-    for (i = 0; i < n; i++) {
+    for (i = 0; i < nh; i++) {
       Type *et = t->args[i];
       char *sa, *sv;
 
@@ -1827,6 +1834,41 @@ emapat(Em *em, Ast *p, Type *t, char *addr, char *val, char *fail)
       subval(em, et, addr, off, ps[i], &sa, &sv);
       emapat(em, ps[i], et, sa, sv, fail);
       off += sizeof_(et);
+    }
+    if (sp) { /* the rest: the tail's rows copied into the tuple the
+               * binding holds -- its shape the check wrote on the
+               * node, the rows laid in their own order, the parent's
+               * offsets walked for the reads (02-layout.md). A row's
+               * own mut is the slot's, not the value's: the loads and
+               * the stores take the shape beneath it (01-types.md) */
+      Type *rt = sp->ty;
+      char *rslot = mkslot(em, rt);
+      usize roff = 0;
+
+      for (i = nh; i < t->nargs; i++) {
+        Type *et = t->args[i];
+        Type *vt = et;
+        char *sa, *sv;
+
+        while (vt->k == Tymut)
+          vt = vt->t;
+        off = alignto(off, alignof_(et));
+        subval(em, vt, addr, off, sp, &sa, &sv);
+        roff = alignto(roff, alignof_(et));
+        { /* the row into the rest's own storage, one row a copy */
+          char *rp = addrplus(em, rslot, roff);
+
+          if (isagg(vt))
+            fprintf(em->o, "\tblit %s, %s, %lu\n", sa, rp, (unsigned long) sizeof_(vt));
+          else
+            fprintf(em->o, "\t%s %s, %s\n", stins(vt), sv, rp);
+        }
+        roff += sizeof_(vt);
+        off += sizeof_(et);
+      }
+      if (sp->v.un.e) /* a binding, or the tail's own pattern; the bare
+                       * ... drops the rows it holds */
+        emapat(em, sp->v.un.e, rt, rslot, 0, fail);
     }
     return;
   }
