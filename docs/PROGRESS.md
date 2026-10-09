@@ -3109,3 +3109,15 @@ path carrying on past a type ends where the type did. The pins:
 segment that is no associated type), 289 (the head no namespace
 answers), 227 (the pub type crossing whole, its signature spelled
 with its namespace). 659 green, the library's 17 with them.
+
+The row's own words. The chain's end report knew the rows that came
+close by their bounds alone -- the count that turned a row away
+before its walk began, and the slot whose landing missed, held the
+old bare words, no signature named. Both carry their own now: the
+count its parameters wanted beside the call's, a pack's head the
+least it can take; the slot's argument against its parameter, the
+two sides the landing missed; a spelled-out binding the row cannot
+wear says its size against the fn's own. Every refusal the report
+joins, one seam, each row its own words. The pins: 290 (the plain
+counts, the pack's least), 291 (the slot's two sides, the
+spelling's size). 661 green, the library's 17 with them.
