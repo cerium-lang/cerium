@@ -1203,6 +1203,17 @@ instensure(Sym *s, Type **tys, Val **cvals, Val **gcvals)
   usize np = vlen(ps), i, j;
   Inst *in;
 
+  { /* the box's own door: a slot keyed with a parameter's name is
+     * one the re-check never landed its number for -- the call row
+     * was read before the walk that answers it. Every instance key
+     * is the re-check's own, and the day a caller arrives early,
+     * this says so here instead of folding two instances into one
+     * (08-reflection.md) */
+    for (j = 0; j < s->ngparams; j++)
+      if (tys && tys[j] && tys[j]->k == Typaram)
+        die("'%s' keyed with the box unopened: '%s' never landed its number (08-reflection.md)",
+            s->name, tys[j]->gp->v.gp.name);
+  }
   for (i = 0; i < vlen(insts); i++) {
     in = insts[i];
     if (in->s != s)
