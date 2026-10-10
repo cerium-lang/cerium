@@ -1856,8 +1856,9 @@ recvadapt(Ast *x, Type *selfty, Type *rty, Type *ty, Fenv *fe, Frzsave *sv, int 
   if (selfty->k == Typtr) { /* a pointer self: &place, or as written */
     Type *want = selfty->t->k == Tymut ? selfty->t->t : selfty->t;
 
-    if (tysame(rty, selfty))
-      return 1; /* &*sp is sp: the pointer already is the address */
+    if (typtrfits(rty, selfty))
+      return 1; /* &*sp is sp: the pointer already is the address, and a
+                 * *mut T handle lends the same one to a *T self */
     if (!tysame(ty, want)) {
       if (soft)
         return 0;

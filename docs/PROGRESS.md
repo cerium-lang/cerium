@@ -3325,3 +3325,19 @@ same 127), 164's spelled calls borrow, 167 compares where it used
 to ride the pointer row, and 300 the issue's own three shapes --
 max without Copy, Big living past its compare, a generic's places
 reading through the trait. 672 green, the library's 27.
+
+## 2026-10-10 -- a *mut handle lends its address (#166)
+
+The mut handle's own address: a *Self method off a *mut one --
+p.peek() over a *mut Big -- took a & over the pointer variable's
+slot where the receiver as written already was the address, so
+self.a read the bottom of an address instead: a plausible number,
+a different one every run, and no diagnostic beside it. The two
+sides asked it apart -- recvadapt accepting the call, the emitter
+spelling it -- and each missed the same shortcut: a *mut T lends
+its address to a *T self, the mut layer the permission it carries,
+the place underneath the same one. One question now, typtrfits in
+type.c, both sides' own; 301 pins the answer (88, one struct under
+both spellings).
+
+673 green (301 with them), the library's 27.
