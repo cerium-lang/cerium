@@ -484,6 +484,55 @@ selfpeel(Type *sig, Type *arg)
  * impl -- the instantiation picks that (04-generics.md), and the
  * bound there already promised one exists. The same shapes
  * tsubst walks, keyed on the one Self parameter. */
+/* the type with every writable slot read immutable: the meet a
+ * fresh slot's move makes when the two sides disagree only on mut
+ * -- raising it nothing observes (01-types.md), dropping it always
+ * safe -- so the field's slots or the value's, whichever carry the
+ * permission, fall away for the comparison and the binding */
+static Type *
+mutstrip(Type *t)
+{
+  Type **as;
+  usize  i;
+
+  if (!t)
+    return t;
+  switch (t->k) {
+  case Tymut:
+    return mutstrip(t->t);
+  case Typtr:
+    return typtr(mutstrip(t->t));
+  case Tyslice:
+    return tyslice(mutstrip(t->t));
+  case Tyarray:
+    return t->gp ? tyarrayp(t->gp, mutstrip(t->t)) : tyarray(t->n, mutstrip(t->t));
+  case Tytuple:
+  case Tystruct:
+  case Tyunion:
+  case Tyenum:
+  case Tytrait:
+  case Tydyn:
+    if (!t->nargs)
+      return t;
+    as = tyargs(t->nargs);
+    for (i = 0; i < t->nargs; i++)
+      as[i] = mutstrip(t->args[i]);
+    switch (t->k) {
+    case Tytuple:
+      return tytuple(as, t->nargs);
+    case Tystruct:
+    case Tyunion:
+    case Tyenum:
+    case Tytrait:
+      return tysym(t->sym, as, t->nargs);
+    default:
+      return tydyn(t->sym, as, t->nargs, t->mut);
+    }
+  default:
+    return t;
+  }
+}
+
 static Type *
 selfsubst(Type *t, Type *self)
 {
@@ -4508,6 +4557,26 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
               gunify(f->ty, at, s->gparams, tys, s->ngparams);
             continue;
           }
+          if (at && ft && tysame(at, mutstrip(ft))) { /* a fresh slot
+                                                       * may raise
+                                                       * writability
+                                                       * -- the field's
+                                                       * mut layers
+                                                       * the value
+                                                       * takes with
+                                                       * it (01) */
+            if (tys)
+              gunify(mutstrip(f->ty), at, s->gparams, tys, s->ngparams);
+            continue;
+          }
+          if (at && ft && tysame(mutstrip(at), ft)) { /* dropping
+                                                       * writability
+                                                       * is always
+                                                       * safe (01) */
+            if (tys)
+              gunify(f->ty, mutstrip(at), s->gparams, tys, s->ngparams);
+            continue;
+          }
           if (at && ft) {
             Type *c = recoerce(in->v.init.e, ft, fe);
 
@@ -4912,11 +4981,29 @@ rstmt(Ast *st, Fenv *fe)
     if (t && et && !tysame(t, et)) {
       Type *c = st->v.let.e ? recoerce(st->v.let.e, t, fe) : 0;
 
-      if (!c || !tysame(c, t))
+      if (!c || !tysame(c, t)) {
+        if (tysame(mutstrip(t), mutstrip(et))) { /* a fresh slot
+                                                  * may raise
+                                                  * writability,
+                                                  * dropping it
+                                                  * always safe
+                                                  * (01-types.md):
+                                                  * the binding's
+                                                  * mut layers the
+                                                  * value takes
+                                                  * with it, the
+                                                  * value's the
+                                                  * binding drops */
+          st->ty = t;
+          rpat(st->v.let.pat, t, fe, st->v.let.mut);
+          goto cv;
+        }
         berr(st->v.let.e, "the binding is %s, the value is %s", btys(t), btys(et));
+      }
     }
     st->ty = t ? t : et; /* what the pattern binds, for the emitter */
     rpat(st->v.let.pat, t ? t : et, fe, st->v.let.mut);
+  cv:
     if (st->v.let.cv && st->v.let.pat->k == Npath && vlen(st->v.let.pat->v.path.segs) == 1 &&
         !st->v.let.pat->v.path.root) {
       /* the unroll's own round value, riding the binding it spelled:
@@ -5138,8 +5225,15 @@ rstmt(Ast *st, Fenv *fe)
                                   * iterator ends where the loop does
                                   * (10-iteration.md) */
       srcthaw = argborrow(st->v.forx.b, fe, &sv);
-    if (st->v.forx.shape == FIN || st->v.forx.it)
+    if (st->v.forx.shape == FIN || st->v.forx.it) {
       et = rexpr(st->v.forx.shape == FIN ? st->v.forx.b : st->v.forx.via, fe, 0);
+      if (st->v.forx.shape != FIN && st->v.forx.it && et != st->v.forx.it)
+        /* the re-check's copy: the iterator under this binding, the
+         * stored one the declaration's own -- a symbolic row the
+         * re-check answers, the sizes the emit reads real only
+         * here (04-generics.md, 08-reflection.md) */
+        st->v.forx.it = et;
+    }
 
     fb = fefork(fe);
     nbase = fb.n;
@@ -5182,19 +5276,17 @@ rstmt(Ast *st, Fenv *fe)
         et = et->t;
       if (!et)
         break;
-      if (et->k == Tyarray) /* an owned array yields each element
-                             * itself, and is consumed -- a place
-                             * of non-Copy elements is the mover's
-                             * to @take (10, 03) */
-        rpat(st->v.forx.a, et->t, &fb, 0);
-      else if (et->k == Tyenum && et->sym == sym_option)
+      if (et->k == Tyenum && et->sym == sym_option)
         rpat(st->v.forx.a, et->args[0], &fb, 0); /* ?T iterates T or ends */
       else { /* the Iter path: the sugar rides std::iter's own, the
               * desugar 10-iteration.md spells -- c.into_iter() once,
               * it.next() a round, for let Some(x) the shape it all
               * becomes (10). A slice rides it too: the library's
               * own Iter for []T hands the pointers out, the header
-              * a copy the source keeps whole (10) */
+              * a copy the source keeps whole (10); an owned array
+              * the same way, std::array's ArrayIter consuming it a
+              * round an element, the impl table the one road every
+              * source takes (08, 10) */
         Sym    *iimp, *timp;
         Type  **tys, **ttys;
         Val   **icvs = 0, **tcvs = 0;

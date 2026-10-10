@@ -952,6 +952,10 @@ tymang2(Type *t, char *buf, usize o, usize n)
   case Tytype:
     buf[o++] = 'q';
     return o;
+  case Tyconst: /* a const argument's number, in a row's own slot:
+                 * the instance's name tells the numbers apart (08) */
+    buf[o++] = 'k';
+    return segnum(buf, o, n, t->n);
   case Typaram: /* the declared shape: the instance's suffix names the binding */
     buf[o++] = 'u';
     return segput(buf, o, n, t->gp && t->gp->v.gp.name ? t->gp->v.gp.name : "?");
@@ -2151,63 +2155,7 @@ emafor(Em *em, Ast *st)
       fprintf(em->o, "%s\n", lx);
       return;
     }
-    { /* an array: ptr/len stepped by the element size -- a slice
-       * rides the library's own Iter now, the desugar's FLET
-       * carrying it (10-iteration.md) */
-      Type *it = et->t;
-      usize sz = sizeof_(it);
-      char *sv = aggbase(em, st->v.forx.b); /* the storage it sits at */
-      char *ptr, *len, *islot, *i, *c;
-      char *lc = newlbl(em), *lb = newlbl(em), *lcont = newlbl(em), *lx = newlbl(em);
-      int   reached;
-      usize nbase;
-
-      ptr = sv; /* the length comes from the type */
-      len = newtmp(em);
-      fprintf(em->o, "\t%s =l copy %lu\n", len, (unsigned long) et->n);
-      islot = stackslot(em, 8);
-      fprintf(em->o, "\tstorel 0, %s\n", islot);
-      em->loops[em->nloops].brk = lx;
-      em->loops[em->nloops].cont = lcont;
-      em->nloops++;
-      fprintf(em->o, "%s\n", lc);
-      i = newtmp(em);
-      fprintf(em->o, "\t%s =l loadl %s\n", i, islot);
-      c = newtmp(em);
-      fprintf(em->o, "\t%s =w cultl %s, %s\n", c, i, len);
-      fprintf(em->o, "\tjnz %s, %s, %s\n", c, lb, lx);
-      fprintf(em->o, "%s\n", lb);
-      nbase = em->nlocs;
-      { /* the element's address, ptr + i*size: an owned array
-         * yields the element itself -- the loop consumes it (10) */
-        char *m = newtmp(em);
-        char *ea = newtmp(em);
-        char *sa, *svv;
-
-        fprintf(em->o, "\t%s =l mul %s, %lu\n", m, i, (unsigned long) sz);
-        fprintf(em->o, "\t%s =l add %s, %s\n", ea, ptr, m);
-        subval(em, it, ea, 0, st->v.forx.a, &sa, &svv);
-        emapat(em, st->v.forx.a, it, sa, svv, lx);
-      }
-      emablockval(em, body, &reached);
-      if (reached) /* the round reached its end: the element's own
-                    * bindings die with it -- the array yielded the
-                    * element, and the round drops it
-                    * (03-move.md, 10-iteration.md) */
-        emdrops(em, st->v.forx.drops);
-      em->nlocs = nbase;
-      fprintf(em->o, "%s\n", lcont); /* the step: continue lands here */
-      {
-        char *ni = newtmp(em);
-
-        fprintf(em->o, "\t%s =l add %s, 1\n", ni, i);
-        fprintf(em->o, "\tstorel %s, %s\n", ni, islot);
-      }
-      jump(em, lc);
-      em->nloops--;
-      fprintf(em->o, "%s\n", lx);
-      return;
-    }
+    cerrat(st, "an owned array iterates std::array's ArrayIter now (10-iteration.md)");
   }
   default:
     cerrat(st, "this for shape is not one of the three");

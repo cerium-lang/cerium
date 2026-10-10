@@ -1,0 +1,9 @@
+fn main() -> i32 {
+  let mut a: [3]mut i32 = [3]i32{1, 2, 3};
+  let mut n = 0;
+  for p in &mut a {
+    *p = *p * 10;
+    n = n + 1;
+  }
+  a[0] + a[1] + a[2] + n  /* 60 + 3 = 63 */
+}

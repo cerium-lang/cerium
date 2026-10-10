@@ -209,6 +209,19 @@ tyint(int num)
 }
 
 Type *
+tyconst(u64 n) /* a const generic argument in an application's row:
+                * the number where a type would sit, one Type per
+                * value the way every interned shape is one (08) */
+{
+  Type x;
+
+  memset(&x, 0, sizeof x);
+  x.k = Tyconst;
+  x.n = n;
+  return intern(&x);
+}
+
+Type *
 typaram(Ast *gp)
 {
   Type x;
@@ -545,8 +558,14 @@ gsubstv(Type *t, Ast **gps, Type **tys, Val **gcvals, usize n)
   switch (t->k) {
   case Typaram:
     for (i = 0; i < n; i++)
-      if (t->gp == gps[i])
-        return tys[i];
+      if (t->gp == gps[i]) {
+        if (gps[i]->v.gp.cnst && gcvals && gcvals[i])
+          return tyconst(gcvals[i]->i); /* a const slot: the number
+                                         * the binding carries, usize
+                                         * its own shape (08) */
+        return tys[i];                  /* a row's own word: a Tyconst, a parameter
+                                         * the box names, the slot's marker */
+      }
     return t;
   case Typtr:
     return typtr(gsubstv(t->t, gps, tys, gcvals, n));
@@ -570,6 +589,16 @@ gsubstv(Type *t, Ast **gps, Type **tys, Val **gcvals, usize n)
         if (t->gp == gps[i]) {
           if (gcvals && gcvals[i])
             return tyarray(gcvals[i]->i, gsubstv(t->t, gps, tys, gcvals, n));
+          if (tys[i] && tys[i]->k == Tyconst) /* the row an
+                                               * application's own
+                                               * slot carries: the
+                                               * number in it (08) */
+            return tyarray(tys[i]->n, gsubstv(t->t, gps, tys, gcvals, n));
+          if (tys[i] && tys[i]->k == Typaram) /* a length another
+                                               * row's parameter
+                                               * names: the box
+                                               * re-keyed to it */
+            return tyarrayp(tys[i]->gp, gsubstv(t->t, gps, tys, gcvals, n));
           return tyarrayp(t->gp, gsubstv(t->t, gps, tys, gcvals, n));
         }
       return tyarrayp(t->gp, gsubstv(t->t, gps, tys, gcvals, n));
@@ -800,6 +829,13 @@ sbfmt(SBuf *b, Type *t)
   case Tytype:
     sbputs(b, "type");
     break;
+  case Tyconst: { /* a const argument's number, the row's own word */
+    char nb[32];
+
+    sprintf(nb, "%lu", (unsigned long) t->n);
+    sbputs(b, nb);
+    break;
+  }
   case Typroj: /* Self::Item, however the Self was spelled */
     sbfmt(b, t->t);
     sbputs(b, "::");

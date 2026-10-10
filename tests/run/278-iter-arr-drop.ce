@@ -1,0 +1,18 @@
+use std::ops::Drop;
+
+static mut N: i32 = 0;
+
+struct D { v: i32 }
+impl Drop for D {
+  fn drop(self: Self) {
+    N = N + 1;
+  }
+}
+
+fn main() -> i32 {
+  let a = [4]D{ D{v: 1}, D{v: 2}, D{v: 3}, D{v: 4} };
+  for d in a {
+    if d.v == 2 { break; }
+  }
+  N  /* 2 by rounds + 2 remaining at the exit = 4 */
+}

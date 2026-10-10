@@ -1,0 +1,14 @@
+/* &[N]T iterates through the impl the const length names -- the
+ * borrow's own door now open (10-iteration.md): the pointer's
+ * IntoIter hands back a slice over the array's own storage, each
+ * round a pointer, nothing moved. The array stays whole behind
+ * the loop (08-reflection.md, the const length's own arrival). */
+fn main() -> i32 {
+  let a = [3]i32{1, 2, 3};
+  let mut n = 0;
+
+  for x in &a {
+    n = n + *x;
+  }
+  n
+}

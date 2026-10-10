@@ -1,0 +1,38 @@
+/* std::array -- the array's own surface (08-reflection.md): the
+ * length is the type's own number now -- a const generic on the
+ * row reads it -- and get the bounds-checked element, None the ask
+ * past the end, the slice's own shape one door over (12). One row
+ * carries the mut arrays too: [N]mut T is [N]T with T bound the
+ * mut layer, & on a mut slot lending *mut whole (01-types.md) --
+ * the get of a mut array answers ?*mut T by the same row. */
+
+impl<T, const N: usize> [N]T {
+  fn len(self: *Self) -> usize { N }
+
+  fn get(self: *Self, i: usize) -> ?*T {
+    if i < N {
+      Some(&(*self)[i])
+    } else {
+      None
+    }
+  }
+}
+
+/* -- the tests (13-testing.md) ------------------------------- */
+
+use std::debug::assert;
+
+#[test("len is the type's own number")]
+fn len_counts() {
+  let a = [3]i32 { 1, 2, 3 };
+  assert(a.len() == 3, "len lost the rows");
+}
+
+#[test("get the asked row, None past the end")]
+fn get_rows() {
+  let a = [2]i32 { 5, 6 };
+  let b = match a.get(1) { Some(p) => *p, None => 0, };
+  let c = match a.get(2) { Some(p) => *p, None => 7, };
+  assert(b == 6, "get lost the row");
+  assert(c == 7, "get walked past the end");
+}

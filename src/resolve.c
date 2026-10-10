@@ -313,9 +313,21 @@ rargs(Ast *seg, Env *env, usize *np, int pins)
   }
   ts = tyargs(n);
   for (i = 0, j = 0; i < na; i++)
-    if (as[i]->k != Nassoc)
+    if (as[i]->k != Nassoc) {
+      /* a const parameter among the arguments: the number it names,
+       * a slot of the row's own -- the shape a type would sit in
+       * kept to the types (08-reflection.md) */
+      if (as[i]->k == Npath && !as[i]->v.path.root && vlen(as[i]->v.path.segs) == 1) {
+        Type *t = envfind(env, as[i]->v.path.segs[0]->v.seg.name);
+
+        if (t && t->k == Typaram && t->gp->v.gp.cnst) {
+          ts[j++] = t;
+          continue;
+        }
+      }
       ts[j++] = rty(as[i], env); /* a $$ among them: rty's own case
                                   * splices it (08-reflection.md) */
+    }
   *np = n;
   return ts;
 }
@@ -1731,9 +1743,14 @@ spec1(Type *a, Type *b, SpecSub *s)
     int   am, bm;
 
     if (b->k == Tyarray) {
-      if (a->gp || b->gp)
-        return a->gp == b->gp && spec1(a->t, b->t, s); /* the same const parameter */
-      if (a->n != b->n)
+      if (b->gp)
+        ; /* b's length a variable: any length its row takes -- the
+           * same parameter or another row's, for a number is not a
+           * shape the sub tracks, only that b is at least this
+           * general wherever the elements align (04, 08) */
+      else if (a->gp)
+        return 0; /* a's length a variable where b's is a number */
+      else if (a->n != b->n)
         return 0;
     }
     ac = slotchild(a->t, &am);

@@ -688,6 +688,34 @@ gunifyv(Type *sig, Type *arg, Ast **gps, Type **tys, Val **gcvals, usize n)
   if (sig->k == Typaram) {
     for (i = 0; i < n; i++)
       if (sig->gp == gps[i]) {
+        if (sig->gp->v.gp.cnst && arg->k == Tyconst) { /* a const
+                                                        * slot meets
+                                                        * its number:
+                                                        * the instance
+                                                        * row carries
+                                                        * it beside the
+                                                        * slot, a type
+                                                        * row in the
+                                                        * slot itself
+                                                        * (08) */
+          if (gcvals) {
+            if (!tys[i])
+              tys[i] = tyint(IN_USIZE);
+            if (!gcvals[i]) {
+              gcvals[i] = arenaalloc(sizeof **gcvals);
+              *gcvals[i] = valint(arg->n, tyint(IN_USIZE));
+            } else if (gcvals[i]->i != arg->n)
+              return 0; /* the same slot twice, two numbers: no fit */
+            return 1;
+          }
+          if (!tys[i]) {
+            tys[i] = arg;
+            return 1;
+          }
+          return tysame(tys[i], arg);
+        }
+        if (!sig->gp->v.gp.cnst && arg->k == Tyconst)
+          return 0; /* a number rides a const slot alone (08) */
         if (!tys[i])
           tys[i] = arg;
         return tysame(tys[i], arg);
@@ -705,13 +733,26 @@ gunifyv(Type *sig, Type *arg, Ast **gps, Type **tys, Val **gcvals, usize n)
     if (sig->gp) { /* [N]T: the length is the binding's own number */
       for (i = 0; i < n; i++)
         if (sig->gp == gps[i]) {
-          if (!tys[i])
-            tys[i] = tyint(IN_USIZE); /* the slot's shape, and the
-                                       * infer check's non-empty */
+          if (!tys[i]) {
+            if (arg->gp && !gcvals)
+              tys[i] = typaram(arg->gp); /* a type row's own word:
+                                          * the parameter the value's
+                                          * length names (08) */
+            else
+              tys[i] = tyint(IN_USIZE); /* the slot's shape, and the
+                                         * infer check's non-empty */
+          }
           if (arg->gp)
             return gunifyv(sig->t, arg->t, gps, tys, gcvals,
                            n); /* a length another generic names: the
                                 * box, the re-check's to bind */
+          if (!gcvals) {       /* a type row: the number in the slot itself */
+            if (tys[i]->k == Tyconst && tys[i]->n != arg->n)
+              return 0; /* the same slot twice, two numbers: no fit */
+            if (tys[i]->k != Tyconst)
+              tys[i] = tyconst(arg->n);
+            return gunifyv(sig->t, arg->t, gps, tys, gcvals, n);
+          }
           if (!gcvals[i]) {
             gcvals[i] = arenaalloc(sizeof **gcvals);
             *gcvals[i] = valint(arg->n, tyint(IN_USIZE));
@@ -913,6 +954,34 @@ implatch(Type *pat, Type *ty, Ast **gps, Type **tys, Val **gcvals, usize n)
   if (pat->k == Typaram) {
     for (i = 0; i < n; i++)
       if (pat->gp == gps[i]) {
+        if (pat->gp->v.gp.cnst) { /* a const slot: the number the
+                                   * row carries, a parameter the
+                                   * same box (08-reflection.md) */
+          if (ty->k == Tyconst) {
+            if (!tys[i])
+              tys[i] = tyint(IN_USIZE);
+            if (!gcvals[i]) {
+              gcvals[i] = arenaalloc(sizeof **gcvals);
+              *gcvals[i] = valint(ty->n, tyint(IN_USIZE));
+            } else if (gcvals[i]->i != ty->n)
+              return 0; /* the same slot twice, two numbers: no fit */
+            return 1;
+          }
+          if (ty->k == Typaram && ty->gp == pat->gp) { /* the same
+                                                        * box: an outer
+                                                        * generic's
+                                                        * length, the
+                                                        * instance's
+                                                        * re-check
+                                                        * binds */
+            if (!tys[i])
+              tys[i] = tyint(IN_USIZE);
+            return 1;
+          }
+          return 0; /* a number rides a const slot alone (08) */
+        }
+        if (ty->k == Tyconst)
+          return 0;               /* a type slot takes no number (08) */
         if (pat->gp->v.gp.pack) { /* the pack: the whole tuple the
                                    * receiver's rows make, the
                                    * binding Ts = (i32, u8) the same
