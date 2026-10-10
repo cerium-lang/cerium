@@ -1,0 +1,12 @@
+/* the ends name one type, the integers not asked anymore
+ * (10-iteration.md): a range builds for whatever the ends are, and
+ * whether it iterates is the for's own word -- the impl table's,
+ * naming the missing row, the same place Rust reports it */
+fn main() -> i32 {
+  let mut n = 0;
+
+  for c in "a".."d" {
+    n = n + 1;
+  }
+  n
+}

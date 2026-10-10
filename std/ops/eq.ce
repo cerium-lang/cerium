@@ -24,4 +24,5 @@ impl Eq for u8 { fn eq(self: *Self, other: *Self) -> bool { *self == *other } }
 impl Eq for u16 { fn eq(self: *Self, other: *Self) -> bool { *self == *other } }
 impl Eq for u32 { fn eq(self: *Self, other: *Self) -> bool { *self == *other } }
 impl Eq for u64 { fn eq(self: *Self, other: *Self) -> bool { *self == *other } }
+impl Eq for usize { fn eq(self: *Self, other: *Self) -> bool { *self == *other } } /* the ninth width, Ord's own note */
 impl Eq for bool { fn eq(self: *Self, other: *Self) -> bool { *self == *other } }

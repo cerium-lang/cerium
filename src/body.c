@@ -4714,10 +4714,13 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
   case Nbuiltin:
     return rbuiltin(e, fe, want);
   case Nrange: { /* a..b: the interval's own struct, the checker's
-                  * sugar -- two ends, one integer type, the value
+                  * sugar -- two ends, one type, the value
                   * std::ops::Range<T> holds (10-iteration.md). The
                   * literal adapts the operator's way: one side
-                  * names the type, the other yields */
+                  * names the type, the other yields. Whether the
+                  * type iterates is not this arm's to ask -- the
+                  * for answers it, the impl table's own word
+                  * (10-iteration.md) */
     Type *ta = rexpr(e->v.bin.l, fe, 0);
     Type *tb = rexpr(e->v.bin.r, fe, ta); /* the other side names the ends' type */
 
@@ -4729,9 +4732,9 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
       else if ((c = recoerce(e->v.bin.r, ta, fe)))
         tb = c;
     }
-    if (!ta || !tysame(ta, tb) || !isintty(ta))
-      berr(e, "a range's ends are one integer type, these are %s and %s (10-iteration.md)",
-           btys(ta), btys(tb));
+    if (!ta || !tysame(ta, tb))
+      berr(e, "a range's ends are one type, these are %s and %s (10-iteration.md)", btys(ta),
+           btys(tb));
     { /* the interval itself: the struct the sugar lands in */
       Type **tys = tyargs(1);
 

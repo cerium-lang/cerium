@@ -3341,3 +3341,50 @@ type.c, both sides' own; 301 pins the answer (88, one struct under
 both spellings).
 
 673 green (301 with them), the library's 27.
+## 2026-10-10 -- the range's one row: Step, and a..b over any type (#162's second half)
+
+The comparisons borrowing was half of #162; the other half was what
+the borrowing bought. The range's Iter rows were nine near-identical
+stanzas -- one an integer width, thirteen lines each, 117 in all --
+because the row's own advance was a `<` and a `+1`, the checker's
+binop table answers both for a concrete width, and no bound a
+generic T could carry names "the value after this one": Ord orders,
+Add adds, and the one a `+1` needs is neither's shape. With cmp
+borrowing, the `<` side was a bound away -- and the bound the step
+needed was a trait of its own.
+
+`Step` is that trait, std/ops/step.ce its own file: one method,
+`fn advance(self: *mut Self) -> Self`, the value it stood on handed
+out and the cursor moved on, one call. The receiver is a borrow
+twice over in reason: the step is a write to a place, and the value
+has to come out of that same place -- no copy-out-then-step window,
+no Copy asked of the type (the issue's own words, and the reason
+the row says `impl<T: Ord + Step>` with no Copy beside them). The
+nine widths are nine one-line rows, the Add file's precedent; the
+floats stay out, Ord's own reason -- a value that does not order has
+no next one either.
+
+Range is one row now, the spec's own sketch exactly as #162 wrote
+it: the order Ord's (a borrowed read, the ends untouched), the step
+Step's, `Some(Step::advance(&mut self.start))` the whole body. The
+117 lines are 24. The ninth width asked a ninth row of Ord and Eq
+too -- usize had never come to them, the binop table answering a
+plain compare, and the range's own idiom (`for i in 0..s.len()`)
+rides usize -- so both files carry the width now (282's own door,
+which the generic row first closed).
+
+And the sugar followed: `a..b` stops requiring integers. The
+Nrange arm asks what it always said second -- the ends one type --
+and whether the type iterates is the for's own word, the impl
+table's, `iterating Range<Tick> takes an IntoIter` the diagnostic
+that already lived there. The cost, stated plainly: a mistaken
+`"a"..3` fails one line later, naming the missing impl instead of
+the bad end -- Rust's own trade, made for the same sugar working
+over any type that answers Ord and Step. The emitter followed the
+checker: the range's two ends used to store as scalars, and a
+user's ends are aggregates -- slotput's own word now, the blit an
+aggregate takes (302 pins the moved refusal; the library's own rows
+carry the interval's shape -- three rounds, none, a user's Tick on
+the same row).
+
+674 green (302 with them), the library's 30.
