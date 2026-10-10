@@ -37,7 +37,8 @@ mkdropcall(Ast *place, Type *ty, Ast *at)
 {
   Sym    *imp;
   Type  **tys;
-  Member *m = implfind(sym_drop, ty, "drop", &imp, &tys);
+  Val   **cvs;
+  Member *m = implfind(sym_drop, ty, "drop", &imp, &tys, &cvs);
   Ast    *f, *c;
 
   if (!m)
@@ -56,7 +57,15 @@ mkdropcall(Ast *place, Type *ty, Ast *at)
   c->v.call.args = vnew(Ast *, 1);
   opvpush(&c->v.call.args, place);
   c->v.call.sym = m->sym;
-  c->v.call.tys = tys && imp->ngparams ? tys : 0;
+  {
+    Ast **pmg = m->decl->v.fn.gparams;
+    usize nmg = pmg ? vlen(pmg) : 0; /* the method's own angle brackets
+                                      * behind the row's -- the emitter
+                                      * reads the concatenated list (08) */
+
+    c->v.call.tys = insttys(imp, tys, pmg, 0, nmg);
+    c->v.call.gcvals = instcvals(imp, cvs, nmg);
+  }
   c->ty = tyunit();
   return c;
 }

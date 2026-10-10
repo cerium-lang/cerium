@@ -97,7 +97,7 @@ Type *projopen(Type *t, Ast *at);
 /* flow.c's impl table walk: the impl of a trait for a type, the
  * question a handle's construction asks (06-dispatch.md). The
  * emitter asks it again, printing the vtable */
-Sym *implfor(Sym *trait, Type *t, Type ***tysp);
+Sym *implfor(Sym *trait, Type *t, Type ***tysp, Val ***cvp);
 
 /* resolve.c's pattern order, shared by flow.c's call-site picks:
  * does every type matching a also match b? The same order that

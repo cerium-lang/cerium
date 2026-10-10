@@ -128,24 +128,32 @@ struct Implcand
   Sym    *imp; /* the row's impl */
   Member *m;   /* its member the call names */
   Type  **tys; /* the receiver's binding of the impl's variables */
+  Val   **cvs; /* the const lengths' numbers, the same binding's own
+                * (08-reflection.md) */
 };
 
 /* inherent impl members: *imp receives the supplying impl, for the
  * caller's genericity gate */
 Member *inherentfind(Sym *s, const char *name, Sym **imp);
-Member *inherentfindt(Type *t, const char *name, Sym **imp, Type ***tysp);
-Member *implfind(Sym *trait, Type *t, const char *name, Sym **imp, Type ***tysp);
+Member *inherentfindt(Type *t, const char *name, Sym **imp, Type ***tysp, Val ***cvp);
+Member *implfind(Sym *trait, Type *t, const char *name, Sym **imp, Type ***tysp, Val ***cvp);
 usize   implcands(Sym *trait, Type *t, const char *name, Implcand *cs, usize cap);
 usize   traitcands(Type *t, const char *name, Implcand *cs, usize cap);
-Sym    *implfor(Sym *trait, Type *t, Type ***tysp);
-int     implsatisfies(Sym *trait, Type *t, Type **targs, usize ntargs, Ast **pins, Type **ptys,
-                      usize npins);
-int     boundsatisfies(Ast *b, Type *t, Ast **gps, Type **tys, usize n, Type ***ta, Ast **ig,
-                       Type **itys, usize ni);
-int     boundsok(Sym *im, Type **tys); /* the impl's own bounds, every
-                                        * slot landed: the trial's ask
-                                        * once the arguments bound the
-                                        * rest (07-operators.md) */
+Sym    *implfor(Sym *trait, Type *t, Type ***tysp, Val ***cvp);
+
+/* the instance rows a call writes back: the impl's bindings -- from
+ * the receiver -- with the member's own behind it, matching the
+ * method Sym's concatenated list (04-generics.md, 08-reflection.md) */
+Type **insttys(Sym *imp, Type **tys, Ast **mg, Type **mtys, usize nm);
+Val  **instcvals(Sym *imp, Val **cvs, usize nm);
+int    implsatisfies(Sym *trait, Type *t, Type **targs, usize ntargs, Ast **pins, Type **ptys,
+                     usize npins);
+int    boundsatisfies(Ast *b, Type *t, Ast **gps, Type **tys, usize n, Type ***ta, Ast **ig,
+                      Type **itys, usize ni);
+int    boundsok(Sym *im, Type **tys); /* the impl's own bounds, every
+                                       * slot landed: the trial's ask
+                                       * once the arguments bound the
+                                       * rest (07-operators.md) */
 
 /* the walk itself (body.c). The spelled surface and the match route
  * back into these: a builtin's or an operator's operand is a walk

@@ -1153,17 +1153,6 @@ resolveimpl(Sym *s)
 {
   Ast *it = s->decl;
   Env  env = envgparams(0, it->v.impl.gparams, vlen(it->v.impl.gparams));
-  { /* the impl's own angle brackets: a const length among them wants
-     * its [N]T routed through the table, and that routing arrives
-     * with a later milestone (08-reflection.md) */
-    Ast **gps = it->v.impl.gparams;
-    usize ng = vlen(gps), g;
-
-    for (g = 0; g < ng; g++)
-      if (gps[g]->v.gp.cnst)
-        cerrat(gps[g], "a const generic parameter on an impl arrives with a later milestone "
-                       "(08-reflection.md)");
-  }
 
   if (it->v.impl.fort) {                   /* a trait impl: the path names the trait */
     s->ifort = rty(it->v.impl.fort, &env); /* Self, for the defaults */
@@ -2676,7 +2665,7 @@ checktestslate(Ns *ns)
     usecur(s->ownsf->uses);
     lexsetpath(s->ownsf->path);
     rt = fnsigof(s)->t;
-    if (rt->k == Tyenum && rt->sym == sym_result && !implfor(sym_fmt, rt->args[1], 0))
+    if (rt->k == Tyenum && rt->sym == sym_result && !implfor(sym_fmt, rt->args[1], 0, 0))
       cerrat(s->decl, "the error type does not implement Fmt -- the Err half"
                       " prints through it (13-testing.md)");
     if (attrfind(s->decl->attrs, "extern"))
@@ -2991,7 +2980,7 @@ checkproject(Srcfile **files, usize nfiles)
       if (attrfind(m->decl->attrs, "extern"))
         cerrat(m->decl, "#[extern(C)] is for the fns that cross to C; main's door the "
                         "compiler arranges (12-projects.md)");
-      if (rt->k == Tyenum && rt->sym == sym_result && !implfor(sym_fmt, rt->args[1], 0))
+      if (rt->k == Tyenum && rt->sym == sym_result && !implfor(sym_fmt, rt->args[1], 0, 0))
         cerrat(m->decl, "the error type does not implement Fmt -- the Err half prints through"
                         " it (12-projects.md)");
     }

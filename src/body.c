@@ -550,6 +550,7 @@ projopen(Type *t, Ast *at)
   while (t && t->k == Typroj && t->t && t->t->k != Typaram) {
     Sym    *imp;
     Type  **tys;
+    Val   **gcvs;
     Member *m;
 
     if (t->t->k == Tyfn && t->sym == sym_fn) { /* a fn pointer's own
@@ -561,11 +562,11 @@ projopen(Type *t, Ast *at)
       t = t->t->t;
       continue;
     }
-    m = implfind(t->sym, t->t, t->name, &imp, &tys);
+    m = implfind(t->sym, t->t, t->name, &imp, &tys, &gcvs);
 
     if (!m || m->kind != Mtype)
       berr(at, "no '%s' for %s", t->sym->name, btys(t->t));
-    t = tys ? gsubst(m->val, imp->gparams, tys, imp->ngparams) : m->val;
+    t = tys ? gsubstv(m->val, imp->gparams, tys, gcvs, imp->ngparams) : m->val;
   }
   if (!t)
     return t;
@@ -912,7 +913,7 @@ rowbounds(Sym *imp, Type **tys, Ast *at)
 /* the instance the call writes back: the impl's binding -- from the
  * receiver -- with the member's own behind it, matching the method
  * Sym's concatenated list (04-generics.md). */
-static Type **
+Type **
 insttys(Sym *imp, Type **tys, Ast **mg, Type **mtys, usize nm)
 {
   usize  ni = imp ? imp->ngparams : 0;
@@ -928,6 +929,28 @@ insttys(Sym *imp, Type **tys, Ast **mg, Type **mtys, usize nm)
     c[ni + z] = mtys ? mtys[z] : typaram(mg[z]); /* an unbound slot
                                                   * cannot happen --
                                                   * memberdone spoke */
+  return c;
+}
+
+/* the const half of the instance the call writes back: the impl's
+ * numbers -- from the receiver -- with the member's own behind it,
+ * zeros where a method's own angle brackets have none to spell (a
+ * const generic on a method rides a later milestone). The rows line
+ * up with insttys', the method Sym's concatenated list (04, 08). */
+Val **
+instcvals(Sym *imp, Val **cvs, usize nm)
+{
+  usize ni = imp ? imp->ngparams : 0;
+  Val **c;
+  usize i;
+
+  if (!ni && !nm)
+    return 0; /* no row at all: nothing to key on */
+  c = arenaalloc((ni + nm) * sizeof *c);
+  for (i = 0; i < ni; i++)
+    c[i] = cvs ? cvs[i] : 0;
+  for (; i < ni + nm; i++)
+    c[i] = 0;
   return c;
 }
 
@@ -2181,7 +2204,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                                        * none -- dyn A (06) carries
                                        * that, when it arrives */
             berr(e, "'%s::%s' names one impl per receiver; call it", s->name, nm1);
-          berr(e, "unknown name '%s'", nm0);
+          berr(e, "unknown name B '%s'", nm0);
         }
         if (s->tykind == TYenum) {
           struct Variant *v = varfind(s, nm1);
@@ -2200,6 +2223,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
           Ast   **gas = segs[0]->v.seg.args; /* the path's own <...>:
                                               * the instance it names */
           Type **tys = 0;
+          Val  **cvs = 0;
 
           if (vlen(gas)) { /* the args name a receiver: the impls
                             * fitted against it, the most specific
@@ -2230,7 +2254,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
               }
             recv = tysym(s, tys, k);
             { /* the pick: the receiver's own, most specific first */
-              Member *bm = inherentfindt(recv, nm1, &imp, &tys);
+              Member *bm = inherentfindt(recv, nm1, &imp, &tys, &cvs);
 
               if (!bm)
                 berr(e, "no '%s' of '%s' fits %s", nm1, s->name, btys(recv));
@@ -2251,8 +2275,8 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
             return m->ty;
           }
           if (m->kind == Mconst) {
-            Type *ct =
-                imp && imp->ngparams ? gsubst(m->ty, imp->gparams, tys, imp->ngparams) : m->ty;
+            Type *ct = imp && imp->ngparams ? gsubstv(m->ty, imp->gparams, tys, cvs, imp->ngparams)
+                                            : m->ty;
 
             if (m->decl && (ct->k == Tybool || (ct->k == Tyint && ct->num != IN_F32 &&
                                                 ct->num != IN_F64))) { /* the value
@@ -2460,7 +2484,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
         berr(e, "the trait a handle is made for comes from its expected type (06-dispatch.md)");
       { /* the impl the vtable carries, chosen here -- the whole
          * point of dyn: the choice travels (06-dispatch.md) */
-        Sym *im = implfor(w->sym, t, 0);
+        Sym *im = implfor(w->sym, t, 0, 0);
 
         if (!im && t->k == Tyfn && w->sym == sym_fn) { /* the fn
                                                         * pointer's own row, the compiler's
@@ -3046,7 +3070,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
             return mkvariant(owner, varfind(owner, nm), e, args, n, fe, want);
         }
         if (!s)
-          berr(e, "unknown name '%s'", nm);
+          berr(e, "unknown name C '%s'", nm);
         if (k && !s->pub) /* a qualified call crosses namespaces: a
                            * private item stays its own namespace's
                            * (11-namespaces.md) */
@@ -3225,6 +3249,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
               trial:
                 for (ci = 0; ci < nc; ci++) {
                   Type **rtys; /* the row's binding, worked on a copy */
+                  Val  **rcv;  /* the const lengths' half of it (08) */
                   int    part = 0;
 
                   im = cs[ci].m;
@@ -3235,15 +3260,23 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
 
                     rtys = tyargs(imp->ngparams);
                     memcpy(rtys, tys, imp->ngparams * sizeof *tys);
+                    rcv = arenaalloc(imp->ngparams * sizeof *rcv);
+                    if (cs[ci].cvs)
+                      memcpy(rcv, cs[ci].cvs, imp->ngparams * sizeof *rcv);
+                    else
+                      memset(rcv, 0, imp->ngparams * sizeof *rcv);
                     for (g = 0; g < imp->ngparams; g++)
-                      if (!rtys[g])
+                      if (!rtys[g] && !rcv[g])
                         part = 1;
-                  } else
+                  } else {
                     rtys = 0;
+                    rcv = 0;
+                  }
                   /* a partial binding keeps the row's own words: the
                    * variables stand, the arguments land them below */
                   t = part ? im->ty
-                           : (rtys ? gsubst(im->ty, imp->gparams, rtys, imp->ngparams) : im->ty);
+                           : (rtys ? gsubstv(im->ty, imp->gparams, rtys, rcv, imp->ngparams)
+                                   : im->ty);
                   mg = membergps(im, &nmg);
                   if (nmg) {
                     mtys = tyargs(nmg);
@@ -3286,7 +3319,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                     usize g;
 
                     for (g = 0; g < imp->ngparams; g++)
-                      if (!rtys[g]) {
+                      if (!rtys[g] && !rcv[g]) {
                         if (soft) {
                           ok = 0;
                           break;
@@ -3310,13 +3343,14 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                   e->v.call.sym = im->sym; /* the row's member: the body that runs */
                   thawargs(svs, n);        /* the call is done; its borrows ended with it */
                   e->v.call.tys = insttys(imp, rtys, mg, mtys, nmg);
+                  e->v.call.gcvals = instcvals(imp, rcv, nmg);
                   /* the answer under both landings -- the row's own
                    * slots first (a no-op where the receiver landed
                    * them whole), the member's own after. A local
                    * walk: the signature the row shares with every
                    * other call must not hear it */
                   {
-                    Type *rt = gsubst(t->t, imp->gparams, rtys, imp->ngparams);
+                    Type *rt = gsubstv(t->t, imp->gparams, rtys, rcv, imp->ngparams);
 
                     return projopen(nmg ? gsubst(rt, mg, mtys, nmg) : rt, e);
                   }
@@ -3332,7 +3366,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
           }
         }
         if (!s || s->kind != Stype)
-          berr(e, "unknown name '%s'", nm0);
+          berr(e, "unknown name D '%s'", nm0);
         if (s->tykind == TYenum) {
           struct Variant *v = varfind(s, nm1);
 
@@ -3493,10 +3527,11 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
          * parameters from the receiver's type, the same walk a
          * struct literal runs (04-generics.md) */
         Type **tys = 0;
+        Val  **cvs = 0;
         int    declared = 0; /* a bound's signature, inside a generic fn */
         Ast   *hitb = 0;     /* the bound that named the trait */
 
-        m = inherentfindt(ty, f->v.fld.name, &imp, &tys);
+        m = inherentfindt(ty, f->v.fld.name, &imp, &tys, &cvs);
         if (!m && ty->k == Typaram) {
           /* a generic fn's parameter: no impl resolves here -- the
            * bound names the trait, the declaration's signature
@@ -3555,6 +3590,7 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
         row:
           for (zi = 0; zi < nc; zi++) {
             Type **rtys; /* the row's binding, worked on a copy */
+            Val  **rcv;  /* the const lengths' half of it (08) */
             int    part = 0;
 
             m = cs[zi].m;
@@ -3565,15 +3601,23 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
 
               rtys = tyargs(imp->ngparams);
               memcpy(rtys, tys, imp->ngparams * sizeof *tys);
+              rcv = arenaalloc(imp->ngparams * sizeof *rcv);
+              if (cs[zi].cvs)
+                memcpy(rcv, cs[zi].cvs, imp->ngparams * sizeof *rcv);
+              else
+                memset(rcv, 0, imp->ngparams * sizeof *rcv);
               for (g = 0; g < imp->ngparams; g++)
-                if (!rtys[g])
+                if (!rtys[g] && !rcv[g])
                   part = 1;
-            } else
+            } else {
               rtys = 0;
+              rcv = 0;
+            }
             /* a partial binding keeps the row's own words: the
              * variables stand, the arguments land them
              * (07-operators.md) */
-            t = part ? m->ty : (rtys ? gsubst(m->ty, imp->gparams, rtys, imp->ngparams) : m->ty);
+            t = part ? m->ty
+                     : (rtys ? gsubstv(m->ty, imp->gparams, rtys, rcv, imp->ngparams) : m->ty);
             mg = membergps(m, &nmg);
             if (nmg) {
               mtys = tyargs(nmg);
@@ -3646,10 +3690,11 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                   return mt;
               }
               e->v.call.tys = insttys(imp, rtys, mg, mtys, nmg);
+              e->v.call.gcvals = instcvals(imp, rcv, nmg);
               /* the answer under both landings -- a local walk, the
                * row's shared signature left as it stood */
               {
-                Type *rt = gsubst(t->t, imp->gparams, rtys, imp->ngparams);
+                Type *rt = gsubstv(t->t, imp->gparams, rtys, rcv, imp->ngparams);
 
                 return projopen(nmg ? gsubst(rt, mg, mtys, nmg) : rt, e);
               }
@@ -3684,11 +3729,20 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
         } else {
           t = m->ty;
           if (tys) /* a pattern impl's method: Self and the pattern's
-                    * variables, under the receiver's binding */
-            t = gsubst(t, imp->gparams, tys, imp->ngparams);
+                    * variables, under the receiver's binding -- the
+                    * const lengths' numbers with them (08) */
+            t = gsubstv(t, imp->gparams, tys, cvs, imp->ngparams);
           e->v.call.sym = m->sym; /* the method's own fn: the emitter's pick */
           e->v.call.tys = tys;    /* the impl's binding; the member's
                                    * own joins it after the walk below */
+          {                       /* the const slots' numbers, padded to the method Sym's
+                                   * own concatenated row: the materialisation's re-entry
+                                   * may leave this half-written state standing, and the
+                                   * emitter reads the whole row (08-reflection.md) */
+            Ast **pmg = m->decl->v.fn.gparams;
+
+            e->v.call.gcvals = instcvals(imp, cvs, vlen(pmg));
+          }
         }
         { /* a shared pointer self over a receiver that names no
            * place -- a literal, a call's answer: the value
@@ -3739,8 +3793,10 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
           }
           memberdone(f, mg, mtys, nmg, f->v.fld.name, 0, imp ? imp->gparams : 0, imp ? tys : 0,
                      imp ? imp->ngparams : 0);
-          if (!declared)
+          if (!declared) {
             e->v.call.tys = insttys(imp, tys, mg, mtys, nmg);
+            e->v.call.gcvals = instcvals(imp, cvs, nmg);
+          }
           return projopen(nmg ? gsubst(t->t, mg, mtys, nmg) : t->t, e);
         }
       }
@@ -5141,7 +5197,8 @@ rstmt(Ast *st, Fenv *fe)
               * a copy the source keeps whole (10) */
         Sym    *iimp, *timp;
         Type  **tys, **ttys;
-        Member *im = implfind(sym_intoiter, et, "into_iter", &iimp, &tys);
+        Val   **icvs = 0, **tcvs = 0;
+        Member *im = implfind(sym_intoiter, et, "into_iter", &iimp, &tys, &icvs);
         Member *tm;
         Type   *sig, *it, *ret, *nt;
         Ast    *place, *recv, *borrow, *f, *c;
@@ -5155,15 +5212,15 @@ rstmt(Ast *st, Fenv *fe)
                et->gp->v.gp.name);
         if (!im)
           berr(st->v.forx.b, "iterating %s takes an IntoIter (10-iteration.md)", btys(et));
-        sig = iimp->ngparams ? gsubst(im->ty, iimp->gparams, tys, iimp->ngparams) : im->ty;
+        sig = iimp->ngparams ? gsubstv(im->ty, iimp->gparams, tys, icvs, iimp->ngparams) : im->ty;
         it = projopen(sig->t, st->v.forx.b); /* a row may answer in a
                                               * projection of its own (04) */
         if (!it)
           berr(st->v.forx.b, "the IntoIter for %s names no iterator (10-iteration.md)", btys(et));
-        tm = implfind(sym_iter, it, "next", &timp, &ttys);
+        tm = implfind(sym_iter, it, "next", &timp, &ttys, &tcvs);
         if (!tm)
           berr(st->v.forx.b, "the iterator %s is no Iter (10-iteration.md)", btys(it));
-        sig = timp->ngparams ? gsubst(tm->ty, timp->gparams, ttys, timp->ngparams) : tm->ty;
+        sig = timp->ngparams ? gsubstv(tm->ty, timp->gparams, ttys, tcvs, timp->ngparams) : tm->ty;
         ret = projopen(sig->t, st->v.forx.b);
         if (!ret || ret->k != Tyenum || ret->sym != sym_option)
           berr(st->v.forx.b, "'next' for %s must answer ?Item, not %s (10-iteration.md)", btys(it),
@@ -5194,7 +5251,19 @@ rstmt(Ast *st, Fenv *fe)
         c->v.call.args = vnew(Ast *, 1);
         opvpush(&c->v.call.args, st->v.forx.b);
         c->v.call.sym = im->sym;
-        c->v.call.tys = iimp->ngparams ? tys : 0;
+        {
+          Ast **pmg = im->decl->v.fn.gparams;
+          usize nmg = pmg ? vlen(pmg) : 0; /* the method's own angle
+                                            * brackets beside the row's
+                                            * -- the emitter reads the
+                                            * concatenated list (08) */
+
+          c->v.call.tys = insttys(iimp, tys, pmg, 0, nmg);
+          c->v.call.gcvals = instcvals(iimp, icvs, nmg); /* the const
+                                                          * slots' numbers,
+                                                          * the binding's
+                                                          * own (08) */
+        }
         c->ty = it;
         st->v.forx.via = c;
 
@@ -5373,7 +5442,8 @@ rstmt(Ast *st, Fenv *fe)
  * it right after, before any other instantiation re-checks the same
  * shared tree. */
 static void
-runbody(Ast *it, Env env, Type **argtys, Type *ret, Val **cvals, Ast **gparams, Val **gcvals)
+runbody(Ast *it, Env env, Type **argtys, Type *ret, Val **cvals, Ast **gparams, usize ngp,
+        Val **gcvals)
 {
   Fenv  fe;
   Ast **ps = it->v.fn.params;
@@ -5409,8 +5479,10 @@ runbody(Ast *it, Env env, Type **argtys, Type *ret, Val **cvals, Ast **gparams, 
                   * frame serves the places a value is asked of them
                   * -- the declaration's walk holds them empty, and
                   * the instance's hands them their numbers
-                  * (08-reflection.md) */
-    usize ng = vlen(gparams);
+                  * (08-reflection.md). The count comes along: a
+                  * method's Sym carries a concatenated row the
+                  * vector header does not describe (04-generics.md) */
+    usize ng = ngp;
 
     for (i = 0; i < ng; i++)
       if (gparams[i]->v.gp.cnst) {
@@ -5464,7 +5536,7 @@ checkbodyfn(Sym *s, Ast *it)
 {
   bodyfn = s;
   runbody(it, envgparams(0, it->v.fn.gparams, vlen(it->v.fn.gparams)), s->fnty->args, s->fnty->t, 0,
-          it->v.fn.gparams, 0);
+          it->v.fn.gparams, vlen(it->v.fn.gparams), 0);
 }
 
 /* one generic fn, one concrete binding: the parameters carry the
@@ -5505,7 +5577,7 @@ recheckfn(Sym *s, Ast *it, Type **tys, Val **cvals, Val **gcvals)
     ats[i] = projopen(gsubstv(s->fnty->args[i], s->gparams, tys, gcvals, ng), it);
   bodyfn = s;
   runbody(it, env, ats, projopen(gsubstv(s->fnty->t, s->gparams, tys, gcvals, ng), it), cvals,
-          s->gparams, gcvals);
+          s->gparams, ng, gcvals);
 }
 
 /* one impl's member fns: the same env resolveimplmembers built --
@@ -5550,6 +5622,19 @@ checkbodyimpl(Sym *s, Ast *it)
       memset(&fe, 0, sizeof fe);
       fe.env = e2;
       fe.fnret = fnty->t;
+      { /* the impl's own const generic parameters: the declaration's
+         * walk holds them empty -- every compile-time read the box,
+         * the instance's re-check answering with the number
+         * (08-reflection.md), exactly as a generic fn's own do */
+        Ast **igps = it->v.impl.gparams;
+        usize gi, ing = vlen(igps);
+
+        for (gi = 0; gi < ing; gi++)
+          if (igps[gi]->v.gp.cnst) {
+            locpush(&fe, igps[gi]->v.gp.name, tyint(IN_USIZE), 0);
+            locfind(&fe, igps[gi]->v.gp.name)->isconst = 1;
+          }
+      }
       for (j = 0; j < np; j++)
         locpush(&fe, ps[j]->v.param.name, fnty->args[j], ps[j]->v.param.mut);
       if (fnty->t->k == Tyslice && localview(ms[i]->v.fn.body->v.blk.tail, &fe))

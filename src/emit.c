@@ -891,8 +891,13 @@ tymang2(Type *t, char *buf, usize o, usize n)
     buf[o++] = 's';
     return tymang2(t->t, buf, o, n);
   case Tyarray:
-    if (t->gp)
-      die("a const generic length has no code: the binding spells the number (08-reflection.md)");
+    if (t->gp) { /* [N]T as declared -- the pattern's own length, a
+                  * const parameter's: the family's name carries the
+                  * box, and the instance's own name tells the number
+                  * apart in its const slots' section (08-reflection.md) */
+      buf[o++] = 'q';
+      return tymang2(t->t && t->t->k == Tymut ? t->t->t : t->t, buf, o, n);
+    }
     buf[o++] = t->t && t->t->k == Tymut ? 'A' : 'a';
     o = segnum(buf, o, n, t->n);
     return tymang2(t->t && t->t->k == Tymut ? t->t->t : t->t, buf, o, n);
@@ -2737,14 +2742,15 @@ emaexpr(Em *em, Ast *e)
             cerrat(f, "this method call was never checked");
           ft = ms->fnty;
           if (e->v.call.tys)
-            ft = gsubst(ft, ms->gparams, e->v.call.tys, ms->ngparams);
+            ft = gsubstv(ft, ms->gparams, e->v.call.tys, e->v.call.gcvals, ms->ngparams);
           selfty = ft->nargs ? ft->args[0] : 0;
           if (selfty && selfty->k == Typtr && !(rty && rty->k == Typtr && tysame(rty, selfty)))
             ra = emaplace(em, f->v.fld.e); /* a pointer self: &place */
           else
             ra = emaexpr(em, f->v.fld.e); /* as written: the pointer, or the move */
           ra = nicheout(em, selfty, ra);
-          nm = e->v.call.tys ? instensure(ms, e->v.call.tys, 0, 0)->name : fsymname(ms, ms->decl);
+          nm = e->v.call.tys ? instensure(ms, e->v.call.tys, 0, e->v.call.gcvals)->name
+                             : fsymname(ms, ms->decl);
         }
       } else if (f->k == Npath && ms) {
         Ast **fsegs = f->v.path.segs;
@@ -2756,7 +2762,8 @@ emaexpr(Em *em, Ast *e)
                                                                 * namespaces
                                                                 * walked
                                                                 * (11) */
-          nm = e->v.call.tys ? instensure(ms, e->v.call.tys, 0, 0)->name : fsymname(ms, ms->decl);
+          nm = e->v.call.tys ? instensure(ms, e->v.call.tys, 0, e->v.call.gcvals)->name
+                             : fsymname(ms, ms->decl);
       }
     }
     for (i = 0; i < n; i++) {
