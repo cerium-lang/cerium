@@ -1,14 +1,14 @@
-/* the borrowed rows (07-operators.md): `&a + &b` asks the same Add
- * of the pointers, the std's one generic row reading the Copy out
- * of both and handing it on -- where another language writes a
- * macro over its matrix (14-macros.md), Cerium writes this. The
- * comparisons borrow the same way: Eq deciding, Ord ordering. */
-use std::ops::{Add, Eq, Ord, Ordering, Copy}; /* Copy: the borrowed
-                                               * rows hand the value
-                                               * on, and a type that
-                                               * is not Copy borrows
-                                               * no row -- the opt-in
-                                               * the use itself is
+/* the borrowed arithmetic row (07-operators.md): `&a + &b` asks
+ * the same Add of the pointers, the std's one generic row reading
+ * the Copy out of both and handing it on -- where another
+ * language writes a macro over its matrix (14-macros.md),
+ * Cerium writes this. The comparisons need no row beside them:
+ * eq and cmp borrow the places themselves, a read the value's
+ * own place answers. */
+use std::ops::{Add, Eq, Ord, Ordering, Copy}; /* Copy: the Add row
+                                               * hands the value on
+                                               * -- the opt-in the
+                                               * use itself is
                                                * (03-move.md) */
 struct V { x: i32 }
 
@@ -18,10 +18,10 @@ impl Add for V {
   fn add(self: V, other: V) -> V { V{ x: self.x + other.x } }
 }
 impl Eq for V {
-  fn eq(self: V, other: V) -> bool { self.x == other.x }
+  fn eq(self: *Self, other: *Self) -> bool { self.x == other.x }
 }
 impl Ord for V {
-  fn cmp(self: V, other: V) -> Ordering {
+  fn cmp(self: *Self, other: *Self) -> Ordering {
     if self.x < other.x { Ordering::Less }
     else if self.x > other.x { Ordering::Greater }
     else { Ordering::Equal }
@@ -35,7 +35,7 @@ fn main() -> i32 {
   let w = V{ x: 20 };
   let p = &u + &w; /* a user's type through the same row: Copy by
                     * structure, its field a Copy */
-  let e = @cast<i32>(&u == &w); /* Eq's borrowed row decides */
-  let o = @cast<i32>(&u < &w); /* Ord's borrowed row orders */
+  let e = @cast<i32>(u == w); /* eq decides, nothing moved */
+  let o = @cast<i32>(u < w); /* cmp orders, nothing moved */
   s + p.x + e + o
 }

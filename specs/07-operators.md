@@ -75,9 +75,16 @@ where its type is not Copy, the right one a value the parameter's own slot
 takes whole. Nothing is borrowed on the way in — an operator is sugar for a
 call, and the call's own signature says what moves.
 
-A borrowed pair is the caller's to spell, and it is an impl of the operator's
-trait over the pointer. The std writes one generic row per operator, and the
-row names the projection its answer rides on:
+A comparison is a read, not a consumption: `a < b` is
+`Ord::cmp(&a, &b)` and `a == b` is `Eq::eq(&a, &b)`, both operands entering as
+borrows — the value compared where it stands, nothing moved, and a `max` over
+`T: Ord` needs no `Copy`. `cmp` and `eq` take `*Self` receivers; a comparison
+through a pointer is the deref the caller spells (`*p < *q`), not a row of the
+pointer's own.
+
+A borrowed pair is the arithmetic's to spell, and it is an impl of the
+operator's trait over the pointer. The std writes one generic row per
+arithmetic operator, and the row names the projection its answer rides on:
 
 ```rust
 impl<T: Add + Copy> Add for *T {   // &a + &b, the row the pointers carry

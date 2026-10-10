@@ -1,8 +1,8 @@
 /* std::ops::Ord -- the four orderings are one method read against
  * Ordering's ends: `a < b` is cmp == Ordering::Less, `a >= b` is
  * cmp != Ordering::Less, the operator's sugar (07-operators.md):
- * both operands enter by value, the left one moving where its
- * type is not Copy. Ordering lives here, the answer's own type;
+ * both operands enter as borrows, a read the value's own place
+ * answers, nothing moved. Ordering lives here, the answer's own type;
  * a comparison decides, it does not produce, so no Output
  * (07-operators.md). The built-in rows the spec promises are
  * spelled here as source: a plain `n < m` never comes to them,
@@ -12,8 +12,7 @@
  * comparing bools. The floats stay out: a NaN orders against
  * nothing, itself included, so the law Ord assumes does not
  * hold over them, the calls refused, the operators answering as
- * the language always did. The borrowed rows below name Copy: the marker beside them in
- * std::ops now, a bare name away (12-projects.md). */
+ * the language always did. */
 
 pub enum Ordering {
   Less,
@@ -23,71 +22,59 @@ pub enum Ordering {
 
 
 pub trait Ord {
-  fn cmp(self: Self, other: Self) -> Ordering;
+  fn cmp(self: *Self, other: *Self) -> Ordering;
 }
 
 impl Ord for i8 {
-  fn cmp(self: Self, other: Self) -> Ordering {
-    if self < other { Ordering::Less } else if self > other { Ordering::Greater } else { Ordering::Equal }
+  fn cmp(self: *Self, other: *Self) -> Ordering {
+    if *self < *other { Ordering::Less } else if *self > *other { Ordering::Greater } else { Ordering::Equal }
   }
 }
 
 impl Ord for i16 {
-  fn cmp(self: Self, other: Self) -> Ordering {
-    if self < other { Ordering::Less } else if self > other { Ordering::Greater } else { Ordering::Equal }
+  fn cmp(self: *Self, other: *Self) -> Ordering {
+    if *self < *other { Ordering::Less } else if *self > *other { Ordering::Greater } else { Ordering::Equal }
   }
 }
 
 impl Ord for i32 {
-  fn cmp(self: Self, other: Self) -> Ordering {
-    if self < other { Ordering::Less } else if self > other { Ordering::Greater } else { Ordering::Equal }
+  fn cmp(self: *Self, other: *Self) -> Ordering {
+    if *self < *other { Ordering::Less } else if *self > *other { Ordering::Greater } else { Ordering::Equal }
   }
 }
 
 impl Ord for i64 {
-  fn cmp(self: Self, other: Self) -> Ordering {
-    if self < other { Ordering::Less } else if self > other { Ordering::Greater } else { Ordering::Equal }
+  fn cmp(self: *Self, other: *Self) -> Ordering {
+    if *self < *other { Ordering::Less } else if *self > *other { Ordering::Greater } else { Ordering::Equal }
   }
 }
 
 impl Ord for u8 {
-  fn cmp(self: Self, other: Self) -> Ordering {
-    if self < other { Ordering::Less } else if self > other { Ordering::Greater } else { Ordering::Equal }
+  fn cmp(self: *Self, other: *Self) -> Ordering {
+    if *self < *other { Ordering::Less } else if *self > *other { Ordering::Greater } else { Ordering::Equal }
   }
 }
 
 impl Ord for u16 {
-  fn cmp(self: Self, other: Self) -> Ordering {
-    if self < other { Ordering::Less } else if self > other { Ordering::Greater } else { Ordering::Equal }
+  fn cmp(self: *Self, other: *Self) -> Ordering {
+    if *self < *other { Ordering::Less } else if *self > *other { Ordering::Greater } else { Ordering::Equal }
   }
 }
 
 impl Ord for u32 {
-  fn cmp(self: Self, other: Self) -> Ordering {
-    if self < other { Ordering::Less } else if self > other { Ordering::Greater } else { Ordering::Equal }
+  fn cmp(self: *Self, other: *Self) -> Ordering {
+    if *self < *other { Ordering::Less } else if *self > *other { Ordering::Greater } else { Ordering::Equal }
   }
 }
 
 impl Ord for u64 {
-  fn cmp(self: Self, other: Self) -> Ordering {
-    if self < other { Ordering::Less } else if self > other { Ordering::Greater } else { Ordering::Equal }
+  fn cmp(self: *Self, other: *Self) -> Ordering {
+    if *self < *other { Ordering::Less } else if *self > *other { Ordering::Greater } else { Ordering::Equal }
   }
 }
 
 impl Ord for bool {
-  fn cmp(self: Self, other: Self) -> Ordering {
-    if self == other { Ordering::Equal } else if !self { Ordering::Less } else { Ordering::Greater }
+  fn cmp(self: *Self, other: *Self) -> Ordering {
+    if *self == *other { Ordering::Equal } else if !*self { Ordering::Less } else { Ordering::Greater }
   }
-}
-
-/* the borrowed rows: `&a < &b` asks the same Ord of the pointers,
- * the Copy reads out of both and handed on. One generic row
- * covers every Copy element -- where another language writes a
- * macro over its matrix (14-macros.md), Cerium writes this. A
- * type that is not Copy borrows no row: moving out of a shared
- * borrow is not a thing to write, its own impl spells its fields
- * (07-operators.md). */
-
-impl<T: Ord + Copy> Ord for *T {
-  fn cmp(self: *T, other: *T) -> Ordering { Ord::cmp(*self, *other) }
 }

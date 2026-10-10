@@ -520,12 +520,12 @@ opbarelocal(Ast *e)
  * against the end it names -- `a < b` is cmp == Ordering::Less, `a
  * >= b` is cmp != Ordering::Less -- the variants read as themselves,
  * no discriminant spelled anywhere. The operands enter as
- * themselves: by value, the left one moving where its type is not
- * Copy, the right one a value the parameter's own slot takes
- * whole. The node is rewritten in place, the walk re-entered
- * reads its own words. The answer says the operator had a trait
- * to spell: every operator here has one, the remainder and the
- * bitwise and the shifts among them (07-operators.md), the
+ * themselves: the arithmetic by value, the left one moving where
+ * its type is not Copy, the right one a value the parameter's own
+ * slot takes whole; the comparisons as borrows -- &l and &r, a
+ * read the value's own place answers, nothing moved. The node is rewritten in place, the walk
+ * re-entered reads its own words. The answer says the operator had a trait to spell: every operator
+ * here has one, the remainder and the bitwise and the shifts among them (07-operators.md), the
  * built-in table asked first so a scalar pair never arrives. */
 int
 optrait(Ast *e, Fenv *fe)
@@ -535,6 +535,10 @@ optrait(Ast *e, Fenv *fe)
   const char *tr = 0, *mth = 0;
   const char *is = 0, *isnot = 0;
   Ast        *top;
+  int         rd = 0; /* a comparison: the operands enter as borrows
+                       * below, for a comparison reads, it does not
+                       * consume -- the value compared where it
+                       * stands, nothing moved (07-operators.md) */
 
   switch (op) {
   case Tplus:
@@ -581,32 +585,51 @@ optrait(Ast *e, Fenv *fe)
   case Tne:
     tr = "Eq";
     mth = "eq";
+    rd = 1;
     break;
   case Tlt:
     tr = "Ord";
     mth = "cmp";
     is = "Less";
+    rd = 1;
     break;
   case Tgt:
     tr = "Ord";
     mth = "cmp";
     is = "Greater";
+    rd = 1;
     break;
   case Tle:
     tr = "Ord";
     mth = "cmp";
     isnot = "Greater";
+    rd = 1;
     break;
   case Tge:
     tr = "Ord";
     mth = "cmp";
     isnot = "Less";
+    rd = 1;
     break;
   default:
     return 0;
   }
   opunmove(l, fe);
   opunmove(r, fe);
+  if (rd) { /* the borrowed row: &l and &r, the places the operator
+             * read as values a moment ago -- the moves unwound
+             * above, the borrow the re-entered walk takes instead
+             * (07-operators.md) */
+    Ast *b = opnode(Nun, e);
+
+    b->v.un.op = Tamp;
+    b->v.un.e = l;
+    l = b;
+    b = opnode(Nun, e);
+    b->v.un.op = Tamp;
+    b->v.un.e = r;
+    r = b;
+  }
   { /* the call: std::ops::<Trait>::<method>(l, r) */
     Ast *f = oppath(tr, e);
     Ast *c = opnode(Ncall, e);
