@@ -3432,3 +3432,38 @@ question this line grew out of is answered -- latent in every
 path, and now loud where it would have been wrong.
 
 675 green (303 with them), the library's 30.
+
+## 2026-10-11 -- the four passes are names, and the spine says the protocol
+
+checkproject had grown into a 345-line orchestrator whose steps were
+comment-delimited blocks: the passes existed in the comments, not
+the code, and the order between them -- stdface between the
+declares and the reads, the pub uses before the plain ones,
+orderfns before any body picks a chain -- lived only in the
+sequence. The review asked for the layering to be visible; this is
+the answer, a pure extraction.
+
+Each pass a function of its own name now -- pass1declare,
+resolvepubuses, pass2resolve, mainshape, pass3impls, mainendings,
+pass4bodies -- and checkproject the 25-line spine that says the
+protocol at a glance. std's face-taking, 80 lines of symbol fishing
+and sysroot validation inline, moved home to prelude.c as stdface()
+(the file whose header comment already described it: "checkproject
+takes the Syms back" -- now the code matches). The two halves of
+main's contract, scattered three places, are at least two named
+halves now, each pointing at the other and at 12-projects.md where
+the contract lives whole.
+
+The context triples went with it: "enter this file's context" had
+two spellings, filectx and the hand-set nscur/usecur/lexsetpath,
+and the impl walks spelled the long one five times. One word now --
+filectx everywhere the walks re-enter a pass-2 file -- with the one
+deliberate exception named: resolvepubuses keeps the triple, for
+filectx would bind a file's plain uses on first entry, and a plain
+use may read what another file's pub use re-exports -- the pub pass
+runs first, the plain ones wait, and the comment says why.
+
+No behaviour moved: the same checks in the same order, the -T
+goldens byte-identical, 675 green the proof.
+
+675 green, the library's 30.

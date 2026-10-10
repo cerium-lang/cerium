@@ -355,4 +355,10 @@ extern Sym *sym_entry_unit, *sym_entry_i32, *sym_entry_err;
 Variant *symvarfind(Sym *s, const char *name);
 Sym     *symvariantowner(char *name);
 
+/* std's own face, taken back from the tree the declares-all pass
+ * filled and checked whole: the citizens the language reads by
+ * pointer, a sysroot without one of them a broken one (prelude.c,
+ * 12-projects.md) */
+void stdface(void);
+
 #endif

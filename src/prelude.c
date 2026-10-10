@@ -12,6 +12,8 @@
  * checker's slots ask it again and again.
  */
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "ast.h"
@@ -47,6 +49,82 @@ Sym *sym_entry_unit, *sym_entry_i32,
                      * three runs, one per ending a main has: the
                      * wrapper the compiler arranges picks the one the
                      * project's main answers (12-projects.md) */
+
+/* std's own face, taken back from the tree the declares-all pass
+ * filled (12-projects.md): the language's citizens -- Option and
+ * Result, every ?T and every E?T reading them by pointer (01, 03,
+ * 05) -- std::meta's TypeInfo, what every @typeinfo answers with
+ * (08-reflection.md), and std's panic, the door every runtime check
+ * fails into (01-types.md). The entry fns, one per ending a main
+ * has, private to std: the wrapper alone calls them, this the one
+ * door in (12-projects.md, 11-namespaces.md). The operator traits,
+ * the sugar's own (07-operators.md), and the two the compiler calls
+ * on its own -- Copy at a move, Drop at a scope's end (03) -- ride
+ * the same face: the rewrite spells the operators' paths, so those
+ * names never enter a scope, and the two ride no prelude either --
+ * a file that impls one names it. A sysroot without any of them is
+ * a broken one -- said here, whole, not at the first sugar that
+ * reaches for one */
+void
+stdface(void)
+{
+  Ns *std = nsopen("std");
+
+  sym_option = nsitem(std, "Option");
+  sym_result = nsitem(std, "Result");
+  sym_typeinfo = nsitem(nsopen("std::meta"), "TypeInfo");
+  sym_panic = nsitem(std, "panic");
+  sym_entry_unit = nsitem(std, "run_unit");
+  sym_entry_i32 = nsitem(std, "run_i32");
+  sym_entry_err = nsitem(std, "run_err");
+  sym_exit = nsitem(std, "exit"); /* the ending an E?() main has,
+                                   * run_err's own arm, a program
+                                   * free to call it itself
+                                   * (entry.ce, 12-projects.md) */
+  sym_fmt = nsitem(nsopen("std::fmt"), "Fmt");
+  sym_iter = nsitem(nsopen("std::iter"), "Iter"); /* for-in's two, the
+                                                   * desugar's own rows
+                                                   * (10-iteration.md) */
+  sym_intoiter = nsitem(nsopen("std::iter"), "IntoIter");
+  sym_range = nsitem(nsopen("std::ops"), "Range"); /* the interval a ..
+                                                    * lands in, the
+                                                    * checker's own sugar
+                                                    * (10-iteration.md) */
+  {
+    static const char *const ops[] = {"Add",       "Sub",    "Mul", "Div",      "Rem",  "BitAnd",
+                                      "BitOr",     "BitXor", "Shl", "Shr",      "Neg",  "ShlAssign",
+                                      "ShrAssign", "Ord",    "Eq",  "Ordering", "Copy", "Drop"};
+    Ns                      *ons = nsopen("std::ops");
+    usize                    oi;
+
+    sym_copy = nsitem(ons, "Copy");
+    sym_drop = nsitem(ons, "Drop");
+    sym_fn = nsitem(ons, "Fn"); /* the family the call sugar reads
+                                 * (05-traits.md): a bound names it,
+                                 * a fn pointer answers it for its
+                                 * own signature -- the compiler's
+                                 * own knowledge, no impl spelled */
+    sym_fnmut = nsitem(ons, "FnMut");
+    sym_fnonce = nsitem(ons, "FnOnce");
+    for (oi = 0; oi < sizeof ops / sizeof ops[0]; oi++)
+      if (!ons || !nsitem(ons, ops[oi])) {
+        fprintf(stderr,
+                "cerium: the standard library is incomplete: %s is missing from"
+                " std::ops (07-operators.md)\n",
+                ops[oi]);
+        exit(1);
+      }
+  }
+  if (!sym_option || !sym_result || !sym_copy || !sym_drop || !sym_typeinfo || !sym_panic ||
+      !sym_fmt || !sym_exit || !sym_entry_unit || !sym_entry_i32 || !sym_entry_err || !sym_fn ||
+      !sym_fnmut || !sym_fnonce || !sym_iter || !sym_intoiter || !sym_range) {
+    fprintf(stderr, "cerium: the standard library is incomplete: Option, Result, Copy, Drop,"
+                    " meta::TypeInfo, panic, fmt's Fmt, iter's Iter and IntoIter, ops' Range,"
+                    " exit, entry's three runs, ops' Fn family -- one is missing from the"
+                    " sysroot (12-projects.md)\n");
+    exit(1);
+  }
+}
 
 /* TypeInfo itself, the type every @typeinfo answers with: one
  * instance, cached */
