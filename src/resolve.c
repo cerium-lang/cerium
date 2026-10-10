@@ -2693,157 +2693,73 @@ checktestslate(Ns *ns)
     checktestslate(ns->subs[i]);
 }
 
-/* the project's four passes, a file at a time where a file's own
- * matters (12-projects.md): every name declared across the whole
- * project first -- cross-file reads are the point -- then each
- * file's uses bound and its declarations resolved in its own
- * context, the impl table built for all, and the bodies checked
- * back in their files. A single-file compilation is the degenerate
- * shape: one Srcfile, the root's. The sysroot's own files check
- * like any file, and the prelude is injected into them like
- * anyone's -- a library reads its own face, the declares-all pass
- * having made it whole before any read (12-projects.md). */
-void
-checkproject(Srcfile **files, usize nfiles)
+/* pass 1: every file's every name, each into its own namespace --
+ * a file may read a name another declared before any use binds or
+ * any type resolves (12-projects.md). A file's uses are its own
+ * from here on: usenew'd beside the Syms, switched to by the passes
+ * below */
+static void
+pass1declare(Srcfile **files, usize nfiles)
 {
-  usize     i, f, nimpls;
-  Sym     **impls;
-  Srcfile **implsf; /* each impl's file, its coherence errors named
-                     * there and its names read in its own context:
-                     * the diagnostics follow the table, not
-                     * whichever file the checker served last */
+  usize f, j, m;
 
-  cfgcull(files, nfiles); /* pass zero: the platform's own items kept,
-                           * the rest never declared (12-projects.md) */
-
-  /* pass 1: every file's every name, each into its own namespace --
-   * a file may read a name another declared before any use binds or
-   * any type resolves (12-projects.md). A file's uses are its own
-   * from here on: usenew'd beside the Syms, switched to below. */
   for (f = 0; f < nfiles; f++) {
     Srcfile *sf = files[f];
 
     lexsetpath(sf->path);
     sf->uses = usenew();
     sf->syms = declare(sf->items, sf->ns);
-    { /* each Sym its own file: a generic's body re-checks per
-       * instantiation, and the emitter switches to this file's
-       * context for the walk -- the names the body reads are the
-       * ones this file bound (04-generics.md) */
-      usize j, m = vlen(sf->items);
-
-      for (j = 0; j < m; j++)
-        if (sf->syms[j])
-          sf->syms[j]->ownsf = sf;
-    }
-    { /* main is the project's own fn: the root's, nowhere else
-       * (12-projects.md). Two in one namespace declare-errored
-       * already; this is the one namespace it may live in. */
-      usize j, m = vlen(sf->items);
-
-      for (j = 0; j < m; j++)
-        if (sf->items[j]->k == Nfn && strcmp(sf->items[j]->v.fn.name, "main") == 0 &&
-            sf->ns != nsroot())
-          cerrat(sf->items[j], "main lives in the project's root (12-projects.md)");
+    for (j = 0; j < (m = vlen(sf->items)); j++) {
+      if (sf->syms[j]) /* each Sym its own file: a generic's body
+                        * re-checks per instantiation, and the
+                        * emitter switches to this file's context for
+                        * the walk -- the names the body reads are the
+                        * ones this file bound (04-generics.md) */
+        sf->syms[j]->ownsf = sf;
+      if (sf->items[j]->k == Nfn && strcmp(sf->items[j]->v.fn.name, "main") == 0 &&
+          sf->ns != nsroot()) /* main is the project's own fn: the
+                               * root's, nowhere else
+                               * (12-projects.md). Two in one
+                               * namespace declare-errored already;
+                               * this is the one namespace it may
+                               * live in */
+        cerrat(sf->items[j], "main lives in the project's root (12-projects.md)");
     }
   }
+}
 
-  { /* std's own face, taken back from the tree the walks filled: the
-     * language's citizens -- Option and Result, every ?T and every
-     * E?T reading them by pointer (01, 03, 05) -- std::meta's
-     * TypeInfo, what every @typeinfo answers with
-     * (08-reflection.md), and std's panic, the door every runtime
-     * check fails into (01-types.md). A sysroot without one of them
-     * is a broken one -- said here, not at the first sugar */
-    Ns *std = nsopen("std");
+/* the pub uses first, every file's: a re-export is a namespace
+ * declaration, order-free like any other -- one file's use reads
+ * another's pub use whatever order the walk served them in
+ * (11-namespaces.md). Not filectx: that binds the file's plain uses
+ * on its first entry, and a plain use may read a name another
+ * file's pub use re-exports -- the plain half waits for pass 2, one
+ * file at a time */
+static void
+resolvepubuses(Srcfile **files, usize nfiles)
+{
+  usize f, j, m;
 
-    sym_option = nsitem(std, "Option");
-    sym_result = nsitem(std, "Result");
-    sym_typeinfo = nsitem(nsopen("std::meta"), "TypeInfo");
-    sym_panic = nsitem(std, "panic");
-    /* the entry fns, one per ending a main has, private to std: the
-     * wrapper alone calls them, the face-taking here the one door in
-     * (12-projects.md, 11-namespaces.md) */
-    sym_entry_unit = nsitem(std, "run_unit");
-    sym_entry_i32 = nsitem(std, "run_i32");
-    sym_entry_err = nsitem(std, "run_err");
-    sym_exit = nsitem(std, "exit"); /* the ending an E?() main has,
-                                     * run_err's own arm, a program
-                                     * free to call it itself
-                                     * (entry.ce, 12-projects.md) */
-    /* the Err half's own words: an E?() main's error type is
-     * checked against it where the ending is declared
-     * (12-projects.md) */
-    sym_fmt = nsitem(nsopen("std::fmt"), "Fmt");
-    /* for-in's two, the desugar's own rows (10-iteration.md): the
-     * sugar finds them by pointer at every iterable, a sysroot
-     * without them cannot say what a for-in means */
-    sym_iter = nsitem(nsopen("std::iter"), "Iter");
-    sym_intoiter = nsitem(nsopen("std::iter"), "IntoIter");
-    sym_range = nsitem(nsopen("std::ops"), "Range"); /* the interval
-                                                      * a .. lands in, the
-                                                      * checker's own sugar
-                                                      * (10-iteration.md) */
-    { /* the operator traits, the sugar's own (07-operators.md), and
-       * the two the compiler calls on its own -- Copy at a move,
-       * Drop at a scope's end (03-move.md): the rewrite spells the
-       * operators' paths, so those names never enter a scope, and
-       * the two ride no prelude either -- a file that impls one
-       * names it (12-projects.md) */
-      static const char *const ops[] = {
-          "Add", "Sub", "Mul",       "Div",       "Rem", "BitAnd", "BitOr",    "BitXor", "Shl",
-          "Shr", "Neg", "ShlAssign", "ShrAssign", "Ord", "Eq",     "Ordering", "Copy",   "Drop"};
-      Ns   *ons = nsopen("std::ops");
-      usize oi;
-
-      sym_copy = nsitem(ons, "Copy");
-      sym_drop = nsitem(ons, "Drop");
-      sym_fn = nsitem(ons, "Fn"); /* the family the call sugar reads
-                                   * (05-traits.md): a bound names it,
-                                   * a fn pointer answers it for its
-                                   * own signature -- the compiler's
-                                   * own knowledge, no impl spelled */
-      sym_fnmut = nsitem(ons, "FnMut");
-      sym_fnonce = nsitem(ons, "FnOnce");
-      for (oi = 0; oi < sizeof ops / sizeof ops[0]; oi++)
-        if (!ons || !nsitem(ons, ops[oi])) {
-          fprintf(stderr,
-                  "cerium: the standard library is incomplete: %s is missing from"
-                  " std::ops (07-operators.md)\n",
-                  ops[oi]);
-          exit(1);
-        }
-    }
-    if (!sym_option || !sym_result || !sym_copy || !sym_drop || !sym_typeinfo || !sym_panic ||
-        !sym_fmt || !sym_exit || !sym_entry_unit || !sym_entry_i32 || !sym_entry_err || !sym_fn ||
-        !sym_fnmut || !sym_fnonce || !sym_iter || !sym_intoiter || !sym_range) {
-      fprintf(stderr, "cerium: the standard library is incomplete: Option, Result, Copy, Drop,"
-                      " meta::TypeInfo, panic, fmt's Fmt, iter's Iter and IntoIter, ops' Range,"
-                      " exit, entry's three runs, ops' Fn family -- one is missing from the"
-                      " sysroot (12-projects.md)\n");
-      exit(1);
-    }
-  }
-
-  /* the pub uses first, every file's: a re-export is a namespace
-   * declaration, order-free like any other -- one file's use reads
-   * another's pub use whatever order the walk served them in
-   * (11-namespaces.md) */
   for (f = 0; f < nfiles; f++) {
     Srcfile *sf = files[f];
-    usize    j, m = vlen(sf->items);
 
     nscur(sf->ns);
     usecur(sf->uses);
     lexsetpath(sf->path);
-    for (j = 0; j < m; j++)
+    for (j = 0; j < (m = vlen(sf->items)); j++)
       if (sf->items[j]->k == Nuse && sf->items[j]->pub)
         resolveuse1(sf->items[j], 0, 0, 1, sf->ns);
   }
+}
 
-  /* then the plain uses, file by file -- A's bindings are its own,
-   * B reads none of them (11-namespaces.md) -- and pass 2 in the
-   * same per-file context: a const's own type may read one */
+/* pass 2: each file's uses bound and its declarations resolved in
+ * its own context -- A's bindings are its own, B reads none of them
+ * (11-namespaces.md), and a const's own type may read one */
+static void
+pass2resolve(Srcfile **files, usize nfiles)
+{
+  usize f;
+
   for (f = 0; f < nfiles; f++) {
     Srcfile *sf = files[f];
 
@@ -2852,43 +2768,56 @@ checkproject(Srcfile **files, usize nfiles)
                   * to it earlier found them whole already */
     resolveitems(sf->items, sf->syms);
   }
-  { /* main's own return, resolved now: (), the i32 the exit code
-     * is -- the platform's own word, the only one the parent reads
-     * -- or E?() -- the program's end follows it
-     * (12-projects.md). The Err half's reflection print is a later
-     * milestone's; the shapes are taken now. */
-    Sym *m = nsitem(nsroot(), "main");
+}
 
-    if (m && m->kind == Sfn) {
-      Type *rt = fnsigof(m)->t; /* the lazy read: a forward reference
-                                 * met it already, resolveitems just
-                                 * did, either way the same answer */
+/* main's own return, resolved once the signatures are: (), the i32
+ * the exit code is -- the platform's own word, the only one the
+ * parent reads -- or E?() -- the program's end follows it
+ * (12-projects.md). The Err half's reflection print is a later
+ * milestone's; the shapes are taken now. The contract's other half
+ * -- the endings the impl table answers -- is mainendings' below:
+ * each check needs its moment's tables, and the contract whole
+ * lives in 12-projects.md */
+static void
+mainshape(void)
+{
+  Sym *m = nsitem(nsroot(), "main");
 
-      if (rt->k == Tyunit || (rt->k == Tyint && rt->num == IN_I32) ||
-          (rt->k == Tyenum && rt->sym == sym_result))
-        ;
-      else
-        cerrat(m->decl, "main returns (), i32, or E?() -- the exit code is an i32, the platform's"
-                        " own word (12-projects.md)");
-      if (declmodes(m->decl))
-        cerrat(m->decl, "main is every mode's door: #[cfg] cannot hold it away"
-                        " (12-projects.md)");
-    }
+  if (m && m->kind == Sfn) {
+    Type *rt = fnsigof(m)->t; /* the lazy read: a forward reference
+                               * met it already, resolveitems just
+                               * did, either way the same answer */
+
+    if (rt->k == Tyunit || (rt->k == Tyint && rt->num == IN_I32) ||
+        (rt->k == Tyenum && rt->sym == sym_result))
+      ;
+    else
+      cerrat(m->decl, "main returns (), i32, or E?() -- the exit code is an i32, the platform's"
+                      " own word (12-projects.md)");
+    if (declmodes(m->decl))
+      cerrat(m->decl, "main is every mode's door: #[cfg] cannot hold it away"
+                      " (12-projects.md)");
   }
-  checktests(nsroot()); /* every #[test] fn's own shape, the main's
-                         * rules a shape over (13-testing.md) */
+}
 
-  /* pass 3: traits and impls, then coherence. The bounds check runs
-   * first so a bound nobody overlaps against still gets diagnosed.
-   * std's impls ride here with the project's own -- its files came
-   * first, the reads pick through them, and the coherence below
-   * orders both kinds. */
+/* pass 3: traits and impls, then coherence. The bounds check runs
+ * first so a bound nobody overlaps against still gets diagnosed.
+ * std's impls ride here with the project's own -- its files came
+ * first, the reads pick through them, and the coherence below
+ * orders both kinds. The table it leaves in chk_impls is pass 4's,
+ * the publish the one door out */
+static void
+pass3impls(Srcfile **files, usize nfiles)
+{
+  usize     i, f, nimpls;
+  Sym     **impls;
+  Srcfile **implsf; /* each impl's file, its coherence errors named
+                     * there and its names read in its own context:
+                     * the diagnostics follow the table, not
+                     * whichever file the checker served last */
+
   impls = vnew(Sym *, 8);
-  implsf = vnew(Srcfile *, 8); /* the file each impl came from: the
-                                * walks below read names, and a name
-                                * reads its file's context -- the
-                                * namespace, its uses, the path a
-                                * diagnostic prints (11) */
+  implsf = vnew(Srcfile *, 8);
   for (f = 0; f < nfiles; f++) {
     Srcfile *sf = files[f];
     usize    j, m = vlen(sf->items);
@@ -2946,9 +2875,9 @@ checkproject(Srcfile **files, usize nfiles)
     Sym  *bs[16];
     usize nb;
 
-    nscur(implsf[i]->ns);
-    usecur(implsf[i]->uses);
-    lexsetpath(implsf[i]->path);
+    filectx(implsf[i]);               /* the impl's own context: a bound's name
+                                       * resolves in the file that wrote it, and a
+                                       * diagnostic says so there (04, 11) */
     nb = collectbounds(impls[i], bs); /* the diagnostic is the point */
     {                                 /* the cache the specificity walks read: the emitter's picks
                                        * run in the caller's context, and a bound's name resolves
@@ -2959,66 +2888,60 @@ checkproject(Srcfile **files, usize nfiles)
     }
   }
   for (i = 0; i < nimpls; i++) {
-    nscur(implsf[i]->ns);
-    usecur(implsf[i]->uses);
-    lexsetpath(implsf[i]->path);
+    filectx(implsf[i]);
     if (impls[i]->ifort)
       checkimplcomplete(impls[i]);
   }
   for (i = 0; i < nimpls; i++) {
     usize j;
 
-    nscur(implsf[i]->ns);
-    usecur(implsf[i]->uses);
-    lexsetpath(implsf[i]->path);
+    filectx(implsf[i]);
     for (j = 0; j < i; j++)
       checkoverlap(impls[i], impls[j]);
   }
+}
 
-  { /* main's own ends, past the shapes pass 2 took: an E?() hands
-     * its Err to the platform, and the platform prints it through
-     * the error type's own Fmt -- no impl, no print, said where
-     * the ending is declared (12-projects.md). And the door itself
-     * is the compiler's to arrange: #[extern(C)] on a main would
-     * take the wrapper's own C name, and one program cannot hold
-     * two doors */
-    Sym *m = nsitem(nsroot(), "main");
+/* main's own ends, past the shapes pass 2 took: an E?() hands its
+ * Err to the platform, and the platform prints it through the
+ * error type's own Fmt -- no impl, no print, said where the ending
+ * is declared (12-projects.md). And the door itself is the
+ * compiler's to arrange: #[extern(C)] on a main would take the
+ * wrapper's own C name, and one program cannot hold two doors.
+ * The contract's other half, the shapes, is mainshape's above */
+static void
+mainendings(void)
+{
+  Sym *m = nsitem(nsroot(), "main");
 
-    if (m && m->kind == Sfn) {
-      Type *rt = fnsigof(m)->t; /* pass 2's lazy read answered it
-                                 * already; the same answer */
+  if (m && m->kind == Sfn) {
+    Type *rt = fnsigof(m)->t; /* pass 2's lazy read answered it
+                               * already; the same answer */
 
-      nscur(m->ownsf->ns); /* the file's own context: a diagnostic
-                            * says where the ending is, and the
-                            * walk above left std's own behind
-                            * (11-namespaces.md) */
-      usecur(m->ownsf->uses);
-      lexsetpath(m->ownsf->path);
-      if (attrfind(m->decl->attrs, "extern"))
-        cerrat(m->decl, "#[extern(C)] is for the fns that cross to C; main's door the "
-                        "compiler arranges (12-projects.md)");
-      if (rt->k == Tyenum && rt->sym == sym_result && !implfor(sym_fmt, rt->args[1], 0, 0))
-        cerrat(m->decl, "the error type does not implement Fmt -- the Err half prints through"
-                        " it (12-projects.md)");
-    }
+    filectx(m->ownsf); /* the file's own context: a diagnostic says
+                        * where the ending is, and the walks above
+                        * left std's own behind (11-namespaces.md) */
+    if (attrfind(m->decl->attrs, "extern"))
+      cerrat(m->decl, "#[extern(C)] is for the fns that cross to C; main's door the "
+                      "compiler arranges (12-projects.md)");
+    if (rt->k == Tyenum && rt->sym == sym_result && !implfor(sym_fmt, rt->args[1], 0, 0))
+      cerrat(m->decl, "the error type does not implement Fmt -- the Err half prints through"
+                      " it (12-projects.md)");
   }
-  checktestslate(nsroot()); /* every test's own ends, the impl table
-                             * built -- the main's two checks, a
-                             * test's shape over (13-testing.md) */
-  orderfns(nsroot());       /* the overload chains, most specific first:
-                             * every signature read, the bodies' calls
-                             * about to pick through them (04-generics.md) */
+}
 
-  /* pass 4: fn bodies, against the impl table pass 3 just built --
-   * each file in its own context again, the same switch. std's panic
-   * is a body like any, its file one of the walks (12-projects.md) */
+/* pass 4: fn bodies, against the impl table pass 3 just built --
+ * each file in its own context again, the same switch. std's panic
+ * is a body like any, its file one of the walks (12-projects.md) */
+static void
+pass4bodies(Srcfile **files, usize nfiles)
+{
+  usize f;
+
   for (f = 0; f < nfiles; f++) {
     Srcfile *sf = files[f];
     usize    j, m = vlen(sf->items);
 
-    nscur(sf->ns);
-    usecur(sf->uses);
-    lexsetpath(sf->path);
+    filectx(sf);
     for (j = 0; j < m; j++) {
       if (!sf->syms[j])
         continue;
@@ -3034,6 +2957,45 @@ checkproject(Srcfile **files, usize nfiles)
         checkbodyimpl(sf->syms[j], sf->items[j]);
     }
   }
+}
+
+/* the project's four passes, a file at a time where a file's own
+ * matters (12-projects.md): every name declared across the whole
+ * project first -- cross-file reads are the point -- then each
+ * file's uses bound and its declarations resolved in its own
+ * context, the impl table built for all, and the bodies checked
+ * back in their files. A single-file compilation is the degenerate
+ * shape: one Srcfile, the root's. The sysroot's own files check
+ * like any file, and the prelude is injected into them like
+ * anyone's -- a library reads its own face, the declares-all pass
+ * having made it whole before any read (12-projects.md).
+ *
+ * The passes are functions of their own names now, this the spine:
+ * the order below is the protocol -- stdface between the declares
+ * and the reads, the pub uses before the plain ones, the overload
+ * chains ordered before any body picks through them */
+void
+checkproject(Srcfile **files, usize nfiles)
+{
+  cfgcull(files, nfiles); /* pass zero: the platform's own items kept,
+                           * the rest never declared (12-projects.md) */
+  pass1declare(files, nfiles);
+  stdface(); /* std's own face, taken back and checked whole
+              * (prelude.c, 12-projects.md) */
+  resolvepubuses(files, nfiles);
+  pass2resolve(files, nfiles);
+  mainshape();
+  checktests(nsroot()); /* every #[test] fn's own shape, the main's
+                         * rules a shape over (13-testing.md) */
+  pass3impls(files, nfiles);
+  mainendings();
+  checktestslate(nsroot()); /* every test's own ends, the impl table
+                             * built -- the main's two checks, a
+                             * test's shape over (13-testing.md) */
+  orderfns(nsroot());       /* the overload chains, most specific first:
+                             * every signature read, the bodies' calls
+                             * about to pick through them (04-generics.md) */
+  pass4bodies(files, nfiles);
 }
 
 /* -- the -T dump --------------------------------------------------------- */
