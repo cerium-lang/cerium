@@ -48,6 +48,9 @@ enum
   Tydyn,    /* sym, args, mut -- a handle (06-dispatch.md) */
   Tyfn,     /* args: the parameters, t: the return */
   Tytype,   /* the type `type` -- of a type value ($$t, 08) */
+  Tyconst,  /* a const generic argument's number, in an application's
+             * row: usize's own value spelled where a type would sit
+             * (08-reflection.md); never anywhere else */
   Typroj,   /* Self::Item inside a trait: sym the trait, t the Self,
              * name the associated type (05-traits.md) */
   Tymut,    /* a writable slot inside ptr/slice/array/tuple; never alone */
@@ -105,6 +108,7 @@ Type *tybool(void);
 Type *tyvoidptr(void);
 Type *tytype(void);
 Type *tyint(int num); /* IN_* */
+Type *tyconst(u64 n); /* a const argument's number, in a row alone */
 
 Type *typaram(Ast *gp); /* the Ngparam node */
 Type *tymut(Type *t);   /* the writable-slot wrapper */

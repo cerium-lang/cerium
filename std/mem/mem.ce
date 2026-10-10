@@ -1,0 +1,63 @@
+/* std::mem -- the move words the library owns (03-move.md): @take
+ * is the language's one sanctioned move-out, and these are its
+ * spelled names, thin rows over the builtin -- the ergonomic door
+ * Rust's own std::mem carries. The replacement values the takes
+ * leave behind are zeros, and a zero drops as a no-op (03-move.md,
+ * Take): the taker owns the value, the place owns nothing. */
+
+use std::debug::assert; /* the tests' own word: the artifact is the
+                         * debug shape, the one the assertions live in
+                         * (01-types.md, 13-testing.md) */
+
+/* the value out, the zero behind -- the spelled @take(&mut x) */
+pub fn take<T>(p: *mut T) -> T {
+  @take(p)
+}
+
+/* the old value out, the new one in its place */
+pub fn replace<T>(p: *mut T, v: T) -> T {
+  let old = @take(p);
+
+  *p = v;
+  old
+}
+
+/* the two places trade what they hold, a take each and the values
+ * back through the zero slots */
+pub fn swap<T>(a: *mut T, b: *mut T) {
+  let t = @take(a);
+  let u = @take(b);
+
+  *a = u;
+  *b = t;
+}
+
+/* -- the tests (13-testing.md) ------------------------------------------------ */
+
+#[test("take: the value out, the zero behind")]
+fn mem_take_row() {
+  let mut x = 7;
+  let v = take(&mut x);
+
+  assert(v == 7, "take lost the value");
+  assert(x == 0, "take left no zero");
+}
+
+#[test("replace: the old out, the new in")]
+fn mem_replace_row() {
+  let mut x = 7;
+  let old = replace(&mut x, 9);
+
+  assert(old == 7, "replace lost the old value");
+  assert(x == 9, "replace never stored the new");
+}
+
+#[test("swap: the two places trade")]
+fn mem_swap_row() {
+  let mut a = 1;
+  let mut b = 2;
+
+  swap(&mut a, &mut b);
+  assert(a == 2, "swap missed a");
+  assert(b == 1, "swap missed b");
+}

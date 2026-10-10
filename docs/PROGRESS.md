@@ -3158,3 +3158,95 @@ two read gates the field walk carried fold into one check the
 builtin takes. Thirteen builtins the language spells (08). The
 pins: 294 (@ptr kept outside the tree), 296's @len beside the call
 it lends. 665 green, the library's 20 with them.
+
+## 2026-10-10, const generics on impls, std::array, and the array rides the library
+
+PR-B landed whole, the two commits the one arc. First the door itself:
+an impl may spell `const N: usize` beside its types. The match in
+implatch binds the receiver's array length the way gunifyv binds a
+fn's, the finders hand the numbers out beside the type rows, and every
+caller materialises through gsubstv/instcvals -- the row the method
+Sym carries reaching instensure whole. The mangle gives a pattern's
+const length its 'q' box tag, the number in the instance's own
+section. A latent bug surfaced that only this exposed: a method Sym's
+concatenated gparams row is a bare arena array vlen cannot read, so
+runbody now takes the count explicitly; and every gcvals writer pads
+to the full concatenated row, or the emitter reads past the impl's
+segment. The probe: [3].len() + [7].len() = 10.
+
+Then the type layer's half: a const argument may sit in a type
+application's row. ArrayIter<T, N> spells the number where a type
+would; the number is a Type of its own (Tyconst, interned one per
+value), the slot the parameter while a binding stands. gunifyv binds
+a const slot against its number two ways -- an instance row beside
+the slot, a type row in the slot itself (a struct literal's gunify
+carries no gcvals; that split is what lets both consumers share one
+walk) -- and implatch matches a const slot against a number or the
+same box, refusing a number in a type slot. specializes treats the
+more general side's boxed array length as a wildcard, so *mut
+[N]mut T orders under *[N]T the way the spec's table says, instead
+of conflicting on two different Ns.
+
+std::array arrived with it: len/get on [N]T (the length the type's
+own number now, not @len), ArrayIter<T, N> consuming the array a
+round an element through @take, the borrow's door (*[N]T, and the
+mut row) handing back a slice over the array's own storage. Two
+meets the move needed: a fresh slot may raise writability, dropping
+it always safe (01) -- the let and the struct literal's fields meet
+through mutstrip, the [N]mut T field taking an immutable array
+whole. And the for-in re-check re-reads the iterator type off the
+re-walked via, so a generic's [3]T loop materialises under the
+instance -- the stored it was the declaration's symbolic row, the
+sizes the emit reads real only under the binding.
+
+The special case left with it: the FIN arm's array walk, both halves
+-- the checker's element-by-element rpat and the emitter's
+hand-written ptr/len stepping. Every source but ?T walks the
+IntoIter/Iter road now, the impl table the one road, exactly where
+the slice went a week ago. The pins: 277 (the borrow's door, flipped
+from check/err 276 -- it was the boundary test for this very
+arrival), 278 (the drop count: rounds and remains each once, the
+zeros @take leaves destructing with the iterator, a side-effecting
+Drop counting them -- the spec's own words, no-ops only in what they
+touch), 279 (the mutable rounds). 667 green, the library's 24 with
+them.
+
+What stays open, the honest list: a fn's const struct-argument slots
+key on the marker, not the number, when the row is an instance's
+(none of std reads it yet); the itdrops a desugar builds stay the
+declaration's, a Drop-having iterator inside a generic re-checked
+would need them rebuilt; `*mut [N]T` and `*[N]mut T` on a plain
+array reject with the words they have, matching neither row -- the
+spec's answer stands, the diagnostics could name the mut row's
+shape.
+
+## 2026-10-10 -- the guarded drop: a move down one branch of a join
+
+The review of the array rows surfaced a soundness hole older than
+them: `dead` carried two meanings on one bit. A join took the union
+for both -- the right conservatism for reads (reject what cannot be
+proven), the wrong one for drops (a binding moved down one path
+only still owns its value down the other, and the scope's end
+skipped it whole: the else path leaked). A probe said it in one
+number -- f(false) dropped nothing.
+
+The fix follows Rust's own split. The reads keep the union; the
+drop sets split into the statically known and the guarded: a
+binding moved on every path stays skipped (no flag, no cost), a
+binding moved down one branch of a join carries a move flag -- a
+word beside its storage, zeroed where the binding stands (a loop's
+rounds each begin unmoved), stored by the branch's move, read once
+by the drop. The checker marks the moved read itself (mvd on the
+node), the trial log remembers the marking so a refused row's walk
+unwinds it, and the join's cmv bit says which drops wear the guard.
+spec 03's Static Insertion became Guarded Drops: the promise that
+held was "no drop flag for the provable," and that still holds.
+
+@take stays where it was: the zero a take leaves behind drops with
+its place, mem::take's own semantics -- the replacement value is a
+real value, its drop the type author's no-op to guarantee (278
+reads 6 and says why). The spelled names moved into std::mem:
+take, replace, swap, thin rows over the primitive. The pins: 297
+(the branch's two paths each destructing once), 298 (nested joins,
+a match arm's move, a loop's rounds under the same flag). 669
+green, the library's 27 with them.

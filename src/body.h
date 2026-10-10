@@ -18,6 +18,11 @@ struct Local
   Type *ty;      /* its declared type, never narrowed away */
   int   mut;     /* let mut */
   int   dead;    /* moved from: unusable until its scope ends */
+  int   cmv;     /* conditionally moved (03-move.md, Guarded drops):
+                  * a join saw the binding dead down one path only,
+                  * so no drop insertion is statically known -- the
+                  * scope's end reads the move flag the emitter keeps
+                  * instead of trusting the dead bit */
   int   frz;     /* FZ_*: what a live borrow forbids */
   int   frzby;   /* the borrowing binding's index, to thaw when it dies */
   char *frzpath; /* the borrowed field chain, ".a.b"; NULL is the root */
@@ -51,6 +56,11 @@ struct Fenv
   int   nofreeze; /* an inline borrow the deref below is spending
                    * whole: it reserves nothing past the expression,
                    * so freeze holds its hand (01-types.md) */
+  Ast **mvdlog;   /* the nodes this walk marked as moves (03-move.md,
+                   * Guarded drops): a refused trial's movrestore pops
+                   * them back to unmarked. The vector is the fn's
+                   * own, shared by every fork -- the log is linear
+                   * and the trials bracket what they push */
 };
 
 /* what a call's receiver borrow displaced, and its way back */
@@ -107,6 +117,11 @@ int narrowcond(Ast *cond, Fenv *fe, char **name, Type **child);
  * them as gone. One int per binding, the arena's own. */
 int *movsnap(Fenv *fe);
 void movrestore(Fenv *fe, int *snap);
+void markmoved(Ast *e, Fenv *fe, Local *root); /* the read moves its
+                                                * root: the flag store
+                                                * rides the node, the
+                                                * log remembers it
+                                                * (03-move.md) */
 
 /* joins (03-move.md, Branches) */
 void     fejoin(Fenv *fe, Fenv *a, Fenv *b);
@@ -128,24 +143,32 @@ struct Implcand
   Sym    *imp; /* the row's impl */
   Member *m;   /* its member the call names */
   Type  **tys; /* the receiver's binding of the impl's variables */
+  Val   **cvs; /* the const lengths' numbers, the same binding's own
+                * (08-reflection.md) */
 };
 
 /* inherent impl members: *imp receives the supplying impl, for the
  * caller's genericity gate */
 Member *inherentfind(Sym *s, const char *name, Sym **imp);
-Member *inherentfindt(Type *t, const char *name, Sym **imp, Type ***tysp);
-Member *implfind(Sym *trait, Type *t, const char *name, Sym **imp, Type ***tysp);
+Member *inherentfindt(Type *t, const char *name, Sym **imp, Type ***tysp, Val ***cvp);
+Member *implfind(Sym *trait, Type *t, const char *name, Sym **imp, Type ***tysp, Val ***cvp);
 usize   implcands(Sym *trait, Type *t, const char *name, Implcand *cs, usize cap);
 usize   traitcands(Type *t, const char *name, Implcand *cs, usize cap);
-Sym    *implfor(Sym *trait, Type *t, Type ***tysp);
-int     implsatisfies(Sym *trait, Type *t, Type **targs, usize ntargs, Ast **pins, Type **ptys,
-                      usize npins);
-int     boundsatisfies(Ast *b, Type *t, Ast **gps, Type **tys, usize n, Type ***ta, Ast **ig,
-                       Type **itys, usize ni);
-int     boundsok(Sym *im, Type **tys); /* the impl's own bounds, every
-                                        * slot landed: the trial's ask
-                                        * once the arguments bound the
-                                        * rest (07-operators.md) */
+Sym    *implfor(Sym *trait, Type *t, Type ***tysp, Val ***cvp);
+
+/* the instance rows a call writes back: the impl's bindings -- from
+ * the receiver -- with the member's own behind it, matching the
+ * method Sym's concatenated list (04-generics.md, 08-reflection.md) */
+Type **insttys(Sym *imp, Type **tys, Ast **mg, Type **mtys, usize nm);
+Val  **instcvals(Sym *imp, Val **cvs, usize nm);
+int    implsatisfies(Sym *trait, Type *t, Type **targs, usize ntargs, Ast **pins, Type **ptys,
+                     usize npins);
+int    boundsatisfies(Ast *b, Type *t, Ast **gps, Type **tys, usize n, Type ***ta, Ast **ig,
+                      Type **itys, usize ni);
+int    boundsok(Sym *im, Type **tys); /* the impl's own bounds, every
+                                       * slot landed: the trial's ask
+                                       * once the arguments bound the
+                                       * rest (07-operators.md) */
 
 /* the walk itself (body.c). The spelled surface and the match route
  * back into these: a builtin's or an operator's operand is a walk

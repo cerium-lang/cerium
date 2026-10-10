@@ -15,6 +15,7 @@
 
 #include "abi.h"
 #include "ast.h"
+#include "body.h"
 #include "check.h"
 #include "die.h"
 #include "emit.h"
@@ -535,6 +536,7 @@ printvts(FILE *o)
     Vt    *vt = &vts[i];
     Sym   *im;
     Type **tys = 0;
+    Val  **cvs = 0;
     char  *line;
     char  *p;
     char **nms = vnew(char *, 8); /* the entries' names, spelled
@@ -543,7 +545,7 @@ printvts(FILE *o)
                                    * a longer mangle outgrows */
     usize len, nn = 0;
 
-    im = implfor(vt->tr, vt->ty, &tys);
+    im = implfor(vt->tr, vt->ty, &tys, &cvs);
     if (!im && vt->ty->k != Tyfn) /* the fn pointer's own row: no
                                    * impl a file spells, the
                                    * trampoline the entry names
@@ -578,10 +580,19 @@ printvts(FILE *o)
         if (!fm->decl || fm->decl->k != Nclosure || !fm->decl->v.clos.sym)
           cerrat(vt->tr->decl, "unreachable: the impl supplies it");
         nm = fm->decl->v.clos.sym;
-      } else if (tys)
-        nm = instensure(fm->sym, tys, 0, 0)->name; /* the instance this
-                                                    * table names */
-      else
+      } else if (tys) {
+        Ast **pmg = fm->decl->v.fn.gparams;
+        usize nmg = pmg ? vlen(pmg) : 0; /* the method's own angle
+                                          * brackets behind the row's:
+                                          * the emitter reads the
+                                          * concatenated list (08) */
+        Type **ptys = insttys(im, tys, pmg, 0, nmg);
+        Val  **pcv = instcvals(im, cvs, nmg);
+
+        nm = instensure(fm->sym, ptys, 0, pcv)->name; /* the instance
+                                                       * this table
+                                                       * names */
+      } else
         nm = fsymname(fm->sym, fm->sym->decl);
       vappend(&nms, &nm);
       nn++;

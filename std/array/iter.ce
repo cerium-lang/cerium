@@ -1,0 +1,78 @@
+/* std::array::iter -- the owned array's iteration (10-iteration.md):
+ * the array owns its elements, so the loop over one moves them out
+ * -- the iterator holds the array and a cursor, every element
+ * leaves through @take (03-move.md), and a zero value stays behind
+ * in each slot. A T with a destructor is fine: the zeros left
+ * behind destruct as no-ops, what the loop did not take destructs
+ * with the iterator itself at the loop's exit.
+ *
+ * To iterate without using the array up, iterate a pointer to it
+ * -- &arr, an array never decays (01-types.md) -- the row below
+ * handing back a slice over the array's own storage, the same
+ * desugar the slices ride (10). */
+
+use std::iter::{Iter, IntoIter};
+
+pub struct ArrayIter<T, const N: usize> {
+  arr: [N]mut T,   /* moved in -- a fresh slot may raise writability (01) */
+  mut index: usize,
+}
+
+impl<T, const N: usize> IntoIter for [N]T {
+  type Iter = ArrayIter<T, N>;
+  fn into_iter(self: Self) -> ArrayIter<T, N> {
+    ArrayIter { arr: self, index: 0 }
+  }
+}
+
+impl<T, const N: usize> Iter for ArrayIter<T, N> {
+  type Item = T;
+  fn next(self: *mut Self) -> ?T {
+    if self.index == N {
+      None
+    } else {
+      let i = self.index;
+      self.index = self.index + 1;
+      Some(@take(&mut self.arr[i]))  /* the element leaves, a zero stays */
+    }
+  }
+}
+
+impl<T, const N: usize> IntoIter for *[N]T {
+  type Iter = []T;
+  fn into_iter(self: Self) -> []T {
+    @slice(&(*self)[0], N)
+  }
+}
+
+impl<T, const N: usize> IntoIter for *mut [N]mut T {
+  type Iter = []mut T;
+  fn into_iter(self: Self) -> []mut T {
+    @slice(&(*self)[0], N)
+  }
+}
+
+/* -- the tests (13-testing.md) ------------------------------- */
+
+use std::debug::assert;
+
+#[test("an owned array yields its elements, used up")]
+fn owned_rounds() {
+  let a = [3]i32 { 10, 20, 30 };
+  let mut sum = 0;
+  for x in a {
+    sum = sum + x;
+  }
+  assert(sum == 60, "the rounds lost rows");
+}
+
+#[test("a pointed array lends, nothing moves")]
+fn lent_rounds() {
+  let a = [3]i32 { 1, 2, 3 };
+  let mut sum = 0;
+  for p in &a {
+    sum = sum + *p;
+  }
+  assert(sum == 6, "the lent rounds lost rows");
+  assert(a.len() == 3, "the array was used up");
+}

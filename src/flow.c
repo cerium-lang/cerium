@@ -125,7 +125,12 @@ locnarrow(Fenv *fe, char *name, Type *t)
  * row's walk would read them as gone. Nothing else in the
  * environment moves on an argument walk: narrowing is the branch
  * forms' own, borrows unwind through the freezes' own pictures, and
- * a let is a statement, not an expression (07-operators.md). */
+ * a let is a statement, not an expression (07-operators.md).
+ *
+ * The picture now carries cmv beside dead, and one more word: the
+ * length of the mvd log, the nodes a walk flagged as moves -- a
+ * refused trial unwinds the flags with the bits (03-move.md,
+ * Guarded drops). */
 int *
 movsnap(Fenv *fe)
 {
@@ -134,9 +139,12 @@ movsnap(Fenv *fe)
 
   if (!fe->n)
     return 0;
-  d = arenaalloc(fe->n * sizeof *d);
-  for (i = 0; i < fe->n; i++)
+  d = arenaalloc((2 * fe->n + 1) * sizeof *d);
+  for (i = 0; i < fe->n; i++) {
     d[i] = fe->ls[i].dead;
+    d[fe->n + i] = fe->ls[i].cmv;
+  }
+  d[2 * fe->n] = (int) vlen(fe->mvdlog);
   return d;
 }
 
@@ -147,8 +155,32 @@ movrestore(Fenv *fe, int *snap)
 
   if (!snap)
     return;
-  for (i = 0; i < fe->n; i++)
+  for (i = 0; i < fe->n; i++) {
     fe->ls[i].dead = snap[i];
+    fe->ls[i].cmv = snap[fe->n + i];
+  }
+  while (vlen(fe->mvdlog) > (usize) snap[2 * fe->n]) { /* the move
+                                                        * flags a refused row's walk set on
+                                                        * the nodes it read: each was 0
+                                                        * before the walk, so 0 again is
+                                                        * exact */
+    vpop(fe->mvdlog)->mvd = 0;
+  }
+}
+
+/* the read moves its root binding (03-move.md): the flag store the
+ * emitter emits rides the node itself, and the log remembers the
+ * node so a trial that refuses can unwind it. A binding whose type
+ * owns no destructor needs no flag -- its moves drop nothing. */
+void
+markmoved(Ast *e, Fenv *fe, Local *root)
+{
+  if (!hasdrop(root->ty))
+    return;
+  if (e->mvd)
+    return; /* already flagged, its log entry with it */
+  e->mvd = 1;
+  vappend(&fe->mvdlog, &e);
 }
 
 /* -- copy and drop (03-move.md) ------------------------------------------ */
@@ -224,13 +256,13 @@ iscopy1(Type *t)
 
     if (hasdrop(t)) /* a destructor inside kills the copy (03-move.md) */
       return 0;
-    if (!implfor(sym_copy, t, 0)) /* the impl the spec asks for: a
-                                   * struct is Copy when it says it
-                                   * is, the row accepted only because
-                                   * every field already is (03) --
-                                   * the fields walk below, the
-                                   * instance's own words
-                                   * (04-generics.md) */
+    if (!implfor(sym_copy, t, 0, 0)) /* the impl the spec asks for: a
+                                      * struct is Copy when it says it
+                                      * is, the row accepted only because
+                                      * every field already is (03) --
+                                      * the fields walk below, the
+                                      * instance's own words
+                                      * (04-generics.md) */
       return 0;
     for (i = 0; i < s->nfields; i++) {
       Type *ft = s->fields[i].ty;
@@ -550,7 +582,13 @@ narrowcond(Ast *cond, Fenv *fe, char **name, Type **child)
 /* join two branch states back into fe. Dead is the union -- the code
  * after the join runs on either path, so a move down one of them is
  * enough -- and frozen is the union too, a borrow the compiler cannot
- * disprove. A narrowing survives only when both branches agree. */
+ * disprove. A narrowing survives only when both branches agree.
+ *
+ * cmv (conditionally moved) rides beside: dead down one path only,
+ * or a cmv already sitting under a dead bit -- either way the drop
+ * set is not statically known and the scope's end must read the
+ * move flag (03-move.md, Guarded drops). Two dead bits with no cmv
+ * under either say both paths moved: statically dead, no flag. */
 void
 fejoin(Fenv *fe, Fenv *a, Fenv *b)
 {
@@ -562,6 +600,7 @@ fejoin(Fenv *fe, Fenv *a, Fenv *b)
     Local *db = &b->ls[i];
 
     d->dead = da->dead || db->dead;
+    d->cmv = da->cmv || db->cmv || (da->dead != db->dead);
     if (da->frz == FZ_MUT || db->frz == FZ_MUT) {
       d->frz = FZ_MUT;
       d->frzby = da->frz != FZ_NONE ? da->frzby : db->frzby;
@@ -585,6 +624,7 @@ unreach(Fenv *fe)
 
   for (i = 0; i < fe->n; i++) {
     fe->ls[i].dead = 0;
+    fe->ls[i].cmv = 0;
     fe->ls[i].frz = FZ_NONE;
     fe->ls[i].frzby = -1;
   }
@@ -688,6 +728,34 @@ gunifyv(Type *sig, Type *arg, Ast **gps, Type **tys, Val **gcvals, usize n)
   if (sig->k == Typaram) {
     for (i = 0; i < n; i++)
       if (sig->gp == gps[i]) {
+        if (sig->gp->v.gp.cnst && arg->k == Tyconst) { /* a const
+                                                        * slot meets
+                                                        * its number:
+                                                        * the instance
+                                                        * row carries
+                                                        * it beside the
+                                                        * slot, a type
+                                                        * row in the
+                                                        * slot itself
+                                                        * (08) */
+          if (gcvals) {
+            if (!tys[i])
+              tys[i] = tyint(IN_USIZE);
+            if (!gcvals[i]) {
+              gcvals[i] = arenaalloc(sizeof **gcvals);
+              *gcvals[i] = valint(arg->n, tyint(IN_USIZE));
+            } else if (gcvals[i]->i != arg->n)
+              return 0; /* the same slot twice, two numbers: no fit */
+            return 1;
+          }
+          if (!tys[i]) {
+            tys[i] = arg;
+            return 1;
+          }
+          return tysame(tys[i], arg);
+        }
+        if (!sig->gp->v.gp.cnst && arg->k == Tyconst)
+          return 0; /* a number rides a const slot alone (08) */
         if (!tys[i])
           tys[i] = arg;
         return tysame(tys[i], arg);
@@ -705,13 +773,26 @@ gunifyv(Type *sig, Type *arg, Ast **gps, Type **tys, Val **gcvals, usize n)
     if (sig->gp) { /* [N]T: the length is the binding's own number */
       for (i = 0; i < n; i++)
         if (sig->gp == gps[i]) {
-          if (!tys[i])
-            tys[i] = tyint(IN_USIZE); /* the slot's shape, and the
-                                       * infer check's non-empty */
+          if (!tys[i]) {
+            if (arg->gp && !gcvals)
+              tys[i] = typaram(arg->gp); /* a type row's own word:
+                                          * the parameter the value's
+                                          * length names (08) */
+            else
+              tys[i] = tyint(IN_USIZE); /* the slot's shape, and the
+                                         * infer check's non-empty */
+          }
           if (arg->gp)
             return gunifyv(sig->t, arg->t, gps, tys, gcvals,
                            n); /* a length another generic names: the
                                 * box, the re-check's to bind */
+          if (!gcvals) {       /* a type row: the number in the slot itself */
+            if (tys[i]->k == Tyconst && tys[i]->n != arg->n)
+              return 0; /* the same slot twice, two numbers: no fit */
+            if (tys[i]->k != Tyconst)
+              tys[i] = tyconst(arg->n);
+            return gunifyv(sig->t, arg->t, gps, tys, gcvals, n);
+          }
           if (!gcvals[i]) {
             gcvals[i] = arenaalloc(sizeof **gcvals);
             *gcvals[i] = valint(arg->n, tyint(IN_USIZE));
@@ -899,9 +980,12 @@ inherentfind(Sym *s, const char *name, Sym **imp)
  * the pattern's variables to? The same walk gunify runs, with every
  * variable owned by the impl: a repeated one must land the same type
  * twice ((T, T) in 04-generics.md), an open slot stays open only
- * until the walk ends -- the caller demands them all bound. */
+ * until the walk ends -- the caller demands them all bound. A const
+ * parameter's landing is its number, in *gcvals beside the types --
+ * [N]T meeting [3]i32 records N = 3, the slot's own shape the usize
+ * marker the infer check reads as non-empty (08-reflection.md) */
 static int
-implatch(Type *pat, Type *ty, Ast **gps, Type **tys, usize n)
+implatch(Type *pat, Type *ty, Ast **gps, Type **tys, Val **gcvals, usize n)
 {
   usize i;
 
@@ -910,6 +994,34 @@ implatch(Type *pat, Type *ty, Ast **gps, Type **tys, usize n)
   if (pat->k == Typaram) {
     for (i = 0; i < n; i++)
       if (pat->gp == gps[i]) {
+        if (pat->gp->v.gp.cnst) { /* a const slot: the number the
+                                   * row carries, a parameter the
+                                   * same box (08-reflection.md) */
+          if (ty->k == Tyconst) {
+            if (!tys[i])
+              tys[i] = tyint(IN_USIZE);
+            if (!gcvals[i]) {
+              gcvals[i] = arenaalloc(sizeof **gcvals);
+              *gcvals[i] = valint(ty->n, tyint(IN_USIZE));
+            } else if (gcvals[i]->i != ty->n)
+              return 0; /* the same slot twice, two numbers: no fit */
+            return 1;
+          }
+          if (ty->k == Typaram && ty->gp == pat->gp) { /* the same
+                                                        * box: an outer
+                                                        * generic's
+                                                        * length, the
+                                                        * instance's
+                                                        * re-check
+                                                        * binds */
+            if (!tys[i])
+              tys[i] = tyint(IN_USIZE);
+            return 1;
+          }
+          return 0; /* a number rides a const slot alone (08) */
+        }
+        if (ty->k == Tyconst)
+          return 0;               /* a type slot takes no number (08) */
         if (pat->gp->v.gp.pack) { /* the pack: the whole tuple the
                                    * receiver's rows make, the
                                    * binding Ts = (i32, u8) the same
@@ -932,11 +1044,34 @@ implatch(Type *pat, Type *ty, Ast **gps, Type **tys, usize n)
   case Typtr:
   case Tyslice:
   case Tymut:
-    return implatch(pat->t, ty->t, gps, tys, n);
+    return implatch(pat->t, ty->t, gps, tys, gcvals, n);
   case Tyarray:
-    if (pat->n != ty->n)
-      return 0;
-    return implatch(pat->t, ty->t, gps, tys, n);
+    if (pat->gp) { /* [N]T: the length a const parameter of the
+                    * impl's own -- the number the target carries is
+                    * the binding (08-reflection.md) */
+      if (ty->gp)
+        return pat->gp == ty->gp && /* the same box: an outer
+                                     * generic's length, the
+                                     * instance's re-check binds */
+               implatch(pat->t, ty->t, gps, tys, gcvals, n);
+      for (i = 0; i < n; i++)
+        if (pat->gp == gps[i]) {
+          if (!tys[i])
+            tys[i] = tyint(IN_USIZE); /* the slot's shape, and the
+                                       * infer check's non-empty */
+          if (!gcvals[i]) {
+            gcvals[i] = arenaalloc(sizeof **gcvals);
+            *gcvals[i] = valint(ty->n, tyint(IN_USIZE));
+          } else if (gcvals[i]->i != ty->n)
+            return 0; /* the same length twice, two numbers: no fit */
+          return implatch(pat->t, ty->t, gps, tys, gcvals, n);
+        }
+      return 0; /* someone else's variable in length position */
+    }
+    if (ty->gp || pat->n != ty->n)
+      return 0; /* a concrete length meets a box: the box is the
+                 * instance's re-check's to answer */
+    return implatch(pat->t, ty->t, gps, tys, gcvals, n);
   case Tytuple:
   case Tystruct:
   case Tyenum:
@@ -946,7 +1081,7 @@ implatch(Type *pat, Type *ty, Ast **gps, Type **tys, usize n)
     if (pat->sym != ty->sym || pat->nargs != ty->nargs)
       return 0;
     for (i = 0; i < pat->nargs; i++)
-      if (!implatch(pat->args[i], ty->args[i], gps, tys, n))
+      if (!implatch(pat->args[i], ty->args[i], gps, tys, gcvals, n))
         return 0;
     return 1;
   default:
@@ -1044,52 +1179,67 @@ boundsok(Sym *im, Type **tys)
  * variables live only in the trait's arguments (07-operators.md)
  * waits on the call's arguments to finish them. */
 static int
-implfitp(Sym *im, Type *t, Type ***tysp)
+implfitp(Sym *im, Type *t, Type ***tysp, Val ***cvp)
 {
   Type  *pat = im->ifort ? im->ifort : im->ipath;
   Type **tys;
+  Val  **gcvals;
   usize  j;
 
   if (im->ngparams) {
     tys = tyargs(im->ngparams);
     for (j = 0; j < im->ngparams; j++)
       tys[j] = 0;
-    if (!implatch(pat, t, im->gparams, tys, im->ngparams))
+    gcvals = arenaalloc(im->ngparams * sizeof *gcvals);
+    memset(gcvals, 0, im->ngparams * sizeof *gcvals);
+    if (!implatch(pat, t, im->gparams, tys, gcvals, im->ngparams))
       return 0;
     if (tysp)
       *tysp = tys;
+    if (cvp)
+      *cvp = gcvals;
     return 1;
   }
   if (!tysame(pat, t))
     return 0;
   if (tysp)
     *tysp = 0;
+  if (cvp)
+    *cvp = 0;
   return 1;
 }
 
 /* the finished question -- the receiver's walk, every variable it
  * could name landed, every bound answered (04-generics.md): the
- * finders' own ask, where no arguments follow to bind the rest. */
+ * finders' own ask, where no arguments follow to bind the rest. A
+ * const parameter's landing is its number in the cvals row beside
+ * the types (08-reflection.md). */
 static int
-implfit(Sym *im, Type *t, Type ***tysp)
+implfit(Sym *im, Type *t, Type ***tysp, Val ***cvp)
 {
   Type **tys;
+  Val  **gcvals;
   usize  g;
 
-  if (!implfitp(im, t, &tys))
+  gcvals = 0;
+  if (!implfitp(im, t, &tys, &gcvals))
     return 0;
   if (!tys) {
     if (tysp)
       *tysp = 0;
+    if (cvp)
+      *cvp = 0;
     return 1;
   }
   for (g = 0; g < im->ngparams; g++)
-    if (!tys[g])
+    if (!tys[g] && !gcvals[g])
       return 0; /* the pattern left a slot open: not this one */
   if (!boundsok(im, tys))
     return 0; /* a bound the receiver does not answer */
   if (tysp)
     *tysp = tys;
+  if (cvp)
+    *cvp = gcvals;
   return 1;
 }
 
@@ -1125,22 +1275,26 @@ implspecific(Sym *a, Sym *b)
  * member names which impls run at all; the order picks among those
  * that do. */
 Member *
-inherentfindt(Type *t, const char *name, Sym **imp, Type ***tysp)
+inherentfindt(Type *t, const char *name, Sym **imp, Type ***tysp, Val ***cvp)
 {
   usize   i, j;
   Sym    *best = 0;
   Type  **btys = 0;
+  Val   **bcv = 0;
   Member *bm = 0;
 
   if (imp)
     *imp = 0;
   if (tysp)
     *tysp = 0;
+  if (cvp)
+    *cvp = 0;
   if (!t)
     return 0;
   for (i = 0; i < chk_nimpls; i++) {
     Sym    *im = chk_impls[i];
     Type  **tys;
+    Val   **cvs;
     Member *m = 0;
 
     if (im->ifort || !im->ipath || im->ipath->sym != t->sym)
@@ -1152,11 +1306,12 @@ inherentfindt(Type *t, const char *name, Sym **imp, Type ***tysp)
       }
     if (!m)
       continue; /* this impl does not carry the member */
-    if (!implfit(im, t, &tys))
+    if (!implfit(im, t, &tys, &cvs))
       continue;
     if (!best || implspecific(im, best)) {
       best = im;
       btys = tys;
+      bcv = cvs;
       bm = m;
     }
   }
@@ -1166,6 +1321,8 @@ inherentfindt(Type *t, const char *name, Sym **imp, Type ***tysp)
     *imp = best;
   if (tysp && btys)
     *tysp = btys;
+  if (cvp && btys)
+    *cvp = bcv;
   return bm;
 }
 
@@ -1173,31 +1330,38 @@ inherentfindt(Type *t, const char *name, Sym **imp, Type ***tysp)
  * question a handle's construction asks (06-dispatch.md). The same
  * order the finders keep -- the most specific fit, bounds answered. */
 Sym *
-implfor(Sym *trait, Type *t, Type ***tysp)
+implfor(Sym *trait, Type *t, Type ***tysp, Val ***cvp)
 {
   usize  i;
   Sym   *best = 0;
   Type **btys = 0;
+  Val  **bcv = 0;
 
   if (tysp)
     *tysp = 0;
+  if (cvp)
+    *cvp = 0;
   if (!t)
     return 0;
   for (i = 0; i < chk_nimpls; i++) {
     Sym   *im = chk_impls[i];
     Type **tys;
+    Val  **cvs;
 
     if (!im->ifort || !im->ipath || im->ipath->sym != trait)
       continue;
-    if (!implfit(im, t, &tys))
+    if (!implfit(im, t, &tys, &cvs))
       continue;
     if (!best || implspecific(im, best)) {
       best = im;
       btys = tys;
+      bcv = cvs;
     }
   }
   if (best && tysp && btys)
     *tysp = btys;
+  if (best && cvp && btys)
+    *cvp = bcv;
   return best;
 }
 
@@ -1207,22 +1371,26 @@ implfor(Sym *trait, Type *t, Type ***tysp)
  * and a handle's walks (04-generics.md); pass 3 kept incomparables
  * out, so the order here is total. */
 Member *
-implfind(Sym *trait, Type *t, const char *name, Sym **imp, Type ***tysp)
+implfind(Sym *trait, Type *t, const char *name, Sym **imp, Type ***tysp, Val ***cvp)
 {
   usize   i, j;
   Sym    *best = 0;
   Type  **btys = 0;
+  Val   **bcv = 0;
   Member *bm = 0;
 
   if (imp)
     *imp = 0;
   if (tysp)
     *tysp = 0;
+  if (cvp)
+    *cvp = 0;
   if (!t)
     return 0;
   for (i = 0; i < chk_nimpls; i++) {
     Sym    *im = chk_impls[i];
     Type  **tys;
+    Val   **cvs;
     Member *m = 0;
 
     if (!im->ifort || !im->ipath || im->ipath->sym != trait)
@@ -1234,11 +1402,12 @@ implfind(Sym *trait, Type *t, const char *name, Sym **imp, Type ***tysp)
       }
     if (!m)
       continue;
-    if (!implfit(im, t, &tys))
+    if (!implfit(im, t, &tys, &cvs))
       continue;
     if (!best || implspecific(im, best)) {
       best = im;
       btys = tys;
+      bcv = cvs;
       bm = m;
     }
   }
@@ -1248,6 +1417,8 @@ implfind(Sym *trait, Type *t, const char *name, Sym **imp, Type ***tysp)
     *imp = best;
   if (tysp && btys)
     *tysp = btys;
+  if (cvp && btys)
+    *cvp = bcv;
   return bm;
 }
 
@@ -1274,6 +1445,7 @@ implcands(Sym *trait, Type *t, const char *name, Implcand *cs, usize cap)
   for (i = 0; i < chk_nimpls; i++) {
     Sym     *im = chk_impls[i];
     Type   **tys;
+    Val    **cvs;
     Member  *m = 0;
     Implcand c;
 
@@ -1286,7 +1458,7 @@ implcands(Sym *trait, Type *t, const char *name, Implcand *cs, usize cap)
       }
     if (!m)
       continue;
-    if (!implfitp(im, t, &tys))
+    if (!implfitp(im, t, &tys, &cvs))
       continue;
     if (nc == cap)
       continue; /* a pathological table: the first rows carry the
@@ -1294,6 +1466,7 @@ implcands(Sym *trait, Type *t, const char *name, Implcand *cs, usize cap)
     c.imp = im;
     c.m = m;
     c.tys = tys;
+    c.cvs = cvs;
     for (j = nc; j > 0 && implspecific(im, cs[j - 1].imp); j--)
       cs[j] = cs[j - 1];
     cs[j] = c;
@@ -1321,6 +1494,7 @@ traitcands(Type *t, const char *name, Implcand *cs, usize cap)
   for (i = 0; i < chk_nimpls; i++) {
     Sym     *im = chk_impls[i];
     Type   **tys;
+    Val    **cvs;
     Member  *m = 0;
     Implcand c;
 
@@ -1338,13 +1512,14 @@ traitcands(Type *t, const char *name, Implcand *cs, usize cap)
       }
     if (!m)
       continue;
-    if (!implfitp(im, t, &tys))
+    if (!implfitp(im, t, &tys, &cvs))
       continue;
     if (nc == cap)
       continue;
     c.imp = im;
     c.m = m;
     c.tys = tys;
+    c.cvs = cvs;
     for (j = nc; j > 0 && implspecific(im, cs[j - 1].imp); j--)
       cs[j] = cs[j - 1];
     cs[j] = c;
@@ -1497,12 +1672,14 @@ implsatisfies(Sym *trait, Type *t, Type **targs, usize ntargs, Ast **pins, Type 
        * -- the same pattern walk its own receiver takes, the row's
        * variables bound against them (07-operators.md) */
       Type **rt = tyargs(im->ngparams);
+      Val  **rcv = arenaalloc(im->ngparams * sizeof *rcv);
       usize  j;
 
       for (j = 0; j < im->ngparams; j++)
         rt[j] = 0;
+      memset(rcv, 0, im->ngparams * sizeof *rcv);
       for (j = 0; j < ntargs; j++)
-        if (!implatch(im->ipath->args[j], targs[j], im->gparams, rt, im->ngparams))
+        if (!implatch(im->ipath->args[j], targs[j], im->gparams, rt, rcv, im->ngparams))
           break;
       if (j < ntargs)
         continue; /* this row's arguments are other ones */
@@ -1510,11 +1687,11 @@ implsatisfies(Sym *trait, Type *t, Type **targs, usize ntargs, Ast **pins, Type 
     {
       Type **fit = 0;
 
-      if (implfit(im, t, &fit)) { /* the receiver's own match, its
-                                   * variables landed -- the binding
-                                   * the pins read */
-        usize pk;                 /* the row's own members answer the pins, each the
-                                   * same type the ask pinned (04-generics.md) */
+      if (implfit(im, t, &fit, 0)) { /* the receiver's own match, its
+                                      * variables landed -- the binding
+                                      * the pins read */
+        usize pk;                    /* the row's own members answer the pins, each the
+                                      * same type the ask pinned (04-generics.md) */
 
         for (pk = 0; pk < npins; pk++) {
           Member *m = 0;

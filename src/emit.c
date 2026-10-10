@@ -157,6 +157,10 @@ foffset(Type *t, char *name, Ast *at)
   return 0; /* unreachable */
 }
 
+int hasdrop(Type *t); /* body.h's own row, spelled here without the
+                       * header: its locfind and isintty collide with
+                       * this file's (03-move.md) */
+
 /* the emitter's per-fn state: temporaries, the locals a block
  * binds, and the data segments grown along the way. ELoc, a
  * binding's own row, lives here; the rest is emit.h's. */
@@ -165,6 +169,10 @@ struct ELoc
   char *name; /* the binding's own name */
   char *slot; /* its storage: the alloc temporary's name */
   Type *ty;   /* what it holds */
+  char *flag; /* its move flag, when the type owns a destructor: the
+               * word a branch's move stores and a guarded drop reads
+               * (03-move.md, Guarded drops); NULL when no move can
+               * drop anything */
 };
 
 static char *
@@ -328,6 +336,16 @@ locbind(Em *em, char *name, char *slot, Type *ty)
   l.name = name;
   l.slot = slot;
   l.ty = ty;
+  l.flag = 0;
+  if (hasdrop(ty)) { /* the binding may move down one branch of a
+                      * join only: the flag that branch stores and a
+                      * guarded drop reads (03-move.md, Guarded
+                      * drops). Allocated with the binding, zeroed
+                      * where it stands -- a loop's rounds each begin
+                      * unmoved */
+    l.flag = stackslot(em, 4);
+    fprintf(em->o, "\tstorew 0, %s\n", l.flag);
+  }
   if (em->nlocs < vlen(em->locs)) /* a popped binding's slot, reused:
                                    * the count is the stack, the vec
                                    * only its high-water mark -- a
@@ -337,6 +355,58 @@ locbind(Em *em, char *name, char *slot, Type *ty)
   else
     vappend(&em->locs, &l);
   em->nlocs++;
+}
+
+/* the root name a moved read spells: the path itself, or the base
+ * of the field/index chain riding one (03-move.md, Guarded drops) */
+static char *
+movedroot(Ast *e)
+{
+  while (e) {
+    if (e->k == Npath)
+      return e->v.path.segs[0]->v.seg.name;
+    if (e->k == Nfield)
+      e = e->v.fld.e;
+    else if (e->k == Nindex)
+      e = e->v.n2.a;
+    else if (e->k == Ntupidx)
+      e = e->v.tup.e;
+    else
+      break;
+  }
+  return 0;
+}
+
+/* the flag store a moved read owes its root binding (03-move.md,
+ * Guarded drops): the read handed the value out, the flag says the
+ * binding no longer owns it */
+static void
+flagstore(Em *em, Ast *e)
+{
+  char *nm = movedroot(e);
+  ELoc *l = nm ? locfind(em, nm) : 0;
+
+  if (!l || !l->flag)
+    cerrat(e, "the move flag of '%s' never landed (03)", nm ? nm : "?");
+  fprintf(em->o, "\tstorew 1, %s\n", l->flag);
+}
+
+/* the guarded drop's own read: the negated flag of the name spelled
+ * -- 0 says the branch moved the binding, the drop's side of the
+ * branch is the 1 (03-move.md, Guarded drops) */
+static char *
+flagguard(Em *em, Ast *e)
+{
+  char *nm = e->v.path.segs[0]->v.seg.name;
+  ELoc *l = locfind(em, nm);
+  char *v = newtmp(em);
+  char *g = newtmp(em);
+
+  if (!l || !l->flag)
+    cerrat(e, "the move flag of '%s' never landed (03)", nm);
+  fprintf(em->o, "\t%s =w loadsw %s\n", v, l->flag);
+  fprintf(em->o, "\t%s =w xor 1, %s\n", g, v);
+  return g;
 }
 
 /* the fn's symbol: #[extern(C)] and main keep their own name, every
@@ -891,8 +961,13 @@ tymang2(Type *t, char *buf, usize o, usize n)
     buf[o++] = 's';
     return tymang2(t->t, buf, o, n);
   case Tyarray:
-    if (t->gp)
-      die("a const generic length has no code: the binding spells the number (08-reflection.md)");
+    if (t->gp) { /* [N]T as declared -- the pattern's own length, a
+                  * const parameter's: the family's name carries the
+                  * box, and the instance's own name tells the number
+                  * apart in its const slots' section (08-reflection.md) */
+      buf[o++] = 'q';
+      return tymang2(t->t && t->t->k == Tymut ? t->t->t : t->t, buf, o, n);
+    }
     buf[o++] = t->t && t->t->k == Tymut ? 'A' : 'a';
     o = segnum(buf, o, n, t->n);
     return tymang2(t->t && t->t->k == Tymut ? t->t->t : t->t, buf, o, n);
@@ -947,6 +1022,10 @@ tymang2(Type *t, char *buf, usize o, usize n)
   case Tytype:
     buf[o++] = 'q';
     return o;
+  case Tyconst: /* a const argument's number, in a row's own slot:
+                 * the instance's name tells the numbers apart (08) */
+    buf[o++] = 'k';
+    return segnum(buf, o, n, t->n);
   case Typaram: /* the declared shape: the instance's suffix names the binding */
     buf[o++] = 'u';
     return segput(buf, o, n, t->gp && t->gp->v.gp.name ? t->gp->v.gp.name : "?");
@@ -1345,10 +1424,27 @@ idxaddr(Em *em, Ast *e)
   }
 }
 
+static char *emaplace0(Em *em, Ast *e);
+
 /* the address a place names. A local's slot is an address by
- * construction; a field rides its base's; a deref is the pointer. */
+ * construction; a field rides its base's; a deref is the pointer. A
+ * place read that moved its root binding stores the flag beside the
+ * address it hands out (03-move.md, Guarded drops) */
 static char *
 emaplace(Em *em, Ast *e)
+{
+  char *p;
+
+  if (e->mvd && e->mvd != 2) {
+    p = emaplace0(em, e);
+    flagstore(em, e);
+    return p;
+  }
+  return emaplace0(em, e);
+}
+
+static char *
+emaplace0(Em *em, Ast *e)
 {
   switch (e->k) {
   case Npath: {
@@ -2146,73 +2242,37 @@ emafor(Em *em, Ast *st)
       fprintf(em->o, "%s\n", lx);
       return;
     }
-    { /* an array: ptr/len stepped by the element size -- a slice
-       * rides the library's own Iter now, the desugar's FLET
-       * carrying it (10-iteration.md) */
-      Type *it = et->t;
-      usize sz = sizeof_(it);
-      char *sv = aggbase(em, st->v.forx.b); /* the storage it sits at */
-      char *ptr, *len, *islot, *i, *c;
-      char *lc = newlbl(em), *lb = newlbl(em), *lcont = newlbl(em), *lx = newlbl(em);
-      int   reached;
-      usize nbase;
-
-      ptr = sv; /* the length comes from the type */
-      len = newtmp(em);
-      fprintf(em->o, "\t%s =l copy %lu\n", len, (unsigned long) et->n);
-      islot = stackslot(em, 8);
-      fprintf(em->o, "\tstorel 0, %s\n", islot);
-      em->loops[em->nloops].brk = lx;
-      em->loops[em->nloops].cont = lcont;
-      em->nloops++;
-      fprintf(em->o, "%s\n", lc);
-      i = newtmp(em);
-      fprintf(em->o, "\t%s =l loadl %s\n", i, islot);
-      c = newtmp(em);
-      fprintf(em->o, "\t%s =w cultl %s, %s\n", c, i, len);
-      fprintf(em->o, "\tjnz %s, %s, %s\n", c, lb, lx);
-      fprintf(em->o, "%s\n", lb);
-      nbase = em->nlocs;
-      { /* the element's address, ptr + i*size: an owned array
-         * yields the element itself -- the loop consumes it (10) */
-        char *m = newtmp(em);
-        char *ea = newtmp(em);
-        char *sa, *svv;
-
-        fprintf(em->o, "\t%s =l mul %s, %lu\n", m, i, (unsigned long) sz);
-        fprintf(em->o, "\t%s =l add %s, %s\n", ea, ptr, m);
-        subval(em, it, ea, 0, st->v.forx.a, &sa, &svv);
-        emapat(em, st->v.forx.a, it, sa, svv, lx);
-      }
-      emablockval(em, body, &reached);
-      if (reached) /* the round reached its end: the element's own
-                    * bindings die with it -- the array yielded the
-                    * element, and the round drops it
-                    * (03-move.md, 10-iteration.md) */
-        emdrops(em, st->v.forx.drops);
-      em->nlocs = nbase;
-      fprintf(em->o, "%s\n", lcont); /* the step: continue lands here */
-      {
-        char *ni = newtmp(em);
-
-        fprintf(em->o, "\t%s =l add %s, 1\n", ni, i);
-        fprintf(em->o, "\tstorel %s, %s\n", ni, islot);
-      }
-      jump(em, lc);
-      em->nloops--;
-      fprintf(em->o, "%s\n", lx);
-      return;
-    }
+    cerrat(st, "an owned array iterates std::array's ArrayIter now (10-iteration.md)");
   }
   default:
     cerrat(st, "this for shape is not one of the three");
   }
 }
 
+static char *emaexpr0(Em *em, Ast *e);
+
 /* an expression's value: a qbe temporary, or -- for an aggregate --
- * the address it lives at */
+ * the address it lives at. The mvd markers the checker left ride
+ * here: 2 is a guard's own flag read, 1 a read that moved its root
+ * binding -- the flag store follows the value out (03-move.md,
+ * Guarded drops) */
 static char *
 emaexpr(Em *em, Ast *e)
+{
+  char *v;
+
+  if (e->mvd == 2)
+    return flagguard(em, e);
+  if (e->mvd) {
+    v = emaexpr0(em, e);
+    flagstore(em, e);
+    return v;
+  }
+  return emaexpr0(em, e);
+}
+
+static char *
+emaexpr0(Em *em, Ast *e)
 {
   switch (e->k) {
   case Nint: {
@@ -2737,14 +2797,15 @@ emaexpr(Em *em, Ast *e)
             cerrat(f, "this method call was never checked");
           ft = ms->fnty;
           if (e->v.call.tys)
-            ft = gsubst(ft, ms->gparams, e->v.call.tys, ms->ngparams);
+            ft = gsubstv(ft, ms->gparams, e->v.call.tys, e->v.call.gcvals, ms->ngparams);
           selfty = ft->nargs ? ft->args[0] : 0;
           if (selfty && selfty->k == Typtr && !(rty && rty->k == Typtr && tysame(rty, selfty)))
             ra = emaplace(em, f->v.fld.e); /* a pointer self: &place */
           else
             ra = emaexpr(em, f->v.fld.e); /* as written: the pointer, or the move */
           ra = nicheout(em, selfty, ra);
-          nm = e->v.call.tys ? instensure(ms, e->v.call.tys, 0, 0)->name : fsymname(ms, ms->decl);
+          nm = e->v.call.tys ? instensure(ms, e->v.call.tys, 0, e->v.call.gcvals)->name
+                             : fsymname(ms, ms->decl);
         }
       } else if (f->k == Npath && ms) {
         Ast **fsegs = f->v.path.segs;
@@ -2756,7 +2817,8 @@ emaexpr(Em *em, Ast *e)
                                                                 * namespaces
                                                                 * walked
                                                                 * (11) */
-          nm = e->v.call.tys ? instensure(ms, e->v.call.tys, 0, 0)->name : fsymname(ms, ms->decl);
+          nm = e->v.call.tys ? instensure(ms, e->v.call.tys, 0, e->v.call.gcvals)->name
+                             : fsymname(ms, ms->decl);
       }
     }
     for (i = 0; i < n; i++) {

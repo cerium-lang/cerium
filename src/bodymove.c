@@ -37,9 +37,11 @@ mkdropcall(Ast *place, Type *ty, Ast *at)
 {
   Sym    *imp;
   Type  **tys;
-  Member *m = implfind(sym_drop, ty, "drop", &imp, &tys);
+  Val   **cvs;
+  Member *m;
   Ast    *f, *c;
 
+  m = implfind(sym_drop, ty, "drop", &imp, &tys, &cvs);
   if (!m)
     return 0;
   f = opnode(Npath, at);
@@ -56,7 +58,15 @@ mkdropcall(Ast *place, Type *ty, Ast *at)
   c->v.call.args = vnew(Ast *, 1);
   opvpush(&c->v.call.args, place);
   c->v.call.sym = m->sym;
-  c->v.call.tys = tys && imp->ngparams ? tys : 0;
+  {
+    Ast **pmg = m->decl->v.fn.gparams;
+    usize nmg = pmg ? vlen(pmg) : 0; /* the method's own angle brackets
+                                      * behind the row's -- the emitter
+                                      * reads the concatenated list (08) */
+
+    c->v.call.tys = insttys(imp, tys, pmg, 0, nmg);
+    c->v.call.gcvals = instcvals(imp, cvs, nmg);
+  }
   c->ty = tyunit();
   return c;
 }
@@ -259,13 +269,57 @@ scopedrops(Fenv *fe, usize from, Ast *at)
     Local *l = &fe->ls[i - 1];
     Ast   *p;
 
-    if (l->dead || l->isconst || !hasdrop(l->ty))
+    if (l->isconst || !hasdrop(l->ty))
+      continue;
+    if (l->dead && !l->cmv) /* moved on every path that reaches here:
+                             * statically dead, nothing runs
+                             * (03-move.md) */
       continue;
     p = opnode(Npath, at); /* the binding's own place: a plain name,
                             * its slot the emitter's own */
     p->v.path.segs = vnew(Ast *, 1);
     opvpush(&p->v.path.segs, opseg(l->name, at));
     p->ty = l->ty;
+    if (l->cmv) { /* conditionally moved: dead down one path only,
+                   * the join could not say -- the emitter keeps a
+                   * move flag the branch stores and the drop reads
+                   * (03-move.md, Guarded drops). The whole row hides
+                   * under one flag: the binding is one ownership */
+      Ast **sub = 0;
+      Ast  *g, *blk;
+      usize k;
+
+      dropcalls(p, l->ty, &sub, at);
+      if (!sub)
+        continue;
+      g = opnode(Nif, at);
+      g->ty = tyunit();
+      g->v.ifx.cond = opnode(Npath, at); /* the negated flag read:
+                                          * mvd 2 is its marker, the
+                                          * name the binding's own */
+      g->v.ifx.cond->mvd = 2;
+      g->v.ifx.cond->v.path.segs = vnew(Ast *, 1);
+      opvpush(&g->v.ifx.cond->v.path.segs, opseg(l->name, at));
+      g->v.ifx.cond->ty = tybool();
+      blk = opnode(Nblock, at);
+      blk->ty = tyunit();
+      blk->v.blk.stmts = vnew(Ast *, vlen(sub));
+      for (k = 0; k < vlen(sub); k++) { /* a bare statement is an
+                                         * expression statement: the
+                                         * drop calls ride one each */
+        Ast *s = opnode(Nexprstmt, at);
+
+        s->v.n1.e = sub[k];
+        s->v.n1.drops = 0;
+        opvpush(&blk->v.blk.stmts, s);
+      }
+      g->v.ifx.then = blk;
+      g->v.ifx.els = 0;
+      if (!out) /* opvpush begins no vector on its own */
+        out = vnew(Ast *, 4);
+      opvpush(&out, g);
+      continue;
+    }
     dropcalls(p, l->ty, &out, at);
   }
   return out;

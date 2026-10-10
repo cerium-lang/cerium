@@ -313,9 +313,21 @@ rargs(Ast *seg, Env *env, usize *np, int pins)
   }
   ts = tyargs(n);
   for (i = 0, j = 0; i < na; i++)
-    if (as[i]->k != Nassoc)
+    if (as[i]->k != Nassoc) {
+      /* a const parameter among the arguments: the number it names,
+       * a slot of the row's own -- the shape a type would sit in
+       * kept to the types (08-reflection.md) */
+      if (as[i]->k == Npath && !as[i]->v.path.root && vlen(as[i]->v.path.segs) == 1) {
+        Type *t = envfind(env, as[i]->v.path.segs[0]->v.seg.name);
+
+        if (t && t->k == Typaram && t->gp->v.gp.cnst) {
+          ts[j++] = t;
+          continue;
+        }
+      }
       ts[j++] = rty(as[i], env); /* a $$ among them: rty's own case
                                   * splices it (08-reflection.md) */
+    }
   *np = n;
   return ts;
 }
@@ -1153,17 +1165,6 @@ resolveimpl(Sym *s)
 {
   Ast *it = s->decl;
   Env  env = envgparams(0, it->v.impl.gparams, vlen(it->v.impl.gparams));
-  { /* the impl's own angle brackets: a const length among them wants
-     * its [N]T routed through the table, and that routing arrives
-     * with a later milestone (08-reflection.md) */
-    Ast **gps = it->v.impl.gparams;
-    usize ng = vlen(gps), g;
-
-    for (g = 0; g < ng; g++)
-      if (gps[g]->v.gp.cnst)
-        cerrat(gps[g], "a const generic parameter on an impl arrives with a later milestone "
-                       "(08-reflection.md)");
-  }
 
   if (it->v.impl.fort) {                   /* a trait impl: the path names the trait */
     s->ifort = rty(it->v.impl.fort, &env); /* Self, for the defaults */
@@ -1742,9 +1743,14 @@ spec1(Type *a, Type *b, SpecSub *s)
     int   am, bm;
 
     if (b->k == Tyarray) {
-      if (a->gp || b->gp)
-        return a->gp == b->gp && spec1(a->t, b->t, s); /* the same const parameter */
-      if (a->n != b->n)
+      if (b->gp)
+        ; /* b's length a variable: any length its row takes -- the
+           * same parameter or another row's, for a number is not a
+           * shape the sub tracks, only that b is at least this
+           * general wherever the elements align (04, 08) */
+      else if (a->gp)
+        return 0; /* a's length a variable where b's is a number */
+      else if (a->n != b->n)
         return 0;
     }
     ac = slotchild(a->t, &am);
@@ -2676,7 +2682,7 @@ checktestslate(Ns *ns)
     usecur(s->ownsf->uses);
     lexsetpath(s->ownsf->path);
     rt = fnsigof(s)->t;
-    if (rt->k == Tyenum && rt->sym == sym_result && !implfor(sym_fmt, rt->args[1], 0))
+    if (rt->k == Tyenum && rt->sym == sym_result && !implfor(sym_fmt, rt->args[1], 0, 0))
       cerrat(s->decl, "the error type does not implement Fmt -- the Err half"
                       " prints through it (13-testing.md)");
     if (attrfind(s->decl->attrs, "extern"))
@@ -2991,7 +2997,7 @@ checkproject(Srcfile **files, usize nfiles)
       if (attrfind(m->decl->attrs, "extern"))
         cerrat(m->decl, "#[extern(C)] is for the fns that cross to C; main's door the "
                         "compiler arranges (12-projects.md)");
-      if (rt->k == Tyenum && rt->sym == sym_result && !implfor(sym_fmt, rt->args[1], 0))
+      if (rt->k == Tyenum && rt->sym == sym_result && !implfor(sym_fmt, rt->args[1], 0, 0))
         cerrat(m->decl, "the error type does not implement Fmt -- the Err half prints through"
                         " it (12-projects.md)");
     }

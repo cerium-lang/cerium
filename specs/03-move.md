@@ -212,7 +212,8 @@ let v = @take(p);   // v owns fd 3; *p — and so a — now holds the zero value
 // v is destructed exactly once and closes fd 3
 ```
 
-Everything the standard library needs is built from it:
+Everything the standard library needs is built from it, the spelled names in
+`std::mem`:
 
 ```text
 take(x)      = @take(&mut x)   // x must be a mut slot
@@ -227,6 +228,11 @@ with a plain union read. A union field cannot be marked `mut` (`01-types.md`);
 Destructors must treat the zero value as a no-op. This is what makes `@take`
 sound — and it forbids types whose zero value is itself a live resource (a
 "zero" that means fd 0 would close stdin when destructed).
+
+The spelled names live in `std::mem`: `mem::take(&mut x)` is the sugar, and
+`replace` and `swap` build on the same primitive — the replacement value a
+take leaves behind is a real zero, and it drops with its place exactly as
+`@take`'s own does.
 
 ## Timing
 
@@ -253,17 +259,26 @@ the new value is moved in.
 There is no last-use destruction: the drop point is the closing brace, not the
 last reference.
 
-### Static Insertion
+### Guarded Drops
 
-Which destructors run is decided entirely at compile time. The compiler tracks
-the move state at every program point and inserts the calls statically — the
-generated code carries no "was this moved?" runtime flag. This works because
-the move check rejects any program whose drop set is not statically known (see
-Branches below); the rejection is precisely what buys purely static insertion.
+Which destructors run is decided at compile time wherever the
+compiler can prove it, and a move the proof cannot reach rides a
+flag instead. The compiler tracks the move state at every program
+point: a move every path reaching a scope's end has made needs no
+destructor at all -- the binding is statically dead -- and a move
+down one branch of a join leaves the drop set statically unknown,
+so the scope's end reads a hidden flag the branch's move stores:
+the flag set means the binding owns nothing, the drop stands down;
+the flag clear means the value is there and destructs. One flag a
+binding, a word beside its storage, written by a move and read once
+at the drop -- nothing else in the program touches it.
 
-Drops are inserted the same way in `debug` and in `release`. When a `debug`
-runtime check panics (`01-types.md`), the process aborts without unwinding —
-destructors do not run, resources are left to the operating system.
+The generated code carries no other runtime state, and a `debug`
+runtime check that panics (`01-types.md`) aborts without unwinding
+-- destructors do not run, resources are left to the operating
+system.
+
+Drops are inserted the same way in `debug` and in `release`.
 
 ### Branches
 
@@ -295,6 +310,12 @@ if cond {
 }
 let d = b;   // ❌ on the cond path, b is dead
 ```
+
+The unusable name is the union, but the destructor is not: `b`'s scope ends
+past the join, where one path moved it and the other still owns it, so the
+drop is the guarded kind — the flag the then path stores, the else path's
+value destructing, the then path's taker having destructed it already inside
+the branch (Guarded Drops above).
 
 A condition is evaluated before either branch, so a move in the condition is
 visible to both.

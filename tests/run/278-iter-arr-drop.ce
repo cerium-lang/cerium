@@ -1,0 +1,21 @@
+use std::ops::Drop;
+
+static mut N: i32 = 0;
+
+struct D { v: i32 }
+impl Drop for D {
+  fn drop(self: Self) {
+    N = N + 1;
+  }
+}
+
+fn main() -> i32 {
+  let a = [4]D{ D{v: 1}, D{v: 2}, D{v: 3}, D{v: 4} };
+  for d in a {
+    if d.v == 2 { break; }
+  }
+  N  /* 2 by rounds + 2 remaining at the exit + 2 taken slots, the
+      * zero values @take left behind destructing with the array:
+      * mem::take's own semantics, the replacement value drops with
+      * its place (03-move.md, Take) = 6 */
+}
