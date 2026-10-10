@@ -3467,3 +3467,35 @@ No behaviour moved: the same checks in the same order, the -T
 goldens byte-identical, 675 green the proof.
 
 675 green, the library's 30.
+
+## 2026-10-11 -- the two enums' own words
+
+Option had no methods at all and Result had one, map_err, so the
+sugar's own types asked a program to spell every read of them by
+hand. The rows both take now are the ones the receiver allows: a
+match over a borrowed whole -- `match *self` -- reads the tag and
+binds nothing, so is_some / is_none / is_ok / is_err borrow and
+nothing moves; the rest take self by value and hand a half on --
+unwrap, expect, unwrap_or, map, ok, err, ok_or, or, zip -- and take
+is the one write, @take leaving the empty behind. unwrap on a
+Result sits under its own bound, `E: Fmt`: the panic is a []u8's,
+and an error the caller never asked to hold still owes it a word
+before the message.
+
+What stays out is two language gaps and not two missing rows:
+and_then cannot be written -- `Fn<T, Output = ?U>` will not give U
+up, `-> F::Output` leaves the None arm with no Option to name, and
+the sugar has no turbofish to spell either; and a fn of no
+arguments has no Fn row at all, so unwrap_or_else has nothing to
+bound.
+
+The payload does lend, which is the part worth keeping: a match
+over a borrowed whole binds the arm's value without moving it, so
+is_some_and, is_ok_and, is_err_and read through a *T and leave the
+value standing, and filter borrows to decide and then moves the
+Some it read. What does not follow is handing that value *out* of
+the borrow -- `match *self { Some(v) => v }` over a non-Copy T type
+checks and then hands qbe a blit0 it rejects, which is a third
+issue rather than a row.
+
+675 green, the library's 46.
