@@ -1,0 +1,11 @@
+/* a mut loop lends mut rows: the binding's mut lends the array
+ * whole, but the rounds write through the elements, and a mutable
+ * pointer cannot grant permission the type does not give -- the
+ * row the elements spell is the one the loop needs (01-types.md) */
+fn main() -> i32 {
+  let mut a = [3]u32{1, 2, 3};
+  for x in &mut a {
+    *x = 0;
+  }
+  0
+}

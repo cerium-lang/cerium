@@ -1,0 +1,32 @@
+/* the iterator's own destructors rebuild under the instance: the
+ * declaration's walk sees ArrayIter<T, 3> with T a parameter, its
+ * drops nothing to spell -- a Drop-having T rides the re-check, and
+ * what the iterator still holds dies at the exit either way
+ * (03-move.md, 10-iteration.md). The count: the round's own binding
+ * one, the zero @take left behind one, the two never taken two --
+ * the same four the non-generic loop spells. */
+use std::ops::Drop;
+
+static mut N: i32 = 0;
+
+struct D {
+  v: i32,
+}
+
+impl Drop for D {
+  fn drop(self: Self) {
+    N = N + 1;
+  }
+}
+
+fn g<T>(a: [3]T) -> i32 {
+  for d in a {
+    break;
+  }
+  0
+}
+
+fn main() -> i32 {
+  g([3]D{ D{v: 1}, D{v: 2}, D{v: 3} });
+  N
+}
