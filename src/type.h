@@ -155,6 +155,12 @@ Type *gsubstv(Type *t, Ast **gps, Type **tys, Val **gcvals,
  * sp.b is (*sp).b, and a *mut T's pointee is the mut slot mut T */
 Type *derefthrough(Type *t);
 
+/* whether a receiver as written is already the address a pointer
+ * self wants -- the caller's side of "a pointer receiver is
+ * dereferenced first" (05-traits.md), asked by the checker and the
+ * emitter alike */
+int typtrfits(Type *rty, Type *selfty);
+
 /* the printable form, expanded: aliases are already gone, and the
  * sugar is spelled back -- ?T, E?T, [3]mut u8. tysprint writes a
  * NUL-terminated string into buf and returns it; tyfmt prints to

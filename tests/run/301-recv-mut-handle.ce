@@ -1,0 +1,29 @@
+/* a *Self method off a *mut handle: the mut layer is the permission
+ * the handle lends, the address the same one -- a receiver that is
+ * already a pointer needs no & taken over it (05-traits.md). The
+ * wrong spelling handed the method the pointer variable's own slot,
+ * and `self.a` read the bottom of an address instead: a plausible
+ * number, a different one every run, and no diagnostic beside it.
+ * Both spellings here -- the handle's own, and the shared pointer
+ * the coercion makes of it -- must name the same struct. */
+struct Big {
+  mut a: i32,
+  mut b: i32,
+}
+
+impl Big {
+  fn peek(self: *Self) -> i32 { self.a + self.b }
+  fn set(self: *mut Self, v: i32) {
+    self.a = v;
+    self.b = v * 10;
+  }
+}
+
+fn main() -> i32 {
+  let mut b = Big { a: 0, b: 0 };
+  let p: *mut Big = &mut b;
+  let m: *Big = p;
+
+  p.set(4);            /* the *mut self: through the handle, as ever */
+  p.peek() + m.peek()  /* 44 + 44: one struct, two spellings of it */
+}

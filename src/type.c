@@ -457,6 +457,23 @@ derefthrough(Type *t)
   return t;
 }
 
+int
+typtrfits(Type *rty, Type *selfty)
+{
+  /* the receiver as written already the address a pointer self asks
+   * for, so no & is taken over it: the same pointer, or a *mut T
+   * standing in for a *T -- the mut layer the permission the handle
+   * lends, the address under it the same one (01-types.md). Two
+   * callers ask it, the checker accepting the call and the emitter
+   * spelling it; an answer they disagree on is a receiver one
+   * dereference from what it names */
+  if (!rty || !selfty || rty->k != Typtr || selfty->k != Typtr)
+    return 0;
+  if (tysame(rty, selfty)) /* &*sp is sp: the pointer as written */
+    return 1;
+  return rty->t && rty->t->k == Tymut && selfty->t->k != Tymut && tysame(rty->t->t, selfty->t);
+}
+
 /* the rows a spread takes under the table: its pack's binding the
  * whole tuple, its elements one for one -- zero the empty pack; one
  * argument when nothing binds the pack (04-generics.md). A pack

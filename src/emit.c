@@ -2799,7 +2799,7 @@ emaexpr0(Em *em, Ast *e)
           if (e->v.call.tys)
             ft = gsubstv(ft, ms->gparams, e->v.call.tys, e->v.call.gcvals, ms->ngparams);
           selfty = ft->nargs ? ft->args[0] : 0;
-          if (selfty && selfty->k == Typtr && !(rty && rty->k == Typtr && tysame(rty, selfty)))
+          if (selfty && selfty->k == Typtr && !typtrfits(rty, selfty))
             ra = emaplace(em, f->v.fld.e); /* a pointer self: &place */
           else
             ra = emaexpr(em, f->v.fld.e); /* as written: the pointer, or the move */
