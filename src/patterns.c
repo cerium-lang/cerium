@@ -461,6 +461,9 @@ rmatch(Ast *e, Fenv *fe, Type *want)
       if (fe->loopd > 0 && locfindi(fe, root->name) < fe->loopbase)
         berr(e->v.call.f, "'%s' began before the for and would be moved every round", root->name);
       root->dead = 1;
+      markmoved(e->v.call.f, fe, root); /* the flag store rides the
+                                         * spent place's read
+                                         * (03-move.md, Guarded drops) */
     }
   }
   if (st->k == Tyenum) { /* the covered variants, by name */

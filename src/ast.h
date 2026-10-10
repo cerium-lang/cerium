@@ -89,6 +89,12 @@ struct Ast
   Type *ty;     /* what checking made of this node, written back for
                  * the passes that follow (the emitter); NULL until
                  * then -- the -a dump prints before it exists */
+  int mvd;      /* 03-move.md, Guarded drops. 1: this read moved its
+                 * root binding -- the emitter stores the move flag
+                 * beside the value it hands out; a refused trial's
+                 * walk unwinds it (movsnap). 2: a scoped drop's own
+                 * guard, a path the emitter reads as the negated
+                 * flag of the name it spells. 0: neither */
   union
   {
     struct

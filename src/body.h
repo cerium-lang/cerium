@@ -18,6 +18,11 @@ struct Local
   Type *ty;      /* its declared type, never narrowed away */
   int   mut;     /* let mut */
   int   dead;    /* moved from: unusable until its scope ends */
+  int   cmv;     /* conditionally moved (03-move.md, Guarded drops):
+                  * a join saw the binding dead down one path only,
+                  * so no drop insertion is statically known -- the
+                  * scope's end reads the move flag the emitter keeps
+                  * instead of trusting the dead bit */
   int   frz;     /* FZ_*: what a live borrow forbids */
   int   frzby;   /* the borrowing binding's index, to thaw when it dies */
   char *frzpath; /* the borrowed field chain, ".a.b"; NULL is the root */
@@ -51,6 +56,11 @@ struct Fenv
   int   nofreeze; /* an inline borrow the deref below is spending
                    * whole: it reserves nothing past the expression,
                    * so freeze holds its hand (01-types.md) */
+  Ast **mvdlog;   /* the nodes this walk marked as moves (03-move.md,
+                   * Guarded drops): a refused trial's movrestore pops
+                   * them back to unmarked. The vector is the fn's
+                   * own, shared by every fork -- the log is linear
+                   * and the trials bracket what they push */
 };
 
 /* what a call's receiver borrow displaced, and its way back */
@@ -107,6 +117,11 @@ int narrowcond(Ast *cond, Fenv *fe, char **name, Type **child);
  * them as gone. One int per binding, the arena's own. */
 int *movsnap(Fenv *fe);
 void movrestore(Fenv *fe, int *snap);
+void markmoved(Ast *e, Fenv *fe, Local *root); /* the read moves its
+                                                * root: the flag store
+                                                * rides the node, the
+                                                * log remembers it
+                                                * (03-move.md) */
 
 /* joins (03-move.md, Branches) */
 void     fejoin(Fenv *fe, Fenv *a, Fenv *b);

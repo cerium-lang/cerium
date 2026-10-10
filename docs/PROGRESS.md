@@ -3219,3 +3219,34 @@ would need them rebuilt; `*mut [N]T` and `*[N]mut T` on a plain
 array reject with the words they have, matching neither row -- the
 spec's answer stands, the diagnostics could name the mut row's
 shape.
+
+## 2026-10-10 -- the guarded drop: a move down one branch of a join
+
+The review of the array rows surfaced a soundness hole older than
+them: `dead` carried two meanings on one bit. A join took the union
+for both -- the right conservatism for reads (reject what cannot be
+proven), the wrong one for drops (a binding moved down one path
+only still owns its value down the other, and the scope's end
+skipped it whole: the else path leaked). A probe said it in one
+number -- f(false) dropped nothing.
+
+The fix follows Rust's own split. The reads keep the union; the
+drop sets split into the statically known and the guarded: a
+binding moved on every path stays skipped (no flag, no cost), a
+binding moved down one branch of a join carries a move flag -- a
+word beside its storage, zeroed where the binding stands (a loop's
+rounds each begin unmoved), stored by the branch's move, read once
+by the drop. The checker marks the moved read itself (mvd on the
+node), the trial log remembers the marking so a refused row's walk
+unwinds it, and the join's cmv bit says which drops wear the guard.
+spec 03's Static Insertion became Guarded Drops: the promise that
+held was "no drop flag for the provable," and that still holds.
+
+@take stays where it was: the zero a take leaves behind drops with
+its place, mem::take's own semantics -- the replacement value is a
+real value, its drop the type author's no-op to guarantee (278
+reads 6 and says why). The spelled names moved into std::mem:
+take, replace, swap, thin rows over the primitive. The pins: 297
+(the branch's two paths each destructing once), 298 (nested joins,
+a match arm's move, a loop's rounds under the same flag). 669
+green, the library's 27 with them.

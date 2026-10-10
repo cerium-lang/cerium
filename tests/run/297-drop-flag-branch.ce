@@ -1,0 +1,35 @@
+/* the guarded drop (03-move.md, Guarded drops): a move down one
+ * branch of a join leaves the drop set statically unknown -- dead is
+ * the union for the reads, but the scope's end cannot know which
+ * path ran. The compiler keeps a move flag instead: the branch's
+ * move stores it, the drop reads it, and both paths destruct exactly
+ * once -- the else path's binding at the scope's end, the then
+ * path's taker where the branch ends. */
+use std::ops::Drop;
+
+static mut N: i32 = 0;
+
+struct D {
+  v: i32,
+}
+
+impl Drop for D {
+  fn drop(self: Self) {
+    N = N + 1;
+  }
+}
+
+fn f(c: bool) {
+  let b = D { v: 1 };
+  if c {
+    let a = b; /* the move: a's own drop at the branch's end, b's
+                * flag set beside it */
+  }
+}
+
+fn main() -> i32 {
+  f(false); /* b destructs at the scope's end: N = 1 */
+  f(true);  /* a destructs at the branch's end, b's drop reads the
+             * flag and stands down: N = 2 */
+  N
+}

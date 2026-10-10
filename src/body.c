@@ -1900,7 +1900,9 @@ recvadapt(Ast *x, Type *selfty, Type *rty, Type *ty, Fenv *fe, Frzsave *sv, int 
           return 0;
         berr(x, "'%s' began before the for and would be moved every round", root->name);
       }
-      root->dead = 1; /* the binding is the move's one legal start */
+      root->dead = 1;         /* the binding is the move's one legal start */
+      markmoved(x, fe, root); /* the flag store rides the receiver
+                               * read (03-move.md, Guarded drops) */
     }
     return 1;
   }
@@ -2034,6 +2036,8 @@ rexprpath1(Ast *e, Fenv *fe, char *name, Type *want, Ns *ns)
       if (fe->loopd > 0 && locfindi(fe, name) < fe->loopbase)
         berr(e, "'%s' began before the for and would be moved every round", name);
       l->dead = 1;
+      markmoved(e, fe, l); /* the flag store rides the read itself
+                            * (03-move.md, Guarded drops) */
     }
     return l->cur;
   }
@@ -2972,11 +2976,14 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
                 }
               }
             }
-            thawargs(svs, n);    /* the call is done; its borrows ended with it */
-            if (cl->v.clos.once) /* the family's once row: the call is
-                                  * the move that spends the env, the
-                                  * binding dead after it (03-move.md) */
+            thawargs(svs, n);      /* the call is done; its borrows ended with it */
+            if (cl->v.clos.once) { /* the family's once row: the call
+                                    * is the move that spends the env, the
+                                    * binding dead after it (03-move.md) */
               l->dead = 1;
+              markmoved(f, fe, l); /* the flag store rides the callee
+                                    * read (03-move.md, Guarded drops) */
+            }
             return sig->t;
           }
           if (t && t->k == Typaram) { /* the Fn family a bound spells on
@@ -3987,13 +3994,15 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
         Local *rt = placeroot(e, fe, pbuf, sizeof pbuf);
 
         if (rt && !iscopy(t)) {
-          if (issprrow(e)) /* an array spread's own row: the whole
-                            * binding's move, this row its spelling
-                            * -- the binding dies whole, the marking
-                            * a trial that refuses unwinds with every
-                            * other move (04-generics.md) */
+          if (issprrow(e)) { /* an array spread's own row: the whole
+                              * binding's move, this row its spelling
+                              * -- the binding dies whole, the marking
+                              * a trial that refuses unwinds with every
+                              * other move (04-generics.md) */
             rt->dead = 1;
-          else
+            markmoved(e, fe, rt); /* the flag store rides the row read
+                                   * (03-move.md, Guarded drops) */
+          } else
             berr(e, "cannot move out of a place: %s is not Copy (@take, 03)", btys(t));
         }
       }
@@ -4134,13 +4143,15 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
       Local *rt = placeroot(e, fe, pbuf, sizeof pbuf);
 
       if (rt && !iscopy(ft)) {
-        if (issprrow(e)) /* a spread's own row: the whole binding's
-                          * move, this row its spelling -- the
-                          * binding dies whole, the marking a trial
-                          * that refuses unwinds with every other
-                          * move (04-generics.md) */
+        if (issprrow(e)) { /* a spread's own row: the whole binding's
+                            * move, this row its spelling -- the
+                            * binding dies whole, the marking a trial
+                            * that refuses unwinds with every other
+                            * move (04-generics.md) */
           rt->dead = 1;
-        else
+          markmoved(e, fe, rt); /* the flag store rides the row read
+                                 * (03-move.md, Guarded drops) */
+        } else
           berr(e, "cannot move out of a place: %s is not Copy (@take, 03)", btys(ft));
       }
     }
@@ -5549,6 +5560,10 @@ runbody(Ast *it, Env env, Type **argtys, Type *ret, Val **cvals, Ast **gparams, 
   memset(&fe, 0, sizeof fe);
   fe.env = env;
   fe.fnret = ret;
+  fe.mvdlog = vnew(Ast *, 16); /* the move-flag log: the nodes this
+                                * walk marked, so a trial that refuses
+                                * unwinds the flags (03-move.md,
+                                * Guarded drops) */
   for (i = 0; i < n; i++) {
     locpush(&fe, ps[i]->v.param.name, argtys[i], ps[i]->v.param.mut);
     if (ps[i]->v.param.cnst) { /* the const parameters: the
@@ -5714,10 +5729,11 @@ checkbodyimpl(Sym *s, Ast *it)
       memset(&fe, 0, sizeof fe);
       fe.env = e2;
       fe.fnret = fnty->t;
-      { /* the impl's own const generic parameters: the declaration's
-         * walk holds them empty -- every compile-time read the box,
-         * the instance's re-check answering with the number
-         * (08-reflection.md), exactly as a generic fn's own do */
+      fe.mvdlog = vnew(Ast *, 16); /* ditto the method's own walk */
+      {                            /* the impl's own const generic parameters: the declaration's
+                                    * walk holds them empty -- every compile-time read the box,
+                                    * the instance's re-check answering with the number
+                                    * (08-reflection.md), exactly as a generic fn's own do */
         Ast **igps = it->v.impl.gparams;
         usize gi, ing = vlen(igps);
 

@@ -1,0 +1,65 @@
+/* the guarded drop's harder corners (03-move.md, Guarded drops): a
+ * conditional move nested inside another branch -- the flag says
+ * what the two joins together cannot -- a match arm's move against
+ * the arm that never moved, and a loop's rounds each beginning
+ * unmoved: the flag's slot is the binding's own, re-zeroed where
+ * each round's let stands. */
+use std::ops::Drop;
+
+static mut N: i32 = 0;
+
+struct D {
+  v: i32,
+}
+
+impl Drop for D {
+  fn drop(self: Self) {
+    N = N + 1;
+  }
+}
+
+enum Pick {
+  One,
+  Other,
+}
+
+fn nested(a: bool, b: bool) {
+  let x = D { v: 1 };
+  if a {
+    if b {
+      let y = x; /* two joins deep: only the innermost path moved */
+    }
+  }
+}
+
+fn m(c: Pick) {
+  let z = D { v: 2 };
+  match c {
+    Pick::One => {
+      let w = z; /* the arm's move: w drops in the arm, z's flag
+                  * set beside it */
+      0
+    },
+    _ => 0,
+  };
+}
+
+fn rounds(c: bool) {
+  for i in 0..3 {
+    let q = D { v: 3 };
+    if i == 1 && c {
+      let r = q; /* one round moves, the others drop where they
+                  * stand */
+    }
+  }
+}
+
+fn main() -> i32 {
+  nested(false, true); /* the outer else: x drops -- N = 1 */
+  nested(true, false); /* the inner else: x drops -- N = 2 */
+  nested(true, true);  /* y drops, x's drop stands down -- N = 3 */
+  m(Pick::One);        /* w drops in the arm -- N = 4 */
+  m(Pick::Other);      /* z drops at the scope's end -- N = 5 */
+  rounds(true);        /* q twice, r once -- N = 8 */
+  N
+}

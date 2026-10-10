@@ -157,6 +157,10 @@ foffset(Type *t, char *name, Ast *at)
   return 0; /* unreachable */
 }
 
+int hasdrop(Type *t); /* body.h's own row, spelled here without the
+                       * header: its locfind and isintty collide with
+                       * this file's (03-move.md) */
+
 /* the emitter's per-fn state: temporaries, the locals a block
  * binds, and the data segments grown along the way. ELoc, a
  * binding's own row, lives here; the rest is emit.h's. */
@@ -165,6 +169,10 @@ struct ELoc
   char *name; /* the binding's own name */
   char *slot; /* its storage: the alloc temporary's name */
   Type *ty;   /* what it holds */
+  char *flag; /* its move flag, when the type owns a destructor: the
+               * word a branch's move stores and a guarded drop reads
+               * (03-move.md, Guarded drops); NULL when no move can
+               * drop anything */
 };
 
 static char *
@@ -328,6 +336,16 @@ locbind(Em *em, char *name, char *slot, Type *ty)
   l.name = name;
   l.slot = slot;
   l.ty = ty;
+  l.flag = 0;
+  if (hasdrop(ty)) { /* the binding may move down one branch of a
+                      * join only: the flag that branch stores and a
+                      * guarded drop reads (03-move.md, Guarded
+                      * drops). Allocated with the binding, zeroed
+                      * where it stands -- a loop's rounds each begin
+                      * unmoved */
+    l.flag = stackslot(em, 4);
+    fprintf(em->o, "\tstorew 0, %s\n", l.flag);
+  }
   if (em->nlocs < vlen(em->locs)) /* a popped binding's slot, reused:
                                    * the count is the stack, the vec
                                    * only its high-water mark -- a
@@ -337,6 +355,58 @@ locbind(Em *em, char *name, char *slot, Type *ty)
   else
     vappend(&em->locs, &l);
   em->nlocs++;
+}
+
+/* the root name a moved read spells: the path itself, or the base
+ * of the field/index chain riding one (03-move.md, Guarded drops) */
+static char *
+movedroot(Ast *e)
+{
+  while (e) {
+    if (e->k == Npath)
+      return e->v.path.segs[0]->v.seg.name;
+    if (e->k == Nfield)
+      e = e->v.fld.e;
+    else if (e->k == Nindex)
+      e = e->v.n2.a;
+    else if (e->k == Ntupidx)
+      e = e->v.tup.e;
+    else
+      break;
+  }
+  return 0;
+}
+
+/* the flag store a moved read owes its root binding (03-move.md,
+ * Guarded drops): the read handed the value out, the flag says the
+ * binding no longer owns it */
+static void
+flagstore(Em *em, Ast *e)
+{
+  char *nm = movedroot(e);
+  ELoc *l = nm ? locfind(em, nm) : 0;
+
+  if (!l || !l->flag)
+    cerrat(e, "the move flag of '%s' never landed (03)", nm ? nm : "?");
+  fprintf(em->o, "\tstorew 1, %s\n", l->flag);
+}
+
+/* the guarded drop's own read: the negated flag of the name spelled
+ * -- 0 says the branch moved the binding, the drop's side of the
+ * branch is the 1 (03-move.md, Guarded drops) */
+static char *
+flagguard(Em *em, Ast *e)
+{
+  char *nm = e->v.path.segs[0]->v.seg.name;
+  ELoc *l = locfind(em, nm);
+  char *v = newtmp(em);
+  char *g = newtmp(em);
+
+  if (!l || !l->flag)
+    cerrat(e, "the move flag of '%s' never landed (03)", nm);
+  fprintf(em->o, "\t%s =w loadsw %s\n", v, l->flag);
+  fprintf(em->o, "\t%s =w xor 1, %s\n", g, v);
+  return g;
 }
 
 /* the fn's symbol: #[extern(C)] and main keep their own name, every
@@ -1354,10 +1424,27 @@ idxaddr(Em *em, Ast *e)
   }
 }
 
+static char *emaplace0(Em *em, Ast *e);
+
 /* the address a place names. A local's slot is an address by
- * construction; a field rides its base's; a deref is the pointer. */
+ * construction; a field rides its base's; a deref is the pointer. A
+ * place read that moved its root binding stores the flag beside the
+ * address it hands out (03-move.md, Guarded drops) */
 static char *
 emaplace(Em *em, Ast *e)
+{
+  char *p;
+
+  if (e->mvd && e->mvd != 2) {
+    p = emaplace0(em, e);
+    flagstore(em, e);
+    return p;
+  }
+  return emaplace0(em, e);
+}
+
+static char *
+emaplace0(Em *em, Ast *e)
 {
   switch (e->k) {
   case Npath: {
@@ -2162,10 +2249,30 @@ emafor(Em *em, Ast *st)
   }
 }
 
+static char *emaexpr0(Em *em, Ast *e);
+
 /* an expression's value: a qbe temporary, or -- for an aggregate --
- * the address it lives at */
+ * the address it lives at. The mvd markers the checker left ride
+ * here: 2 is a guard's own flag read, 1 a read that moved its root
+ * binding -- the flag store follows the value out (03-move.md,
+ * Guarded drops) */
 static char *
 emaexpr(Em *em, Ast *e)
+{
+  char *v;
+
+  if (e->mvd == 2)
+    return flagguard(em, e);
+  if (e->mvd) {
+    v = emaexpr0(em, e);
+    flagstore(em, e);
+    return v;
+  }
+  return emaexpr0(em, e);
+}
+
+static char *
+emaexpr0(Em *em, Ast *e)
 {
   switch (e->k) {
   case Nint: {
