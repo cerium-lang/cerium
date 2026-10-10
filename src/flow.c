@@ -774,10 +774,15 @@ gunifyv(Type *sig, Type *arg, Ast **gps, Type **tys, Val **gcvals, usize n)
       for (i = 0; i < n; i++)
         if (sig->gp == gps[i]) {
           if (!tys[i]) {
-            if (arg->gp && !gcvals)
-              tys[i] = typaram(arg->gp); /* a type row's own word:
-                                          * the parameter the value's
-                                          * length names (08) */
+            if (arg->gp)
+              tys[i] = typaram(arg->gp); /* the box, and its own
+                                          * name: the parameter the
+                                          * value's length names, the
+                                          * number the re-check's to
+                                          * land -- a key that reads
+                                          * it tells the parameters
+                                          * apart, never the numbers
+                                          * (08-reflection.md) */
             else
               tys[i] = tyint(IN_USIZE); /* the slot's shape, and the
                                          * infer check's non-empty */
@@ -1013,9 +1018,15 @@ implatch(Type *pat, Type *ty, Ast **gps, Type **tys, Val **gcvals, usize n)
                                                         * length, the
                                                         * instance's
                                                         * re-check
-                                                        * binds */
+                                                        * binds -- the
+                                                        * name now, so
+                                                        * a key that
+                                                        * reads it
+                                                        * tells the
+                                                        * parameters
+                                                        * apart (08) */
             if (!tys[i])
-              tys[i] = tyint(IN_USIZE);
+              tys[i] = typaram(ty->gp);
             return 1;
           }
           return 0; /* a number rides a const slot alone (08) */
@@ -1046,14 +1057,20 @@ implatch(Type *pat, Type *ty, Ast **gps, Type **tys, Val **gcvals, usize n)
   case Tymut:
     return implatch(pat->t, ty->t, gps, tys, gcvals, n);
   case Tyarray:
-    if (pat->gp) { /* [N]T: the length a const parameter of the
-                    * impl's own -- the number the target carries is
-                    * the binding (08-reflection.md) */
-      if (ty->gp)
-        return pat->gp == ty->gp && /* the same box: an outer
-                                     * generic's length, the
-                                     * instance's re-check binds */
-               implatch(pat->t, ty->t, gps, tys, gcvals, n);
+    if (pat->gp) {  /* [N]T: the length a const parameter of the
+                     * impl's own -- the number the target carries is
+                     * the binding (08-reflection.md) */
+      if (ty->gp) { /* the same box: an outer generic's length, the
+                     * instance's re-check binds -- the slot's own
+                     * name lands too, the parameters told apart
+                     * (08) */
+        if (pat->gp != ty->gp)
+          return 0;
+        for (i = 0; i < n; i++)
+          if (pat->gp == gps[i] && !tys[i])
+            tys[i] = typaram(ty->gp);
+        return implatch(pat->t, ty->t, gps, tys, gcvals, n);
+      }
       for (i = 0; i < n; i++)
         if (pat->gp == gps[i]) {
           if (!tys[i])

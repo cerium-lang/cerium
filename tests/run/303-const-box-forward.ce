@@ -1,0 +1,24 @@
+/* the box's own road (08-reflection.md): fwd's N is a parameter,
+ * so sum's M binds the box -- the parameter's name in the key, the
+ * number the re-check lands when fwd's own instance answers it.
+ * Two widths through the same forwarding row, the instances told
+ * apart */
+fn sum<const M: usize>(b: [M]i32) -> i32 {
+  let mut s = 0;
+  let mut i = 0;
+
+  for @cast<usize>(i) < M {
+    s = s + b[i];
+    i = i + 1;
+  }
+  s
+}
+
+fn fwd<const N: usize>(a: [N]i32) -> i32 { sum(a) }
+
+fn main() -> i32 {
+  let a = [3]i32 { 10, 20, 30 };
+  let b = [7]i32 { 1, 1, 1, 1, 1, 1, 1 };
+
+  fwd(a) + fwd(b) * 10   /* 60 + 70 */
+}

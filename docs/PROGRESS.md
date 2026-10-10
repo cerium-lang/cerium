@@ -3388,3 +3388,47 @@ carry the interval's shape -- three rounds, none, a user's Tick on
 the same row).
 
 674 green (302 with them), the library's 30.
+
+## 2026-10-10 -- the box says its name, and the key's door refuses an unopened one
+
+The open list's last line, closed. The const-argument keying: a
+generic forwarding another generic's numbers -- fwd<N> calling
+sum<M> with an [N]i32 -- binds sum's M to the box, the parameter
+itself, at the declaration walk; the number lands only when fwd's
+own instance re-checks the call. The three probes had shown every
+reachable key landing its number, the item held for a caller that
+reads the declaration's row early -- and this pass found where
+that caller would have been quietly wrong.
+
+The box had two spellings, and the dangerous one was the quieter.
+The const-slot arm (Wrap<i32, N> meeting an outer N) kept the
+parameter's own word in the type row; the array-length arm
+([N]T meeting an outer [M]T) erased the slot to usize -- two
+different outer parameters, two future numbers, the same
+declaration-time key. Nothing reads that key today -- instensure
+runs only past the re-check, eval never touches instance rows --
+but the day a caller arrives, the erased spelling folds two
+instances into one and emits one body for two numbers: wrong code,
+silent.
+
+Both arms spell the box the same word now: the parameter's name
+(typaram), the number the re-check's to land, in gunifyv and in
+implatch's same-box meetings alike -- and the impl side's boxes
+land their names too, though the all-slots-bound check refuses a
+boxed impl match today ("no 'Sz' for [N]i32", before this change
+and after; the day that check learns the box, the names are
+already there). instensure grew the door the item wanted: a key
+arriving with a parameter still in a slot dies on the spot --
+"keyed with the box unopened" -- so the early caller fails loud,
+never folded. 675 green is the door's own proof: no reachable key
+carries a box (303 pins the forwarding road, two widths through
+one row, the instances told apart).
+
+The open list is empty. What remains of the const machinery is
+recorded behaviour, not held breath: iterating a [M]i32 under a
+generic wants its own day (the IntoIter row rides the same
+all-slots-bound check), and the const struct-argument marker
+question this line grew out of is answered -- latent in every
+path, and now loud where it would have been wrong.
+
+675 green (303 with them), the library's 30.
