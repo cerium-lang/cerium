@@ -38,9 +38,10 @@ mkdropcall(Ast *place, Type *ty, Ast *at)
   Sym    *imp;
   Type  **tys;
   Val   **cvs;
-  Member *m = implfind(sym_drop, ty, "drop", &imp, &tys, &cvs);
+  Member *m;
   Ast    *f, *c;
 
+  m = implfind(sym_drop, ty, "drop", &imp, &tys, &cvs);
   if (!m)
     return 0;
   f = opnode(Npath, at);
