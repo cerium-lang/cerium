@@ -50,7 +50,8 @@ Highlighting for VS Code lives in [`editors/vscode`](./editors/vscode).
 Sixteen chapters and a grammar, `specs/` — [the spec's own
 README](./specs/README.md) is the index, and holds what the language
 guarantees, what it deliberately does not, and what is still open.
-`review/` holds one file per design review.
+`todos/` holds one file per round -- the loose ends it left, and the
+ones it closed.
 
 ## Status
 
