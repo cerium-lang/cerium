@@ -3250,3 +3250,38 @@ take, replace, swap, thin rows over the primitive. The pins: 297
 (the branch's two paths each destructing once), 298 (nested joins,
 a match arm's move, a loop's rounds under the same flag). 669
 green, the library's 27 with them.
+
+## 2026-10-10 -- two of the open list's three lines out
+
+The honest list after the array rows had three names. Two came out
+same-day, the third narrowed to what it always was.
+
+The itdrops first, and it was a leak a probe caught in two lines: a
+generic fn's for-in over [3]T, called with a Drop-having T, counted
+one drop where four belong -- the declaration's desugar built the
+exit's destructors off ArrayIter<T, 3> with T a parameter, and a
+parameter owns nothing the walk can spell; the re-check materialised
+the iterator under the instance but kept the declaration's empty
+row, so what the iterator still held died nowhere. The re-check's
+copy already re-read the iterator type off the re-walked via -- it
+now rebuilds the destructors beside it, the same $.it place spelled
+over the instance's own row (299 pins the count at 4: the round's
+binding, the zero @take left, the two never taken).
+
+The mut row's words second, a diagnostic the spec's own answer
+already carried: a mut loop over a plain array -- &mut a, the
+binding mut, the row not -- used to refuse with "takes an
+IntoIter," naming neither door. The refusal now names the shape
+itself: a mut loop needs a mut row, the elements of [3]u32 are not
+mut slots (01's own sentence, 295 pins the words).
+
+The const struct-argument keying stays open, narrowed: three probes
+-- a direct call, a generic's forward, an impl method's row under
+two instances -- each keyed the number apart (7 every time), so the
+marker keying the declaration's walk spells is latent in every path
+a program can reach today: instensure runs only on the emitter's
+side of the re-check, and the re-check lands the numbers. The line
+stays on the list until a caller that reads the declaration's row
+whole shows up.
+
+671 green (299, 295 with them), the library's 27.

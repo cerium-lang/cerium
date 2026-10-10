@@ -5238,12 +5238,25 @@ rstmt(Ast *st, Fenv *fe)
       srcthaw = argborrow(st->v.forx.b, fe, &sv);
     if (st->v.forx.shape == FIN || st->v.forx.it) {
       et = rexpr(st->v.forx.shape == FIN ? st->v.forx.b : st->v.forx.via, fe, 0);
-      if (st->v.forx.shape != FIN && st->v.forx.it && et != st->v.forx.it)
+      if (st->v.forx.shape != FIN && st->v.forx.it && et != st->v.forx.it) {
         /* the re-check's copy: the iterator under this binding, the
          * stored one the declaration's own -- a symbolic row the
          * re-check answers, the sizes the emit reads real only
          * here (04-generics.md, 08-reflection.md) */
+        Ast *place;
+
         st->v.forx.it = et;
+        /* the exit's own destructors rebuild with it: the
+         * declaration's walk could not see a Drop inside a
+         * parameter -- the instance's row can, what the iterator
+         * still holds dying at the exit either way (03-move.md) */
+        place = opnode(Npath, st->v.forx.b);
+        place->v.path.segs = vnew(Ast *, 1);
+        opvpush(&place->v.path.segs, opseg("$.it", st->v.forx.b));
+        place->ty = et;
+        st->v.forx.itdrops = 0;
+        dropcalls(place, et, &st->v.forx.itdrops, st->v.forx.b);
+      }
     }
 
     fb = fefork(fe);
@@ -5313,6 +5326,16 @@ rstmt(Ast *st, Fenv *fe)
           berr(st->v.forx.b,
                "iterating the parameter '%s' arrives with a later milestone (04-generics.md)",
                et->gp->v.gp.name);
+        if (!im && et->k == Typtr && et->t && et->t->k == Tymut && et->t->t &&
+            et->t->t->k == Tyarray && et->t->t->t && et->t->t->t->k != Tymut)
+          /* the mut loop's own door: the binding's mut lends the
+           * array whole, but the rounds write through the elements,
+           * and a mutable pointer cannot grant permission the type
+           * does not give -- the row the elements spell is the one
+           * the loop needs, [N]mut T (01-types.md) */
+          berr(st->v.forx.b,
+               "a mut loop needs a mut row: the elements of %s are not mut slots (01-types.md)",
+               btys(et->t->t));
         if (!im)
           berr(st->v.forx.b, "iterating %s takes an IntoIter (10-iteration.md)", btys(et));
         sig = iimp->ngparams ? gsubstv(im->ty, iimp->gparams, tys, icvs, iimp->ngparams) : im->ty;
