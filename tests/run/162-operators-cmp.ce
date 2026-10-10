@@ -1,17 +1,14 @@
 /* the ordering and equality operators as trait calls
- * (07-operators.md): a < b is Ord::cmp(a, b) read against
- * Ordering::Less, a == b is Eq::eq(a, b), and a != b is its
- * negation -- both operands entering by value. Seven answers,
- * one bit each. */
-use std::ops::{Ord, Eq, Ordering, Copy}; /* Copy: the operands feed
-                                          * seven calls, a copy each
-                                          * -- the opt-in the use
-                                          * itself is (03-move.md) */
+ * (07-operators.md): a < b is Ord::cmp(&a, &b) read against
+ * Ordering::Less, a == b is Eq::eq(&a, &b), and a != b is its
+ * negation -- both operands entering as borrows, a comparison
+ * reading what it stands beside. Seven answers, one bit each, and
+ * V3 no Copy: nothing above moves it. */
+use std::ops::{Ord, Eq, Ordering};
 struct V3 { x: i32, y: i32 }
 
-impl Copy for V3 { }
 impl Ord for V3 {
-  fn cmp(self: V3, other: V3) -> Ordering {
+  fn cmp(self: *Self, other: *Self) -> Ordering {
     if self.x < other.x { return Ordering::Less; }
     if self.x > other.x { return Ordering::Greater; }
     if self.y < other.y { return Ordering::Less; }
@@ -20,7 +17,7 @@ impl Ord for V3 {
   }
 }
 impl Eq for V3 {
-  fn eq(self: V3, other: V3) -> bool { self.x == other.x && self.y == other.y }
+  fn eq(self: *Self, other: *Self) -> bool { self.x == other.x && self.y == other.y }
 }
 fn main() -> i32 {
   let a = V3{ x: 1, y: 2 };

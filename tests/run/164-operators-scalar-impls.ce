@@ -1,7 +1,7 @@
 /* the built-in impls, spelled as source (07-operators.md): the
  * compiler's table is std's own rows now, so the call written out
- * runs the row the operator's sugar would -- both operands by
- * value, the answer the row's Output -- and the pairs the
+ * runs the row the operator's sugar would -- the arithmetic by
+ * value, the comparisons as borrows -- and the pairs the
  * language holds no row of its own for find their trait's: bool
  * against bool orders through Ord, the language never comparing
  * bools. The floats stay out of Eq and Ord: a NaN equals nothing,
@@ -20,11 +20,11 @@ fn main() -> i32 {
   r += Sub::sub(b, a);          /* 1 */
   r += Mul::mul(a, b);          /* 12 */
   r += Div::div(b, a);          /* 1 */
-  if Eq::eq(a, d) { r += 1; }           /* 3 == 3 */
-  if !(Eq::eq(a, b)) { r += 1; }        /* 3 != 4 */
+  if Eq::eq(&a, &d) { r += 1; }         /* 3 == 3 */
+  if !(Eq::eq(&a, &b)) { r += 1; }      /* 3 != 4 */
   if t > f { r += 1; }         /* Ord's own: true > false */
   if !(t <= f) { r += 1; }     /* !(false) */
-  let c = Ord::cmp(a, b);
+  let c = Ord::cmp(&a, &b);
   if c == Ordering::Less { r += 1; }    /* 3 before 4 */
   r
 }

@@ -3285,3 +3285,43 @@ stays on the list until a caller that reads the declaration's row
 whole shows up.
 
 671 green (299, 295 with them), the library's 27.
+
+## 2026-10-10 -- a comparison reads: cmp and eq borrow (#162's first half)
+
+The arithmetic's convention had walked over into the comparisons:
+cmp and eq took both operands by value, so a comparison consumed
+what it read -- a generic max needed a Copy it never used, a
+compared value died at the compare, and a generic's places could
+not be compared at all (the read out of a place the by-value
+signature demanded is not a thing to write). #162 named all three
+and the fix: `fn cmp(self: *Self, other: *Self)`, `eq` the same,
+the operator's lowering passing &l and &r -- a read the value's
+own place answers, nothing moved.
+
+The lowering was the two lines the issue said: opunmove stays (the
+entry read unwound exactly as before, the borrow the re-walk takes
+instead), each comparison operand wrapped in a &. The checker's
+half the issue could not see from outside: the binop's own walk
+read the operands as values before the lowering ever ran, so
+`s.start < s.end` under a generic T died at the read. The Nbin arm
+now types a comparison's place sides with rplace first, the road
+splitting on Copy -- a Copy place reads out a copy below (the
+const fold, the literal yield, all the value walk's own answers),
+a place that is not Copy takes the trait's road directly, the
+operands the places they are. The mut layer strips with the read:
+a mut slot's permission is the checker's, not the compare's.
+
+The pointer rows are gone: `impl<T: Ord + Copy> Ord for *T` and
+its Eq twin existed to lend the by-value cmp a borrowed door, Copy
+the toll. With cmp borrowing there is nothing for the row to do --
+`a < b` needs no door, `*p < *q` spells the deref itself -- and the
+pointer pair the binop table compares by address was never the
+row's to answer. Zero uses in std and the tests.
+
+The arithmetic keeps every word of its own: by value, the *T rows,
+the Copy law on them. spec 07's Desugaring says both halves now.
+The pins: 162 re-spelled (V3 no Copy at all, seven answers the
+same 127), 164's spelled calls borrow, 167 compares where it used
+to ride the pointer row, and 300 the issue's own three shapes --
+max without Copy, Big living past its compare, a generic's places
+reading through the trait. 672 green, the library's 27.

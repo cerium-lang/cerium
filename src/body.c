@@ -2460,11 +2460,70 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
   }
   case Nbin: {
     Tok   op = e->v.bin.op;
-    Type *ta = rexpr(e->v.bin.l, fe, 0);
-    Type *tb = rexpr(e->v.bin.r, fe, ta); /* the other side names ?T for None */
-    Type *res = 0;
+    Type *ta = 0, *tb = 0, *res = 0;
+    int   cmp; /* a comparison reads, it does not consume: a place
+                * either side is typed as the place it is, the trait
+                * road borrowing it whole -- the value reads below
+                * move what a compare only looks at, and out of a
+                * place that move is not a thing to write
+                * (03-move.md, 07-operators.md). The reads wait: a
+                * place answers here without them, and only a value
+                * side takes one */
 
-    if (!tysame(ta, tb)) { /* a literal yields to the other side */
+    cmp = op == Teqeq || op == Tne || op == Tlt || op == Tgt || op == Tle || op == Tge;
+    if (cmp) {
+      Type *pa = rplace(e->v.bin.l, fe);
+      Type *pb = rplace(e->v.bin.r, fe);
+
+      while (pa && pa->k == Tymut) /* the read's own view: a mut
+                                    * slot's permission stays with
+                                    * the checker, what the compare
+                                    * reads is the value (01) */
+        pa = pa->t;
+      while (pb && pb->k == Tymut)
+        pb = pb->t;
+
+      /* the road splits on Copy: a Copy place reads out a copy,
+       * the value reads below folding what they fold (a const
+       * parameter's number the first among them, 08) and coercing
+       * what they coerce; a place that is not Copy cannot be read
+       * as a value at all -- the trait's road, the operands the
+       * places they are */
+      if (pa && pb && (!iscopy(pa) || !iscopy(pb))) {
+        if (optrait(e, fe))
+          return rexpr(e, fe, want);
+        if (!tysame(pa, pb))
+          berr(e, "'%s' wants both sides the same type: %s and %s", opname(op), btys(pa), btys(pb));
+        berr(e, "'%s' is not defined for %s", opname(op), btys(pa));
+      } else if ((pa && !iscopy(pa)) || (pb && !iscopy(pb))) { /* one
+                                                                * side a place that cannot be read,
+                                                                * the other the value it is -- the
+                                                                * call below borrows the temporary
+                                                                * the same as the place (07). The
+                                                                * value side takes the place's type
+                                                                * as its want, the literal yield the
+                                                                * reads below spell */
+        if (!pa)
+          pa = rexpr(e->v.bin.l, fe, pb);
+        if (!pb)
+          pb = rexpr(e->v.bin.r, fe, pa);
+        if (!binop(op, pa, pb, &res)) {
+          if (optrait(e, fe))
+            return rexpr(e, fe, want);
+          if (!tysame(pa, pb))
+            berr(e, "'%s' wants both sides the same type: %s and %s", opname(op), btys(pa),
+                 btys(pb));
+          berr(e, "'%s' is not defined for %s", opname(op), btys(pa));
+        }
+        return res;
+      }
+      /* a Copy pair or no place at all: the reads below, the trait
+       * road the table's own refusal names */
+    }
+
+    ta = rexpr(e->v.bin.l, fe, 0);
+    tb = rexpr(e->v.bin.r, fe, ta); /* the other side names ?T for None */
+    if (!tysame(ta, tb)) {          /* a literal yields to the other side */
       Type *c = recoerce(e->v.bin.l, tb, fe);
 
       if (c)

@@ -1,0 +1,36 @@
+/* a comparison reads, it does not consume (07-operators.md): the
+ * operand's lowering borrows both sides, so a generic max needs no
+ * Copy, a compared value lives on, and a generic's places compare
+ * through the trait -- the three shapes the by-value cmp could not
+ * spell (the third by #162's own words). */
+use std::ops::Ord;
+
+fn max2<T: Ord>(a: T, b: T) -> T {
+  if a < b { b } else { a }
+}
+
+struct Big { a: i32 }
+
+impl Ord for Big {
+  fn cmp(self: *Self, other: *Self) -> std::ops::Ordering {
+    Ord::cmp(&self.a, &other.a)
+  }
+}
+
+struct Span<T> { mut start: T, mut end: T }
+
+fn spanord<T: Ord>(s: *mut Span<T>) -> bool {
+  s.start < s.end /* a generic's places, no Copy anywhere */
+}
+
+fn main() -> i32 {
+  let mut r = 0;
+  r += max2(1, 2);
+  let p = Big { a: 1 };
+  let q = Big { a: 2 };
+  if p < q { r += 10; }
+  r += p.a; /* p lives on: the compare above consumed nothing */
+  let mut s = Span { start: 1, end: 2 };
+  if spanord(&mut s) { r += 100; }
+  r
+}
