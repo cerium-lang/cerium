@@ -1,0 +1,34 @@
+/* std::ops::Step -- the value after this one, a trait of its own
+ * (10-iteration.md): `Ord` orders and `Add` adds, and "the next
+ * value" is neither's shape -- a generic range needs a bound that
+ * names it, and this is that bound. Range is the only caller the
+ * std rows answer, but the trait is a word any type can carry:
+ * a calendar's days, an enum's tags, a user's own Tick.
+ *
+ * advance takes *mut Self for two reasons, both the range's own:
+ * the step is a write to a place -- the cursor moves on -- and the
+ * yielded value has to come out of that same place. One call does
+ * both, so there is no copy-out-then-step window, and no need for
+ * the type to be Copy -- `a..b` holds its ends, it does not copy
+ * them. Unlike Ord and Add, Step needs no borrowed row beside it:
+ * its receiver is already a borrow.
+ *
+ * The rows are the builtin widths the range took before, spelled
+ * as source -- the Ord and Add files' precedent, a spelled `a..b`
+ * never rides a row for a plain integer. The floats stay out, Ord's
+ * own reason: a NaN orders against nothing, and a value that does
+ * not order has no next one either. */
+
+pub trait Step {
+  fn advance(self: *mut Self) -> Self;   /* the value it stood on, one step on */
+}
+
+impl Step for i8 { fn advance(self: *mut Self) -> Self { let v = *self; *self = v + 1; v } }
+impl Step for i16 { fn advance(self: *mut Self) -> Self { let v = *self; *self = v + 1; v } }
+impl Step for i32 { fn advance(self: *mut Self) -> Self { let v = *self; *self = v + 1; v } }
+impl Step for i64 { fn advance(self: *mut Self) -> Self { let v = *self; *self = v + 1; v } }
+impl Step for u8 { fn advance(self: *mut Self) -> Self { let v = *self; *self = v + 1; v } }
+impl Step for u16 { fn advance(self: *mut Self) -> Self { let v = *self; *self = v + 1; v } }
+impl Step for u32 { fn advance(self: *mut Self) -> Self { let v = *self; *self = v + 1; v } }
+impl Step for u64 { fn advance(self: *mut Self) -> Self { let v = *self; *self = v + 1; v } }
+impl Step for usize { fn advance(self: *mut Self) -> Self { let v = *self; *self = v + 1; v } }

@@ -327,36 +327,45 @@ matches `*[N]T` (`04-generics.md`) the read-only impl is what applies: `x` is
 ### Range
 
 `a..b` is an expression — one `..`, both ends required (`15-grammar.md`) —
-and its value is a `Range<T>` for the integer type of the ends. The ends
-settle the way an operator's operands do: an untyped literal yields to
-the side that names its type, and two typed ends must name the same one.
+and its value is a `Range<T>` for the ends' own type, any type that answers
+`Ord` and `Step`, not the integers alone. The ends settle the way an
+operator's operands do: an untyped literal yields to the side that names its
+type, and two typed ends must name the same one. Whether the type iterates is
+answered where it is asked — at the `for`, by the impl table (`iterating
+Range<Tick> takes an IntoIter`), one line later and naming the missing impl,
+the same place Rust reports it.
 
 ```rust
 // in std
 struct Range<T> { mut start: T, mut end: T }
 
-// one row an integer width, i8 through u64 and usize -- the builtin
-// rows' own shape, the Ord and Add files' precedent; the i32 one:
-impl Iter for Range<i32> {
-  type Item = i32;
-  fn next(self: *mut Self) -> ?i32 {
+/* "the next value" is neither Ord's nor Add's shape, and the bound
+ * that names it is a trait of its own -- a calendar's days, an
+ * enum's tags, any type with a next one. advance takes *mut Self:
+ * the step is a write to a place, and the yielded value comes out
+ * of that same place -- one call does both, no copy-out-then-step
+ * window, no Copy asked of the type */
+trait Step {
+  fn advance(self: *mut Self) -> Self;   /* the value it stood on, one step on */
+}
+
+/* one row, every type the two bounds cover: the order is Ord's own
+ * (a borrowed read, the places untouched, 07-operators.md), the
+ * step Step's own, and nothing else touches an end */
+impl<T: Ord + Step> Iter for Range<T> {
+  type Item = T;
+  fn next(self: *mut Self) -> ?T {
     if self.start < self.end {
-      let v = self.start;
-      self.start = self.start + 1;
-      return Some(v);
+      Some(Step::advance(&mut self.start))
+    } else {
+      None
     }
-    return None;
   }
 }
 ```
 
-The rows are one a width, not one a generic: the advance is a `<` and a
-`+1`, both the checker's binop table takes for a concrete width with no
-bound at all — and no bound a generic `T` could carry names the one a
-`+1` needs (`Ord` orders, `Add` adds, "the next value" is neither's
-shape). The fields are `mut` for the advance's own write: a `*mut Self`
-lends what the field already has, not what it never did
-(`01-types.md`).
+The fields are `mut` for the advance's own write: a `*mut Self` lends what
+the field already has, not what it never did (`01-types.md`).
 
 The interval is half-open: `0..3` yields 0, 1, 2. A range with `start >= end`
 yields nothing — the loop body never runs, and no error is raised. The most

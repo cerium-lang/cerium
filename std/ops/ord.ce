@@ -73,6 +73,16 @@ impl Ord for u64 {
   }
 }
 
+/* the ninth width: a range's own step counts in usize, and a range
+ * asks Ord of whatever it holds (10-iteration.md) -- the idiom the
+ * loop was made for rides the generic row like any other type */
+
+impl Ord for usize {
+  fn cmp(self: *Self, other: *Self) -> Ordering {
+    if *self < *other { Ordering::Less } else if *self > *other { Ordering::Greater } else { Ordering::Equal }
+  }
+}
+
 impl Ord for bool {
   fn cmp(self: *Self, other: *Self) -> Ordering {
     if *self == *other { Ordering::Equal } else if !*self { Ordering::Less } else { Ordering::Greater }

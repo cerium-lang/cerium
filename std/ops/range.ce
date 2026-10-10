@@ -1,136 +1,71 @@
 /* std::ops::Range -- the interval the loop was made for
  * (10-iteration.md): two ends, half-open, the value a struct both
-
- * ends live in. a..b builds one for the ends' own integer type,
- * the checker's own sugar -- this file is what it lands in.
+ * ends live in. a..b builds one for the ends' own type -- the
+ * checker's own sugar, any type that answers Ord and Step, not the
+ * integers alone -- and this file is what it lands in.
  *
- * The Iter rows are one an integer width, the builtin rows' own
- * shape (the Ord and Add files' precedent): the advance is a < and
- * a +1, both the checker's binop table takes for a concrete width,
- * and no bound a generic T could carry names the one a +1 needs --
- * the spec's own one-impl sketch does not compile, the rows the
- * answer. The fields are mut for the advance's write: a *mut does
- * not lend what the field never had (01-types.md). */
+ * One generic row, not one a width: the order is Ord's own (a
+ * borrowed read, the place untouched, 07-operators.md), the step
+ * is Step's own (the value out and the cursor on, one call), and
+ * the two bounds together are all a range asks of its ends. No
+ * Copy rides the row -- Ord reads without moving, Step moves
+ * without copying, and nothing else touches an end. The fields are
+ * mut for the advance's write: a *mut does not lend what the field
+ * never had (01-types.md). */
 
 use std::iter::Iter;
+
 pub struct Range<T> {
   mut start: T,
   mut end: T,
 }
 
-impl Iter for Range<i8> {
-  type Item = i8;
-  fn next(self: *mut Self) -> ?i8 {
+impl<T: Ord + Step> Iter for Range<T> {
+  type Item = T;
+  fn next(self: *mut Self) -> ?T {
     if self.start < self.end {
-      let v = self.start;
-
-      self.start = self.start + 1;
-      return Some(v);
+      Some(Step::advance(&mut self.start))
+    } else {
+      None
     }
-    return None;
   }
 }
 
-impl Iter for Range<i16> {
-  type Item = i16;
-  fn next(self: *mut Self) -> ?i16 {
-    if self.start < self.end {
-      let v = self.start;
+/* -- the tests (13-testing.md) ------------------------------- */
 
-      self.start = self.start + 1;
-      return Some(v);
-    }
-    return None;
+use std::debug::assert;
+
+#[test("a 0..3 yields the three values, half-open")]
+fn three_rounds() {
+  let mut sum = 0;
+  for i in 0..3 {
+    sum = sum + i;
   }
+  assert(sum == 3, "the rounds lost rows");   /* 0 + 1 + 2 */
 }
 
-impl Iter for Range<i32> {
-  type Item = i32;
-  fn next(self: *mut Self) -> ?i32 {
-    if self.start < self.end {
-      let v = self.start;
-
-      self.start = self.start + 1;
-      return Some(v);
-    }
-    return None;
+#[test("a start at or past the end yields nothing")]
+fn empty_interval() {
+  let mut n = 0;
+  for i in 3..3 {
+    n = n + i;
   }
+  assert(n == 0, "an empty interval ran");
 }
 
-impl Iter for Range<i64> {
-  type Item = i64;
-  fn next(self: *mut Self) -> ?i64 {
-    if self.start < self.end {
-      let v = self.start;
+/* a user's own type riding the same row: the ends need not be an
+ * integer, only Ord and Step -- and Step's own move-out is @take,
+ * the one sanctioned move (03-move.md), no Copy asked of the type */
 
-      self.start = self.start + 1;
-      return Some(v);
-    }
-    return None;
+struct Tick { mut n: i32 }
+impl Ord for Tick { fn cmp(self: *Self, other: *Self) -> Ordering { Ord::cmp(&self.n, &other.n) } }
+impl Step for Tick { fn advance(self: *mut Self) -> Self { let v = @take(self); self.n = v.n + 1; v } }
+
+#[test("a user's own type rides the same row")]
+fn users_own_ends() {
+  let mut sum = 0;
+  for t in (Tick { n: 10 }..Tick { n: 13 }) {
+    sum = sum + t.n;
   }
-}
-
-impl Iter for Range<u8> {
-  type Item = u8;
-  fn next(self: *mut Self) -> ?u8 {
-    if self.start < self.end {
-      let v = self.start;
-
-      self.start = self.start + 1;
-      return Some(v);
-    }
-    return None;
-  }
-}
-
-impl Iter for Range<u16> {
-  type Item = u16;
-  fn next(self: *mut Self) -> ?u16 {
-    if self.start < self.end {
-      let v = self.start;
-
-      self.start = self.start + 1;
-      return Some(v);
-    }
-    return None;
-  }
-}
-
-impl Iter for Range<u32> {
-  type Item = u32;
-  fn next(self: *mut Self) -> ?u32 {
-    if self.start < self.end {
-      let v = self.start;
-
-      self.start = self.start + 1;
-      return Some(v);
-    }
-    return None;
-  }
-}
-
-impl Iter for Range<u64> {
-  type Item = u64;
-  fn next(self: *mut Self) -> ?u64 {
-    if self.start < self.end {
-      let v = self.start;
-
-      self.start = self.start + 1;
-      return Some(v);
-    }
-    return None;
-  }
-}
-
-impl Iter for Range<usize> {
-  type Item = usize;
-  fn next(self: *mut Self) -> ?usize {
-    if self.start < self.end {
-      let v = self.start;
-
-      self.start = self.start + 1;
-      return Some(v);
-    }
-    return None;
-  }
+  assert(sum == 33, "the ticks lost rounds");   /* 10 + 11 + 12 */
 }
