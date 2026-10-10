@@ -129,6 +129,20 @@ length, say:
 impl<T, const N: usize> IntoIter for [N]T { ... }   // 10-iteration.md
 ```
 
+Where a type names another, the `const` parameter rides among the type's
+arguments — `ArrayIter<T, N>` spells the number where a type would sit. The
+slot is the parameter's own while it stands for a binding (an impl's row, a
+generic's body), and the number itself once a concrete application lands:
+`[3]i32`'s `into_iter` answers `ArrayIter<i32, 3>`, one type per value the way
+every shape is one. A number never rides a type slot — `Pair<3, i32>` is a
+compile error, and a type never rides a `const` slot.
+
+```rust
+struct ArrayIter<T, const N: usize> { arr: [N]mut T, mut index: usize }
+
+impl<T, const N: usize> Iter for ArrayIter<T, N> { ... }   // 10-iteration.md
+```
+
 A function with a `const` parameter is a compile-time tool and cannot be used
 as a value: assigning it to a function pointer, passing it as an argument, or
 spelling it as a type argument are all compile errors. The `const` arguments
