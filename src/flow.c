@@ -1179,11 +1179,11 @@ boundsok(Sym *im, Type **tys)
         usize ri;
 
         for (ri = 0; ri < rn; ri++)
-          if (!boundsatisfies(bs[j], tys[i]->args[ri], gps, tys, im->ngparams, 0, 0, 0, 0))
+          if (!boundsatisfies(bs[j], tys[i]->args[ri], gps, tys, im->ngparams, 0, 0, 0, 0, 0, 0, 0))
             return 0; /* a row the bound does not answer */
         continue;     /* the empty pack: every row it has answers */
       }
-      if (!boundsatisfies(bs[j], tys[i], gps, tys, im->ngparams, 0, 0, 0, 0))
+      if (!boundsatisfies(bs[j], tys[i], gps, tys, im->ngparams, 0, 0, 0, 0, 0, 0, 0))
         return 0; /* the receiver does not answer this bound */
     }
   }
@@ -1563,7 +1563,8 @@ static struct
 static usize satn;
 
 int
-implsatisfies(Sym *trait, Type *t, Type **targs, usize ntargs, Ast **pins, Type **ptys, usize npins)
+implsatisfies(Sym *trait, Type *t, Type **targs, usize ntargs, Ast **pins, Type **ptys, usize npins,
+              Ast **bgps, Type **btys, usize bn)
 {
   usize i;
   int   r;
@@ -1667,7 +1668,15 @@ implsatisfies(Sym *trait, Type *t, Type **targs, usize ntargs, Ast **pins, Type 
           return 0;
     }
     for (pi = 0; pi < npins; pi++)
-      if (!tysame(ptys[pi], t->t))
+      if (btys) { /* the pin's answer unified, not only compared: a
+                   * slot the arguments could not name -- and_then's
+                   * U, riding the sugar a parameter wears inside the
+                   * pin (04-generics.md, 05-traits.md) -- lands here,
+                   * the fn's own return the decomposition, Option<U>
+                   * meeting Option<i32> the way any signature does */
+        if (!gunifyv(ptys[pi], t->t, bgps, btys, 0, bn))
+          return 0;
+      } else if (!tysame(ptys[pi], t->t))
         return 0;
     return 1;
   }
@@ -1753,14 +1762,15 @@ implsatisfies(Sym *trait, Type *t, Type **targs, usize ntargs, Ast **pins, Type 
  * nobody will. */
 int
 boundsatisfies(Ast *b, Type *t, Ast **gps, Type **tys, usize n, Type ***ta, Ast **ig, Type **itys,
-               usize ni)
+               usize ni, Ast **bgps, Type **btys, usize bn)
 {
   Sym   *tr = b->v.path.sym;
-  Type **btys = b->v.path.tys;
-  Ast  **pas = b->v.path.segs[0]->v.seg.args;
-  usize  na = vlen(pas);
-  usize  nb = 0; /* the positional alone: the pins stand behind
-                  * every argument (04-generics.md) */
+  Type **bta = b->v.path.tys; /* the bound's trait arguments, the
+                               * positional alone */
+  Ast **pas = b->v.path.segs[0]->v.seg.args;
+  usize na = vlen(pas);
+  usize nb = 0; /* the positional alone: the pins stand behind
+                 * every argument (04-generics.md) */
   Ast  **pins = 0;
   Type **ptys = 0;
   usize  np = 0;
@@ -1792,29 +1802,32 @@ boundsatisfies(Ast *b, Type *t, Ast **gps, Type **tys, usize n, Type ***ta, Ast 
       for (j = 0; j < np; j++)
         ptys[j] = gsubst(ptys[j], gps, tys, n);
   }
-  if (btys && ig) { /* the impl's own words first: a bound a method
-                     * spells may name the parameters above it
-                     * (04-generics.md) */
+  if (bta && ig) { /* the impl's own words first: a bound a method
+                    * spells may name the parameters above it
+                    * (04-generics.md) */
     Type **st = tyargs(nb);
     usize  j2;
 
     for (j2 = 0; j2 < nb; j2++)
-      st[j2] = gsubst(btys[j2], ig, itys, ni);
-    btys = st;
+      st[j2] = gsubst(bta[j2], ig, itys, ni);
+    bta = st;
   }
-  if (btys && gps) {
+  if (bta && gps) {
     Type **st = tyargs(nb);
     usize  j2;
 
     for (j2 = 0; j2 < nb; j2++)
-      st[j2] = gsubst(btys[j2], gps, tys, n);
-    btys = st;
+      st[j2] = gsubst(bta[j2], gps, tys, n);
+    bta = st;
   }
   if (nb < tr->ngparams) {
-    btys = dflttail(tr, btys, nb, 0, t, b);
+    bta = dflttail(tr, bta, nb, 0, t, b);
     nb = tr->ngparams;
   }
   if (ta)
-    *ta = btys;
-  return implsatisfies(tr, t, btys, nb, pins, ptys, np);
+    *ta = bta;
+  /* the binding context rides beside: a pin whose answer names a
+   * slot the arguments could not -- and_then's U -- binds it there,
+   * the question the same either way (04-generics.md, 05) */
+  return implsatisfies(tr, t, bta, nb, pins, ptys, np, bgps, btys, bn);
 }

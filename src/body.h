@@ -167,9 +167,9 @@ Sym    *implfor(Sym *trait, Type *t, Type ***tysp, Val ***cvp);
 Type **insttys(Sym *imp, Type **tys, Ast **mg, Type **mtys, usize nm);
 Val  **instcvals(Sym *imp, Val **cvs, usize nm);
 int    implsatisfies(Sym *trait, Type *t, Type **targs, usize ntargs, Ast **pins, Type **ptys,
-                     usize npins);
+                     usize npins, Ast **bgps, Type **btys, usize bn);
 int    boundsatisfies(Ast *b, Type *t, Ast **gps, Type **tys, usize n, Type ***ta, Ast **ig,
-                      Type **itys, usize ni);
+                      Type **itys, usize ni, Ast **bgps, Type **btys, usize bn);
 int    boundsok(Sym *im, Type **tys); /* the impl's own bounds, every
                                        * slot landed: the trial's ask
                                        * once the arguments bound the

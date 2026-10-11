@@ -1,0 +1,15 @@
+/* a pin names a parameter no argument carries (#174's own shape):
+ * the bound's answer binds it, the sugar decomposed the way any
+ * signature is -- Option<U> meeting Option<i32> lands U = i32 */
+use std::ops::Fn;
+
+fn and_then<T, U, F: Fn<T, Output = ?U>>(o: ?T, f: F) -> ?U {
+  match o { Some(v) => f(v), None => None, }
+}
+
+fn main() -> i32 {
+  let x: ?i32 = Some(5);
+  let r = and_then(x, fn[](v: i32) -> ?i32 { Some(v + 1) });
+
+  match r { Some(n) => n, None => 0, }
+}

@@ -148,6 +148,15 @@ argument — the same spelling a declaration's defaults take
 is, a declaration naming its own, a use naming the trait's. The pins stand
 last, the order an impl's block spells them in (`05-traits.md`).
 
+A pin may name a parameter no argument carries. The bound's own answer binds
+it: the callable's return is unified against the pin's type, the shapes
+decomposed the way any signature's are — `Output = ?U` meeting a return of
+`Option<i32>` binds `U = i32`, the whole spelling of `and_then`:
+
+```rust
+fn and_then<U, F: Fn<T, Output = ?U>>(self: Self, f: F) -> ?U
+```
+
 ## Specialization
 
 Multiple impls of the same trait are ordered by how specific their bounds are.

@@ -3567,3 +3567,49 @@ needs no spelling of its own, the pins-only form already says it,
 and a grammar word that buys nothing is a word to keep out.
 
 678 green (306 with them), the library's 48.
+
+## 2026-10-11 -- the pin names the slot: and_then's U rides the bound's own answer (#174)
+
+and_then had no spelling: the type it answers sits inside the ?U
+sugar, and nothing took U back out -- `cannot infer 'U' from the
+call`, a typed binding at the call site as lost as the bare one,
+and the other road (`-> F::Output`) leaves the None arm with no
+Option to name. The issue named three fixes and said the answer
+depends on what else the inference is meant to do; the one that
+landed is the first -- solving ?U against Option<U> where the
+bound's associated type meets it -- because the machinery to do it
+was already standing there.
+
+Three pieces, each small:
+
+The ask ran in the wrong order. A call's trial checked every slot
+landed before it asked a single bound -- so U, riding no argument,
+was refused before the one place that names it (Fn's Output pin)
+ever ran. The bounds run first now, in argfit's trial and in
+memberdone alike, the slot ask behind them: a slot only a pin names
+is bound by then, what stays empty was never named at all.
+
+The pin's answer was compared, not unified. A fn pointer meeting
+an Fn bound had its pins answered by tysame -- Option<U> against
+Option<i32> is simply false, U symbolic and no one to say so.
+implsatisfies takes a binding context now (the question the same
+one, the caller saying whether a binding is its to make), and the
+fn pointer's answer runs through gunifyv: the shapes decomposed the
+way any signature's are, U = i32 landing in the trial's own slots.
+
+And gsubst learned what an open slot looks like: a pin asked before
+the slots all land substitutes the parameter's own word, not the
+NULL that thash had to refuse. Every caller that runs
+post-binding sees nothing -- the full 678 was green before a single
+std row moved.
+
+The rows that were waiting: Option::and_then and or_else,
+Result::and_then and or_else, the answer's type riding the pin
+alone. 307 pins #174's own program; spec 04 says the rule where the
+pins are -- a pin may name a parameter no argument carries, the
+bound's own answer binding it. The issue's two smaller symptoms
+(a bare Some(4) with no type of its own, a generic enum's E::None)
+are literal inference's own gaps, not this road's; they stay open
+in the issue.
+
+679 green (307 with them), the library's 50.
