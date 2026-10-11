@@ -15,6 +15,8 @@
 
 use std::ops::Fn; /* the family name the bound spells, the file's own
                    * word that it uses it (05-traits.md) */
+use std::fmt::Fmt;       /* the one bound unwrap asks of the error: */
+use std::fmt::eprint_one; /* the Err printed before the panic (07) */
 use std::debug::assert; /* the tests' own word, the artifact the debug
                          * shape the assertions live in (13-testing.md) */
 
@@ -23,11 +25,59 @@ pub enum Result<T, E> {
   Err(E),
 }
 
+/* The methods, and the receiver each one asks for: the ones that
+ * only read which variant it is take *Self -- a match over a
+ * borrowed whole reads the tag and binds nothing, so nothing moves
+ * -- and the ones that hand a half on take Self by value, the move
+ * the value's own (03-move.md). */
+
 impl<T, E> Result<T, E> {
+  fn is_ok(self: *Self) -> bool { match *self { Ok(_) => true, Err(_) => false, } }
+  fn is_err(self: *Self) -> bool { match *self { Ok(_) => false, Err(_) => true, } }
+
+  fn map<F: Fn<T>>(self: Self, f: F) -> E?F::Output {
+    match self { Ok(v) => Ok(f(v)), Err(e) => Err(e), }
+  }
+
+  /* the half lent, not spent: a match over a borrowed whole binds the
+   * arm's value without moving it, so a predicate reads it through a
+   * pointer and the Result stays where it stood (03-move.md) */
+  fn is_ok_and<F: Fn<*T, Output = bool>>(self: *Self, f: F) -> bool {
+    match *self { Ok(v) => f(&v), Err(_) => false, }
+  }
+  fn is_err_and<F: Fn<*E, Output = bool>>(self: *Self, f: F) -> bool {
+    match *self { Ok(_) => false, Err(e) => f(&e), }
+  }
+
   fn map_err<F: Fn<E>>(self: Self, f: F) -> Result<T, F::Output> {
     match self {
       Ok(v) => Ok(v),
       Err(e) => Err(f(e)),
+    }
+  }
+
+  /* the halves let go of each other: an Ok's payload its own ?T, an
+   * Err's its own ?E, the other half dropped where it stood */
+  fn ok(self: Self) -> ?T { match self { Ok(v) => Some(v), Err(_) => None, } }
+  fn err(self: Self) -> ?E { match self { Ok(_) => None, Err(e) => Some(e), } }
+
+  fn unwrap_or(self: Self, d: T) -> T { match self { Ok(v) => v, Err(_) => d, } }
+  fn expect(self: Self, msg: []u8) -> T { match self { Ok(v) => v, Err(_) => panic(msg), } }
+}
+
+/* unwrap sits under its own bound: the panic is a []u8's, and an
+ * error the caller never asked to hold still owes it a word -- so
+ * the E it takes is one Fmt knows how to print, and the message is
+ * what the erased error would have said (07-operators.md, 12a). */
+
+impl<T, E: Fmt> Result<T, E> {
+  fn unwrap(self: Self) -> T {
+    match self {
+      Ok(v) => v,
+      Err(e) => {
+        eprint_one(&e);
+        panic("unwrap on Err\n");
+      },
     }
   }
 }
@@ -73,4 +123,67 @@ fn result_map_err_both_arms() {
     Err(w) => w,
   };
   assert(k == 4, "map_err touched the Ok half");
+}
+
+#[test("the tag's own read: is_ok and is_err, over a borrow")]
+fn result_tag_reads() {
+  let a: i32?i32 = Ok(1);
+  let b: i32?i32 = Err(2);
+
+  assert(a.is_ok(), "an Ok reads as an Err");
+  assert(b.is_err(), "an Err reads as an Ok");
+  assert(a.is_ok(), "the borrow did not survive the read");
+}
+
+#[test("is_ok_and and is_err_and: each half read where it stands")]
+fn result_halves_read_in_place() {
+  let a: i32?i32 = Ok(6);
+  let b: i32?i32 = Err(3);
+
+  assert(a.is_ok_and(fn[](p: *i32) -> bool { *p == 6 }), "the Ok's read lost the payload");
+  assert(!b.is_ok_and(fn[](p: *i32) -> bool { *p == 6 }), "an Err ran the Ok's predicate");
+  assert(b.is_err_and(fn[](p: *i32) -> bool { *p == 3 }), "the Err's read lost the error");
+  assert(!a.is_err_and(fn[](p: *i32) -> bool { *p == 3 }), "an Ok ran the Err's predicate");
+  assert(a.is_ok(), "the read spent the Ok");
+}
+
+#[test("map: the fn over the Ok's payload, the Err straight through")]
+fn result_map_both_halves() {
+  let a: i32?i32 = Ok(6);
+  let b: i32?i32 = Err(3);
+  let m = match a.map(fn[](v: i32) -> i32 { v * 2 }) { Ok(v) => v, Err(w) => w, };
+  let n = match b.map(fn[](v: i32) -> i32 { v * 2 }) { Ok(v) => v, Err(w) => w, };
+
+  assert(m == 12, "map lost the Ok half");
+  assert(n == 3, "map touched the Err half");
+}
+
+#[test("ok and err: each half let go of the other")]
+fn result_halves_let_go() {
+  let a: i32?i32 = Ok(5);
+  let b: i32?i32 = Err(3);
+  let p = match a.ok() { Some(v) => v, None => 0, };
+  let q = match b.ok() { Some(v) => v, None => -1, };
+  let r = match b.err() { Some(v) => v, None => 0, };
+
+  assert(p == 5, "ok lost the Ok half");
+  assert(q == -1, "ok answered over an Err");
+  assert(r == 3, "err lost the Err half");
+}
+
+#[test("unwrap_or and expect: the Ok's own way through, the stand-in's")]
+fn result_unwrap_or_and_expect() {
+  let a: i32?i32 = Ok(4);
+  let b: i32?i32 = Err(9);
+
+  assert(a.unwrap_or(0) == 4, "unwrap_or touched the Ok half");
+  assert(b.unwrap_or(0) == 0, "unwrap_or did not stand in");
+  assert(a.expect("an Ok never reads this\n") == 4, "expect lost the payload");
+}
+
+#[test("unwrap: the Ok half, over an E that Fmt knows how to print")]
+fn result_unwrap_the_ok_half() {
+  let a: i32?i32 = Ok(2);
+
+  assert(a.unwrap() == 2, "unwrap lost the payload");
 }

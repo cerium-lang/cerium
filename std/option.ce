@@ -6,6 +6,7 @@
  * variants, not names in scope: a bare Some rides the sugar's owner
  * lookup, not a use (01-types.md). */
 
+use std::ops::Fn; /* the family the methods' bounds name (05-traits.md) */
 use std::debug::assert; /* the tests' own word: the artifact is the
                          * debug shape, the one the assertions live in
                          * (01-types.md, 13-testing.md) */
@@ -13,6 +14,63 @@ use std::debug::assert; /* the tests' own word: the artifact is the
 pub enum Option<T> {
   None,
   Some(T),
+}
+
+/* The methods, and the receiver each one asks for: the ones that
+ * only read which variant it is take *Self -- a match over a borrowed
+ * whole reads the tag and binds nothing, so nothing moves -- and the
+ * ones that hand the payload on take Self by value, the move the
+ * value's own (03-move.md). take is the one write: @take leaves the
+ * None behind in the slot it stood in (03). A method that would lend
+ * the payload out to a fn without moving it -- filter, is_some_and --
+ * has no shape here yet: a match's arm binds the payload by value or
+ * not at all, so there is no *T to hand a predicate. */
+
+impl<T> Option<T> {
+  fn is_some(self: *Self) -> bool { match *self { Some(_) => true, None => false, } }
+  fn is_none(self: *Self) -> bool { match *self { Some(_) => false, None => true, } }
+
+  fn unwrap(self: Self) -> T { match self { Some(v) => v, None => panic("unwrap on None\n"), } }
+  fn expect(self: Self, msg: []u8) -> T { match self { Some(v) => v, None => panic(msg), } }
+  fn unwrap_or(self: Self, d: T) -> T { match self { Some(v) => v, None => d, } }
+
+  /* the slot's own: the value walks out, a None stands where it was */
+  fn take(self: *mut Self) -> Self { @take(self) }
+
+  fn map<F: Fn<T>>(self: Self, f: F) -> ?F::Output {
+    match self { Some(v) => Some(f(v)), None => None, }
+  }
+
+  /* the payload lent, not spent: a match over a borrowed whole binds
+   * the arm's value without moving it out of the place it stands
+   * in, so a predicate can read it through a *T and the Some stays
+   * where it was (03-move.md) */
+  fn is_some_and<F: Fn<*T, Output = bool>>(self: *Self, f: F) -> bool {
+    match *self { Some(v) => f(&v), None => false, }
+  }
+
+  /* the same read, and then the answer either keeps the payload it
+   * read or drops it -- the fn borrows, the Some itself moves */
+  fn filter<F: Fn<*T, Output = bool>>(self: Self, f: F) -> Self {
+    match self {
+      Some(v) => {
+        let keep = f(&v);
+
+        if keep {
+          return Some(v);
+        };
+        None
+      },
+      None => None,
+    }
+  }
+
+  fn ok_or<E>(self: Self, e: E) -> E?T { match self { Some(v) => Ok(v), None => Err(e), } }
+  fn or(self: Self, d: Self) -> Self { match self { Some(v) => Some(v), None => d, } }
+
+  fn zip<U>(self: Self, o: ?U) -> ?(T, U) {
+    match self { Some(v) => match o { Some(w) => Some((v, w)), None => None, }, None => None, }
+  }
 }
 
 /* -- the tests (13-testing.md) ------------------------------------------------
@@ -43,4 +101,106 @@ fn option_slot_trades() {
   x = Some(2);
   let r = match x { Some(n) => n, None => 0, };
   assert(r == 2, "the last Some did not stay");
+}
+
+#[test("the tag's own read: is_some and is_none, over a borrow")]
+fn option_tag_reads() {
+  let x: ?i32 = Some(1);
+  let n: ?i32 = None;
+
+  assert(x.is_some(), "a Some reads as empty");
+  assert(n.is_none(), "a None reads as full");
+  assert(x.is_some(), "the borrow did not survive the read");
+}
+
+#[test("unwrap takes the payload out, unwrap_or the stand-in")]
+fn option_unwrap_both_halves() {
+  let x: ?i32 = Some(5);
+  let n: ?i32 = None;
+
+  assert(x.unwrap() == 5, "unwrap lost the payload");
+  assert(n.unwrap_or(9) == 9, "unwrap_or did not stand in");
+}
+
+#[test("expect: the message is the None's, the Some's own way through")]
+fn option_expect_passes() {
+  let x: ?i32 = Some(4);
+
+  assert(x.expect("a Some never reads this\n") == 4, "expect lost the payload");
+}
+
+#[test("take: the value walks out and a None stands where it was")]
+fn option_take_leaves_none() {
+  let mut x: ?i32 = Some(5);
+  let v = x.take();
+  let r = match v { Some(n) => n, None => 0, };
+
+  assert(r == 5, "take did not hand the payload over");
+  assert(x.is_none(), "take left something behind");
+}
+
+#[test("map: the fn over the Some's payload, the None straight through")]
+fn option_map_both_halves() {
+  let x: ?i32 = Some(6);
+  let n: ?i32 = None;
+  let a = match x.map(fn[](v: i32) -> i32 { v * 2 }) { Some(r) => r, None => 0, };
+  let b = match n.map(fn[](v: i32) -> i32 { v * 2 }) { Some(r) => r, None => -1, };
+
+  assert(a == 12, "map lost the Some half");
+  assert(b == -1, "map ran over the None half");
+}
+
+#[test("ok_or: the None becomes the Err, the Some the Ok it was")]
+fn option_ok_or_both_halves() {
+  let x: ?i32 = Some(2);
+  let n: ?i32 = None;
+  let a = match x.ok_or(8) { Ok(v) => v, Err(w) => w, };
+  let b = match n.ok_or(8) { Ok(v) => v, Err(w) => w, };
+
+  assert(a == 2, "ok_or touched the Some half");
+  assert(b == 8, "the None's own Err did not carry");
+}
+
+#[test("is_some_and: the predicate reads the payload, the Some stays put")]
+fn option_is_some_and_lends() {
+  let x: ?i32 = Some(6);
+  let n: ?i32 = None;
+
+  assert(x.is_some_and(fn[](p: *i32) -> bool { *p == 6 }), "the read lost the payload");
+  assert(!x.is_some_and(fn[](p: *i32) -> bool { *p == 0 }), "the read answered true");
+  assert(!n.is_some_and(fn[](p: *i32) -> bool { *p == 6 }), "a None ran the predicate");
+  assert(x.is_some(), "the read spent the Some");
+}
+
+#[test("filter: the predicate keeps the payload or drops it, borrows to read")]
+fn option_filter_keeps_or_drops() {
+  let x: ?i32 = Some(5);
+  let k = match x.filter(fn[](p: *i32) -> bool { *p == 5 }) { Some(v) => v, None => 0, };
+  let d = match x.filter(fn[](p: *i32) -> bool { *p == 99 }) { Some(v) => v, None => -1, };
+
+  assert(k == 5, "filter dropped what it should have kept");
+  assert(d == -1, "filter kept what it should have dropped");
+}
+
+#[test("or: the stand-in answers where the None stands")]
+fn option_or_prefers_the_some() {
+  let x: ?i32 = Some(1);
+  let n: ?i32 = None;
+  let a = match x.or(Some(7)) { Some(v) => v, None => 0, };
+  let b = match n.or(Some(7)) { Some(v) => v, None => 0, };
+
+  assert(a == 1, "or replaced a Some");
+  assert(b == 7, "or did not stand in");
+}
+
+#[test("zip: two Some's one tuple, a None either side none at all")]
+fn option_zip_both_halves() {
+  let x: ?i32 = Some(3);
+  let y: ?i32 = Some(4);
+  let n: ?i32 = None;
+  let a = match x.zip(y) { Some((p, q)) => p + q, None => 0, };
+  let b = match x.zip(n) { Some((p, q)) => p + q, None => -1, };
+
+  assert(a == 7, "zip lost a row");
+  assert(b == -1, "zip answered over a None");
 }
