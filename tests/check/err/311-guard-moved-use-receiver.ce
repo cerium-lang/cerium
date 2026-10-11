@@ -1,0 +1,12 @@
+/* a method that takes self by value spends it: the binding it was
+ * called on has nothing left to read (03-move.md, 05-traits.md) */
+struct Big { a: i32 }
+
+impl Big { fn read(self: Self) -> i32 { self.a } }
+
+fn main() -> i32 {
+  let a = Big { a: 1 };
+  let n = a.read();
+
+  n + a.a
+}

@@ -1,0 +1,24 @@
+/* guarantee: no double free from a move -- the value moved into a fn
+ * has one owner there, and it is destructed once, at the callee's
+ * exit. The count is the whole proof: two owners would make it two
+ * (03-move.md) */
+use std::ops::Drop;
+
+static mut N: i32 = 0;
+
+struct D { v: i32 }
+
+impl Drop for D {
+  fn drop(self: Self) {
+    N = N + 1;
+  }
+}
+
+fn spend(a: D) -> i32 { a.v }
+
+fn main() -> i32 {
+  let a = D { v: 1 };
+  let n = spend(a);
+
+  N + n
+}

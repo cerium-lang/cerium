@@ -1,0 +1,10 @@
+/* a closure's capture moves what it names: the binding outside has
+ * nothing left once the closure holds it (03-move.md, 01-types.md) */
+struct Big { a: i32 }
+
+fn main() -> i32 {
+  let a = Big { a: 1 };
+  let f = fn[a]() -> i32 { a.a };
+
+  a.a
+}

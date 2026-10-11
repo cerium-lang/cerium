@@ -3630,3 +3630,38 @@ is a code-generation flag and the input here is assembly, so
 --gc-sections had nothing to section. Getting the bytes back needs
 either reachability at emit time or sections out of qbe, and that is
 an open line rather than this one.
+
+## 2026-10-11 -- the five guarantees, pinned across their paths
+
+The five things the spec says are guaranteed statically -- no use
+after move, no double free from a move, no write through a shared
+pointer, no move out of a borrowed place, no dropping through a
+pointer not known exclusive -- had two err tests between them that
+mentioned a move at all, and `rejected()` asked only that the
+compiler refuse. Which is to say a test could go green on a refusal
+that came of something else: a typo, or a rule beside the one it
+meant.
+
+So the harness grew a companion: an optional `.stderr` beside an err
+test names the words the refusal must carry, a fragment a line and
+every line of it somewhere in what the compiler said. The 309 tests
+already there keep the old reading -- refuse, and that is enough --
+and the new ones say which refusal they are asking for.
+
+Then the matrix, one cell a path and not a feature: a move out of a
+borrow through the plain deref, under a bound, through a field, and
+out of a match's arm (the shape #176 let through); a use after move
+on the binding, under a bound, after a by-value receiver, and across
+a loop's rounds; a write through a shared pointer by deref, by field,
+and under a `*Self` receiver; and a write that would destruct, over a
+`Drop` type behind a `*T`. The second guarantee is a count and not a
+refusal, so it is three run tests: moved into a fn, taken out with
+@take, and one a round -- each destructed once.
+
+The two the matrix still had open came along: a closure's capture
+moves what it names, so the binding outside has nothing left; and a
+`dyn A` is the shared handle, so the `self: *mut Self` methods of A
+are not carried by it -- a `dyn mut A` carries those. Same rule,
+third road to it.
+
+696 green.

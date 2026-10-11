@@ -1,0 +1,6 @@
+/* guarantee: no write through a shared pointer -- a *T promises the
+ * value cannot be written, and any number of them may point at it
+ * (01-types.md) */
+fn write(p: *i32) { *p = 1; }
+
+fn main() -> i32 { 0 }

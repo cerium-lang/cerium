@@ -1,0 +1,7 @@
+/* the same through a field: the place the pointer lends is the
+ * struct's, and a shared one does not lend it for writing (01) */
+struct S { mut a: i32 }
+
+fn write(p: *S) { p.a = 1; }
+
+fn main() -> i32 { 0 }

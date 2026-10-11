@@ -1,0 +1,7 @@
+/* a *Self receiver may read the fields it stands over, not write
+ * them: the borrow did not lend them for that (01-types.md, 05) */
+struct S { mut a: i32 }
+
+impl S { fn set(self: *Self) { self.a = 1; } }
+
+fn main() -> i32 { 0 }

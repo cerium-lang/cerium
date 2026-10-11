@@ -1,0 +1,5 @@
+/* the same refusal under a bound: T is not Copy, so the deref cannot
+ * hand the value over (03-move.md) */
+fn steal<T>(p: *T) -> T { *p }
+
+fn main() -> i32 { 0 }
