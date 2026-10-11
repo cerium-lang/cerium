@@ -3778,7 +3778,18 @@ emitfn(FILE *o, Sym *s, Ast *it, char *name, Type **ats, Type *ret)
   if (!body)
     die("a fn's body could not be buffered");
   em.o = body;
-  fputs("export function", o);
+  /* the symbol the linker sees. Everything lands in one unit -- the
+   * project and the library both, one qbe module (12-projects.md) --
+   * so every call site names a symbol in this same unit, main's own
+   * included, and nothing outside it calls in. A #[extern(C)] fn is
+   * the one exception: its name is the one C spells, so it stays
+   * visible (01-types.md, External functions). The rest are local,
+   * and the object carries one global where it used to carry every
+   * fn the library declared -- 237 of them for a program that prints
+   * nothing. (A size win needs either reachability here or sections
+   * out of qbe: one .text holds them all, and no linker flags cut
+   * inside a section.) */
+  fputs(attrfind(it->attrs, "extern") ? "export function" : "function", o);
   if (ret)
     fprintf(o, " %s", sigty(ret, it));
   fprintf(o, " $%s(", name);
