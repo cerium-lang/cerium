@@ -62,6 +62,13 @@ impl<T, E> Result<T, E> {
   fn err(self: Self) -> ?E { match self { Ok(_) => None, Err(e) => Some(e), } }
 
   fn unwrap_or(self: Self, d: T) -> T { match self { Ok(v) => v, Err(_) => d, } }
+
+  /* the lazy half, the error the closure's one argument: the
+   * stand-in computed only when the Err is the one in hand
+   * (05-traits.md) */
+  fn unwrap_or_else<F: Fn<E, Output = T>>(self: Self, f: F) -> T {
+    match self { Ok(v) => v, Err(e) => f(e), }
+  }
   fn expect(self: Self, msg: []u8) -> T { match self { Ok(v) => v, Err(_) => panic(msg), } }
 }
 
@@ -186,4 +193,13 @@ fn result_unwrap_the_ok_half() {
   let a: i32?i32 = Ok(2);
 
   assert(a.unwrap() == 2, "unwrap lost the payload");
+}
+
+#[test("unwrap_or_else: the Err half rides the closure's own argument")]
+fn result_unwrap_or_else_err_arg() {
+  let ok: i32?i32 = Ok(3);
+  let err: i32?i32 = Err(9);
+
+  assert(ok.unwrap_or_else(fn[](e: i32) -> i32 { e * 2 }) == 3, "the lazy half touched an Ok");
+  assert(err.unwrap_or_else(fn[](e: i32) -> i32 { e * 2 }) == 18, "the error never rode the fn");
 }

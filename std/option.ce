@@ -34,6 +34,13 @@ impl<T> Option<T> {
   fn expect(self: Self, msg: []u8) -> T { match self { Some(v) => v, None => panic(msg), } }
   fn unwrap_or(self: Self, d: T) -> T { match self { Some(v) => v, None => d, } }
 
+  /* the lazy half: the stand-in computed only when it is needed --
+   * a fn of no arguments, the pack empty, the answer the bound pins
+   * (05-traits.md) */
+  fn unwrap_or_else<F: Fn<Output = T>>(self: Self, f: F) -> T {
+    match self { Some(v) => v, None => f(), }
+  }
+
   /* the slot's own: the value walks out, a None stands where it was */
   fn take(self: *mut Self) -> Self { @take(self) }
 
@@ -203,4 +210,13 @@ fn option_zip_both_halves() {
 
   assert(a == 7, "zip lost a row");
   assert(b == -1, "zip answered over a None");
+}
+
+#[test("unwrap_or_else: the stand-in computed only when it is needed")]
+fn option_unwrap_or_else_lazy_half() {
+  let x: ?i32 = Some(3);
+  let n: ?i32 = None;
+
+  assert(x.unwrap_or_else(fn[]() -> i32 { 100 }) == 3, "the lazy half touched a Some");
+  assert(n.unwrap_or_else(fn[]() -> i32 { 100 }) == 100, "the lazy half did not stand in");
 }
