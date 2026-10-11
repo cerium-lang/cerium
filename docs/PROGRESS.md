@@ -3613,3 +3613,20 @@ are literal inference's own gaps, not this road's; they stay open
 in the issue.
 
 679 green (307 with them), the library's 50.
+
+## 2026-10-11 -- one global where there were two hundred and thirty-seven
+
+Every fn the emitter wrote came out `export function`, so a program
+that prints nothing shipped the library's every row as a global the
+linker could not drop: 237 of them, 244 symbols in the text, for a
+main that answers 1. A #[extern(C)] fn is the one that must stay
+visible -- its name is the one C spells -- and every other call site
+names a symbol in this same unit, main's own included, so the rest
+are local now. One .globl in the .s where there were 237.
+
+The size does not move, and the measurement is why: qbe writes one
+.text, and no linker flag cuts inside a section -- -ffunction-sections
+is a code-generation flag and the input here is assembly, so
+--gc-sections had nothing to section. Getting the bytes back needs
+either reachability at emit time or sections out of qbe, and that is
+an open line rather than this one.
