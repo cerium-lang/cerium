@@ -3697,3 +3697,21 @@ Two needed more than a signature:
 
 Every err test carries its words now, 348 of them across check, lex
 and parse. 696 green.
+
+## 2026-10-11 -- the slice's own rounds, at last
+
+`std/slice/iter.ce` carried the `Iter for []T` row -- the header the
+cursor, a pointer a round -- and no test of its own. The library's
+rows around it had grown: the slice's doors (len, get, a string's
+length), an array's iteration owned and lent, the zip's rounds. Not
+one of them calls `next` on a slice; the only `.next()` in the whole
+library was a zip's.
+
+Four rows now: a round hands the element's pointer and the source
+stays whole behind the copy; a round leaves one element behind, the
+header's own arithmetic; an exhausted slice answers None and keeps
+answering it; and for-in over a slice rides the rounds the hand
+spelling does. The mutable row the old sketch had is gone -- no
+`Iter for []mut T` stands anywhere now -- so nothing here tests it.
+
+The library's 54.

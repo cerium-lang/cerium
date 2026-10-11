@@ -6,6 +6,8 @@
  * the more specific one: it wins for []mut T the same way *T wins
  * over T (04-generics.md). */
 use std::iter::Iter;
+use std::debug::assert; /* the tests' own word, the artifact the
+                         * debug shape they live in (13-testing.md) */
 
 impl<T> Iter for []T {
   type Item = *T;
@@ -19,4 +21,59 @@ impl<T> Iter for []T {
       Some(p)
     }
   }
+}
+
+/* -- the tests (13-testing.md) ------------------------------------------------
+ * the library's own rows: this file's report reads std::slice and the
+ * name. The header is a pair of scalars, so a walk copies it and the
+ * source stays whole behind the copy -- every row below leans on
+ * that: what the loop took is still there to be counted after. */
+
+#[test("a round hands the element's own pointer, the header moving on")]
+fn slice_next_yields_a_round() {
+  let s = []i32{4, 5, 6};
+  let mut it = s;
+  let mut sum = 0;
+
+  for let Some(p) = it.next() {
+    sum = sum + *p;
+  }
+  assert(sum == 15, "the rounds did not walk every element");
+  assert(s.len() == 3, "the source did not stay whole behind the copy");
+}
+
+#[test("the cursor's own arithmetic: a round leaves one element behind")]
+fn slice_next_advances_the_header() {
+  let s = []i32{1, 2, 3};
+  let mut it = s;
+  let whole = it.len();
+  let first = match it.next() { Some(p) => *p, None => 0, };
+
+  assert(first == 1, "the first round lost the first element");
+  assert(it.len() == whole - 1, "the header did not shrink by one");
+}
+
+#[test("the end: an exhausted slice answers None, and keeps answering it")]
+fn slice_next_none_at_the_end() {
+  let s = []i32{9};
+  let mut it = s;
+  let mut rounds = 0;
+
+  for let Some(p) = it.next() {
+    rounds = rounds + 1;
+  }
+  assert(rounds == 1, "one element is one round");
+  let after = match it.next() { Some(_) => 1, None => 0, };
+  assert(after == 0, "an exhausted slice did not answer None");
+}
+
+#[test("the loop's own word: for-in rides the rounds a hand spelling does")]
+fn slice_for_in_rides_the_same_rounds() {
+  let s = []i32{1, 2, 3, 4};
+  let mut sum = 0;
+
+  for p in s {
+    sum = sum + *p;
+  }
+  assert(sum == 10, "the sugar counted different rounds");
 }
