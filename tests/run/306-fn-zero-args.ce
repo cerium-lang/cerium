@@ -1,0 +1,12 @@
+/* a fn of no arguments rides the pack empty (05-traits.md): no
+ * positional argument in the bound's list, the pins alone -- or
+ * nothing at all, the answer a projection. Fn<()> is not this: ()
+ * is one argument of unit type */
+use std::ops::Fn;
+
+fn pinned<F: Fn<Output = i32>>(f: F) -> i32 { f() }
+fn bare<F: Fn>(f: F) -> F::Output { f() }
+
+fn main() -> i32 {
+  pinned(fn[]() -> i32 { 30 }) + bare(fn[]() -> i32 { 12 })
+}
