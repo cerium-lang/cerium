@@ -9,4 +9,4 @@ struct S { v: u32 }
 impl T1 for S {
   fn f(self: *Self, const x: u32) -> u32 { x + 1 }
 }
-fn main() -> u32 { 0 }
+fn main() -> i32 { 0 }

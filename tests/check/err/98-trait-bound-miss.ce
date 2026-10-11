@@ -10,7 +10,7 @@ struct Lone { v: u32 }
 fn announce<T: Show>(a: *T) -> u32 {
   Show::show(a)
 }
-fn main() -> u32 {
+fn main() -> i32 {
   let l = Lone{ v: 1 };
   return announce(&l);
 }

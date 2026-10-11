@@ -3,4 +3,4 @@ fn f(n: []u8) -> u32 {
   let p = P { x: 1 };
   *@field(p, n)
 }
-fn main() -> u32 { f("x") }
+fn main() -> i32 { f("x") }

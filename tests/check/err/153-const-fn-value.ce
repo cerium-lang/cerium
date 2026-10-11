@@ -4,7 +4,7 @@
 fn g(const n: u32) -> u32 {
   n + 1
 }
-fn main() -> u32 {
+fn main() -> i32 {
   let r = g;
   0
 }

@@ -8,6 +8,6 @@ struct Map { mut v: u32 }
 impl Store for Map {
   fn get<K, J>(self: *Self, k: *K) -> ?u32 { None }
 }
-fn main() -> u32 {
+fn main() -> i32 {
   return 0;
 }

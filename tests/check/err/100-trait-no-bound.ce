@@ -11,4 +11,4 @@ impl Show for Point {
 fn unbound<T>(a: *T) -> u32 {
   Show::show(a)
 }
-fn main() -> u32 { 0 }
+fn main() -> i32 { 0 }

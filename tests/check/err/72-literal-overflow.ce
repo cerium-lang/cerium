@@ -1,3 +1,8 @@
-fn main() -> i8 {
-  300
+/* a literal that does not fit the type it is read as: the refusal is
+ * the read's, so it wants a body to stand in -- a main whose own
+ * return type carried it was refused for that instead (01-types.md) */
+fn main() -> i32 {
+  let x: i8 = 300;
+
+  0
 }

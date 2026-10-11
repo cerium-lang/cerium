@@ -1,1 +1,1 @@
-fn main() -> u32 { *@field(42, "x") }
+fn main() -> i32 { *@field(42, "x") }

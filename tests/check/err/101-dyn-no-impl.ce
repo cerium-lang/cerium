@@ -8,7 +8,7 @@ struct Lone { v: u32 }
 impl Show for Point {
   fn show(self: *Self) -> u32 { self.x }
 }
-fn main() -> u32 {
+fn main() -> i32 {
   let l = Lone{ v: 1 };
   let a: dyn Show = &dyn l;
   return a.show();

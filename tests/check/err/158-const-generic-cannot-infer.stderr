@@ -1,0 +1,1 @@
+no 'f' takes these arguments -- fn<const M, const N>([N]u32) -> u32: cannot infer 'M' from the call

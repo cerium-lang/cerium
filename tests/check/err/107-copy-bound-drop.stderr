@@ -1,0 +1,1 @@
+no 'once' takes these arguments -- fn<T: Copy>(T) -> u32: 'File' does not implement 'std::ops::Copy'

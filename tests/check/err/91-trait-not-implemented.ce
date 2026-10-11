@@ -7,4 +7,4 @@ struct Point { x: u32 }
 fn go(p: Point) -> u32 {
   p.show()
 }
-fn main() -> u32 { 0 }
+fn main() -> i32 { 0 }
