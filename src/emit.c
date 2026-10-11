@@ -2079,7 +2079,11 @@ emamatch(Em *em, Ast *e, int *reached)
 
     emapat(em, arm->v.n2.a, st, agg ? sv : 0, agg ? 0 : sv, next);
     v = armbody(em, arm->v.n2.b, &rt);
-    if (slot && v)
+    if (slot && v && rt) /* the diverging arm's value is nothing: it
+                          * never lands, and a move of the word a
+                          * panic call left would hand qbe what it
+                          * will not take (10-iteration.md, the
+                          * checker's own dive rule) */
       slotput(em, t, v, slot);
     if (rt) {
       jump(em, lend);

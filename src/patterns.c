@@ -401,19 +401,45 @@ cmatchroute(Ast *e, Val sv, Fenv *fe, Type *want)
   return 0; /* unreachable */
 }
 
+/* does this scrutinee place read through a pointer deref? The whole
+ * it matches sits in the borrow's own storage, not a binding's slot
+ * -- an arm's binding hands the value out of a place its holder does
+ * not own, and moving a non-Copy one out is the deref's own refusal
+ * (03-move.md, 09-match.md) */
+static int
+scrderef(Ast *e)
+{
+  while (e->k == Naccess || e->k == Nindex || e->k == Ntupidx || e->k == Nrangeindex) {
+    if (e->k == Naccess)
+      e = e->v.fld.e;
+    else if (e->k == Nindex)
+      e = e->v.n2.a;
+    else if (e->k == Ntupidx)
+      e = e->v.tup.e;
+    else
+      e = e->v.ridx.e;
+  }
+  return e->k == Nun && e->v.un.op == Tstar;
+}
+
 Type *
 rmatch(Ast *e, Fenv *fe, Type *want)
 {
-  Ast           **arms = e->v.call.args;
-  usize           n = vlen(arms), i;
-  Type           *st = rplace(e->v.call.f, fe); /* the scrutinee, read as a place */
-  int             binds = 0;
+  Ast **arms = e->v.call.args;
+  usize n = vlen(arms), i;
+  Type *st = rplace(e->v.call.f, fe); /* the scrutinee, read as a place */
+  int   binds = 0;
+  int   borrowed; /* the whole behind a deref: its arms bind
+                   * in place, and nothing they bind may
+                   * leave the borrow (03-move.md) */
   Type           *rt = 0;
   struct Variant *vs[32];
   usize           nv = 0;
   int             whatever = 0;
   int             joined = 0;
   Fenv            acc;
+
+  borrowed = scrderef(e->v.call.f);
 
   if (e->v.call.f->k == Nbuiltin && strcmp(e->v.call.f->v.blt.name, "typeinfo") == 0 &&
       !(vlen(e->v.call.f->v.blt.targs) == 1 && e->v.call.f->v.blt.targs[0]->k == Nun &&
@@ -498,6 +524,15 @@ rmatch(Ast *e, Fenv *fe, Type *want)
                                          * (10-iteration.md) */
 
     rpat(arm->v.n2.a, st, &fa, 0);
+    if (borrowed) { /* the bindings this arm pushed sit where the
+                     * borrow holds them: a borrow of one, a Copy
+                     * read of one, both fine -- a move of a non-Copy
+                     * one is the deref's own refusal (03-move.md) */
+      usize k;
+
+      for (k = nbase; k < fa.n; k++)
+        fa.ls[k].inpl = 1;
+    }
     at = arm->v.n2.b->k == Nblock
              ? rblock(arm->v.n2.b, &fa, dive ? 0 : (want ? want : rt))
              : rexpr(arm->v.n2.b, &fa,

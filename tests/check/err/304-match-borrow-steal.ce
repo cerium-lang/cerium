@@ -1,0 +1,18 @@
+/* a match over a borrowed whole lends its arm's value, and moving a
+ * non-Copy one out is the deref's own refusal (03-move.md,
+ * 09-match.md): the borrow never lent the whole */
+struct Big { a: i32 }
+enum E<T> { None, Some(T) }
+
+impl<T> E<T> {
+  fn steal(self: *Self) -> T {
+    match *self { Some(v) => v, None => panic("none\n"), }
+  }
+}
+
+fn main() -> i32 {
+  let a = E::Some(Big { a: 5 });
+  let b = a.steal();
+
+  b.a
+}

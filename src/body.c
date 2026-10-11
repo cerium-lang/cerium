@@ -2034,6 +2034,12 @@ rexprpath1(Ast *e, Fenv *fe, char *name, Type *want, Ns *ns)
       return l->cur;
     }
     if (!iscopy(l->cur)) { /* assignment moves by default (03-move.md) */
+      if (l->inpl)         /* a match over a borrowed whole bound this: the
+                            * value sits in the borrow's own storage, and a
+                            * read that moves it out is the deref's own
+                            * refusal -- @take the one way a value leaves a
+                            * place (03-move.md) */
+        berr(e, "cannot move out of a place: %s is not Copy (@take, 03)", btys(l->cur));
       if (fe->loopd > 0 && locfindi(fe, name) < fe->loopbase)
         berr(e, "'%s' began before the for and would be moved every round", name);
       l->dead = 1;

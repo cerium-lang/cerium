@@ -23,6 +23,11 @@ struct Local
                   * so no drop insertion is statically known -- the
                   * scope's end reads the move flag the emitter keeps
                   * instead of trusting the dead bit */
+  int inpl;      /* bound by a match arm over a deref (09-match.md):
+                  * the value sits in the borrow's own storage, not a
+                  * slot the binding owns -- a read that moves it out
+                  * is the deref's own refusal, @take the one way a
+                  * value leaves a place (03-move.md) */
   int   frz;     /* FZ_*: what a live borrow forbids */
   int   frzby;   /* the borrowing binding's index, to thaw when it dies */
   char *frzpath; /* the borrowed field chain, ".a.b"; NULL is the root */

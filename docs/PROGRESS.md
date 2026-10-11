@@ -3499,3 +3499,42 @@ checks and then hands qbe a blit0 it rejects, which is a third
 issue rather than a row.
 
 675 green, the library's 46.
+
+## 2026-10-11 -- a borrow is not a place one may take from, and a match that forgot it (#176)
+
+#176's shape: a match over a borrowed whole -- match *self --
+lends its arm's value, which is right and worth keeping; but it
+would also hand that value out of the borrow entirely, the checker
+let it through, and qbe rejected the .ssa a pass later ("invalid
+type for first operand in blit0"), the failure naming a temp and
+not the move.
+
+Two holes were stacked in that one program, and pulling them apart
+found the second was never about the borrow at all. The checker's:
+placeroot answers 0 for a deref -- *p is not a binding's slot -- so
+rmatch's move marking skipped the whole match, and the arm's
+binding read as an ordinary local the body was free to move. The
+emitter's: a diverging arm still moved its value into the match's
+result slot, and over an aggregate result that move was a blit of
+the word a panic call left -- owned scrutinee, no borrow anywhere,
+the same qbe refusal. std's own unwrap is that shape and never hit
+it only because its tests carry integers, a storew where the blit
+never runs.
+
+The binding remembers where it stands now: Local.inpl, set by
+rmatch when the scrutinee reads through a deref, and the local's
+own value read -- the one site that moves a non-Copy binding out
+-- refuses it with the deref's own words, "cannot move out of a
+place: T is not Copy (@take, 03)". A Copy reads out a copy, a
+borrow reads the address, both exactly as before; the library's
+borrowed rows (is_some_and, the four tag reads) untouched, 46/46.
+The emitter's arm keeps its dive rule: an arm that never lands
+moves nothing into the join, the checker's own word for it, and
+the owned unwrap over a non-Copy payload compiles and answers.
+
+spec 09 says the rule where the arms bind; 304 pins the refusal,
+305 the four roads that stay open -- a Copy out of the borrow, a
+read through it, a predicate on it, and the owned unwrap whose
+panic arm no longer blits.
+
+677 green (304, 305 with them), the library's 46.
