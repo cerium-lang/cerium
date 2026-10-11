@@ -185,6 +185,17 @@ impl<T, E> Result<T, E> {
 fn each<F: Fn<i32, Output = u32>>(f: F) -> u32
 ```
 
+Zero arguments is the pack empty — no positional argument in the bound's list,
+the pins alone or nothing at all:
+
+```rust
+fn call0<F: Fn<Output = i32>>(f: F) -> i32 { f() }   // pins alone
+fn call0<F: Fn>(f: F) -> F::Output { f() }            // the answer a projection
+```
+
+`Fn<()>` is not this: `()` is one argument of unit type, a callable that takes
+it is asked for exactly that.
+
 A generic function takes a callable by value and monomorphizes, as it does
 for any bound; `dyn Fn<i32, Output = u32>` is the type-erased form, `dyn mut
 Fn<...>` the writable one, and both are values like any other `dyn A`

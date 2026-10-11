@@ -3538,3 +3538,32 @@ read through it, a predicate on it, and the owned unwrap whose
 panic arm no longer blits.
 
 677 green (304, 305 with them), the library's 46.
+
+## 2026-10-11 -- the zero-argument row was there; nobody had tried its spelling (#175)
+
+#175 asked for a row a fn of no arguments could bound, and tried
+three spellings for it -- Fn<>, Fn<[], ...>, Fn<()> -- each a near
+miss: the first two do not parse, the third is one argument of
+unit type and honest about it. The row was there the whole time.
+Zero arguments is the pack empty (04-generics.md's own words in
+packargs: "zero elements the empty tuple"), and a bound spells it
+by spelling nothing: `Fn<Output = i32>` pins the answer over no
+arguments at all, bare `Fn` leaves the answer a projection --
+`fn call0<F: Fn>(f: F) -> F::Output { f() }`. Both compile, both
+run, end to end over a `fn[]() -> i32 { 7 }` literal, and the fn
+pointer's own row already knew it: a zero-arg signature meets the
+empty tuple and answers.
+
+Nothing in the compiler moved, and that is the finding: one spec
+sentence (05-traits, beside the pins' own paragraph -- Fn<()> is
+not this, () is one argument of unit type), one run test pinning
+both spellings (306, the answer 42), and the rows the issue wanted
+the bound for -- Option::unwrap_or_else and Result::unwrap_or_else,
+the lazy halves, the error the closure's one argument on the
+Result side. The library's 48 carries them.
+
+Fn<> and Fn<[], ...> stay parse errors on purpose: the empty pack
+needs no spelling of its own, the pins-only form already says it,
+and a grammar word that buys nothing is a word to keep out.
+
+678 green (306 with them), the library's 48.
