@@ -1,0 +1,1 @@
+no 'probe' takes these arguments -- fn(i32) -> i32: the call spells 1 generic argument, the fn takes 0

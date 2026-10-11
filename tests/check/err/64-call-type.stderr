@@ -1,0 +1,1 @@
+no 'add' takes these arguments -- fn(i32, i32) -> i32: argument 2 is f32, the parameter is i32

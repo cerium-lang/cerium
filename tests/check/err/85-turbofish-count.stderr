@@ -1,0 +1,1 @@
+no 'id' takes these arguments -- fn<T>(T) -> T: the call spells 2 generic arguments, the fn takes 1

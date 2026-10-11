@@ -1,0 +1,1 @@
+#[cfg] and #[noreturn] share no fn: the modes that remove its calls make what follows them reachable (01-types.md)

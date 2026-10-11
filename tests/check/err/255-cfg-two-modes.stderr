@@ -1,0 +1,1 @@
+a fn's modes belong in one #[cfg]: #[cfg(debug)] or #[cfg(release)], never two (12-projects.md)

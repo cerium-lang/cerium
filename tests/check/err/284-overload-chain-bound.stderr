@@ -1,0 +1,1 @@
+no 'm' takes these arguments -- fn((i32, i32)) -> i32: argument 1 is i32, the parameter is (i32, i32); fn<...Ts: Iter>(Ts) -> i32: 'i32' does not implement 'std::iter::Iter'

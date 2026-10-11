@@ -1,0 +1,1 @@
+the error type does not implement Fmt -- the Err half prints through it (12-projects.md)

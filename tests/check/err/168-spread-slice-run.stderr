@@ -1,0 +1,1 @@
+a slice's length is a runtime thing: its spread wants an array, or a value the compiler knows (04-generics.md)

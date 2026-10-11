@@ -1,0 +1,1 @@
+'ptr' is one of a slice's own two slots: len(), get() and ptr() are the surface -- the std library reads the slots by its own doors, @len and @ptr (01-types.md)

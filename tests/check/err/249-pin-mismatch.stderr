@@ -1,0 +1,1 @@
+no 'each' takes these arguments -- fn<F: Fn>(F) -> u32: 'fn(i32) -> i32' does not implement 'std::ops::Fn<(i32,)>'

@@ -1,0 +1,1 @@
+#[extern(C)] is for the fns that cross to C; a test's call the runner arranges (13-testing.md)
