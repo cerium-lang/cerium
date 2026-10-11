@@ -69,6 +69,16 @@ impl<T, E> Result<T, E> {
   fn unwrap_or_else<F: Fn<E, Output = T>>(self: Self, f: F) -> T {
     match self { Ok(v) => v, Err(e) => f(e), }
   }
+
+  /* the answer's own type a parameter wears: U rides the pin alone,
+   * the bound's answer binding it (04-generics.md, 05-traits.md) */
+  fn and_then<U, F: Fn<T, Output = Result<U, E>>>(self: Self, f: F) -> Result<U, E> {
+    match self { Ok(v) => f(v), Err(e) => Err(e), }
+  }
+
+  fn or_else<F: Fn<E, Output = Self>>(self: Self, f: F) -> Self {
+    match self { Ok(v) => Ok(v), Err(e) => f(e), }
+  }
   fn expect(self: Self, msg: []u8) -> T { match self { Ok(v) => v, Err(_) => panic(msg), } }
 }
 
@@ -202,4 +212,18 @@ fn result_unwrap_or_else_err_arg() {
 
   assert(ok.unwrap_or_else(fn[](e: i32) -> i32 { e * 2 }) == 3, "the lazy half touched an Ok");
   assert(err.unwrap_or_else(fn[](e: i32) -> i32 { e * 2 }) == 18, "the error never rode the fn");
+}
+
+#[test("and_then: the Ok half through the fn, the Err half itself; or_else the mirror")]
+fn result_and_then_or_else() {
+  let ok: i32?i32 = Ok(3);
+  let err: i32?i32 = Err(9);
+
+  let a = match ok.and_then(fn[](v: i32) -> i32?i32 { Ok(v * 2) }) { Ok(k) => k, Err(_) => 0, };
+  let b = match err.and_then(fn[](v: i32) -> i32?i32 { Ok(v * 2) }) { Ok(k) => k, Err(e) => e, };
+  let c = match err.or_else(fn[](e: i32) -> i32?i32 { Ok(70) }) { Ok(k) => k, Err(_) => 0, };
+
+  assert(a == 6, "and_then lost the Ok half");
+  assert(b == 9, "and_then did not hand the Err through");
+  assert(c == 70, "or_else did not stand in");
 }

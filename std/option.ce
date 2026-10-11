@@ -41,6 +41,17 @@ impl<T> Option<T> {
     match self { Some(v) => v, None => f(), }
   }
 
+  /* the answer's own type a parameter wears: U rides the pin alone,
+   * no argument carries it, and the bound's answer binds it there
+   * (04-generics.md, 05-traits.md) */
+  fn and_then<U, F: Fn<T, Output = ?U>>(self: Self, f: F) -> ?U {
+    match self { Some(v) => f(v), None => None, }
+  }
+
+  fn or_else<F: Fn<Output = ?T>>(self: Self, f: F) -> ?T {
+    match self { Some(v) => Some(v), None => f(), }
+  }
+
   /* the slot's own: the value walks out, a None stands where it was */
   fn take(self: *mut Self) -> Self { @take(self) }
 
@@ -219,4 +230,18 @@ fn option_unwrap_or_else_lazy_half() {
 
   assert(x.unwrap_or_else(fn[]() -> i32 { 100 }) == 3, "the lazy half touched a Some");
   assert(n.unwrap_or_else(fn[]() -> i32 { 100 }) == 100, "the lazy half did not stand in");
+}
+
+#[test("and_then: the Some half through the fn, the None half itself; or_else the mirror")]
+fn option_and_then_or_else() {
+  let x: ?i32 = Some(5);
+  let n: ?i32 = None;
+
+  let a = match x.and_then(fn[](v: i32) -> ?i32 { Some(v + 1) }) { Some(k) => k, None => 0, };
+  let b = match n.and_then(fn[](v: i32) -> ?i32 { Some(v + 1) }) { Some(k) => k, None => 0, };
+  let c = match n.or_else(fn[]() -> ?i32 { Some(7) }) { Some(k) => k, None => 0, };
+
+  assert(a == 6, "and_then lost the Some half");
+  assert(b == 0, "and_then answered over a None");
+  assert(c == 7, "or_else did not stand in");
 }

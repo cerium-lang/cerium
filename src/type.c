@@ -580,8 +580,13 @@ gsubstv(Type *t, Ast **gps, Type **tys, Val **gcvals, usize n)
           return tyconst(gcvals[i]->i); /* a const slot: the number
                                          * the binding carries, usize
                                          * its own shape (08) */
-        return tys[i];                  /* a row's own word: a Tyconst, a parameter
-                                         * the box names, the slot's marker */
+        if (!tys[i])
+          return t;    /* the slot still open: the parameter's own word
+                        * stands -- a pin the bounds ask before the
+                        * slots all land, and_then's U inside Fn's
+                        * Output the shape (04-generics.md, 05) */
+        return tys[i]; /* a row's own word: a Tyconst, a parameter
+                        * the box names, the slot's marker */
       }
     return t;
   case Typtr:

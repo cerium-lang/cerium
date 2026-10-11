@@ -898,20 +898,22 @@ memberdone(Ast *e, Ast **mg, Type **mtys, usize nm, const char *who, int soft, A
 {
   usize g, bi;
 
-  for (g = 0; g < nm; g++)
-    if (!mtys[g]) {
-      if (soft)
-        return 0;
-      berr(e, "cannot infer '%s' for '%s' from the call", mg[g]->v.gp.name, who);
-    }
-  for (g = 0; g < nm; g++) {
+  for (g = 0; g < nm; g++) { /* the bounds first: a pin may be the
+                              * only thing that names a slot --
+                              * and_then's U rides Fn's Output, no
+                              * argument carries it -- so the bound's
+                              * own answer binds it before the ask
+                              * below reads the slots (04, 05) */
     Ast **bs = mg[g]->v.gp.bounds;
 
+    if (!mtys[g])
+      continue; /* its own bound has nothing to ask yet; the ask
+                 * below names it */
     for (bi = 0; bi < vlen(bs); bi++) {
       Sym   *tr = bs[bi]->v.path.sym; /* the bound's own cache (04) */
       Type **ta;
 
-      if (!boundsatisfies(bs[bi], mtys[g], mg, mtys, nm, &ta, ig, itys, ni)) {
+      if (!boundsatisfies(bs[bi], mtys[g], mg, mtys, nm, &ta, ig, itys, ni, mg, mtys, nm)) {
         if (soft)
           return 0;
         berr(e, "'%s' does not implement '%s'; '%s' cannot take it", btys(mtys[g]),
@@ -919,6 +921,12 @@ memberdone(Ast *e, Ast **mg, Type **mtys, usize nm, const char *who, int soft, A
       }
     }
   }
+  for (g = 0; g < nm; g++)
+    if (!mtys[g]) {
+      if (soft)
+        return 0;
+      berr(e, "cannot infer '%s' for '%s' from the call", mg[g]->v.gp.name, who);
+    }
   return 1;
 }
 
@@ -952,7 +960,7 @@ rowbounds(Sym *imp, Type **tys, Ast *at)
       Sym   *tr = bs[bi]->v.path.sym; /* the bound's own cache (04) */
       Type **ta;
 
-      if (!boundsatisfies(bs[bi], tys[g], imp->gparams, tys, imp->ngparams, &ta, 0, 0, 0))
+      if (!boundsatisfies(bs[bi], tys[g], imp->gparams, tys, imp->ngparams, &ta, 0, 0, 0, 0, 0, 0))
         berr(at, "'%s' does not implement '%s'; the row cannot take it", btys(tys[g]),
              btys(tysym(tr, ta, tr->ngparams)));
     }
@@ -1377,27 +1385,16 @@ tryonesig(Sym *s, Ast *a, Ast **args, usize n, usize nfreeze, Fenv *fe, Ast *seg
         } /* CV_BOX: the slot stays NULL, the re-check's to fill */
       }
   }
-  if (ok) {
-    for (i = 0; i < s->ngparams; i++) /* a const generic's slot fills
-                                       * when the unifier meets its
-                                       * length -- a number or a black
-                                       * box; an empty one was never
-                                       * met at all */
-      if (!tys[i]) {                  /* the binding the call never made: this row's
-                                       * own refusal, not the chain's end -- the next
-                                       * row's walk reads the call anew (04-generics.md) */
-        if (why)
-          *why = inferwhy(s, s->gparams[i]);
-        ok = 0;
-        break;
-      }
-  }
   if (ok) { /* every bound, once the binding is known: does the type
              * the call landed implement the trait (04-generics.md)? The
              * impl table answers -- a bound nobody can satisfy was
              * already diagnosed where the fn was declared. A bound the
              * landing fails is this row's own refusal too: the row
-             * steps aside, its reason left for the chain's end (04) */
+             * steps aside, its reason left for the chain's end (04).
+             * The bounds run before the slot ask below: a pin may be
+             * the only thing that names a slot -- and_then's U rides
+             * Fn's Output, no argument carries it -- and the bound's
+             * own answer binds it there */
     Ast **gps = s->decl->v.fn.gparams;
     usize gi, bi;
 
@@ -1406,9 +1403,12 @@ tryonesig(Sym *s, Ast *a, Ast **args, usize n, usize nfreeze, Fenv *fe, Ast *seg
       int   pk = gps[gi]->v.gp.pack;
       usize ri, rn = 0;
 
-      if (pk && tys[gi]) /* a pack's bound is every row's own
-                          * (04-generics.md): the binding holds the
-                          * tuple the rows came in */
+      if (!tys[gi])
+        continue; /* its own bound has nothing to ask yet; the ask
+                   * below names it */
+      if (pk)     /* a pack's bound is every row's own
+                   * (04-generics.md): the binding holds the
+                   * tuple the rows came in */
         rn = tys[gi]->k == Tytuple ? tys[gi]->nargs : 0;
       for (bi = 0; ok && bi < vlen(bs); bi++) {
         Sym   *tr = bs[bi]->v.path.sym; /* the bound's own cache (04) */
@@ -1417,20 +1417,40 @@ tryonesig(Sym *s, Ast *a, Ast **args, usize n, usize nfreeze, Fenv *fe, Ast *seg
         if (pk) {
           for (ri = 0; ok && ri < rn; ri++)
             if (!boundsatisfies(bs[bi], tys[gi]->args[ri], s->gparams, tys, s->ngparams, &ta, 0, 0,
-                                0)) {
+                                0, s->gparams, tys, s->ngparams)) {
               if (why)
                 *why = boundwhy(s, tys[gi]->args[ri], tr, ta);
               ok = 0;
             }
           continue; /* the empty pack: no row, no bound to fail */
         }
-        if (!boundsatisfies(bs[bi], tys[gi], s->gparams, tys, s->ngparams, &ta, 0, 0, 0)) {
+        if (!boundsatisfies(bs[bi], tys[gi], s->gparams, tys, s->ngparams, &ta, 0, 0, 0, s->gparams,
+                            tys, s->ngparams)) {
           if (why)
             *why = boundwhy(s, tys[gi], tr, ta);
           ok = 0;
         }
       }
     }
+  }
+  if (ok) {
+    for (i = 0; i < s->ngparams; i++) /* a const generic's slot fills
+                                       * when the unifier meets its
+                                       * length -- a number or a black
+                                       * box; an empty one was never
+                                       * met at all. The bounds above
+                                       * ran first: a slot only a pin
+                                       * names is bound by now, what
+                                       * stays empty was never named
+                                       * at all */
+      if (!tys[i]) {                  /* the binding the call never made: this row's
+                                       * own refusal, not the chain's end -- the next
+                                       * row's walk reads the call anew (04-generics.md) */
+        if (why)
+          *why = inferwhy(s, s->gparams[i]);
+        ok = 0;
+        break;
+      }
   }
   if (ok) { /* the emitter's pick: which overload, which
              * instantiation. The tys live in the arena, so the
