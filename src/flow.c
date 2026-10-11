@@ -67,6 +67,7 @@ locpush(Fenv *fe, char *name, Type *ty, int mut)
   ls[fe->n].frz = FZ_NONE;
   ls[fe->n].frzby = -1;
   ls[fe->n].frzpath = 0;
+  ls[fe->n].inpl = 0;
   ls[fe->n].cur = ty;
   ls[fe->n].cv = 0;
   fe->ls = ls;

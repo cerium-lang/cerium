@@ -179,6 +179,12 @@ a wrong arity or an unknown field name is an error. `for let`
 (`10-iteration.md`) is the refutable counterpart, where the pattern may fail and
 failure ends the loop.
 
+A match over a borrowed whole — `match *p`, the scrutinee a deref — binds its
+arms in place: the value an arm's name holds sits in the borrow's own storage,
+not a slot the binding owns. Borrowing it (`&v`) and reading a `Copy` out are
+both fine; moving a non-`Copy` value out is the deref's own refusal
+(`03-move.md`) — a borrow is not a place one may take from.
+
 ## Blocks
 
 An arm with several statements is a block; its last expression is its value:

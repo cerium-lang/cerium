@@ -1,0 +1,23 @@
+/* the borrowed whole's own roads (09-match.md): a Copy reads out a
+ * copy, a non-Copy reads through the borrow, a predicate borrows --
+ * and the owned whole with a diverging arm moves its value whole */
+struct Big { a: i32 }
+enum E<T> { None, Some(T) }
+
+impl E<i32> {
+  fn steal(self: *Self) -> i32 { match *self { Some(v) => v, None => 0, } }
+}
+
+impl E<Big> {
+  fn reada(self: *Self) -> i32 { match *self { Some(v) => v.a, None => 0, } }
+  fn pred(self: *Self) -> bool { match *self { Some(v) => v.a > 3, None => false, } }
+  fn unwrap_owned(self: Self) -> Big { match self { Some(v) => v, None => panic("none\n"), } }
+}
+
+fn main() -> i32 {
+  let a = E::Some(7);
+  let b = E::Some(Big { a: 5 });
+  let c = E::Some(Big { a: 5 });
+
+  a.steal() + b.reada() + (if b.pred() { 100 } else { 0 }) + c.unwrap_owned().a
+}
