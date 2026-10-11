@@ -1,0 +1,7 @@
+/* guarantee: no move out of a borrowed place -- the plain deref, a
+ * non-Copy struct behind a shared pointer (03-move.md, 01) */
+struct Big { a: i32 }
+
+fn steal(p: *Big) -> Big { *p }
+
+fn main() -> i32 { 0 }

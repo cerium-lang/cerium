@@ -1,0 +1,8 @@
+/* a place inside the place: the field is part of what the pointer
+ * borrowed, so reading it out is a move out of a borrow (03) */
+struct Big { a: i32 }
+struct S { b: Big }
+
+fn steal(p: *S) -> Big { p.b }
+
+fn main() -> i32 { 0 }

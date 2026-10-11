@@ -1,0 +1,9 @@
+/* the same under a bound: T has no Copy, so handing it to a parameter
+ * moves it and the second hand finds nothing (03-move.md) */
+fn twice<T>(a: T) -> T {
+  let b = a;
+
+  a
+}
+
+fn main() -> i32 { 0 }

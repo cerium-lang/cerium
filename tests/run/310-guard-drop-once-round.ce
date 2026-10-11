@@ -1,0 +1,25 @@
+/* a round's own binding: one a round, dropped at the round's end, and
+ * a value that began before the loop is not one of them -- the mover
+ * refuses that instead (03-move.md, 10-iteration.md) */
+use std::ops::Drop;
+
+static mut N: i32 = 0;
+
+struct D { v: i32 }
+
+impl Drop for D {
+  fn drop(self: Self) {
+    N = N + 1;
+  }
+}
+
+fn main() -> i32 {
+  let mut i = 0;
+
+  for i < 3 {
+    let d = D { v: i };
+
+    i = i + 1;
+  }
+  N
+}

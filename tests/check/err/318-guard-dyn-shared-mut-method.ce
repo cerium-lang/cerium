@@ -1,0 +1,21 @@
+/* the handle's own road to the same rule: a `dyn A` is the shared
+ * one, and the `self: *mut Self` methods of A are not carried by it
+ * -- a `dyn mut A` carries those. A write through a shared handle is
+ * refused wherever the handle came from (06-dispatch.md, 01) */
+trait Sink {
+  fn take(self: *mut Self, v: i32);
+}
+
+struct S { mut a: i32 }
+
+impl Sink for S {
+  fn take(self: *mut Self, v: i32) { self.a = v; }
+}
+
+fn main() -> i32 {
+  let mut s = S { a: 0 };
+  let h: dyn Sink = &dyn s;
+
+  h.take(1);
+  0
+}

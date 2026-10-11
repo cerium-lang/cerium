@@ -1,0 +1,10 @@
+/* guarantee: no use after move -- the binding's own, the read after
+ * the move (03-move.md) */
+struct Big { a: i32 }
+
+fn main() -> i32 {
+  let a = Big { a: 1 };
+  let b = a;
+
+  a.a + b.a
+}

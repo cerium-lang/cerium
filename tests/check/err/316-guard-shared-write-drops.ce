@@ -1,0 +1,11 @@
+/* guarantee: no dropping through a pointer not known exclusive -- the
+ * write would destruct the old value, and a *T is not exclusive, so
+ * the old value has no single owner to destruct it (03-move.md, 01) */
+use std::ops::Drop;
+
+struct D { v: i32 }
+impl Drop for D { fn drop(self: Self) { } }
+
+fn overwrite(p: *D) { *p = D { v: 1 }; }
+
+fn main() -> i32 { 0 }

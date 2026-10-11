@@ -1,0 +1,1 @@
+'take' is a mut method; a 'dyn mut Sink' handle carries it

@@ -1,0 +1,22 @@
+/* the one sanctioned move out: @take hands the value over and leaves
+ * the zero behind, and a zero is a no-op to destruct -- so one value
+ * out, one destructor run, and the slot's own does not run a second
+ * (03-move.md) */
+use std::ops::Drop;
+
+static mut N: i32 = 0;
+
+struct D { v: i32 }
+
+impl Drop for D {
+  fn drop(self: Self) {
+    N = N + 1;
+  }
+}
+
+fn main() -> i32 {
+  let mut a = D { v: 7 };
+  let b = @take(&mut a);
+
+  b.v * 10 + N
+}

@@ -1,0 +1,12 @@
+/* the match's arm: a match over a borrowed whole may read the tag and
+ * may bind without moving, but handing the bound value out is a move
+ * out of the borrow (03-move.md) */
+struct Big { a: i32 }
+
+enum E<T> { None, Some(T) }
+
+impl<T> E<T> {
+  fn steal(self: *Self) -> T { match *self { Some(v) => v, None => panic("n\n"), } }
+}
+
+fn main() -> i32 { 0 }

@@ -7,7 +7,11 @@
 # after checking the dump by hand), every parse/ok/*.ce as an AST
 # (ditto with -a), every check/ok/*.ce as resolved declarations
 # (ditto with -T), and every err/*.ce under any of them must be
-# rejected with a diagnostic on stderr and a nonzero exit.
+# rejected with a diagnostic on stderr and a nonzero exit. An
+# optional .stderr beside one names the words the refusal must carry
+# -- a fragment a line, every line of it somewhere in what the
+# compiler said -- so a test cannot go green on a rejection that came
+# of something else: a typo, or a rule beside the one it meant.
 #
 # A directory in place of the .ce is a project (12-projects.md):
 # every .ce under it, each in the namespace its path spells. The
@@ -75,24 +79,56 @@ golden() { # $1: the directory, $2: the dump flag
 }
 
 rejected() { # $1: the directory, $2: the dump flag (-a or -T)
+  etmp=$(mktemp)
   for f in "$1"/*.ce; do
     [ -e "$f" ] || continue
-    if ./cerium "${2:--a}" "$f" >/dev/null 2>&1; then
+    if ./cerium "${2:--a}" "$f" >/dev/null 2>"$etmp"; then
       echo "FAIL $f (accepted; an error was expected)"
       fail=1
-    else
-      echo "ok   $f"
+      continue
     fi
+    s="${f%.ce}.stderr"  # the refusal's own words, when the test names
+    if [ -f "$s" ]; then # them: not only that it was refused, but what
+      said=1             # it was refused for -- a rejection any other
+      while IFS= read -r w; do
+        [ -n "$w" ] || continue
+        grep -Fq -- "$w" "$etmp" || said=0
+      done < "$s"
+      if [ "$said" = 1 ]; then
+        echo "ok   $f"
+      else
+        echo "FAIL $f (refused, but not with these words: $(head -1 "$etmp"))"
+        fail=1
+      fi
+      continue
+    fi
+    echo "ok   $f"
   done
   for d in "$1"/*/; do # a project: -T reads the whole thing
     [ -d "$d" ] || continue
-    if ./cerium "${2:--T}" "$d" >/dev/null 2>&1; then
+    if ./cerium "${2:--T}" "$d" >/dev/null 2>"$etmp"; then
       echo "FAIL $d (accepted; an error was expected)"
       fail=1
-    else
-      echo "ok   $d"
+      continue
     fi
+    s="${d%/}.stderr"
+    if [ -f "$s" ]; then
+      said=1
+      while IFS= read -r w; do
+        [ -n "$w" ] || continue
+        grep -Fq -- "$w" "$etmp" || said=0
+      done < "$s"
+      if [ "$said" = 1 ]; then
+        echo "ok   $d"
+      else
+        echo "FAIL $d (refused, but not with these words: $(head -1 "$etmp"))"
+        fail=1
+      fi
+      continue
+    fi
+    echo "ok   $d"
   done
+  rm -f "$etmp"
 }
 
 runthem() { # $1: the directory; an .expect of "!" wants rejection,
