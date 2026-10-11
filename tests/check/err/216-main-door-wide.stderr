@@ -1,0 +1,1 @@
+main returns (), i32, or E?() -- the exit code is an i32, the platform's own word (12-projects.md)

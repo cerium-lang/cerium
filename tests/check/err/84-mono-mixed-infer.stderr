@@ -1,0 +1,1 @@
+no 'pick' takes these arguments -- fn<T>(T, T) -> T: argument 2 is f32, the parameter is T

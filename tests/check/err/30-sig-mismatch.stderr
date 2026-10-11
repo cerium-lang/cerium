@@ -1,0 +1,1 @@
+'a' must be fn(*P) -> i32, not fn(*P) -> u32

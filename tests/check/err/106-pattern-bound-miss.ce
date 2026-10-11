@@ -13,7 +13,7 @@ impl Drop for File {
 impl<T: Copy> Show for T {
   fn show(self: *Self) -> u32 { 1 }
 }
-fn main() -> u32 {
+fn main() -> i32 {
   let f = File{ fd: 3 };
   return Show::show(&f); /* File has a destructor: not Copy */
 }

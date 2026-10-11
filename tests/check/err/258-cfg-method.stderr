@@ -1,0 +1,1 @@
+a method's #[cfg] is its impl's own: gate the impl, whole, not one row (12-projects.md)

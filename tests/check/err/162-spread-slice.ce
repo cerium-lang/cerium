@@ -5,4 +5,4 @@ fn f(a: u32, b: u32) -> u32 { a + b }
 fn g(s: []u32) -> u32 {
   f(...s)
 }
-fn main() -> u32 { 0 }
+fn main() -> i32 { 0 }

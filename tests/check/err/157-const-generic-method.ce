@@ -6,4 +6,4 @@ struct S { v: u32 }
 impl S {
   fn f<const N: usize>(self: *Self) -> u32 { N }
 }
-fn main() -> u32 { 0 }
+fn main() -> i32 { 0 }

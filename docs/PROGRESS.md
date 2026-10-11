@@ -3665,3 +3665,35 @@ are not carried by it -- a `dyn mut A` carries those. Same rule,
 third road to it.
 
 696 green.
+
+## 2026-10-11 -- forty-one tests that were not testing anything
+
+Pinning the words every refusal has to carry turned up what only the
+words could have shown: 41 of the 323 err tests were refused by one
+rule -- `main returns (), i32, or E?()` -- and by nothing else. Their
+`fn main() -> u32` (or i8, or f64, or usize) was the first thing the
+checker met, so the error each file was written to pin was never
+reached. 100-trait-no-bound wanted `'Show' is not a bound on 'T'`;
+it got a signature complaint about main and went green.
+
+Thirty-nine are fixed the small way -- main's return type moved to
+i32, and the intended error walks in behind it: `'Show' is not a
+bound on 'T'`, `no 'Show' for Lone`, `'Eat::eat' takes Self by
+value`, `@field of a generic parameter is the instance's`, and so on
+down the list, each now the words the test carries.
+
+Two needed more than a signature:
+
+- `72-literal-overflow` had the overflow inside main's own return
+  type, so no main could carry it -- `let x: i8 = 300;` puts it in a
+  body, and `300 does not fit i8` is what the test pins now.
+- `156-const-generic-impl` was refusing a shape that no longer
+  refuses: const generics on impls landed with #164, so the file was
+  accepted the moment main stopped tripping it. It now asks for the
+  handle instead -- a const-generic impl whose number nothing names
+  has no instance to point at, `no 'T1' for u32` -- and its comment
+  says the old refusal is gone rather than leaving the old words
+  standing.
+
+Every err test carries its words now, 348 of them across check, lex
+and parse. 696 green.

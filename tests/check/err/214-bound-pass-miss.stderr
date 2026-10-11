@@ -1,0 +1,1 @@
+no 'g' takes these arguments -- fn<T: Loud>(T) -> i32: 'T' does not implement 'Loud'

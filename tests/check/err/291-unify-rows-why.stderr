@@ -1,0 +1,1 @@
+no 'f' takes these arguments -- fn(i32) -> i32: argument 1 is []u8, the parameter is i32; fn(u8) -> u8: argument 1 is []u8, the parameter is u8

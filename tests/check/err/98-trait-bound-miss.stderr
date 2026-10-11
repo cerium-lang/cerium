@@ -1,0 +1,1 @@
+no 'announce' takes these arguments -- fn<T: Show>(*T) -> u32: 'Lone' does not implement 'Show'

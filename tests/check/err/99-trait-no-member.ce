@@ -10,4 +10,4 @@ impl Show for Point {
 fn go(p: Point) -> u32 {
   p.hide()
 }
-fn main() -> u32 { 0 }
+fn main() -> i32 { 0 }

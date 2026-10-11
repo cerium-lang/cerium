@@ -1,4 +1,4 @@
-fn main() -> bool {
+fn main() -> i32 {
   let p = None;
   true
 }

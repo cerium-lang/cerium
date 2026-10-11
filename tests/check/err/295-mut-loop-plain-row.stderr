@@ -1,0 +1,1 @@
+a mut loop needs a mut row: the elements of [3]u32 are not mut slots (01-types.md)

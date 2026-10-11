@@ -9,4 +9,4 @@ fn local() -> u32 {
   let t: type = ^^u32;
   match @typeinfo<$$t>() { TypeInfo::Bool => 1, _ => 0, }
 }
-fn main() -> bool { is_ptr(^^*u32) }
+fn main() -> i32 { is_ptr(^^*u32) }

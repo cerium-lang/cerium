@@ -9,7 +9,7 @@ fn f<T>(v: T) -> u32 {
   };
   r + 1
 }
-fn main() -> u32 {
+fn main() -> i32 {
   let n: u32 = 5;
   f(n)
 }

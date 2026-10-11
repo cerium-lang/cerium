@@ -1,0 +1,1 @@
+'W' does not implement 'std::ops::Copy'; the row cannot take it

@@ -1,0 +1,1 @@
+'g' takes a const argument: it is no value -- a fn pointer has nowhere to hand one over; call it, or split the plain half out (08-reflection.md)

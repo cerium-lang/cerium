@@ -9,7 +9,7 @@ impl Iterator for Counter {
   type Item = u32;
   fn next(self: *mut Self) -> ?u32 { None }
 }
-fn main() -> u32 {
+fn main() -> i32 {
   let mut c = Counter{ n: 0, top: 0 };
   let i: dyn mut Iterator<Foo = u32> = &mut dyn c; /* no such member */
   return 0;

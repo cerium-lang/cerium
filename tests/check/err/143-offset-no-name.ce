@@ -1,2 +1,2 @@
 struct P { x: u32 }
-fn main() -> usize { @offset<P>("w") }
+fn main() -> i32 { @offset<P>("w") }
