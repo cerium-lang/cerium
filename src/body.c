@@ -4844,29 +4844,6 @@ derefswritable(Ast *x, Fenv *fe)
   return ptrwritable(rplace(x, fe));
 }
 
-/* does this slice expression view storage the fn itself laid down?
- * There is no borrow checker, but the two shapes a compiler can see
- * are refused: a literal's elements, and the rows of an array that
- * lives in this frame. A slice of a slice points somewhere else
- * still, and rides on (01-types.md). */
-static int
-localview(Ast *e, Fenv *fe)
-{
-  Type *bt;
-
-  if (!e)
-    return 0;
-  if (e->k == Narraylit && !e->v.arrlit.len)
-    return 1; /* []T{...}: the elements are this frame's own */
-  if (e->k == Nrangeindex) {
-    bt = rplace(e->v.ridx.e, fe);
-    if (!bt)
-      bt = rexpr(e->v.ridx.e, fe, 0);
-    return bt && bt->k == Tyarray;
-  }
-  return 0;
-}
-
 /* the leftmost name a place grows from, when it is a global: a
  * const has no address to write, a static's mut is its own
  * permission (01-types.md). What does not root in a global says
@@ -5275,12 +5252,6 @@ rstmt(Ast *st, Fenv *fe)
       if (!c || !tysame(c, fe->fnret))
         berr(st, "the fn returns %s, this is %s", btys(fe->fnret), btys(t));
     }
-    if (fe->fnret->k == Tyslice && localview(st->v.n1.e, fe)) /* a
-                                                               * slice the fn can see is its own
-                                                               * dies with the frame (01) */
-      berr(
-          st->v.n1.e,
-          "this slice views the fn's own storage; return the array by value instead (01-types.md)");
     st->v.n1.drops = scopedrops(fe, fe->fnbase, st); /* the early
                                                       * exit: every
                                                       * binding the
@@ -5716,12 +5687,6 @@ runbody(Ast *it, Env env, Type **argtys, Type *ret, Val **cvals, Ast **gparams, 
         }
       }
   }
-  if (ret->k == Tyslice &&
-      localview(it->v.fn.body->v.blk.tail, &fe)) /* the
-                                                  * tail returns, and what it views
-                                                  * dies with the frame (01) */
-    berr(it->v.fn.body->v.blk.tail,
-         "this slice views the fn's own storage; return the array by value instead (01-types.md)");
   { /* the body's value against the declared return: the return
      * statement's own rule, walked the tail's way around -- a
      * value that is not the declared type, or no value where one
@@ -5857,9 +5822,6 @@ checkbodyimpl(Sym *s, Ast *it)
       }
       for (j = 0; j < np; j++)
         locpush(&fe, ps[j]->v.param.name, fnty->args[j], ps[j]->v.param.mut);
-      if (fnty->t->k == Tyslice && localview(ms[i]->v.fn.body->v.blk.tail, &fe))
-        berr(ms[i]->v.fn.body->v.blk.tail, "this slice views the fn's own storage; return the "
-                                           "array by value instead (01-types.md)");
       bodyfn = s->members[i].sym;
       rblock(ms[i]->v.fn.body, &fe, fnty->t);
     }

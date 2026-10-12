@@ -1,6 +1,6 @@
 fn ceri3mir3one one: 1 blocks, 0 insns, 0 lets
   bb0:
-    return
+    return @4:25
 fn ceri3mir4arms arms: 4 blocks, 2 insns, 0 lets
   bb0:
     switch bb1 bb2 @7:3
@@ -11,9 +11,9 @@ fn ceri3mir4arms arms: 4 blocks, 2 insns, 0 lets
     call one @9:16
     goto bb3
   bb3:
-    return
+    return @7:3
 fn ceri3mir4main main: 1 blocks, 2 insns, 0 lets
   bb0:
     call Some @13:29
     call arms @13:24
-    return
+    return @13:24

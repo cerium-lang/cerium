@@ -33,12 +33,15 @@ lifetimes nowhere — so the guarantees are uneven on purpose:
 - **Guaranteed statically.** No use after move, no double free from a move, no
   write through a shared pointer, no move out of a borrowed place, no dropping
   through a pointer that is not known to be exclusive.
-- **Not proven.** Exclusivity and non-dangling hold only where the compiler can
-  see them — within a function. Across a function boundary there is no lifetime
-  information, so a dangling use or an aliasing violation is undefined
-  behaviour. A `debug` build may catch some of these; the language does not
-  define a mechanism, and promises nothing. This is the same bargain a slice
-  makes (`01-types.md`).
+- **Checked at the frame's boundary.** A value pointing into the fn's own
+  storage — the address of a local, a slice of a local array, a literal's
+  backing — is refused at the return and at a store through a pointer,
+  flow-sensitively (`01-types.md`).
+- **Not proven.** Beyond that boundary there is no lifetime information: a
+  pointer handed to a call, a byval capture copied into a closure's env, and
+  any aliasing across a function boundary are undefined behaviour. A `debug`
+  build may catch some of these; the language does not define a mechanism, and
+  promises nothing.
 - **Deliberately unchecked.** A `static mut` is the one place aliasing is
   allowed without any check: any function may write it, and nothing proves only
   one does. Statics are also never destructed (`01-types.md`).

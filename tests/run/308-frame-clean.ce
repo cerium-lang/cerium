@@ -1,0 +1,16 @@
+/* the escapes the fn may make: the caller's storage, the static's,
+ * a string's bytes -- none of these die with the frame (01-types.md) */
+struct P { v: i32 }
+
+fn ofparam(x: *i32) -> *i32 { x }
+fn ofelem(p: *P) -> *i32 { &p.v }
+fn ofview(s: []i32) -> []i32 { s[0..2] }
+fn ofstatic() -> []u8 { "a string rides the data segment\n" }
+
+fn main() -> i32 {
+  let x = 7;
+  let p = P { v: 3 };
+  let s = [4]i32{9, 8, 7, 6};
+
+  *ofparam(&x) + *ofelem(&p) + @cast<i32>(ofview(@slice(&s[0], 4)).len()) + @cast<i32>(ofstatic().len())
+}

@@ -9,7 +9,7 @@ fn ceri3mir6rounds rounds: 10 blocks, 6 insns, 2 lets
     expr assign @9:7
     branch bb4 bb5 @10:5
   bb3:
-    return
+    return @18:3
   bb4:
     goto bb1 @11:7
   bb5:
@@ -28,4 +28,4 @@ fn ceri3mir6rounds rounds: 10 blocks, 6 insns, 2 lets
 fn ceri3mir4main main: 1 blocks, 1 insns, 0 lets
   bb0:
     call rounds @21:26
-    return
+    return @21:26

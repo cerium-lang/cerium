@@ -83,9 +83,15 @@ rejected() { # $1: the directory, $2: the dump flag (-a or -T)
   for f in "$1"/*.ce; do
     [ -e "$f" ] || continue
     if ./cerium "${2:--a}" "$f" >/dev/null 2>"$etmp"; then
-      echo "FAIL $f (accepted; an error was expected)"
-      fail=1
-      continue
+      # the check passes alone -- the emit's own words may still
+      # refuse it: a rejection anywhere in the pipeline is the
+      # compiler's (the frame-escape check rides the mid layer,
+      # todos/todo-20261012-00.md #185)
+      if ./cerium -s "$f" >/dev/null 2>"$etmp"; then
+        echo "FAIL $f (accepted; an error was expected)"
+        fail=1
+        continue
+      fi
     fi
     s="${f%.ce}.stderr"  # the refusal's own words, when the test names
     if [ -f "$s" ]; then # them: not only that it was refused, but what

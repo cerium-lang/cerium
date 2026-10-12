@@ -7,11 +7,11 @@ fn ceri3mir4pick pick: 4 blocks, 4 insns, 1 lets
     goto bb2
   bb2:
     expr expr @11:3
-    return
+    return @11:3
   bb3:
     expr assign @9:7
     goto bb2
 fn ceri3mir4main main: 1 blocks, 1 insns, 0 lets
   bb0:
     call pick @14:24
-    return
+    return @14:24

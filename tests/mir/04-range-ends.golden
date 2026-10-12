@@ -1,9 +1,9 @@
 fn ceri3mir2lo lo: 1 blocks, 0 insns, 0 lets
   bb0:
-    return
+    return @5:18
 fn ceri3mir2hi hi: 1 blocks, 0 insns, 0 lets
   bb0:
-    return
+    return @6:18
 fn ceri3mir4ends ends: 4 blocks, 6 insns, 1 lets
   bb0:
     expr let @9:3
@@ -18,8 +18,8 @@ fn ceri3mir4ends ends: 4 blocks, 6 insns, 1 lets
     expr assign @12:9
     goto bb1 @11:3
   bb3:
-    return
+    return @14:3
 fn ceri3mir4main main: 1 blocks, 1 insns, 0 lets
   bb0:
     call ends @17:24
-    return
+    return @17:24

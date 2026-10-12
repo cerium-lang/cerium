@@ -1,0 +1,8 @@
+/* an unsized literal's backing is the frame's own: the same refusal
+ * the direct spelling always had, now through a binding too (01) */
+fn f() -> []i32 {
+  let s = []i32{1, 2, 3};
+
+  s
+}
+fn main() -> i32 { 0 }

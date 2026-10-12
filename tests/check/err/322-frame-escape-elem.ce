@@ -1,0 +1,7 @@
+/* an element of a local array: same frame, same death (01-types.md) */
+fn f() -> *i32 {
+  let a = [3]i32{1, 2, 3};
+
+  &a[0]
+}
+fn main() -> i32 { 0 }
