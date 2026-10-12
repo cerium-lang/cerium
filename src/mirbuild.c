@@ -19,6 +19,7 @@
 
 #include "ast.h"
 #include "die.h"
+#include "lex.h"
 #include "mir.h"
 #include "sym.h"
 #include "type.h"
@@ -539,6 +540,8 @@ mirfnbuild(char *name, Sym *s, Ast *decl)
                                                                    * tree spelled a return there --
                                                                    * the tail named so the check
                                                                    * below reads the value */
-  mirescape(mb.f); /* client C's first half (#185): a value pointing
-                    * into this frame may not cross the boundary */
+  mb.f->path = lexpath(); /* the file the fn was written in: the
+                           * escape check runs once the MIR is whole,
+                           * and its reports are this file's own
+                           * (#185) */
 }

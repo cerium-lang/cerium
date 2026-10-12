@@ -35,13 +35,14 @@ lifetimes nowhere — so the guarantees are uneven on purpose:
   through a pointer that is not known to be exclusive.
 - **Checked at the frame's boundary.** A value pointing into the fn's own
   storage — the address of a local, a slice of a local array, a literal's
-  backing — is refused at the return and at a store through a pointer,
-  flow-sensitively (`01-types.md`).
+  backing — is refused at the return, at a store through a pointer, and at
+  a call whose callee keeps it, flow-sensitively (`01-types.md`).
 - **Not proven.** Beyond that boundary there is no lifetime information: a
-  pointer handed to a call, a byval capture copied into a closure's env, and
-  any aliasing across a function boundary are undefined behaviour. A `debug`
-  build may catch some of these; the language does not define a mechanism, and
-  promises nothing.
+  pointer handed to a callee the compiler cannot see inside — a `dyn`
+  handle's row, an `extern(C)` body — a byval capture copied into a
+  closure's env, and any aliasing across a function boundary are undefined
+  behaviour. A `debug` build may catch some of these; the language does not
+  define a mechanism, and promises nothing.
 - **Deliberately unchecked.** A `static mut` is the one place aliasing is
   allowed without any check: any function may write it, and nothing proves only
   one does. Statics are also never destructed (`01-types.md`).

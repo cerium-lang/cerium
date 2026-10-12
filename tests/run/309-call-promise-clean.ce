@@ -1,0 +1,13 @@
+/* the promises that stay clean: a callee that only reads, one that
+ * hands its param back to a caller that asked for it, and a fn
+ * pointer's call the layer cannot see -- the coarse rule, no leak
+ * asked (01-types.md) */
+fn peek(p: *i32) -> i32 { *p }
+fn passthru(p: *i32) -> *i32 { p }
+fn takeany(g: fn(*i32) -> i32, p: *i32) -> i32 { g(p) }
+
+fn f(y: *i32) -> i32 {
+  let x = 5;
+  peek(&x) + *passthru(y) + takeany(peek, &x)
+}
+fn main() -> i32 { f(&0) }

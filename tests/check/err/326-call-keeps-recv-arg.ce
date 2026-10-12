@@ -1,0 +1,15 @@
+/* a method that stores its second argument through its receiver: the
+ * sugar's implicit borrow an argument the promise reads too */
+struct Box { mut v: *i32 }
+
+impl Box {
+  fn park(self: *mut Self, p: *i32) { self.v = p; }
+}
+
+fn f(seed: *i32) -> *i32 {
+  let x = 5;
+  let mut b = Box { v: seed };
+  b.park(&x);
+  b.v
+}
+fn main() -> i32 { 0 }

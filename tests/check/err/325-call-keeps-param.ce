@@ -1,0 +1,11 @@
+/* the callee stores the param through an out pointer: the promise
+ * read at the call, the frame's pointer refused there (01-types.md) */
+fn keep(out: *mut *i32, p: *i32) { *out = p; }
+
+fn f(y: *i32) -> i32 {
+  let x = 5;
+  let mut q: *i32 = y;
+  keep(&mut q, &x);
+  *q
+}
+fn main() -> i32 { 0 }

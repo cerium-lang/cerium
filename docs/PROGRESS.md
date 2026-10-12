@@ -3835,3 +3835,58 @@ capture into a closure's env. Those are beta's.
 708 green (319-324, 308 with them), the library's 54. Compile time
 measured: no change -- the fixpoint over 236 library fns is noise
 beside the walk that already ran.
+
+## 2026-10-12 -- the callee's signature's promise, read at the call (#185's second half)
+
+The first half left the call unseen on purpose: whether a callee
+keeps what it was handed is its signature's promise, the spec said,
+and nothing read it. But the promise is readable -- the callee is a
+fn the same mid layer holds -- and the reading is what landed. Each
+fn carries a summary now, a bit a parameter: does it flow to the
+return, does it reach a store through a pointer. The summaries grow
+from empty over every fn until they stop -- a callee's feeding its
+callers', recursion included -- and the check then runs as before,
+the calls reading the settled promises.
+
+The summary is the same walk, seeded differently. One bit a slot
+carries became a mask -- bit 0 the frame, bit i+1 the parameter i --
+and the df the first half asked of every value answers the second
+question with no new machinery: a run with the parameters seeded
+asks, at the sinks, which of them the fn's own course sends across.
+(The seeding's own lesson: the first bit a parameter took was the
+frame's own -- the seed shifted one, and take stopped promising.
+Every probe since then trusts nothing the debugger didn't say.)
+
+Two shapes the tree was hiding had to be found. A call in statement
+position -- keep(&mut q, &x), the answer nobody keeps -- never met
+the df at all: the transfer walked the lets and the assigns and let
+the expression statements stand unasked, and the leak sink lived
+only where a value was read. And the method sugar folds its
+receiver into the callee node: the first argument is not among the
+args, its mask the address the sugar borrows (a pointer self) or
+the value it copies (any other), and the spelled arguments ride the
+parameters one further along. Under both, an implicit store through
+a pointer root -- self.v = p, no * spelled -- was the same leak a
+spelled deref's is, and the assign's walk learned to say so.
+
+What it buys, both directions. The precise: a callee that hands its
+param back is no longer the coarse "any frame argument makes the
+answer frame" -- passthru(y) over a caller's own y is clean, and
+the frame argument that does flow is followed. The new refusals:
+the out-parameter's store (the frame's pointer kept past the call),
+the method's receiver-ridden store, and both through as many calls
+as the leak takes to arrive -- three programs that compiled
+yesterday, every one of them a pointer into a frame nobody kept
+alive. 325-328 pin them, 309 pins the clean roads (a read-only
+callee, the param handed back to the caller that asked, a fn
+pointer's call -- the coarse rule, no leak asked, the seam between
+what the layer holds and what it does not).
+
+The closure half stayed where the exploration found it: a closure
+has no spelling that leaves its fn -- not by the return, not as an
+argument -- so the byval-capture hole is latent until the spelling
+exists, and the spec says so where it always did.
+
+713 green (325-328, 309 with them), the library's 54. Compile time
+measured: no change -- the summaries iterate inside the noise the
+emit already made.

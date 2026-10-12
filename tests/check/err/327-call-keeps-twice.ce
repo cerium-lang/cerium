@@ -1,0 +1,13 @@
+/* the leak rides two calls: mid hands its own param to the one that
+ * stores it, and the caller's frame pointer arrives all the way */
+fn deep(out: *mut *i32, p: *i32) { *out = p; }
+
+fn mid(out: *mut *i32, p: *i32) { deep(out, p); }
+
+fn f(y: *i32) -> i32 {
+  let x = 5;
+  let mut q: *i32 = y;
+  mid(&mut q, &x);
+  *q
+}
+fn main() -> i32 { 0 }
