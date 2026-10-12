@@ -1,0 +1,21 @@
+/* the loop: a header the round's end hands back to, a body under it,
+ * and an exit a break takes. The continue goes to the header, the
+ * break to the exit -- the two ways out of the same shape */
+fn rounds(n: i32) -> i32 {
+  let mut i = 0;
+  let mut sum = 0;
+
+  for i < n {
+    i = i + 1;
+    if i == 2 {
+      continue;
+    };
+    if i == 4 {
+      break;
+    };
+    sum = sum + i;
+  }
+  sum
+}
+
+fn main() -> i32 { rounds(6) }

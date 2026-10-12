@@ -53,6 +53,7 @@
 #include "check.h"
 #include "emit.h"
 #include "lex.h"
+#include "mir.h" /* -i: the mid layer's own print */
 #include "parse.h"
 #include "sym.h"  /* the namespace tree the walk builds into */
 #include "test.h" /* the test word, and the pipeline it borrows */
@@ -488,10 +489,13 @@ static int
 usage(void)
 {
   fprintf(stderr, "usage: cerium -t [dir] | cerium -l file | cerium -a file | cerium -T file"
-                  " | cerium -s file | cerium -c file -o out | cerium -x file -o out\n"
-                  "       the last four read a directory as a project\n"
+                  " | cerium -i file | cerium -s file | cerium -c file -o out | cerium -x"
+                  " file -o out\n"
+                  "       the last five read a directory as a project\n"
                   "       -t builds the artifact and runs it, the exit code through"
-                  " -- no dir the empty project, the library's rows alone\n");
+                  " -- no dir the empty project, the library's rows alone\n"
+                  "       -i prints the mid layer: a fn's own course, blocks and the\n"
+                  "          calls in them (todos/todo-20261012-00.md)\n");
   fprintf(stderr, "       -r rides -s and -c: release, the runtime checks out\n"
                   "       -x builds the test artifact, debug shape: every #[test] fn a"
                   " runner walks (13-testing.md)\n"
@@ -531,6 +535,33 @@ clipargs(int argc, char **argv)
     argv[j++] = argv[i];
   }
   return j;
+}
+
+/* -i: the mid layer, the shape a fn's walk takes between the tree and
+ * qbe's ssa. It is built beside the emitter's own walk -- the
+ * instances are that walk's to know (04-generics.md) -- so this asks
+ * for the same pipeline and prints what the build left, the .ssa text
+ * going to a stream nobody reads */
+static int
+emitmir_project(const char *path)
+{
+  usize n, nstd; /* nstd ignored: the same whole unit the -s print
+                  * carries */
+  Srcfile **files = checked(path, &n, &nstd);
+  FILE     *sink;
+
+  sink = tmpfile();
+  if (!sink) {
+    fprintf(stderr, "cerium: no scratch file for the mir pass\n");
+    return 1;
+  }
+  mirbegin();
+  mir_wanted = 1;
+  emitfile(sink, files, n, 0, projname, 0);
+  mir_wanted = 0;
+  fclose(sink);
+  mirprint(stdout);
+  return 0;
 }
 
 static int
@@ -619,10 +650,11 @@ main(int argc, char **argv)
       return usage();
     return ceriumtest(testdir);
   }
-  while ((c = getopt(argc, argv, "a:c:l:o:rs:T:x:")) != -1) {
+  while ((c = getopt(argc, argv, "a:c:i:l:o:rs:T:x:")) != -1) {
     switch (c) {
     case 'a':
     case 'c':
+    case 'i':
     case 'l':
     case 's':
     case 'T':
@@ -670,6 +702,8 @@ main(int argc, char **argv)
     return dumptoks(file);
   case 'a':
     return dumpast_file(file);
+  case 'i':
+    return emitmir_project(file);
   case 's':
     return emitssa_project(file, release);
   case 'c':

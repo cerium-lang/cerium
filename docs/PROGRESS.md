@@ -3715,3 +3715,33 @@ spelling does. The mutable row the old sketch had is gone -- no
 `Iter for []mut T` stands anywhere now -- so nothing here tests it.
 
 The library's 54.
+
+## 2026-10-12 -- one MIR, built, and taking no client
+
+The compiler had no middle. The checker walked the tree and the
+emitter walked the same tree twice, and anything that asked what a
+program reaches -- or what a value outlives -- had to walk it again
+and answer from the tree's own shape. Now it has one: a fn a course
+of blocks, a terminator apiece, the calls standing where they stand.
+And the first thing it does is nothing, which is stage A's whole
+point: built, and no pass reading it. -i is the only reader.
+
+It is built beside the emitter's walk and not ahead of it, because
+the instances are that walk's to know -- a generic fn's body is
+re-checked and emitted per instantiation (04-generics.md), so a build
+that ran first would meet a tree whose bindings had not yet landed.
+Two calls in emit.c, a fn's head and a closure's.
+
+The first cut missed every branch: an if a program writes where a
+statement stands reaches the walk wrapped in an expr, the checker's
+own shape, and the walk took it for a value -- so a fn with an if in
+it came out one block, the branch gone. The flow is the same whether
+the value is kept or dropped, so an if and a match cut their blocks
+wherever they stand now.
+
+An rvalue is the tree node it came from and not a thing of the mid
+layer's own: the rvalues are the lifetime check's to ask for and the
+borrow migration's, and the client that needs them should say what
+shape they take. What is spelled is the flow alone.
+
+700 green, three of them the shape's own goldens.

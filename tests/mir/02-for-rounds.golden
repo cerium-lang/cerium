@@ -1,0 +1,31 @@
+fn ceri3mir6rounds rounds: 10 blocks, 6 insns, 2 lets
+  bb0:
+    expr let @5:3
+    expr let @6:3
+    goto bb1 @8:3
+  bb1:
+    branch bb2 bb3 @8:3
+  bb2:
+    expr assign @9:7
+    branch bb4 bb5 @10:5
+  bb3:
+    return
+  bb4:
+    goto bb1 @11:7
+  bb5:
+    expr expr @12:6
+    branch bb7 bb8 @13:5
+  bb6:
+    goto bb5
+  bb7:
+    goto bb3 @14:7
+  bb8:
+    expr expr @15:6
+    expr assign @16:9
+    goto bb1 @8:3
+  bb9:
+    goto bb8
+fn ceri3mir4main main: 1 blocks, 1 insns, 0 lets
+  bb0:
+    call rounds @21:26
+    return

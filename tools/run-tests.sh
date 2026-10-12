@@ -355,12 +355,61 @@ wordthem() { # the test word itself, -t (13-testing.md): the artifact
   rm -rf "$tmp"
 }
 
+mirthem() { # the mid layer's own build (todos/todo-20261012-00.md):
+  # stage A takes no client, so what it can be asked is only that it
+  # stands -- every program the tree holds walked into blocks without
+  # the walk falling over. A program -s will not build is not one: the
+  # modes -i does not carry (-r, -x) hold those, and a refusal here
+  # would be the compiler's own and not the build's
+  n=0
+  bad=0
+  for f in tests/run/*.ce tests/check/ok/*.ce tests/test/*/main.ce; do
+    [ -f "$f" ] || continue
+    ./cerium -s "$f" >/dev/null 2>&1 || continue
+    n=$((n + 1))
+    if ! ./cerium -i "$f" >/dev/null 2>&1; then
+      echo "FAIL $f (-i: the mid layer's build did not stand)"
+      fail=1
+      bad=$((bad + 1))
+    fi
+  done
+  echo "ok   -i over $n programs ($bad did not build)"
+}
+
+mirgolden() { # $1: the directory. -i, and the project's own fns only:
+  # every build carries the library's rows, and a .golden holding all
+  # two hundred and thirty-seven of them would break each time std
+  # grows. The fn's own name says which file it came from -- the
+  # library's every row leads with std -- so the print is cut at the
+  # fn's line and the library's goes with it
+  for f in "$1"/*.ce; do
+    [ -e "$f" ] || continue
+    g="${f%.ce}.golden"
+    if [ ! -f "$g" ]; then
+      echo "FAIL $f (no .golden)"
+      fail=1
+      continue
+    fi
+    if ./cerium -i "$f" 2>/dev/null |
+        awk '/^fn /{own = ($2 !~ /^ceri3std/)} own' | diff -u "$g" - >/dev/null; then
+      echo "ok   $f"
+    else
+      echo "FAIL $f"
+      ./cerium -i "$f" 2>/dev/null |
+        awk '/^fn /{own = ($2 !~ /^ceri3std/)} own' | diff -u "$g" - | sed 's/^/     /'
+      fail=1
+    fi
+  done
+}
+
 golden tests/lex/ok -l
 golden tests/parse/ok -a
 golden tests/check/ok -T
 rejected tests/lex/err -l
 rejected tests/parse/err -a
 rejected tests/check/err -T
+mirgolden tests/mir
+mirthem
 if [ -x qbe/qbe ]; then
   runthem tests/run
   testthem tests/test

@@ -25,6 +25,8 @@
 #include "eval.h" /* Val: a const's memoized aggregate, folded into
                    * the segment it rides (08-reflection.md) */
 #include "layout.h"
+#include "mir.h" /* the mid layer: built beside this walk, read by no
+                  * one yet but -i (todos/todo-20261012-00.md) */
 #include "sym.h"
 #include "type.h"
 #include "vec.h"
@@ -3766,6 +3768,14 @@ emitfn(FILE *o, Sym *s, Ast *it, char *name, Type **ats, Type *ret)
   FILE *body;
   usize i;
 
+  /* the mid layer's copy of this fn, built beside the text and not
+   * instead of it. Here, and not ahead of the pass: a generic's body
+   * is re-checked and emitted per instantiation (04-generics.md), so
+   * the tree this walk reads is the one the bindings have reached --
+   * an instance's own copy, the walk's own clone (emitinst). Stage A
+   * takes no client: the shape is built and nothing reads it but -i */
+  if (ipass == 2)
+    mirfnbuild(name, s, it);
   if (!ret)
     ret = fnty->t; /* the fn's own: not an instantiation */
   memset(&em, 0, sizeof em);
@@ -3906,6 +3916,10 @@ emitclosfn(FILE *o, Clo *cl) /* the context the walk stood in,
   nscur(cl->ns);
   usecur(cl->uses);
   lexsetpath(cl->path);
+  if (ipass == 2) /* the mid layer's copy: a closure's body is a fn's
+                   * own course like any other, the env the place its
+                   * captures ride (05-traits.md) */
+    mirfnbuild(c->v.clos.sym, 0, c);
   memset(&em, 0, sizeof em);
   em.ormark = (usize) -1; /* no or-pattern yet: reuse is off */
   em.allocs = vnew(char *, 16);
