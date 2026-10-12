@@ -1,0 +1,9 @@
+/* the callee hands its param back: the answer carries the argument's
+ * own provenance, and the frame's pointer dies with the return */
+fn take(p: *i32) -> *i32 { p }
+
+fn f() -> *i32 {
+  let x = 5;
+  take(&x)
+}
+fn main() -> i32 { 0 }

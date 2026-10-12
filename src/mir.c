@@ -29,6 +29,12 @@ mirbegin(void)
   roots = vnew(char *, 16);
 }
 
+Mirfn *
+mirfnat(usize i)
+{
+  return fns[i];
+}
+
 usize
 mirnfns(void)
 {

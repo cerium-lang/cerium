@@ -4662,4 +4662,8 @@ emitfile(FILE *out, Srcfile **files, usize nfiles, int release, const char *proj
       break;
     printvts(out);
   }
+  mirescapeall(); /* the MIR whole now -- every fn, instance, closure
+                   * built -- so client C runs here: the summaries
+                   * first, then the check, each report said in the
+                   * file that wrote it (#185) */
 }

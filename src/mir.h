@@ -115,6 +115,14 @@ struct Mirfn
   int live;          /* reached from a root: reachability's own answer,
                       * and the emitter's say on whether this fn's text
                       * goes out at all */
+  const char *path;  /* the file the fn was written in: the deferred
+                      * checks report there, the walk that runs them
+                      * past every file's own emit */
+  unsigned retbits;  /* the signature's promise, a bit a parameter:
+                      * the ones that flow to the return */
+  unsigned leakbits; /* ... and the ones that reach a store through a
+                      * pointer -- client C's second half, the calls'
+                      * own words (#185) */
 };
 
 /* the program's. Built beside the emitter's walk -- the instances are
@@ -122,10 +130,11 @@ struct Mirfn
  * read by the clients that follow. Every build builds it now: the
  * first client does not print but decides, and a fn it cannot reach
  * is a fn the emitter leaves out (12-projects.md) */
-void  mirbegin(void);
-void  mirfnbuild(char *name, Sym *s, Ast *decl);
-void  mirprint(FILE *o);
-usize mirnfns(void);
+void   mirbegin(void);
+void   mirfnbuild(char *name, Sym *s, Ast *decl);
+void   mirprint(FILE *o);
+usize  mirnfns(void);
+Mirfn *mirfnat(usize i);
 
 /* -- reachability, the first client ---------------------------------- */
 
@@ -154,10 +163,13 @@ void      mirinsnnew(Mirblock *b, Mirinsnk k, Ast *e, Sym *s, int dyn);
 void      mirtermset(Mirblock *b, Mirtermk k, Ast *te);
 Mirlocal *mirlocalnew(Mirfn *f, char *name, Type *ty, int param);
 
-/* mirescape.c -- client C's first half (#185): a value that points
- * into the fn's own frame may not cross the boundary -- not by the
- * return, not by a store through a pointer. Flow-sensitive over the
- * blocks; the frame's whole life is one fn's, so no regions yet */
-void mirescape(Mirfn *f);
+/* mirescape.c -- client C (#185): the frame's boundary and the
+ * callee's signature's promise. Runs once, the MIR whole: the
+ * summaries first (which parameters a fn sends across its own
+ * boundary), the check after (a frame pointer may not cross -- not
+ * by the return, not by a store through a pointer, not by a call
+ * that keeps it). Flow-sensitive over the blocks; the frame's whole
+ * life is one fn's, so no regions yet */
+void mirescapeall(void);
 
 #endif /* MIR_H */
