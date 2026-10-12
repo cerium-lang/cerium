@@ -1,0 +1,14 @@
+/* the branch: two ways in, one way out. The join is the block both
+ * arms hand to, and the statement after the if stands in it */
+fn pick(a: i32) -> i32 {
+  let mut r = 0;
+
+  if a > 0 {
+    r = 1;
+  } else {
+    r = 2;
+  }
+  r
+}
+
+fn main() -> i32 { pick(1) }

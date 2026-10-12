@@ -1,0 +1,13 @@
+/* the switch: an arm a block, the arm's own way out to the join the
+ * match hands to. The calls in an arm are that block's, and the call
+ * in the scrutinee is the switch block's own */
+fn one(a: i32) -> i32 { a }
+
+fn arms(x: ?i32) -> i32 {
+  match x {
+    Some(v) => one(v),
+    None => one(0),
+  }
+}
+
+fn main() -> i32 { arms(Some(3)) }
