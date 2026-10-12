@@ -154,12 +154,17 @@ A range that leaves the slice is caught by the runtime checks in `debug` and is
 undefined behaviour in `release`, exactly as an out-of-range index is. The same
 `[a..b]` works on a tuple (`04-generics.md`).
 
-There is no borrow checker. A slice is rejected at compile time only when the
-compiler can see that it outlives what it borrows — returning a slice of a local
-array, say. Across function boundaries there is no lifetime information, so a
-dangling slice is undefined behaviour. A `debug` build may catch some of these;
-how, and how many, is up to the implementation — the language promises nothing
-here. See What Cerium guarantees in `README.md`.
+There is no borrow checker, but the frame's own boundary is checked: a value
+that points into the fn's own storage — the address of a local, a slice of a
+local array, an unsized literal's backing — may not cross it, neither by the
+return nor by a store through a pointer parameter. The check is flow-sensitive:
+a binding's provenance is tracked through the blocks, a join unions what its
+ways brought, and a loop converges.
+
+What it cannot see is undefined behaviour, said plainly: a pointer handed to a
+call (whether the callee stores it is the callee's signature's promise), and a
+byval capture of a frame pointer copied into a closure's env. See What Cerium
+guarantees in `specs/README.md`.
 
 An array never decays — not to a plain pointer, and not to a slice. Both have to
 be asked for by name:

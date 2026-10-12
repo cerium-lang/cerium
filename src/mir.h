@@ -31,6 +31,20 @@
 typedef struct Mirfn    Mirfn;
 typedef struct Mirblock Mirblock;
 typedef struct Mirinsn  Mirinsn;
+typedef struct Mirlocal Mirlocal;
+
+/* one slot the fn's frame owns: a parameter's, a let's binding, a
+ * match arm's, a round's own. The escape check's ground -- a place
+ * rooted here is this frame's storage, a place rooted through a
+ * deref is the caller's (01-types.md) */
+struct Mirlocal
+{
+  char *name;
+  Type *ty;  /* the binding's own: a slice- or pointer-typed local is
+              * a value that points, an array's is storage itself */
+  int param; /* a parameter's slot: this frame's storage, the
+              * caller's value in it */
+};
 
 /* what one instruction is. Stage A: a call, or the tree node a value's
  * read or write stands in -- the rvalue is not ours yet, and the two
@@ -94,11 +108,13 @@ struct Mirfn
   Sym       *s;    /* NULL: a closure, no Sym of the tables */
   Ast       *decl; /* Nfn, or the closure's literal */
   Mirblock **blocks;
-  usize      nbind; /* the lets the walk stood over: the locals' count
-                     * until the locals are ours */
-  int live;         /* reached from a root: reachability's own answer,
-                     * and the emitter's say on whether this fn's text
-                     * goes out at all */
+  Mirlocal **locals; /* the frame's slots, in the order the walk met
+                      * them: parameters first, then every binding */
+  usize nbind;       /* the lets the walk stood over: the locals' count
+                      * until the locals are ours */
+  int live;          /* reached from a root: reachability's own answer,
+                      * and the emitter's say on whether this fn's text
+                      * goes out at all */
 };
 
 /* the program's. Built beside the emitter's walk -- the instances are
@@ -136,5 +152,12 @@ Mirfn    *mirfnnew(char *name, Sym *s, Ast *decl);
 Mirblock *mirblocknew(Mirfn *f);
 void      mirinsnnew(Mirblock *b, Mirinsnk k, Ast *e, Sym *s, int dyn);
 void      mirtermset(Mirblock *b, Mirtermk k, Ast *te);
+Mirlocal *mirlocalnew(Mirfn *f, char *name, Type *ty, int param);
+
+/* mirescape.c -- client C's first half (#185): a value that points
+ * into the fn's own frame may not cross the boundary -- not by the
+ * return, not by a store through a pointer. Flow-sensitive over the
+ * blocks; the frame's whole life is one fn's, so no regions yet */
+void mirescape(Mirfn *f);
 
 #endif /* MIR_H */

@@ -1,0 +1,8 @@
+/* #185's first: the address of a local, handed back -- the frame it
+ * names dies with the return (01-types.md) */
+fn f() -> *i32 {
+  let x = 5;
+
+  &x
+}
+fn main() -> i32 { 0 }

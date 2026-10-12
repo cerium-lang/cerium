@@ -1,0 +1,8 @@
+/* a slice of a local array, handed back: the view outlives the rows
+ * it looks at (01-types.md) */
+fn f() -> []i32 {
+  let a = [3]i32{1, 2, 3};
+
+  @slice(&a[0], 3)
+}
+fn main() -> i32 { 0 }

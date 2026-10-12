@@ -76,6 +76,7 @@ handto(usize from, usize to, Mirtermk k, Ast *te)
 static void mexpr(Ast *e);
 static void mstmts(Ast **stmts);
 static void mstmt(Ast *st);
+static void mlocs(Ast *p); /* the names a pattern binds, as slots */
 
 /* the destructors a place runs on its way out: a block's closing
  * brace, a return's early exit, an assignment's old value, a round's
@@ -290,6 +291,7 @@ mmatch(Ast *st)
     usize b = newblock();
 
     vappend(&armb, &b);
+    mlocs(st->v.call.args[i]->v.n2.a); /* the arm's bindings */
   }
   join = newblock();
   for (i = 0; i < vlen(armb); i++)
@@ -312,6 +314,8 @@ mfor(Ast *st)
   body = newblock();
   exit = newblock();
   handto(mb.cur, hdr, Mterm_goto, st);
+  if (st->v.forx.shape != FCOND)
+    mlocs(st->v.forx.a); /* the round's own bindings (10-iteration.md) */
   mb.cur = hdr;
   mexpr(st->v.forx.a);   /* the condition, or the round's pattern's source */
   mexpr(st->v.forx.b);   /* the round's let, or the iterable -- FIN's
@@ -350,6 +354,7 @@ mstmt(Ast *st)
   switch (st->k) {
   case Nlet:
     mexpr(st->v.let.e);
+    mlocs(st->v.let.pat); /* the binding's slots, whatever the pattern */
     mb.f->nbind++;
     mirinsnnew(curb(), Minsn_expr, st, 0, 0);
     return;
@@ -418,29 +423,122 @@ mstmts(Ast **stmts)
 
 /* -- the face mir.h gives the walk ---------------------------------- */
 
+/* the names a pattern binds, registered as the frame's slots: a
+ * place rooted at one is this frame's storage, whatever the pattern
+ * spelled around it (09-match.md). A pattern's nodes carry the
+ * binding's type -- the checker wrote it there (rpat) */
+static void
+mlocs(Ast *p)
+{
+  usize i;
+
+  if (!p)
+    return;
+  switch (p->k) {
+  case Npath: /* the binding form: one name, no arguments */
+    if (vlen(p->v.path.segs) == 1 && !p->v.path.segs[0]->v.seg.args)
+      mirlocalnew(mb.f, p->v.path.segs[0]->v.seg.name, p->ty, 0);
+    return;
+  case Nppath: {
+    Ast **segs = p->v.ppath.path->v.path.segs;
+
+    if (!p->v.ppath.payload && !p->v.ppath.named && vlen(segs) == 1) {
+      /* the parser sends every ident-headed pattern here: bare, no
+       * payload and no braces, it is the binding form (09) */
+      mirlocalnew(mb.f, segs[0]->v.seg.name, p->ty, 0);
+      return;
+    }
+    if (p->v.ppath.payload)
+      for (i = 0; i < vlen(p->v.ppath.payload); i++)
+        mlocs(p->v.ppath.payload[i]->k == Npfield ? p->v.ppath.payload[i]->v.n1.e
+                                                  : p->v.ppath.payload[i]);
+    return;
+  }
+  case Npstruct:
+    if (p->v.pstruct.fields)
+      for (i = 0; i < vlen(p->v.pstruct.fields); i++)
+        mlocs(p->v.pstruct.fields[i]->v.n1.e);
+    return;
+  case Ntuple:
+    for (i = 0; i < vlen(p->v.list.ts); i++)
+      mlocs(p->v.list.ts[i]);
+    return;
+  case Npor:
+    for (i = 0; i < vlen(p->v.list.ts); i++)
+      mlocs(p->v.list.ts[i]);
+    return;
+  default: /* _ , a literal, a variant alone: nothing binds */
+    return;
+  }
+}
+
+/* the value a body answers with, the fn's own when the walk falls off
+ * its end: a block's tail, an arm's, whatever expression stands where
+ * the fn's value comes from -- the escape check reads it at the
+ * return it never spelled */
+static Ast *
+tailval(Ast *b)
+{
+  if (!b)
+    return 0;
+  if (b->k == Nblock)
+    return tailval(b->v.blk.tail);
+  return b; /* a statement here is the unit's own shape; the check
+             * walks what it is given and asks nothing of a unit */
+}
+
 void
 mirfnbuild(char *name, Sym *s, Ast *decl)
 {
-  Ast *body;
+  Ast **ps;
+  Type *sig; /* the fn it spells: the parameters' own types live
+              * here, the Nparam node carrying only its spelling */
+  usize i, np;
+  Ast  *body;
 
-  if (decl->k == Nfn)
+  if (decl->k == Nfn) {
     body = decl->v.fn.body;
-  else if (decl->k == Nclosure)
+    ps = decl->v.fn.params;
+    sig = s ? s->fnty : 0;
+  } else if (decl->k == Nclosure) {
     body = decl->v.clos.body;
-  else
+    ps = decl->v.clos.params;
+    sig = decl->v.clos.sig;
+  } else
     return; /* not a fn's shape: nothing to spell */
   if (!body)
     return; /* a declaration, or the ";" form (01-types.md) */
   mb.f = mirfnnew(name, s, decl);
   mb.loophdr = vnew(usize, 4);
   mb.loopexit = vnew(usize, 4);
+  np = vlen(ps);
+  for (i = 0; i < np; i++) /* the parameters' slots: this frame's own
+                            * storage, the caller's value in it
+                            * (01-types.md) */
+    mirlocalnew(mb.f, ps[i]->v.param.name, sig && i < sig->nargs ? sig->args[i] : 0, 1);
+  if (decl->k == Nclosure)
+    for (i = 0; i < vlen(decl->v.clos.caps); i++) { /* a capture's
+                                                     * name, read from
+                                                     * the env: byval a
+                                                     * copy of the
+                                                     * outer value, byref
+                                                     * an outer place
+                                                     * (05-traits.md) */
+      Ast *c = decl->v.clos.caps[i];
+
+      mirlocalnew(mb.f, c->v.cap.name, c->ty, 1);
+    }
   mb.cur = newblock();
   mbody(body);
   mdrops(decl->k == Nfn ? decl->v.fn.drops : decl->v.clos.drops); /* the parameters' own
                                                                    * slots, run at the
                                                                    * return the body
                                                                    * reaches on its own */
-  mirtermset(curb(), Mterm_return, 0);                            /* the body's end: the fn's own
+  mirtermset(curb(), Mterm_return, tailval(body));                /* the body's end: the fn's own
                                                                    * way out, whether or not the
-                                                                   * tree spelled a return there */
+                                                                   * tree spelled a return there --
+                                                                   * the tail named so the check
+                                                                   * below reads the value */
+  mirescape(mb.f); /* client C's first half (#185): a value pointing
+                    * into this frame may not cross the boundary */
 }

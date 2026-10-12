@@ -3781,3 +3781,57 @@ alone does not; and the checks a debug build inserts, which call
 panic from text the emitter writes and were never in the tree at all.
 
 700 green, the same 700: no program's answer moved.
+
+## 2026-10-12 -- the frame's own boundary, checked (#185's first half)
+
+#185's four probes all fell through, and pulling at them found two
+more the issue had not: a slice literal through a binding (`let s =
+[]i32{...}; s`) that the old narrow check waved through because the
+check was syntactic -- it named two shapes, not the property -- and a
+pointer through a let (`let p = &x; p`) it never looked at. All six
+answered "compiled fine"; the ssa showed every one of them pointing
+at the frame's own slots, alive only by the grace of a stack nobody
+had reused yet. localview, the two-shape check, is retired -- not
+patched, replaced.
+
+The replacement is client C's first half, the MIR's first
+flow-sensitive one: mirescape. A fn's locals are the MIR's own table
+now (the parameters at the head, the lets as the walk stands over
+them, a bare pattern's binding among them -- the parser sends every
+ident-headed pattern down Nppath, and the table had to learn that).
+Over the blocks, a fixpoint: esc[local] in {No, Frame}, a join
+unions what its ways brought, a loop converges. The transfer is the
+place-chain's own: an address of this frame's storage sets the bit,
+a read of an escaped source propagates it, an aggregate or variant
+constructor carries it through its children. Two sinks refuse: the
+return (or a block's tail, the implicit one included -- the emitter
+now spells the tail's position on the terminator, which the goldens
+record), and a store through a deref (`*out = ...`).
+
+The false positives the suite found were the check's own lessons:
+a scalar loaded out of a frame slot carries nothing (the read's type
+gates the propagation -- `*q` where q is a `*i32` answers i32, not
+a pointer); a match's scrutinee and an if's cond only select, their
+pointers flow nowhere; a pointer-typed root's `p.f` steps into the
+pointee, the caller's storage, not the frame the pointer sits in;
+and a frameless fn -- no locals at all -- can still answer a
+literal the emitter raises in its frame, so no locals is not a
+reason to skip the sink. Each one a run test had pinned first; each
+fix is the suite's own shape, not a special case.
+
+The rejects are new -- six programs that compiled yesterday are
+refused today, every one of them a dangling pointer or a slice over
+a dead frame. The runner learned the honest rule for them: a check
+that passes alone may still be refused at the emit, and a rejection
+anywhere in the pipeline is the compiler's -- err tests run both
+-T and -s. 319-324 pin the six, 308 pins the roads that stay open
+(a parameter's, a pointee's field, a view of a view, the data
+segment's own bytes). The spec says the rule where the old prose
+said "the compiler can see" -- the frame's boundary is now
+something it always sees. What stays open, said plainly: a pointer
+handed to a call (the callee's signature's promise), a byval
+capture into a closure's env. Those are beta's.
+
+708 green (319-324, 308 with them), the library's 54. Compile time
+measured: no change -- the fixpoint over 236 library fns is noise
+beside the walk that already ran.

@@ -1,0 +1,8 @@
+/* the same escape through a parameter: the frame dies, the pointer
+ * written through out lives on (01-types.md) */
+fn f(out: *mut *i32) {
+  let x = 5;
+
+  *out = &x;
+}
+fn main() -> i32 { 0 }

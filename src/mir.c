@@ -49,8 +49,26 @@ mirfnnew(char *name, Sym *s, Ast *decl)
   f->s = s;
   f->decl = decl;
   f->blocks = vnew(Mirblock *, 8);
+  f->locals = vnew(Mirlocal *, 8);
   vappend(&fns, &f);
   return f;
+}
+
+/* one slot of the frame, registered as the walk meets it
+ * (mirescape.c's ground) */
+Mirlocal *
+mirlocalnew(Mirfn *f, char *name, Type *ty, int param)
+{
+  Mirlocal *l;
+
+  l = (Mirlocal *) calloc(1, sizeof *l);
+  if (!l)
+    die("mir: no memory for a local");
+  l->name = name;
+  l->ty = ty;
+  l->param = param;
+  vappend(&f->locals, &l);
+  return l;
 }
 
 Mirblock *

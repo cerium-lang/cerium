@@ -1,0 +1,9 @@
+/* through a binding: the pointer's provenance rides the let, and the
+ * check reads it there -- flow-sensitive, not syntactic (01) */
+fn f() -> *i32 {
+  let x = 5;
+  let p = &x;
+
+  p
+}
+fn main() -> i32 { 0 }
