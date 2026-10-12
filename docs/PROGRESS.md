@@ -3745,3 +3745,39 @@ borrow migration's, and the client that needs them should say what
 shape they take. What is spelled is the flow alone.
 
 700 green, three of them the shape's own goldens.
+
+## 2026-10-12 -- reachability: the program stops carrying the library
+
+A program that prints nothing was carrying the library whole: 237
+fns, 33,929 bytes of .text, 98.4% of it rows nothing in the program
+calls. The mid layer was built with no client reading it; this is the
+first, and it reads the graph rather than the tree.
+
+From the roots -- main, an #[extern(C)] fn C spells, a row a vtable
+carries, a test the runner walks, and every fn the program wrote
+itself -- along every call a reached fn makes. Measured on hello,
+world:
+
+|                  | before | after |
+|------------------|--------|-------|
+| fns emitted      | 239    | 14    |
+| .text            | 34,476 | 2,700 |
+| the whole file   | 69,456 | 17,296 |
+
+The one line it cannot draw is the one a call does not spell. A fn
+may be named without being called -- its address taken, a handle made
+of it, a fn value handed to a slot -- and a graph of calls sees none
+of it. So a fn the program wrote stands whatever the walk says, and
+only the library's rows are up for removal: the library's are the
+whole weight regardless, and being wrong about the program's own
+costs a link that fails.
+
+Four holes the walk had to be taught, each one a call the tree holds
+somewhere a statement is not: the destructors a place runs on its way
+out; the into_iter and next the loop's sugar spells itself, which
+reach the tree as a method's name and not as a Sym; the rounds a
+const-for unrolled, whose baked numbers name instances the shape
+alone does not; and the checks a debug build inserts, which call
+panic from text the emitter writes and were never in the tree at all.
+
+700 green, the same 700: no program's answer moved.

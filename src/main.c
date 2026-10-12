@@ -555,12 +555,11 @@ emitmir_project(const char *path)
     fprintf(stderr, "cerium: no scratch file for the mir pass\n");
     return 1;
   }
-  mirbegin();
-  mir_wanted = 1;
   emitfile(sink, files, n, 0, projname, 0);
-  mir_wanted = 0;
   fclose(sink);
-  mirprint(stdout);
+  mirprint(stdout); /* the whole graph, reached or not: -i is the one
+                     * reader that asks for the shape, and the shape
+                     * is the build's, not the walk's */
   return 0;
 }
 
