@@ -3772,10 +3772,14 @@ emitfn(FILE *o, Sym *s, Ast *it, char *name, Type **ats, Type *ret)
    * instead of it. Here, and not ahead of the pass: a generic's body
    * is re-checked and emitted per instantiation (04-generics.md), so
    * the tree this walk reads is the one the bindings have reached --
-   * an instance's own copy, the walk's own clone (emitinst). Stage A
-   * takes no client: the shape is built and nothing reads it but -i */
-  if (ipass == 2)
+   * an instance's own copy, the walk's own clone (emitinst). Pass
+   * one, then: the graph is whole before pass two asks it which fns
+   * the program reaches */
+  if (ipass == 1)
     mirfnbuild(name, s, it);
+  if (ipass == 2 && !mirreachable(s, name))
+    return; /* the graph's answer: no root reaches this fn, no reached
+             * fn calls it, and the program never runs a line of it */
   if (!ret)
     ret = fnty->t; /* the fn's own: not an instantiation */
   memset(&em, 0, sizeof em);
@@ -4221,6 +4225,11 @@ emitmain(FILE *o)
 
     en = fsymname(e, e->decl);
   }
+  /* the two names the door calls: the program's own main, and the
+   * entry that runs it. Roots of the graph both -- nothing reaches
+   * them from inside, the platform calls in */
+  mirroot(fsymname(m, m->decl));
+  mirroot(en);
   fprintf(o,
           "export function w $main(w %%argc, l %%argv) {\n@start\n"
           "\t%%m =l copy $%s\n"
@@ -4356,6 +4365,10 @@ emittest(FILE *o)
     char *en = testentry(tests[i].s);
 
     vappend(&ens, &en);
+    /* a test is a root of its own: the runner's table names it by
+     * address, and nothing in the program calls it (13-testing.md) */
+    mirroot(fsymname(tests[i].s, tests[i].s->decl));
+    mirroot(en);
   }
   emteststr(o, "test.ok", "ok   ");
   emteststr(o, "test.fail", "FAIL ");
@@ -4594,6 +4607,18 @@ emitfile(FILE *out, Srcfile **files, usize nfiles, int release, const char *proj
                   * always the debug one (13-testing.md) */
   istest = test; /* beside is the whole word: only the artifact
                   * carries a test's code (13-testing.md) */
+  mirbegin();    /* the mid layer's own: a fn a course, every pass one,
+                  * and the reachability walk's ground */
+  /* a root no call in the tree names: every check a debug build
+   * inserts -- an index against a length, a sum against its width
+   * (01-types.md) -- calls it from the text the emitter writes, and
+   * the tree the graph reads never held that call. It stands on its
+   * own or the program does not link */
+  if (sym_panic && sym_panic->decl) /* a library without one: -S named
+                                     * a tree that has no panic to
+                                     * call, and there is no root to
+                                     * name */
+    mirroot(fsymname(sym_panic, sym_panic->decl));
   ipass = 1;
   emitall(scratch, files, nfiles);
   if (test) /* the runner's own door, in the wrapper's place */
@@ -4613,6 +4638,9 @@ emitfile(FILE *out, Srcfile **files, usize nfiles, int release, const char *proj
     printvts(scratch);
   }
   fclose(scratch);
+  mirreach();                         /* the graph's whole now -- every fn built, every table's
+                                       * row named -- and the walk from the roots decides what
+                                       * pass two writes */
   dsn = 0;                            /* the naming pass burned numbers; the real one restarts */
   vtsreset();                         /* the text restarts with it */
   memset(chkbase, 0, sizeof chkbase); /* the messages' data symbols

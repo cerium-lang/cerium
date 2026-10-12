@@ -1,0 +1,17 @@
+/* the range's own two ends: `lo()..hi()` runs both, once, before the
+ * first round -- and the walk records them wherever the iterable
+ * stands, so a fn only a range end names does not fall out of the
+ * graph (10-iteration.md) */
+fn lo() -> i32 { 1 }
+fn hi() -> i32 { 4 }
+
+fn ends() -> i32 {
+  let mut sum = 0;
+
+  for i in lo()..hi() {
+    sum = sum + i;
+  }
+  sum
+}
+
+fn main() -> i32 { ends() }

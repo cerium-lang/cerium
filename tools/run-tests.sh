@@ -376,12 +376,16 @@ mirthem() { # the mid layer's own build (todos/todo-20261012-00.md):
   echo "ok   -i over $n programs ($bad did not build)"
 }
 
-mirgolden() { # $1: the directory. -i, and the project's own fns only:
-  # every build carries the library's rows, and a .golden holding all
-  # two hundred and thirty-seven of them would break each time std
-  # grows. The fn's own name says which file it came from -- the
-  # library's every row leads with std -- so the print is cut at the
-  # fn's line and the library's goes with it
+mirproject() { # -i's print, cut to the rows the project wrote. Every
+  # build carries the library's, and a .golden holding all two hundred
+  # and thirty-seven of them would break each time std grows. The fn's
+  # own name says which file it came from, and the shape of that name
+  # is the one isstdname asks in mir.c: ceri, the segment's length in
+  # digits, then std
+  awk '/^fn /{own = ($2 !~ /^ceri[0-9]+std/)} own'
+}
+
+mirgolden() { # $1: the directory: -i, the project's own fns only
   for f in "$1"/*.ce; do
     [ -e "$f" ] || continue
     g="${f%.ce}.golden"
@@ -390,13 +394,11 @@ mirgolden() { # $1: the directory. -i, and the project's own fns only:
       fail=1
       continue
     fi
-    if ./cerium -i "$f" 2>/dev/null |
-        awk '/^fn /{own = ($2 !~ /^ceri3std/)} own' | diff -u "$g" - >/dev/null; then
+    if ./cerium -i "$f" 2>/dev/null | mirproject | diff -u "$g" - >/dev/null; then
       echo "ok   $f"
     else
       echo "FAIL $f"
-      ./cerium -i "$f" 2>/dev/null |
-        awk '/^fn /{own = ($2 !~ /^ceri3std/)} own' | diff -u "$g" - | sed 's/^/     /'
+      ./cerium -i "$f" 2>/dev/null | mirproject | diff -u "$g" - | sed 's/^/     /'
       fail=1
     fi
   done

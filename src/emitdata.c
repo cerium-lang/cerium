@@ -21,6 +21,7 @@
 #include "emit.h"
 #include "eval.h"
 #include "layout.h"
+#include "mir.h"
 #include "sym.h"
 #include "type.h"
 #include "vec.h"
@@ -595,6 +596,10 @@ printvts(FILE *o)
       } else
         nm = fsymname(fm->sym, fm->sym->decl);
       vappend(&nms, &nm);
+      mirroot(nm); /* a row a handle's call picks at a run: the call
+                    * names no fn of its own, so the table's row is
+                    * the root that keeps the fn it points at
+                    * (06-dispatch.md) */
       nn++;
     }
     len = strlen(vt->name) + 16; /* data $ = { } and the NUL */

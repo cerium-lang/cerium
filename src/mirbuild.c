@@ -77,6 +77,21 @@ static void mexpr(Ast *e);
 static void mstmts(Ast **stmts);
 static void mstmt(Ast *st);
 
+/* the destructors a place runs on its way out: a block's closing
+ * brace, a return's early exit, an assignment's old value, a round's
+ * own bindings. Pre-made calls the checker spelled and the emitter
+ * sends (03-move.md) -- not statements, and not the tail either, so a
+ * walk that read neither would lose every drop call in the program
+ * and let the graph drop the destructors themselves */
+static void
+mdrops(Ast **d)
+{
+  usize i;
+
+  for (i = 0; i < vlen(d); i++)
+    mexpr(d[i]);
+}
+
 /* the calls an expression holds, in the order they stand. A node this
  * walk does not open leaves nothing behind -- a kind the tree carries
  * and this switch does not name is a kind whose calls go unrecorded,
@@ -104,10 +119,14 @@ mexpr(Ast *e)
     mirinsnnew(curb(), Minsn_call, e, e->v.call.sym, dyn);
     return;
   }
-  case Nbuiltin: /* @len, @ptr, @cast: the compiler's own word, no
-                  * fn of the program's behind it (01-types.md) */
-    for (i = 0; i < vlen(e->v.call.args); i++)
-      mexpr(e->v.call.args[i]);
+  case Nbuiltin: /* @len, @ptr, @cast: the compiler's own word, and no
+                  * fn of the program's behind the name. Its arguments
+                  * are blt's and not call's -- a builtin's slots are
+                  * a name, the type arguments and the value ones --
+                  * and the values are where a call may stand: @cast
+                  * carries one whole expression */
+    for (i = 0; i < vlen(e->v.blt.args); i++)
+      mexpr(e->v.blt.args[i]);
     return;
   case Nbin:
     mexpr(e->v.bin.l);
@@ -121,12 +140,38 @@ mexpr(Ast *e)
     mexpr(e->v.fld.e);
     return;
   case Nindex:
-  case Ntresult:
     mexpr(e->v.n2.a);
     mexpr(e->v.n2.b);
     return;
+  case Nrangeindex: /* a view's own two ends: a call may stand in
+                     * either -- `a[f()..g()]` runs both */
+    mexpr(e->v.ridx.e);
+    mexpr(e->v.ridx.lo);
+    mexpr(e->v.ridx.hi);
+    return;
+  case Nrange: /* the interval's own two ends: `lo()..hi()` runs both,
+                * once, before the first round -- the walk records them
+                * wherever the iterable stands, so the graph does not
+                * drop a fn only a range end names */
+    mexpr(e->v.bin.l);
+    mexpr(e->v.bin.r);
+    return;
+  case Nspread: /* the pack's own operand: a call may stand in the rows
+                 * a spread hands over */
+    mexpr(e->v.un.e);
+    return;
   case Ntupidx:
     mexpr(e->v.tup.e);
+    return;
+  case Npath: /* a name: what it names may be a fn whose address this
+               * expression takes rather than calls -- &dyn add, a
+               * slot a fn's own pointer is put in (05-traits.md) */
+    if (e->v.path.sym && e->v.path.sym->kind == Sfn)
+      mirinsnnew(curb(), Minsn_ref, e, e->v.path.sym, 0);
+    return;
+  case Nclosure: /* a literal: the fn it becomes is reached by being
+                  * made, and made it is wherever this stands */
+    mirinsnnew(curb(), Minsn_ref, e, 0, 0);
     return;
   case Ntuple:
     for (i = 0; i < vlen(e->v.list.ts); i++)
@@ -148,6 +193,7 @@ mexpr(Ast *e)
                 * for it */
     mstmts(e->v.blk.stmts);
     mexpr(e->v.blk.tail);
+    mdrops(e->v.blk.drops);
     return;
   case Nif:
   case Ncif:
@@ -267,10 +313,13 @@ mfor(Ast *st)
   exit = newblock();
   handto(mb.cur, hdr, Mterm_goto, st);
   mb.cur = hdr;
-  mexpr(st->v.forx.a); /* the condition, or the round's pattern's source */
-  mexpr(st->v.forx.b); /* the round's let, or the iterable -- FIN's
-                        * own walks put the next call in the body
-                        * (10-iteration.md) */
+  mexpr(st->v.forx.a);   /* the condition, or the round's pattern's source */
+  mexpr(st->v.forx.b);   /* the round's let, or the iterable -- FIN's
+                          * own walks put the next call in the body
+                          * (10-iteration.md) */
+  mexpr(st->v.forx.via); /* the into_iter the loop's sugar spelled:
+                          * run once before the first round, and no
+                          * statement of the body's carries it */
   vappend(&curb()->succ, &body);
   vappend(&curb()->succ, &exit);
   mirtermset(curb(), Mterm_branch, st);
@@ -278,14 +327,19 @@ mfor(Ast *st)
   vappend(&mb.loopexit, &exit);
   mb.cur = body;
   mbody(st->v.forx.body);
+  mstmts(st->v.forx.unroll);           /* the const rounds' own copies */
+  mdrops(st->v.forx.drops);            /* the round's own bindings */
+  mdrops(st->v.forx.itdrops);          /* and the iterator's, at the loop's end */
   handto(mb.cur, hdr, Mterm_goto, st); /* a round's end is the
                                         * header's again */
   (void) vpop(mb.loophdr);
   (void) vpop(mb.loopexit);
   mb.cur = exit;
-  /* a const-for's unroll is the same rounds already spelled, one copy
-   * a round (08-reflection.md): the body above is the shape, and the
-   * copies hold no call the shape does not */
+  /* a const-for's unroll is the rounds already spelled, one copy a
+   * round -- but a copy whose baked numbers are that round's, and a
+   * const-generic instance a number names is a different fn from the
+   * one the next round's names (08-reflection.md). So the copies are
+   * walked too, not left to the shape above */
 }
 
 static void
@@ -302,25 +356,30 @@ mstmt(Ast *st)
   case Nassign:
     mexpr(st->v.bin.l);
     mexpr(st->v.bin.r);
+    mdrops(st->v.bin.drop);
     mirinsnnew(curb(), Minsn_expr, st, 0, 0);
     return;
   case Nexprstmt:
     mexpr(st->v.n1.e);
+    mdrops(st->v.n1.drops);
     mirinsnnew(curb(), Minsn_expr, st, 0, 0);
     return;
   case Nreturn:
     mexpr(st->v.n1.e);
+    mdrops(st->v.n1.drops);
     mirtermset(curb(), Mterm_return, st);
     mb.cur = newblock(); /* what follows is reachable only in the
                           * tree's own shape */
     return;
   case Nbreak:
+    mdrops(st->v.n1.drops);
     if (vlen(mb.loopexit)) {
       handto(mb.cur, mb.loopexit[vlen(mb.loopexit) - 1], Mterm_goto, st);
       mb.cur = newblock();
     }
     return;
   case Ncontinue:
+    mdrops(st->v.n1.drops);
     if (vlen(mb.loophdr)) {
       handto(mb.cur, mb.loophdr[vlen(mb.loophdr) - 1], Mterm_goto, st);
       mb.cur = newblock();
@@ -329,6 +388,7 @@ mstmt(Ast *st)
   case Nblock:
     mstmts(st->v.blk.stmts);
     mexpr(st->v.blk.tail);
+    mdrops(st->v.blk.drops);
     return;
   case Nif:
   case Ncif:
@@ -363,8 +423,6 @@ mirfnbuild(char *name, Sym *s, Ast *decl)
 {
   Ast *body;
 
-  if (!mir_wanted)
-    return;
   if (decl->k == Nfn)
     body = decl->v.fn.body;
   else if (decl->k == Nclosure)
@@ -378,7 +436,11 @@ mirfnbuild(char *name, Sym *s, Ast *decl)
   mb.loopexit = vnew(usize, 4);
   mb.cur = newblock();
   mbody(body);
-  mirtermset(curb(), Mterm_return, 0); /* the body's end: the fn's own
-                                        * way out, whether or not the
-                                        * tree spelled a return there */
+  mdrops(decl->k == Nfn ? decl->v.fn.drops : decl->v.clos.drops); /* the parameters' own
+                                                                   * slots, run at the
+                                                                   * return the body
+                                                                   * reaches on its own */
+  mirtermset(curb(), Mterm_return, 0);                            /* the body's end: the fn's own
+                                                                   * way out, whether or not the
+                                                                   * tree spelled a return there */
 }

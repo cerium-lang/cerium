@@ -39,7 +39,12 @@ typedef struct Mirinsn  Mirinsn;
 typedef enum
 {
   Minsn_expr, /* the tree's own node, held whole */
-  Minsn_call  /* a call: the one thing a graph's edges are made of */
+  Minsn_call, /* a call: the one thing a graph's edges are made of */
+  Minsn_ref   /* a fn named and not called: its address taken, a
+               * handle made of it, a closure's literal standing as a
+               * value. No call in the tree names it -- the fat the
+               * handle carries does, at a run -- and the graph that
+               * missed it would drop a fn a program is holding */
 } Mirinsnk;
 
 /* how a block hands to the next. Goto is also what a fallthrough
@@ -91,17 +96,39 @@ struct Mirfn
   Mirblock **blocks;
   usize      nbind; /* the lets the walk stood over: the locals' count
                      * until the locals are ours */
+  int live;         /* reached from a root: reachability's own answer,
+                     * and the emitter's say on whether this fn's text
+                     * goes out at all */
 };
 
 /* the program's. Built beside the emitter's walk -- the instances are
  * the emitter's to know (04-generics.md), so this one is too -- and
- * read by the clients that follow. mirbegin before, mirprint after */
-extern int mir_wanted; /* -i: build it. Else the walk stays empty and
-                        * the emitter's text is the only product */
+ * read by the clients that follow. Every build builds it now: the
+ * first client does not print but decides, and a fn it cannot reach
+ * is a fn the emitter leaves out (12-projects.md) */
 void  mirbegin(void);
 void  mirfnbuild(char *name, Sym *s, Ast *decl);
 void  mirprint(FILE *o);
 usize mirnfns(void);
+
+/* -- reachability, the first client ---------------------------------- */
+
+/* a fn the graph starts from, named as the linker sees it: the
+ * program's main, an #[extern(C)] fn C spells, a row a vtable
+ * carries, a test the runner walks */
+void mirroot(char *name);
+
+/* the walk: from the roots, along every call a reached fn makes, and
+ * live is the answer when it ends. A call with no Sym to match -- a
+ * closure's own fn -- marks every fn without one rather than dropping
+ * one a handle might reach: being wrong here costs a program that
+ * does not link, and that is dearer than a fn kept too many */
+void mirreach(void);
+
+/* the emitter's question, before a fn's text. A fn this walk never
+ * met is one the emitter has always written: no answer here says no
+ * to nothing */
+int mirreachable(Sym *s, char *name);
 
 /* the pieces mirbuild.c puts together. mir.c owns the tables, so the
  * build asks it for each one rather than growing its own */
