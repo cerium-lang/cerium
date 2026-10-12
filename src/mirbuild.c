@@ -149,6 +149,17 @@ mexpr(Ast *e)
     mexpr(e->v.ridx.lo);
     mexpr(e->v.ridx.hi);
     return;
+  case Nrange: /* the interval's own two ends: `lo()..hi()` runs both,
+                * once, before the first round -- the walk records them
+                * wherever the iterable stands, so the graph does not
+                * drop a fn only a range end names */
+    mexpr(e->v.bin.l);
+    mexpr(e->v.bin.r);
+    return;
+  case Nspread: /* the pack's own operand: a call may stand in the rows
+                 * a spread hands over */
+    mexpr(e->v.un.e);
+    return;
   case Ntupidx:
     mexpr(e->v.tup.e);
     return;
