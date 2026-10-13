@@ -25,6 +25,7 @@ alignto(usize off, usize a)
 usize
 intwidth(Type *t)
 {
+  t = tyopen(t); /* the existential answers its landing (05) */
   switch (t->num) {
   case IN_I8:
   case IN_U8:
@@ -197,6 +198,7 @@ layoutattrs(Ast *decl, int *packed, usize *alignk)
 static int
 hasniche(Type *t)
 {
+  t = tyopen(t); /* the existential answers its landing (05) */
   return t && (t->k == Typtr || t->k == Tyvoidptr);
 }
 
@@ -228,6 +230,7 @@ picktag(Sym *s)
 int
 nicheness(Type *t)
 {
+  t = tyopen(t); /* the existential answers its landing (05) */
   if (!t || t->k != Tyenum || t->nargs != (usize) t->sym->ngparams)
     return NICHE_NONE;
   if (t->sym == sym_option && t->nargs == 1 && hasniche(t->args[0]))
@@ -245,6 +248,8 @@ usize
 alignof_(Type *t)
 {
   usize i, al;
+
+  t = tyopen(t); /* the existential answers its landing (05) */
 
   if (!t)
     return 1;
@@ -354,6 +359,8 @@ usize
 sizeof_(Type *t)
 {
   usize i, off, al;
+
+  t = tyopen(t); /* the existential answers its landing (05) */
 
   if (!t)
     return 0;
@@ -526,6 +533,8 @@ payloadoff(Type *t)
   int   packed;
   usize alignk, tag, pal = 1, pmax = 0, i, j;
 
+  t = tyopen(t); /* the existential answers its landing (05) */
+
   layoutattrs(t->sym->decl, &packed, &alignk);
   tag = sizeof_(t->sym->tagty ? t->sym->tagty : picktag(t->sym));
   for (i = 0; i < t->sym->nvariants; i++) {
@@ -562,5 +571,6 @@ payloadoff(Type *t)
 Type *
 tagtyof(Type *t)
 {
+  t = tyopen(t); /* the existential answers its landing (05) */
   return t->sym->tagty ? t->sym->tagty : picktag(t->sym);
 }

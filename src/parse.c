@@ -438,6 +438,18 @@ prefixtype(void)
       n->v.fnty.ret = type_();
     return n;
   }
+  case Timpl: { /* impl Path<...>: the existential, a fn's return
+                 * the one place it spells (05-traits.md). The path
+                 * carries the whole application -- typepath reads the
+                 * "<" itself, the positional words and the pins
+                 * behind them (04-generics.md) */
+    Ast *n;
+
+    next();
+    n = mk(Ntimpl);
+    n->v.tdyn.e = typepath();
+    return n;
+  }
   case Tdyn: {
     Ast *n;
 
@@ -541,6 +553,7 @@ startsatype(void)
   case Tlbracket:   /* [N]T, []T */
   case Tlparen:     /* (A, B) */
   case Tfn:         /* fn(A) -> R */
+  case Timpl:       /* impl Path<...>: the existential return */
   case Tdyn:        /* dyn Path */
   case Ttype:       /* the type of a type */
   case Tident:      /* a path */

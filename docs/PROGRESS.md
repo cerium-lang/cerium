@@ -3890,3 +3890,56 @@ exists, and the spec says so where it always did.
 713 green (325-328, 309 with them), the library's 54. Compile time
 measured: no change -- the summaries iterate inside the noise the
 emit already made.
+
+## 2026-10-13 -- a closure leaves its fn: impl names the return
+
+A closure could not leave the fn it was written in -- three roads,
+three refusals, the second of them saying "yet", and the yet was
+right: nothing in the language's shape forbade the road, only that
+nobody had built it. The half that was always sound is the by-value
+capture: the env is a copy, and returning a copy is returning a
+struct -- the aggregate return that has always crossed, no heap, no
+lifetime. The spelling is what landed: impl names a fn's return and
+the trait it promises.
+
+The existential is a type with a slot. `impl Fn<i32, Output = i32>`
+resolves to Tyexist -- the trait, its application spelled the way a
+bound spells it (positional words, pins behind them, the pack
+gathered), and a slot for the concrete type, written when the fn's
+own body lands its return: the value checked against the promise
+(the env's synthesized Fn row already in the table), the slot set,
+two different answers two different fns. The slot is not the type's
+identity -- thash and teq pass it by, so the same signature is the
+one node however many callers read it -- and iscopy answers it live,
+unmemoized, because it is written after the intern.
+
+The rest was doors already standing. A call on the existential
+value walks the Fn family's sugar -- the arguments against the pack
+the application spells, the answer the pin gave or the value's own
+impl's -- and the emitter, asked for a layout or an abi, opens the
+slot (tyopen): the env's shape wherever a struct's was asked. The
+emit of the call itself was the closure's own door all along --
+the static fn, the env's address -- reached now through the slot.
+
+Two bugs the probes caught before they shipped. The zero-row
+tuple is the pack's own black box, and the substitution was folding
+it to the unit -- two spellings of one application interning apart,
+the caller's read of the signature a second existential whose slot
+nobody filled (five run tests said so, the zip family among them:
+the pack's slot read as *mut () against *mut (...mut Ts,)). And
+teq's existential answered equal on the trait alone: impl Fn<i32>
+and impl Fn<i32, Output = i32> are not one promise -- the pins are
+identity now, the slot still not.
+
+What #185's last seam bought: the byref-captured closure handed
+back is refused the day the spelling exists, the escape check's
+own words, no line of it written for this -- 329 pins it. 310
+carries the three roads (an adder's Fn, a counter's FnMut called
+twice past its fn, an open-Output call answered by the value's own
+impl); 330 the one place impl spells. What stays open, said
+plainly: a generic fn's impl return -- the application would carry
+the parameters, and the instance's re-check would write its own
+slot -- and the heap road (closure to dyn) that needs an address
+outliving the frame, its own day.
+
+716 green (329, 330, 310 with them), the library's 54.

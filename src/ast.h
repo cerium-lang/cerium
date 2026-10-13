@@ -44,6 +44,8 @@
   X(Ntopt, "topt") X(Ntresult, "tresult") X(Ntptr, "tptr")                     \
   X(Ntmut, "tmut") X(Ntarray, "tarray") X(Nttuple, "ttuple") X(Ntfn, "tfn")    \
   X(Ntdyn, "tdyn") X(Nttype, "ttype") /* mut: dyn mut A */                      \
+  X(Ntimpl, "timpl") /* impl Path<...>: the existential return, its own \
+                      * words in v.tdyn (below) */                              \
   X(Ntpack, "tpack") /* ...Ts: a pack parameter's rows (04-generics.md) */      \
   X(Nassoc, "assoc") /* a trait's associated type, pinned at a use */           \
   /* items */                                                                  \
