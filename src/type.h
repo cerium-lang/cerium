@@ -127,14 +127,15 @@ Type *tytuple(Type **ts, usize n);
 Type *tyfn(Type **args, usize n, Type *ret);
 Type *tysym(Sym *s, Type **args, usize n); /* struct/union/enum/trait */
 Type *tydyn(Sym *s, Type **args, usize n, int mut);
-Type *tyexist(Sym *s, Type **args, usize n);
-Type *tyopen(Type *t);                        /* the existential's landing, wherever a layout
-                                               * or an abi asks: the slot's concrete type, the
-                                               * existential itself when nobody has landed one
-                                               * yet (the check runs before the emit that
-                                               * needs it answered, 05-traits.md) */
-Type *typroj(Sym *s, Type *self, char *name); /* Self::Item, in a trait */
-Type *tyspread(Ast *gp, Type *tmpl);          /* ...τ, the pack gp the rows feed */
+Type *tyexistown(Sym *s, Type **args, usize n); /* the existential: the fn's own copy, the
+                                                 * slot per fn, never interned */
+Type *tyopen(Type *t);                          /* the existential's landing, wherever a layout
+                                                 * or an abi asks: the slot's concrete type, the
+                                                 * existential itself when nobody has landed one
+                                                 * yet (the check runs before the emit that
+                                                 * needs it answered, 05-traits.md) */
+Type *typroj(Sym *s, Type *self, char *name);   /* Self::Item, in a trait */
+Type *tyspread(Ast *gp, Type *tmpl);            /* ...τ, the pack gp the rows feed */
 
 /* the pack parameter a template walks: the first one it holds, none
  * when it holds none (04-generics.md) */

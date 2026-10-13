@@ -959,7 +959,12 @@ rty(Ast *t, Env *env)
           }
         mi++;
       }
-      return tyexist(s, args, ng + nty);
+      return tyexistown(s, args, ng + nty); /* the fn's own copy: the
+                                             * same spelling in another
+                                             * fn is another node,
+                                             * another slot -- the
+                                             * answer per fn, not per
+                                             * signature */
     }
   }
   case Ntdyn: {

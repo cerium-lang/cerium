@@ -348,19 +348,21 @@ tydyn(Sym *s, Type **args, usize n, int mut)
 
 /* the existential: the trait it promises, the application it spells,
  * the concrete type a slot the fn's own return fills in later. The
- * slot is not identity -- the same signature interns to the one
- * node, and the writeback every caller then reads */
+ * slot is not identity -- the same signature is the one answer to
+ * teq -- and no node is interned: the fn's return takes its own
+ * copy, two fns free to spell the same promise and answer it with
+ * different closures, each answer its own (05-traits.md) */
 Type *
-tyexist(Sym *s, Type **args, usize n)
+tyexistown(Sym *s, Type **args, usize n)
 {
-  Type x;
+  Type *x = arenaalloc(sizeof *x);
 
-  memset(&x, 0, sizeof x);
-  x.k = Tyexist;
-  x.sym = s;
-  x.args = n ? args : 0;
-  x.nargs = n;
-  return intern(&x);
+  memset(x, 0, sizeof *x);
+  x->k = Tyexist;
+  x->sym = s;
+  x->args = n ? args : 0;
+  x->nargs = n;
+  return x;
 }
 
 Type *
@@ -701,11 +703,20 @@ gsubstv(Type *t, Ast **gps, Type **tys, Val **gcvals, usize n)
                                              * (01-types.md) */
     case Tydyn:
       return tydyn(t->sym, as, m, t->mut);
-    case Tyexist:
-      return tyexist(t->sym, as, m); /* the slot stays: the instance
-                                      * re-checks the body under the
-                                      * binding and writes its own
-                                      * (04-generics.md) */
+    case Tyexist: { /* the node's own identity carries the slot: the
+                     * words all landing where they stand is the
+                     * fn's own answer still good -- a binding that
+                     * moves one word moves the node too, the
+                     * instance a node of its own, its slot its own
+                     * re-check's (04-generics.md) */
+      int same = m == t->nargs;
+
+      for (i = 0; same && i < m; i++)
+        same = as[i] == t->args[i];
+      if (same)
+        return t;
+      return tyexistown(t->sym, as, m);
+    }
     default:
       return tysym(t->sym, as, m); /* an enum stays itself:
                                     * ?T is tysym(sym_option),

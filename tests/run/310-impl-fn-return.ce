@@ -1,7 +1,13 @@
 /* a closure leaves its fn: the value's env a copy, the call the
- * static fn it spells, the answer the signature promised
+ * static fn it spells, the answer the signature promised. The env
+ * carries compounds too -- a struct's rows read through, a tuple's
+ * nesting, a Copy still alive at home, a struct the ticking state
  * (05-traits.md) */
-use std::ops::{Fn, FnMut};
+use std::ops::{Fn, FnMut, Copy};
+
+struct P { x: i32, y: i32 }
+
+impl Copy for P { }   /* the file's own word: shaped's capture copies */
 
 fn adder(n: i32) -> impl Fn<i32, Output = i32> {
   fn[n](y: i32) -> i32 { n + y }
@@ -14,9 +20,28 @@ fn openout(n: i32) -> impl Fn<i32> { /* the Output left open, the
                                       * value's own impl answers */
   fn[n](y: i32) -> i32 { n + y }
 }
+fn shaped(p: P) -> impl Fn<i32, Output = i32> { /* the struct into the
+                                                 * env, its rows read */
+  fn[p](k: i32) -> i32 { p.x * k + p.y }
+}
+fn tupled(t: (P, i32)) -> impl Fn<Output = i32> { /* the tuple, the
+                                                   * struct nested in */
+  fn[t]() -> i32 { t.0.x * 10 + t.0.y + t.1 }
+}
+fn ticking(seed: i32) -> impl FnMut<i32, Output = i32> { /* a struct the
+                                                          * carried state */
+  let mut p = P { x: seed, y: 0 };
+  fn[mut p](k: i32) -> i32 { p = P { x: p.x + k, y: p.y + 1 }; p.x + p.y }
+}
 fn main() -> i32 {
   let a = adder(5);
   let c = counter(10);
   let o = openout(2);
-  a(37) + c() + c() + o(40)   /* 42 + 11 + 12 + 42 = 107 */
+  let p = P { x: 2, y: 3 };
+  let s = shaped(p);
+  let alive = p.x;    /* the capture copied: p alive at home after */
+  let t = tupled((P { x: 1, y: 2 }, 3));
+  let m = ticking(1);
+  a(37) + c() + c() + o(40) +          /* 42 + 11 + 12 + 42 = 107 */
+    s(10) + alive + t() + m(2) + m(3)  /* 23 + 2 + 15 + 4 + 8 */
 }
