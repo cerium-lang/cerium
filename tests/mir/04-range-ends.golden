@@ -6,19 +6,19 @@ fn ceri3mir2hi hi: 1 blocks, 0 insns, 0 lets
     return @6:18
 fn ceri3mir4ends ends: 4 blocks, 6 insns, 1 lets
   bb0:
-    expr let @9:3
+    expr let [wr sum] @9:3
     goto bb1 @11:3
   bb1:
-    call next @11:16
+    call next [wr i] @11:16
     call lo @11:14
     call hi @11:20
     call into_iter @11:16
     branch bb2 bb3 @11:3
   bb2:
-    expr assign @12:9
+    expr assign [rd sum, rd i, wr sum] @12:9
     goto bb1 @11:3
   bb3:
-    return @14:3
+    return [rd sum] @14:3
 fn ceri3mir4main main: 1 blocks, 1 insns, 0 lets
   bb0:
     call ends @17:24

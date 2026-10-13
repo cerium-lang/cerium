@@ -3971,3 +3971,39 @@ waits for the walk that decides the drops to stand on the MIR
 itself (client D's second half).
 
 718 green (311 and the golden with them), the library's 54.
+
+Client D's second half opens with its ground: what one instruction
+touches, spelled as a fact. A place is a slot in the frame and a
+field chain under it -- the root first, the reading's own order --
+and the touch is one of five: a Copy read, a move, a write, a
+shared borrow, a mut one. Nothing here is new knowledge: every word
+of it the checker already had, spelled where a flow can read it
+instead of where a scope stack held it.
+
+The spelling walks beside the blocks: the reads that feed a call
+flush into the call's own instruction (a nested call's arguments
+landing on the nested one), what is left when a statement's own
+instruction is made -- the writes a pattern bound, the move a
+return takes -- lands there, and a terminator carries its cond's
+reads, a switch's scrutinee. The names resolve against a
+shadow-aware view the walk keeps -- the checker's locfind
+discipline, a name taken again a slot of its own (the shadowing
+golden pins it), and a bare variant pattern never a binding: the
+type the checker wrote on the binding form is the mark, a unit
+variant carrying none. mmatch's arm bindings walk with the arm they
+answer now -- ahead of every arm, a later arm's name would shadow
+an earlier arm's reads.
+
+Two spellings the probe rounds caught: a method's receiver is the
+whole place, the method's own name no field of it (rd a, not rd
+a.len), and a slice's view borrows wherever it stands -- a receiver
+included. The known approximation, said plainly: a by-value
+receiver the checker left unwrapped spells rd; the shadow compare
+in the next cut is the one that says whether a borrow was meant.
+
+06-facts the golden, five shapes beside it regrown; the move flag's
+own read spells nothing (mvd, a marker the emitter owns). The
+rvalue is still the tree's -- what the borrow and the move walk
+need is not the value's shape but what it reaches.
+
+719 green (06-facts with them), the library's 54.

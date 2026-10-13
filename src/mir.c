@@ -92,7 +92,7 @@ mirblocknew(Mirfn *f)
   return b;
 }
 
-void
+Mirinsn *
 mirinsnnew(Mirblock *b, Mirinsnk k, Ast *e, Sym *s, int dyn)
 {
   Mirinsn *i;
@@ -105,6 +105,8 @@ mirinsnnew(Mirblock *b, Mirinsnk k, Ast *e, Sym *s, int dyn)
   i->s = s;
   i->dyn = dyn;
   vappend(&b->insns, &i);
+  return i; /* the walk's own handle: the facts it gathered on the
+             * way here land on the insn they feed */
 }
 
 /* the block's terminator, written once: a return, a break, the join a
@@ -173,6 +175,44 @@ callname(Mirinsn *n)
   return segs[vlen(segs) - 1]->v.seg.name;
 }
 
+/* the words a fact says: the touch's own kind, the slot's name, the
+ * chain under it -- `mv d`, `rd a.x` */
+static const char *
+factname(Mirfactk k)
+{
+  switch (k) {
+  case Mfrd:
+    return "rd";
+  case Mfwr:
+    return "wr";
+  case Mfmv:
+    return "mv";
+  case Mfbor:
+    return "bor";
+  default:
+    return "borm";
+  }
+}
+
+static void
+printfacts(FILE *o, Mirfn *f, Mirfact *fs)
+{
+  usize i;
+
+  if (!vlen(fs))
+    return;
+  fputs(" [", o);
+  for (i = 0; i < vlen(fs); i++) {
+    if (i)
+      fputs(", ", o);
+    fprintf(o, "%s %s%s", factname(fs[i].k),
+            f->locals[fs[i].local] && f->locals[fs[i].local]->name ? f->locals[fs[i].local]->name
+                                                                   : "?",
+            fs[i].path ? fs[i].path : "");
+  }
+  fputc(']', o);
+}
+
 static void
 printfn(FILE *o, Mirfn *f)
 {
@@ -196,10 +236,12 @@ printfn(FILE *o, Mirfn *f)
 
       if (n->k == Minsn_call || n->k == Minsn_drop) {
         fprintf(o, "    %s %s", n->k == Minsn_drop ? "drop" : "call", callname(n));
+        printfacts(o, f, n->facts);
         pat(o, n->e);
         fputc('\n', o);
       } else {
         fprintf(o, "    expr %s", n->e ? nkname(n->e->k) : "?");
+        printfacts(o, f, n->facts);
         pat(o, n->e);
         fputc('\n', o);
       }
@@ -207,6 +249,7 @@ printfn(FILE *o, Mirfn *f)
     fprintf(o, "    %s", termname(b->term));
     for (j = 0; j < vlen(b->succ); j++)
       fprintf(o, " bb%lu", (unsigned long) b->succ[j]);
+    printfacts(o, f, b->facts);
     if (!b->termset)
       fputs(" /* not ended: the walk fell through */", o);
     else

@@ -18,6 +18,7 @@
 #include <string.h>
 
 #include "ast.h"
+#include "body.h" /* iscopy: a value's own shape, rd or mv */
 #include "die.h"
 #include "lex.h"
 #include "mir.h"
@@ -37,6 +38,178 @@ typedef struct
 } Mb;
 
 static Mb mb;
+
+/* -- the facts: what one instruction touches (client D's ground) -----
+ *
+ * A binding's identity is its slot in the frame -- the name alone is
+ * not it, a shadow takes a name a second time -- so the walk keeps
+ * the names it can see, innermost last, the way the checker's own
+ * locfind does. The touches gather in a buffer that empties at the
+ * next instruction or terminator: the reads that feed a nested call
+ * land on the call's own insn, and what is left when the statement's
+ * own insn is made -- the writes a pattern bound, the move a return
+ * takes -- lands there. Nothing a fact says is new: every word of it
+ * the checker already knows, spelled here where the flow can read it
+ * (03-move.md, 01-types.md). */
+
+typedef struct
+{
+  char *name;
+  usize ix; /* the slot in f->locals the binding owns */
+} Mfname;
+
+static Mfname  *mfseen;  /* the bindings visible, innermost last */
+static usize   *mfmarks; /* the scopes' depths, a block an arm a round */
+static Mirfact *mfbuf;   /* what the walk has gathered since the last
+                          * instruction */
+
+/* the slot a name spells right now, -1 when the walk sees no
+ * binding of it: params, captures, and the patterns met so far, the
+ * shadowing discipline the checker's locfind reads */
+static int
+mfshadow(char *name)
+{
+  usize i;
+
+  for (i = vlen(mfseen); i > 0; i--)
+    if (strcmp(mfseen[i - 1].name, name) == 0)
+      return (int) mfseen[i - 1].ix;
+  return -1;
+}
+
+static void
+mfmark(void)
+{
+  usize d = vlen(mfseen);
+
+  if (!mfmarks)
+    mfmarks = vnew(usize, 8);
+  vappend(&mfmarks, &d);
+}
+
+static void
+mfunmark(void)
+{
+  usize d = vlen(mfmarks) ? mfmarks[vlen(mfmarks) - 1] : 0;
+
+  if (vlen(mfmarks))
+    (void) vpop(mfmarks);
+  while (vlen(mfseen) > d)
+    (void) vpop(mfseen);
+}
+
+/* a binding the walk met: the slot mirlocalnew just took, the name
+ * now visible until its scope ends */
+static void
+mfbind(char *name)
+{
+  Mfname n;
+
+  if (!mfseen)
+    mfseen = vnew(Mfname, 16);
+  n.name = name;
+  n.ix = vlen(mb.f->locals) - 1;
+  vappend(&mfseen, &n);
+}
+
+static void
+mffact(usize local, char *path, Mirfactk k)
+{
+  Mirfact t;
+
+  memset(&t, 0, sizeof t);
+  if (path[0]) { /* the chain copied in: the buffer it was built in
+                  * is the caller's own stack, gone before any client
+                  * reads the fact */
+    t.path = arenaalloc(strlen(path) + 1);
+    strcpy(t.path, path);
+  } else
+    t.path = ""; /* the whole slot */
+  t.local = local;
+  t.k = k;
+  if (!mfbuf)
+    mfbuf = vnew(Mirfact, 8);
+  vappend(&mfbuf, &t);
+}
+
+/* what the walk gathered lands on the instruction it feeds; the
+ * buffer empties, the next statement starting clean */
+static void
+mfattach(Mirinsn *n)
+{
+  if (vlen(mfbuf)) {
+    n->facts = mfbuf;
+    mfbuf = 0;
+  }
+}
+
+static void
+mfattachterm(Mirblock *b)
+{
+  usize i;
+
+  if (!vlen(mfbuf))
+    return;
+  if (!b->facts)
+    b->facts = vnew(Mirfact, 4);
+  for (i = 0; i < vlen(mfbuf); i++) /* the block one way out: what the
+                                     * walk gathered rides it, after
+                                     * whatever an earlier way left */
+    vappend(&b->facts, &mfbuf[i]);
+  mfbuf = 0;
+}
+
+/* the chain a place spells, top down: the field path under it ".a.b"
+ * -- an index, a row, a tuple's, a slice touching the whole root,
+ * the freeze's own rule (01-types.md) -- and the binding it bottoms
+ * on, -1 when it bottoms on no binding of this frame (a temporary's
+ * row, a deref across a pointer, a name the walk has not bound). The
+ * bottom node comes back for the caller that still owes it a walk */
+static int
+mfroot(Ast *e, char *path, usize psz, Ast **base)
+{
+  usize n = 0;
+
+  path[0] = 0;
+  while (e->k == Naccess || e->k == Nindex || e->k == Nrangeindex || e->k == Ntupidx) {
+    if (e->k == Naccess && strlen(e->v.fld.name) < 126 && n + strlen(e->v.fld.name) + 2 < psz) {
+      char cat[128], old[256];
+
+      sprintf(cat, ".%s", e->v.fld.name);
+      strncpy(old, path, sizeof old - 1);
+      old[(sizeof old) - 1] = 0;
+      sprintf(path, "%s%s", cat, old); /* the root first: the chain's
+                                        * own reading order */
+      n = strlen(path);
+    } else { /* an index, a row, a slice: the whole root */
+      path[0] = 0;
+      n = 0;
+    }
+    if (e->k == Naccess)
+      e = e->v.fld.e;
+    else if (e->k == Nindex)
+      e = e->v.n2.a;
+    else if (e->k == Ntupidx)
+      e = e->v.tup.e;
+    else
+      e = e->v.ridx.e;
+  }
+  if (base)
+    *base = e;
+  if (e->k == Nun && e->v.un.op == Tstar)
+    return -1; /* *p: across the pointer is a promise, not a proof */
+  if (e->k != Npath || vlen(e->v.path.segs) != 1 || e->mvd)
+    return -1; /* the move flag's own read: not the binding's */
+  return mfshadow(e->v.path.segs[0]->v.seg.name);
+}
+
+/* the values a chain carries on its way down -- the subscripts, the
+ * range's ends, the pointer a deref reads -- walked before the
+ * place itself is written. The value arms need none of this: the
+ * chain bottoms on no binding there and the whole node walks; only
+ * the assign's left, whose read the store replaces, spells its
+ * subscripts out here */
+static void mfwalkchain(Ast *e);
 
 static Mirblock *
 curb(void)
@@ -69,15 +242,41 @@ handto(usize from, usize to, Mirtermk k, Ast *te)
   if (b->termset)
     return;
   vappend(&b->succ, &to);
+  mfattachterm(b); /* the goto's own: an arm's trailing writes when
+                    * its body spelled no instruction */
   mirtermset(b, k, te);
 }
 
 /* -- the expressions: the calls in one, the rvalue left whole -------- */
 
-static void mexpr(Ast *e);
+static void mex(Ast *e);
 static void mstmts(Ast **stmts);
 static void mstmt(Ast *st);
 static void mlocs(Ast *p); /* the names a pattern binds, as slots */
+
+/* a place consumed as a value: the chain's root and path, the touch
+ * the value's own shape spells -- a Copy reads, anything else moves
+ * (03-move.md). A chain bottoming on no binding is no fact: the
+ * whole node walks, the values under it read */
+static void
+mftake(Ast *e, Mirfactk bor)
+{
+  char p[256];
+  Ast *base;
+  int  ix = mfroot(e, p, sizeof p, &base);
+
+  if (ix >= 0) {
+    if (e->k == Nrangeindex) /* a view's own bargain: the root
+                              * borrowed wherever it stands
+                              * (01-types.md) */
+      mffact((usize) ix, p, Mfbor);
+    else if (bor != Mfrd) /* the caller's own word: a borrow */
+      mffact((usize) ix, p, bor);
+    else /* a value's own shape: a Copy reads, anything else moves */
+      mffact((usize) ix, p, e->ty && !iscopy(e->ty) ? Mfmv : Mfrd);
+  } else
+    mex(base);
+}
 
 /* the destructors a place runs on its way out: a block's closing
  * brace, a return's early exit, an assignment's old value, a round's
@@ -97,7 +296,7 @@ mdrops(Ast **d)
 
   for (i = 0; i < vlen(d); i++) {
     indrop++;
-    mexpr(d[i]);
+    mex(d[i]);
     indrop--;
   }
 }
@@ -108,7 +307,7 @@ mdrops(Ast **d)
  * which is a hole the next stage's completeness owes a word, not a
  * wrong shape */
 static void
-mexpr(Ast *e)
+mex(Ast *e)
 {
   usize i;
 
@@ -123,10 +322,16 @@ mexpr(Ast *e)
       dyn = 1; /* the handle's own: the row a vtable names, chosen
                 * where the handle was and not here
                 * (06-dispatch.md) */
-    mexpr(f);
+    if (f && f->k == Naccess)
+      /* method sugar: the receiver a whole place, the method's own
+       * name no field of it (06-dispatch.md) -- the value's shape
+       * says rd or mv, a checker-wrapped & says bor */
+      mftake(f->v.fld.e, Mfrd);
+    else
+      mex(f);
     for (i = 0; i < vlen(e->v.call.args); i++)
-      mexpr(e->v.call.args[i]);
-    mirinsnnew(curb(), indrop ? Minsn_drop : Minsn_call, e, e->v.call.sym, dyn);
+      mex(e->v.call.args[i]);
+    mfattach(mirinsnnew(curb(), indrop ? Minsn_drop : Minsn_call, e, e->v.call.sym, dyn));
     return;
   }
   case Nbuiltin: /* @len, @ptr, @cast: the compiler's own word, and no
@@ -136,74 +341,108 @@ mexpr(Ast *e)
                   * and the values are where a call may stand: @cast
                   * carries one whole expression */
     for (i = 0; i < vlen(e->v.blt.args); i++)
-      mexpr(e->v.blt.args[i]);
+      mex(e->v.blt.args[i]);
     return;
   case Nbin:
-    mexpr(e->v.bin.l);
-    mexpr(e->v.bin.r);
+    mex(e->v.bin.l);
+    mex(e->v.bin.r);
     return;
   case Nun:
+    if (e->v.un.op == Tamp) { /* &x / &mut x: the place is borrowed,
+                               * not read (01-types.md) */
+      char p[256];
+      Ast *base;
+      int  ix = mfroot(e->v.un.e, p, sizeof p, &base);
+
+      if (ix >= 0)
+        mffact((usize) ix, p, e->v.un.mut ? Mfborm : Mfbor);
+      else
+        mex(base);
+      return;
+    }
+    mex(e->v.n1.e);
+    return;
   case Ntry:
-    mexpr(e->v.n1.e);
+    mex(e->v.n1.e);
     return;
   case Naccess:
-    mexpr(e->v.fld.e);
-    return;
   case Nindex:
-    mexpr(e->v.n2.a);
-    mexpr(e->v.n2.b);
+  case Ntupidx: /* a place's own row, read or moved by the value the
+                 * chain's top spells (03-move.md) */
+    mftake(e, Mfrd);
     return;
-  case Nrangeindex: /* a view's own two ends: a call may stand in
-                     * either -- `a[f()..g()]` runs both */
-    mexpr(e->v.ridx.e);
-    mexpr(e->v.ridx.lo);
-    mexpr(e->v.ridx.hi);
+  case Nrangeindex: /* a view's own two ends: the root borrowed
+                     * (01-types.md), the ends values */
+    mftake(e, Mfbor);
     return;
   case Nrange: /* the interval's own two ends: `lo()..hi()` runs both,
                 * once, before the first round -- the walk records them
                 * wherever the iterable stands, so the graph does not
                 * drop a fn only a range end names */
-    mexpr(e->v.bin.l);
-    mexpr(e->v.bin.r);
+    mex(e->v.bin.l);
+    mex(e->v.bin.r);
     return;
   case Nspread: /* the pack's own operand: a call may stand in the rows
                  * a spread hands over */
-    mexpr(e->v.un.e);
-    return;
-  case Ntupidx:
-    mexpr(e->v.tup.e);
+    mex(e->v.un.e);
     return;
   case Npath: /* a name: what it names may be a fn whose address this
                * expression takes rather than calls -- &dyn add, a
-               * slot a fn's own pointer is put in (05-traits.md) */
-    if (e->v.path.sym && e->v.path.sym->kind == Sfn)
-      mirinsnnew(curb(), Minsn_ref, e, e->v.path.sym, 0);
+               * slot a fn's own pointer is put in (05-traits.md). A
+               * binding reads or moves by its own shape; the move
+               * flag's read (mvd) touches nothing of the binding's */
+    if (e->v.path.sym && e->v.path.sym->kind == Sfn) {
+      mfattach(mirinsnnew(curb(), Minsn_ref, e, e->v.path.sym, 0));
+      return;
+    }
+    if (!e->mvd && !e->v.path.sym && vlen(e->v.path.segs) == 1) {
+      int ix = mfshadow(e->v.path.segs[0]->v.seg.name);
+
+      if (ix >= 0)
+        mffact((usize) ix, "", e->ty && !iscopy(e->ty) ? Mfmv : Mfrd);
+    }
     return;
-  case Nclosure: /* a literal: the fn it becomes is reached by being
-                  * made, and made it is wherever this stands */
-    mirinsnnew(curb(), Minsn_ref, e, 0, 0);
+  case Nclosure: { /* a literal: the fn it becomes is reached by being
+                    * made, and made it is wherever this stands. The
+                    * captures are the outer frame's own touches: a
+                    * byref one the borrow it takes, a value one the
+                    * move it spells (05-traits.md) */
+    usize ci;
+
+    for (ci = 0; ci < vlen(e->v.clos.caps); ci++) {
+      Ast *c = e->v.clos.caps[ci];
+
+      if (c->v.cap.byref)
+        mftake(c->v.cap.place, c->v.cap.mut ? Mfborm : Mfbor);
+      else
+        mftake(c->v.cap.place, Mfrd); /* Copy reads, the rest move */
+    }
+    mfattach(mirinsnnew(curb(), Minsn_ref, e, 0, 0));
     return;
+  }
   case Ntuple:
     for (i = 0; i < vlen(e->v.list.ts); i++)
-      mexpr(e->v.list.ts[i]);
+      mex(e->v.list.ts[i]);
     return;
   case Narraylit:
     for (i = 0; i < vlen(e->v.arrlit.es); i++)
-      mexpr(e->v.arrlit.es[i]);
+      mex(e->v.arrlit.es[i]);
     return;
   case Nstructlit:
     for (i = 0; i < vlen(e->v.slit.inits); i++)
-      mexpr(e->v.slit.inits[i]);
+      mex(e->v.slit.inits[i]);
     return;
   case Ninit:
-    mexpr(e->v.n1.e);
+    mex(e->v.n1.e);
     return;
   case Nblock: /* a value's own block: the statements run where the
                 * enclosing block stands -- stage A does not cut one
                 * for it */
+    mfmark();
     mstmts(e->v.blk.stmts);
-    mexpr(e->v.blk.tail);
+    mex(e->v.blk.tail);
     mdrops(e->v.blk.drops);
+    mfunmark();
     return;
   case Nif:
   case Ncif:
@@ -219,6 +458,54 @@ mexpr(Ast *e)
   default:
     return; /* a leaf, or a kind whose inside is not a call's */
   }
+}
+
+/* the subscripts and the deref a written place carries: the values
+ * the store reads on its way to the slot (the assign's left, whose
+ * own read the store replaces) */
+static void
+mfwalkchain(Ast *e)
+{
+  while (e && (e->k == Naccess || e->k == Nindex || e->k == Nrangeindex || e->k == Ntupidx)) {
+    if (e->k == Naccess)
+      e = e->v.fld.e;
+    else if (e->k == Ntupidx)
+      e = e->v.tup.e;
+    else if (e->k == Nindex) {
+      mex(e->v.n2.b);
+      e = e->v.n2.a;
+    } else {
+      mex(e->v.ridx.lo);
+      mex(e->v.ridx.hi);
+      e = e->v.ridx.e;
+    }
+  }
+  if (e && e->k == Nun && e->v.un.op == Tstar)
+    mex(e->v.un.e); /* the pointer the store reads through */
+}
+
+/* the store's own shape: the addressing reads first -- the pointer a
+ * deref crosses, the subscripts a rooted place carries -- then the
+ * new value's reads, the old value's drops, the write that lands
+ * last -- the order the emitter sends (03-move.md), the order a
+ * dataflow reads */
+static void
+mfwrite(Ast *l, Ast *r, Ast **olddrops)
+{
+  char p[256];
+  Ast *base;
+  int  ix;
+
+  ix = mfroot(l, p, sizeof p, &base);
+  if (ix >= 0)
+    mfwalkchain(l); /* the subscripts under the rooted place */
+  else if (base)
+    mex(base); /* *p = v: the pointer's place read; the store itself
+                * crosses it */
+  mex(r);
+  mdrops(olddrops);
+  if (ix >= 0)
+    mffact((usize) ix, p, Mfwr);
 }
 
 /* -- the statements: where the blocks come from --------------------- */
@@ -257,7 +544,7 @@ mbody(Ast *b) /* an arm's or a branch's body: a block, a statement, or
   if (stmtkind(b->k))
     mstmt(b);
   else
-    mexpr(b);
+    mex(b);
 }
 
 static void
@@ -265,7 +552,7 @@ mif(Ast *st)
 {
   usize thenb, elseb, join, endthen;
 
-  mexpr(st->v.ifx.cond);
+  mex(st->v.ifx.cond); /* the cond's reads: the branch's own facts */
   thenb = newblock();
   join = newblock();
   elseb = st->v.ifx.els ? newblock() : join; /* no else: the join is
@@ -275,6 +562,7 @@ mif(Ast *st)
                                               * empty one */
   vappend(&curb()->succ, &thenb);
   vappend(&curb()->succ, &elseb);
+  mfattachterm(curb());
   mirtermset(curb(), Mterm_branch, st);
   mb.cur = thenb;
   mbody(st->v.ifx.then);
@@ -294,21 +582,27 @@ mmatch(Ast *st)
   usize  i, join;
   usize *armb;
 
-  mexpr(st->v.call.f); /* the scrutinee */
+  mex(st->v.call.f); /* the scrutinee's read: the switch's own */
+  mfattachterm(curb());
   armb = vnew(usize, 4);
   for (i = 0; i < vlen(st->v.call.args); i++) {
     usize b = newblock();
 
     vappend(&armb, &b);
-    mlocs(st->v.call.args[i]->v.n2.a); /* the arm's bindings */
   }
   join = newblock();
   for (i = 0; i < vlen(armb); i++)
     vappend(&curb()->succ, &armb[i]);
   mirtermset(curb(), Mterm_switch, st);
   for (i = 0; i < vlen(st->v.call.args); i++) {
+    /* the arm's bindings scoped to the arm: the pattern's names walk
+     * with the body they answer, not ahead of every arm -- a later
+     * arm's binding would shadow an earlier arm's reads else */
     mb.cur = armb[i];
+    mfmark();
+    mlocs(st->v.call.args[i]->v.n2.a);
     mbody(st->v.call.args[i]->v.n2.b);
+    mfunmark();
     handto(mb.cur, join, Mterm_goto, 0);
   }
   mb.cur = join;
@@ -323,26 +617,30 @@ mfor(Ast *st)
   body = newblock();
   exit = newblock();
   handto(mb.cur, hdr, Mterm_goto, st);
+  mfmark(); /* the round's bindings: scoped to the loop, the whole
+             * of it, a continue's way back included */
   if (st->v.forx.shape != FCOND)
     mlocs(st->v.forx.a); /* the round's own bindings (10-iteration.md) */
   mb.cur = hdr;
-  mexpr(st->v.forx.a);   /* the condition, or the round's pattern's source */
-  mexpr(st->v.forx.b);   /* the round's let, or the iterable -- FIN's
-                          * own walks put the next call in the body
-                          * (10-iteration.md) */
-  mexpr(st->v.forx.via); /* the into_iter the loop's sugar spelled:
-                          * run once before the first round, and no
-                          * statement of the body's carries it */
+  mex(st->v.forx.a);   /* the condition, or the round's pattern's source */
+  mex(st->v.forx.b);   /* the round's let, or the iterable -- FIN's
+                        * own walks put the next call in the body
+                        * (10-iteration.md) */
+  mex(st->v.forx.via); /* the into_iter the loop's sugar spelled:
+                        * run once before the first round, and no
+                        * statement of the body's carries it */
   vappend(&curb()->succ, &body);
   vappend(&curb()->succ, &exit);
+  mfattachterm(curb());
   mirtermset(curb(), Mterm_branch, st);
   vappend(&mb.loophdr, &hdr);
   vappend(&mb.loopexit, &exit);
   mb.cur = body;
   mbody(st->v.forx.body);
-  mstmts(st->v.forx.unroll);           /* the const rounds' own copies */
-  mdrops(st->v.forx.drops);            /* the round's own bindings */
-  mdrops(st->v.forx.itdrops);          /* and the iterator's, at the loop's end */
+  mstmts(st->v.forx.unroll);  /* the const rounds' own copies */
+  mdrops(st->v.forx.drops);   /* the round's own bindings */
+  mdrops(st->v.forx.itdrops); /* and the iterator's, at the loop's end */
+  mfunmark();
   handto(mb.cur, hdr, Mterm_goto, st); /* a round's end is the
                                         * header's again */
   (void) vpop(mb.loophdr);
@@ -362,25 +660,24 @@ mstmt(Ast *st)
     return;
   switch (st->k) {
   case Nlet:
-    mexpr(st->v.let.e);
+    mex(st->v.let.e);
     mlocs(st->v.let.pat); /* the binding's slots, whatever the pattern */
     mb.f->nbind++;
-    mirinsnnew(curb(), Minsn_expr, st, 0, 0);
+    mfattach(mirinsnnew(curb(), Minsn_expr, st, 0, 0));
     return;
   case Nassign:
-    mexpr(st->v.bin.l);
-    mexpr(st->v.bin.r);
-    mdrops(st->v.bin.drop);
-    mirinsnnew(curb(), Minsn_expr, st, 0, 0);
+    mfwrite(st->v.bin.l, st->v.bin.r, st->v.bin.drop);
+    mfattach(mirinsnnew(curb(), Minsn_expr, st, 0, 0));
     return;
   case Nexprstmt:
-    mexpr(st->v.n1.e);
+    mex(st->v.n1.e);
     mdrops(st->v.n1.drops);
-    mirinsnnew(curb(), Minsn_expr, st, 0, 0);
+    mfattach(mirinsnnew(curb(), Minsn_expr, st, 0, 0));
     return;
   case Nreturn:
-    mexpr(st->v.n1.e);
+    mex(st->v.n1.e);
     mdrops(st->v.n1.drops);
+    mfattachterm(curb());
     mirtermset(curb(), Mterm_return, st);
     mb.cur = newblock(); /* what follows is reachable only in the
                           * tree's own shape */
@@ -400,9 +697,11 @@ mstmt(Ast *st)
     }
     return;
   case Nblock:
+    mfmark();
     mstmts(st->v.blk.stmts);
-    mexpr(st->v.blk.tail);
+    mex(st->v.blk.tail);
     mdrops(st->v.blk.drops);
+    mfunmark();
     return;
   case Nif:
   case Ncif:
@@ -416,7 +715,7 @@ mstmt(Ast *st)
     mfor(st);
     return;
   default: /* a statement the walk does not cut a block for */
-    mirinsnnew(curb(), Minsn_expr, st, 0, 0);
+    mfattach(mirinsnnew(curb(), Minsn_expr, st, 0, 0));
     return;
   }
 }
@@ -435,7 +734,8 @@ mstmts(Ast **stmts)
 /* the names a pattern binds, registered as the frame's slots: a
  * place rooted at one is this frame's storage, whatever the pattern
  * spelled around it (09-match.md). A pattern's nodes carry the
- * binding's type -- the checker wrote it there (rpat) */
+ * binding's type -- the checker wrote it there (rpat). Each binding
+ * is a write: the value lands in the slot the pattern made */
 static void
 mlocs(Ast *p)
 {
@@ -444,17 +744,27 @@ mlocs(Ast *p)
   if (!p)
     return;
   switch (p->k) {
-  case Npath: /* the binding form: one name, no arguments */
-    if (vlen(p->v.path.segs) == 1 && !p->v.path.segs[0]->v.seg.args)
+  case Npath: /* the binding form: one name, no arguments. The
+               * checker wrote the binding's own type here (rpat);
+               * a bare variant never carries one -- the mark that
+               * tells the two apart, no walk of this own */
+    if (vlen(p->v.path.segs) == 1 && !p->v.path.segs[0]->v.seg.args && p->ty) {
       mirlocalnew(mb.f, p->v.path.segs[0]->v.seg.name, p->ty, 0);
+      mfbind(p->v.path.segs[0]->v.seg.name);
+      mffact(vlen(mb.f->locals) - 1, "", Mfwr);
+    }
     return;
   case Nppath: {
     Ast **segs = p->v.ppath.path->v.path.segs;
 
-    if (!p->v.ppath.payload && !p->v.ppath.named && vlen(segs) == 1) {
+    if (!p->v.ppath.payload && !p->v.ppath.named && vlen(segs) == 1 && p->ty) {
       /* the parser sends every ident-headed pattern here: bare, no
-       * payload and no braces, it is the binding form (09) */
+       * payload and no braces, it is the binding form -- and the
+       * type the checker wrote says which, a unit variant carrying
+       * none (09) */
       mirlocalnew(mb.f, segs[0]->v.seg.name, p->ty, 0);
+      mfbind(segs[0]->v.seg.name);
+      mffact(vlen(mb.f->locals) - 1, "", Mfwr);
       return;
     }
     if (p->v.ppath.payload)
@@ -520,11 +830,18 @@ mirfnbuild(char *name, Sym *s, Ast *decl)
   mb.f = mirfnnew(name, s, decl);
   mb.loophdr = vnew(usize, 4);
   mb.loopexit = vnew(usize, 4);
+  mfseen = 0; /* this fn's names alone: the captures a closure sees,
+               * the bindings the body met -- the world above a
+               * closure is the env's, not its frame's */
+  mfmarks = 0;
+  mfbuf = 0;
   np = vlen(ps);
-  for (i = 0; i < np; i++) /* the parameters' slots: this frame's own
-                            * storage, the caller's value in it
-                            * (01-types.md) */
+  for (i = 0; i < np; i++) { /* the parameters' slots: this frame's own
+                              * storage, the caller's value in it
+                              * (01-types.md) */
     mirlocalnew(mb.f, ps[i]->v.param.name, sig && i < sig->nargs ? sig->args[i] : 0, 1);
+    mfbind(ps[i]->v.param.name);
+  }
   if (decl->k == Nclosure)
     for (i = 0; i < vlen(decl->v.clos.caps); i++) { /* a capture's
                                                      * name, read from
@@ -536,6 +853,7 @@ mirfnbuild(char *name, Sym *s, Ast *decl)
       Ast *c = decl->v.clos.caps[i];
 
       mirlocalnew(mb.f, c->v.cap.name, c->ty, 1);
+      mfbind(c->v.cap.name);
     }
   mb.cur = newblock();
   mbody(body);
@@ -543,13 +861,14 @@ mirfnbuild(char *name, Sym *s, Ast *decl)
                                                                    * slots, run at the
                                                                    * return the body
                                                                    * reaches on its own */
-  mirtermset(curb(), Mterm_return, tailval(body));                /* the body's end: the fn's own
-                                                                   * way out, whether or not the
-                                                                   * tree spelled a return there --
-                                                                   * the tail named so the check
-                                                                   * below reads the value */
-  mb.f->path = lexpath(); /* the file the fn was written in: the
-                           * escape check runs once the MIR is whole,
-                           * and its reports are this file's own
-                           * (#185) */
+  mfattachterm(curb());
+  mirtermset(curb(), Mterm_return, tailval(body)); /* the body's end: the fn's own
+                                                    * way out, whether or not the
+                                                    * tree spelled a return there --
+                                                    * the tail named so the check
+                                                    * below reads the value */
+  mb.f->path = lexpath();                          /* the file the fn was written in: the
+                                                    * escape check runs once the MIR is whole,
+                                                    * and its reports are this file's own
+                                                    * (#185) */
 }
