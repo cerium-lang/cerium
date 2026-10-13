@@ -84,14 +84,22 @@ static void mlocs(Ast *p); /* the names a pattern binds, as slots */
  * own bindings. Pre-made calls the checker spelled and the emitter
  * sends (03-move.md) -- not statements, and not the tail either, so a
  * walk that read neither would lose every drop call in the program
- * and let the graph drop the destructors themselves */
+ * and let the graph drop the destructors themselves. Every call the
+ * walk meets under one is a drop's own, marked so -- a row holds
+ * nothing a program wrote, only calls the checker made and the match
+ * a variant's destructor spells (03-move.md) */
+static int indrop;
+
 static void
 mdrops(Ast **d)
 {
   usize i;
 
-  for (i = 0; i < vlen(d); i++)
+  for (i = 0; i < vlen(d); i++) {
+    indrop++;
     mexpr(d[i]);
+    indrop--;
+  }
 }
 
 /* the calls an expression holds, in the order they stand. A node this
@@ -118,7 +126,7 @@ mexpr(Ast *e)
     mexpr(f);
     for (i = 0; i < vlen(e->v.call.args); i++)
       mexpr(e->v.call.args[i]);
-    mirinsnnew(curb(), Minsn_call, e, e->v.call.sym, dyn);
+    mirinsnnew(curb(), indrop ? Minsn_drop : Minsn_call, e, e->v.call.sym, dyn);
     return;
   }
   case Nbuiltin: /* @len, @ptr, @cast: the compiler's own word, and no
