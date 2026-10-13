@@ -20,6 +20,7 @@
  * (12-projects.md, Symbols). test rides -x: the door is a generated
  * runner over every #[test] fn instead of the main wrapper
  * (13-testing.md) */
+void emitstage1(Srcfile **files, usize nfiles, int release, const char *proj, int test);
 void emitfile(FILE *out, Srcfile **files, usize nfiles, int release, const char *proj, int test);
 
 /* the emitter's own state, one per compilation: the output, the

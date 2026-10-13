@@ -550,6 +550,12 @@ emitmir_project(const char *path)
   Srcfile **files = checked(path, &n, &nstd);
   FILE     *sink;
 
+  emitstage1(files, n, 0, projname, 0); /* the mid layer whole before the
+                                         * text: the layer a decision can
+                                         * ask stands before the decision
+                                         * does (client D,
+                                         * todos/todo-20261012-00.md) */
+
   sink = tmpfile();
   if (!sink) {
     fprintf(stderr, "cerium: no scratch file for the mir pass\n");
@@ -570,6 +576,10 @@ emitssa_project(const char *path, int release)
                   * panic included, like -c's own */
   Srcfile **files = checked(path, &n, &nstd);
 
+  emitstage1(files, n, release, projname, 0); /* the same whole, the
+                                               * release word riding along:
+                                               * the instance set settled
+                                               * is the build's own */
   emitfile(stdout, files, n, release, projname, 0);
   return 0;
 }
@@ -613,6 +623,7 @@ compile(const char *path, const char *out, int release, int test)
                     * panic included */
     Srcfile **files = checked(path, &n, &nstd);
 
+    emitstage1(files, n, release, projname, test);
     emitfile(p, files, n, release, projname, test);
   }
   if (pclose(p) != 0) {
