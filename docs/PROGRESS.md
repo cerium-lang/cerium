@@ -4041,3 +4041,30 @@ emitter, and that is its own cut. Until then the shadow runs on
 every compile, and a disagreement is a bug the moment it is born.
 
 719 green, both walks agreeing on every one, the library's 54.
+
+The stage before the text stands before the checker's end now: what
+was the head of the emitter's own walk -- the mid layer built whole,
+every fn and instantiation and closure, the graph's answer, the
+naming pass's numbers burned -- is emitstage1, asked between
+checkproject and any text the three doors write (-i, -s, the
+compile), the release and test words riding along so the instance
+set it settles is the build's own. The -T dump asks nothing of it:
+the checker walks ahead of the emitter by design, and a dump of the
+check must not be refused by a milestone the text has not reached.
+
+Why the reorder and not the borrow shadow, said plainly: the
+borrow's migration is a semantic step, the tree's lexical thaw to a
+flow's -- NLL, the todos' own word -- and a walk that is strictly
+looser than the one it shadows has no disagreement to catch. The
+flip is where the borrow belongs. And the flip's own knot is the
+one this reorder unties: a decision the checker makes cannot ask a
+layer built after it, while the layer's facts are spelled from the
+types the checker writes -- the egg and the hen. The way through,
+rustc's own: the checker walks once as it always has, the mid layer
+builds, and a second pass re-decides what the first spelled -- the
+drops first, their rows rewritten from the flow's own answers, the
+tree's machinery deleted once nothing reads it. The stage is set;
+the next cut is the pass.
+
+719 green, the mid layer's print not a byte moved, the suite's time
+its own, the library's 54.

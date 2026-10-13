@@ -4592,16 +4592,26 @@ emittest(FILE *o)
              "}\n\n");
 }
 
+/* the stage before the text: the mid layer built whole -- every fn,
+ * every instantiation, every closure, the graph's own answer -- and
+ * the naming pass's numbers burned so the real one restarts. This
+ * stood at the head of the text's own walk once; it stands before
+ * the checker's end now, for the mid layer's clients are about to
+ * become the decisions the checker makes, and a decision cannot ask
+ * a layer built after it (todos/todo-20261012-00.md, client D).
+ *
+ * The scratch text goes nowhere -- pass one names the aggregates and
+ * finds every instantiation, and qbe wants the type declarations
+ * before their first use. The release word and the test word ride
+ * along for the checks the first pass inserts, so the instance set
+ * it settles is the one the asked-for build really holds */
 void
-emitfile(FILE *out, Srcfile **files, usize nfiles, int release, const char *proj, int test)
+emitstage1(Srcfile **files, usize nfiles, int release, const char *proj, int test)
 {
-  FILE *scratch = tmpfile(); /* pass one names the aggregates and
-                              * finds every instantiation; its text
-                              * goes nowhere (qbe wants the type
-                              * declarations before their first use) */
+  FILE *scratch = tmpfile();
 
   if (!scratch) {
-    fprintf(stderr, "cerium: no scratch file for the type pass\n");
+    fprintf(stderr, "cerium: no scratch file for the mir pass\n");
     exit(1);
   }
   emproj = proj; /* the project's name, the symbols' first segment
@@ -4651,7 +4661,17 @@ emitfile(FILE *out, Srcfile **files, usize nfiles, int release, const char *proj
   memset(chkbase, 0, sizeof chkbase); /* the messages' data symbols
                                        * with them: the numbering
                                        * they ride restarted */
-  abidecls(out);                      /* the :type declarations, the order qbe reads */
+}
+
+void
+emitfile(FILE *out, Srcfile **files, usize nfiles, int release, const char *proj, int test)
+{
+  emproj = proj; /* the stage before the text set these; the text's
+                  * own ask says them again, nothing between the two
+                  * to disagree */
+  rel = release;
+  istest = test;
+  abidecls(out); /* the :type declarations, the order qbe reads */
   ipass = 2;
   emitall(out, files, nfiles); /* pass two: the text */
   if (test)
