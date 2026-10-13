@@ -85,7 +85,22 @@ mfacts(Mirfn *f, u8 *st, u8 *was, Mirfact *fs, Ast *at, int drops)
     char *nm = f->locals[t->local] && f->locals[t->local]->name ? f->locals[t->local]->name : "?";
 
     if (t->k == Mfmv) {
-      if (drops) { /* the row against the state it entered with */
+      if (drops == 1) { /* a plain row: the slot alive on every path
+                         * that reaches -- a maybe says the tree missed
+                         * the guard the row owes, a moved slot owes no
+                         * row at all (03-move.md) */
+        if (was[t->local] != MALIVE)
+          die("mir: the move walk disagrees at @%u:%u -- a plain drop row spelled for '%s', "
+              "%s, the tree let it stand",
+              at ? at->line : 0, at ? at->col : 0, nm,
+              was[t->local] == MMAYBE ? "moved down one path and owed a guard"
+                                      : "already moved on every path");
+        continue;
+      }
+      if (drops == 2) { /* a guarded row: the flag's own way in, the
+                         * not-moved path the branch takes -- a maybe
+                         * is its shape, a moved slot still owes
+                         * nothing */
         if (was[t->local] == MMOVED)
           die("mir: the move walk disagrees at @%u:%u -- a drop row spelled for '%s', already "
               "moved on every path, the tree let it stand",
@@ -137,7 +152,7 @@ static void
 mfrun(Mirfn *f)
 {
   u8   **in, **out;
-  int   *inq;
+  int   *inq, *guarded;
   usize  nl = vlen(f->locals), nb = vlen(f->blocks);
   usize *work;
   usize  b, i, j, k, head;
@@ -156,8 +171,20 @@ mfrun(Mirfn *f)
       die("mir: no memory for the move walk");
     memset(in[b], MTOP, nl); /* no path yet: the join's own unit */
   }
-  memset(in[0], MALIVE, nl); /* the entry: the caller's values in
-                              * the parameters, nothing bound yet */
+  memset(in[0], MALIVE, nl);             /* the entry: the caller's values in
+                                          * the parameters, nothing bound yet */
+  guarded = calloc(nb, sizeof *guarded); /* a block a drop's guard hands
+                                          * to: the flag's own way in,
+                                          * the not-moved path */
+  if (!guarded)
+    die("mir: no memory for the move walk");
+  for (b = 0; b < nb; b++) {
+    Mirblock *bb = f->blocks[b];
+
+    if (bb->term == Mterm_branch && bb->termset && bb->te && bb->te->k == Nif &&
+        bb->te->v.ifx.cond && bb->te->v.ifx.cond->mvd == 2 && vlen(bb->succ))
+      guarded[bb->succ[0]] = 1;
+  }
   work = vnew(usize, 16);
   head = 0;
   vappend(&work, &head);
@@ -172,7 +199,7 @@ mfrun(Mirfn *f)
     memcpy(out[head], in[head], nl);
     for (i = 0; i < vlen(bb->insns); i++)
       mfacts(f, out[head], in[head], bb->insns[i]->facts, bb->insns[i]->e,
-             bb->insns[i]->k == Minsn_drop);
+             bb->insns[i]->k == Minsn_drop ? (guarded[head] ? 2 : 1) : 0);
     mfacts(f, out[head], in[head], bb->facts, bb->te, 0); /* the terminator's own:
                                                            * a cond's read, a
                                                            * return's move */
@@ -190,6 +217,32 @@ mfrun(Mirfn *f)
       }
     }
   }
+  for (b = 0; b < nb; b++) { /* the guard a drop row owes, asked at its
+                              * own branch: the flag's read the tree
+                              * spells (mvd) names the slot, and the
+                              * state the branch decides on is maybe --
+                              * a plain alive or a moved would say the
+                              * guard spelled for a row that owed it
+                              * not (03-move.md, Guarded drops) */
+    Mirblock *bb = f->blocks[b];
+    Ast      *cond;
+
+    if (!bb->termset || bb->term != Mterm_branch || !bb->te || bb->te->k != Nif)
+      continue;
+    cond = bb->te->v.ifx.cond;
+    if (!cond || cond->mvd != 2 || cond->k != Npath || vlen(cond->v.path.segs) != 1)
+      continue; /* a program's own branch, no drop's guard */
+    for (k = 0; k < nl; k++)
+      if (f->locals[k] && f->locals[k]->name &&
+          strcmp(f->locals[k]->name, cond->v.path.segs[0]->v.seg.name) == 0) {
+        if (in[b][k] != MMAYBE)
+          die("mir: the move walk disagrees at @%u:%u -- a drop's guard spelled for '%s', "
+              "%s on every path that reaches, a guard owed where the join could not say",
+              bb->te->line, bb->te->col, f->locals[k]->name,
+              in[b][k] == MALIVE ? "alive" : "moved");
+        break;
+      }
+  }
   for (b = 0; b < nb; b++) {
     free(in[b]);
     free(out[b]);
@@ -197,6 +250,7 @@ mfrun(Mirfn *f)
   free(in);
   free(out);
   free(inq);
+  free(guarded);
 }
 
 /* the whole program's, once the mid layer is built: every fn, every

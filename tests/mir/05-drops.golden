@@ -15,7 +15,7 @@ fn ceri3mir7guarded guarded: 5 blocks, 6 insns, 1 lets
     expr let [wr d] @17:3
     branch bb1 bb2 [rd c] @19:3
   bb1:
-    call spend @20:10
+    call spend [mv d] @20:10
     expr expr @20:13
     goto bb2
   bb2:
