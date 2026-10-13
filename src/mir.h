@@ -210,4 +210,11 @@ Mirlocal *mirlocalnew(Mirfn *f, char *name, Type *ty, int param);
  * life is one fn's, so no regions yet */
 void mirescapeall(void);
 
+/* mirfmove.c -- client D, the move walk's shadow: the aliveness the
+ * tree's checker says, asked again over the blocks (the facts b1
+ * spelled), and a hard disagreement between the two refuses the
+ * compile -- the shadow that proves them equal until the flip. Runs
+ * beside the escape check, the MIR whole */
+void mirfmoveall(void);
+
 #endif /* MIR_H */
