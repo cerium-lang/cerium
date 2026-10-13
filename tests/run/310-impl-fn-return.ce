@@ -1,0 +1,22 @@
+/* a closure leaves its fn: the value's env a copy, the call the
+ * static fn it spells, the answer the signature promised
+ * (05-traits.md) */
+use std::ops::{Fn, FnMut};
+
+fn adder(n: i32) -> impl Fn<i32, Output = i32> {
+  fn[n](y: i32) -> i32 { n + y }
+}
+fn counter(seed: i32) -> impl FnMut<Output = i32> {
+  let mut n = seed;
+  fn[mut n]() -> i32 { n = n + 1; n }
+}
+fn openout(n: i32) -> impl Fn<i32> { /* the Output left open, the
+                                      * value's own impl answers */
+  fn[n](y: i32) -> i32 { n + y }
+}
+fn main() -> i32 {
+  let a = adder(5);
+  let c = counter(10);
+  let o = openout(2);
+  a(37) + c() + c() + o(40)   /* 42 + 11 + 12 + 42 = 107 */
+}

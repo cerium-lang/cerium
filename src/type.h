@@ -53,6 +53,13 @@ enum
              * (08-reflection.md); never anywhere else */
   Typroj,   /* Self::Item inside a trait: sym the trait, t the Self,
              * name the associated type (05-traits.md) */
+  Tyexist,  /* impl Path<...>: the existential return. sym the trait,
+             * args its application (positional then pins, the
+             * handle's own layout), t the concrete type -- the
+             * checker's writeback, NULL until the fn's own return
+             * tells it, and never part of the type's identity: the
+             * same signature is the same existential whatever it
+             * lands on (05-traits.md) */
   Tymut,    /* a writable slot inside ptr/slice/array/tuple; never alone */
   Tyspread, /* ...τ among a tuple's rows: the template t walks the pack
              * gp, each of its elements a row once the instance feeds
@@ -120,6 +127,12 @@ Type *tytuple(Type **ts, usize n);
 Type *tyfn(Type **args, usize n, Type *ret);
 Type *tysym(Sym *s, Type **args, usize n); /* struct/union/enum/trait */
 Type *tydyn(Sym *s, Type **args, usize n, int mut);
+Type *tyexist(Sym *s, Type **args, usize n);
+Type *tyopen(Type *t);                        /* the existential's landing, wherever a layout
+                                               * or an abi asks: the slot's concrete type, the
+                                               * existential itself when nobody has landed one
+                                               * yet (the check runs before the emit that
+                                               * needs it answered, 05-traits.md) */
 Type *typroj(Sym *s, Type *self, char *name); /* Self::Item, in a trait */
 Type *tyspread(Ast *gp, Type *tmpl);          /* ...τ, the pack gp the rows feed */
 

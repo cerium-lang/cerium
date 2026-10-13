@@ -2902,19 +2902,24 @@ emaexpr0(Em *em, Ast *e)
         }
       }
     }
-    if (!nm && !dynfp && f->k == Npath && f->ty && f->ty->k == Tystruct && f->ty->sym &&
-        f->ty->sym->decl && f->ty->sym->decl->k == Nclosure) { /* the closure's own call:
-                                                                * the env rides first, the
-                                                                * fn a name the literal
-                                                                * itself carries
-                                                                * (05-traits.md) */
-      Ast *cl = f->ty->sym->decl;
+    { /* the callee's own type, the existential's landing among the
+       * places it answers (05-traits.md) */
+      Type *ct = f->ty ? tyopen(f->ty) : 0;
 
-      if (!cl->v.clos.sym)
-        cerrat(f, "the closure's fn was never named");
-      nm = cl->v.clos.sym;
-      ra = emaexpr(em, f);         /* the env's address: the callee's own value */
-      selfty = typtr(tyvoidptr()); /* one pointer, one width */
+      if (!nm && !dynfp && f->k == Npath && ct && ct->k == Tystruct && ct->sym && ct->sym->decl &&
+          ct->sym->decl->k == Nclosure) { /* the closure's own call:
+                                           * the env rides first, the
+                                           * fn a name the literal
+                                           * itself carries
+                                           * (05-traits.md) */
+        Ast *cl = ct->sym->decl;
+
+        if (!cl->v.clos.sym)
+          cerrat(f, "the closure's fn was never named");
+        nm = cl->v.clos.sym;
+        ra = emaexpr(em, f);         /* the env's address: the callee's own value */
+        selfty = typtr(tyvoidptr()); /* one pointer, one width */
+      }
     }
     if (nm)
       fprintf(em->o, "\t%s =%s call $%s(", t, sigty(e->ty, e), nm);

@@ -203,6 +203,11 @@ iscopy(Type *t)
 
   if (!t)
     return 0;
+  if (t->k == Tyexist) /* the slot is written after the intern: the
+                        * memo would hold the bare answer past the
+                        * writeback, so the existential answers live
+                        * (05-traits.md) */
+    return t->t ? iscopy(t->t) : 0;
   if (t->copyknown == 1) /* the interned type asked once; the answer
                           * holds for every read after */
     return t->copyval;

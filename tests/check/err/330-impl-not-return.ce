@@ -1,0 +1,7 @@
+/* impl names a fn's return, nowhere else (05-traits.md) */
+use std::ops::Fn;
+
+fn main() -> i32 {
+  let g: impl Fn<i32, Output = i32> = fn[](y: i32) -> i32 { y };
+  g(1)
+}

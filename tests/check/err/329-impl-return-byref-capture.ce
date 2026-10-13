@@ -1,0 +1,9 @@
+/* a byref capture handed back: the env points into the frame, and
+ * the escape check answers now that the spelling exists (#185) */
+use std::ops::Fn;
+
+fn bad() -> impl Fn<i32, Output = i32> {
+  let mut x = 0;
+  fn[&mut x](y: i32) -> i32 { *x = *x + y; *x }
+}
+fn main() -> i32 { 0 }

@@ -3072,6 +3072,72 @@ rexpr1(Ast *e, Fenv *fe, Type *want)
             }
             return sig->t;
           }
+          if (t && t->k == Tyexist) { /* an existential's own call: the
+                                       * fn that made it wrote its
+                                       * answer into the signature's
+                                       * slot, and the bound the slot
+                                       * spells is the call's own
+                                       * sugar (05-traits.md) */
+            Sym     *fam = t->sym;
+            Type   **bts = 0;
+            usize    nb = 0, bi;
+            Frzsave *svs2 = n ? arenaalloc(n * sizeof *svs2) : 0;
+            Type    *ans = 0;
+
+            if (fam != sym_fn && fam != sym_fnmut && fam != sym_fnonce)
+              berr(e, "'%s' is %s, not callable", nm, btys(t));
+            if (t->nargs && t->args[0] && t->args[0]->k == Tytuple) { /* the pack's
+                                                                       * own slot, the
+                                                                       * whole tuple
+                                                                       * (04) */
+              bts = t->args[0]->args;
+              nb = t->args[0]->nargs;
+            }
+            if (t->nargs > 1 && t->args[1]) /* the Output pin, when the
+                                             * signature spelled one */
+              ans = t->args[1];
+            if (!ans && t->t) { /* not pinned: the value's own impl
+                                 * answers, the slot's landing read
+                                 * here (05-traits.md) */
+              Sym  *im = implfor(fam, t->t, 0, 0);
+              usize j;
+
+              for (j = 0; im && j < im->nmembers; j++)
+                if (im->members[j].kind == Mtype && strcmp(im->members[j].name, "Output") == 0)
+                  ans = im->members[j].val;
+            }
+            if (!ans)
+              berr(e,
+                   "'%s' is %s, and its answer is not known here -- pin the Output or name the fn"
+                   " (05-traits.md)",
+                   nm, btys(t));
+            if (svs2) {
+              memset(svs2, 0, n * sizeof *svs2);
+              for (bi = 0; bi < n; bi++)
+                argborrow(args[bi], fe, &svs2[bi]);
+            }
+            if (n != nb)
+              berr(e, "'%s' takes %lu arguments, %lu given", nm, (unsigned long) nb,
+                   (unsigned long) n);
+            for (bi = 0; bi < n; bi++) {
+              Type *at = rexpr(args[bi], fe, bts ? bts[bi] : 0);
+
+              if (at && bts && bts[bi] && !tysame(at, bts[bi])) {
+                Type *cc = recoerce(args[bi], bts[bi], fe);
+
+                if (!cc || !tysame(cc, bts[bi]))
+                  berr(args[bi], "'%s' wants %s here, this is %s", nm, btys(bts[bi]), btys(at));
+              }
+            }
+            thawargs(svs2, n); /* the call is done; its borrows ended with it */
+            e->v.call.sym = 0; /* the emitter reads the callee's own
+                                * value, the slot's landing names the
+                                * fn (05-traits.md) */
+            f->ty = t;         /* the callee is a value here: the
+                                * landing's shape, the closure's own
+                                * two doors' word (05-traits.md) */
+            return ans;
+          }
           if (t && t->k == Typaram) { /* the Fn family a bound spells on
                                        * the parameter, the call's own
                                        * sugar (05-traits.md): f(x) is
@@ -5025,6 +5091,55 @@ itpush(Fenv *fb, Type *it)
                                         * break's own to destruct */
 }
 
+/* an existential return's own writeback: the body's concrete answer
+ * lands in the signature's slot, the promise checked where it stands
+ * -- the trait implemented, each pin the value's own answer to
+ * (05-traits.md). Two different answers are two different fns, and
+ * the error says so */
+static void
+existland(Type *ex, Type *ct, Ast *at)
+{
+  Sym *im;
+
+  if (!ex || ex->k != Tyexist || !ct)
+    return;
+  im = implfor(ex->sym, ct, 0, 0);
+  if (!im)
+    berr(at, "the fn returns impl %s, this is %s, which does not implement it (05-traits.md)",
+         btys(ex), btys(ct));
+  { /* the pins: each spelled slot against the value's own answer,
+     * the impl's member of the same name. The trait's own members,
+     * the Mtype ones in order, are the slots the signature's args
+     * carry past the generic ones (04-generics.md) */
+    usize ng = ex->sym->ngparams, i, j, mi = 0;
+    int   bad = 0;
+
+    for (i = ng; i < ex->nargs; i++) {
+      Member *tm = 0;
+
+      for (j = 0; j < ex->sym->nmembers && !tm; j++)
+        if (ex->sym->members[j].kind == Mtype) {
+          if (mi == i - ng)
+            tm = &ex->sym->members[j];
+          mi++;
+        }
+      if (!ex->args[i] || !tm)
+        continue; /* left open: the answer rides the concrete type */
+      for (j = 0; j < im->nmembers; j++)
+        if (im->members[j].kind == Mtype && strcmp(im->members[j].name, tm->name) == 0) {
+          if (!tysame(im->members[j].val, ex->args[i]))
+            bad = 1;
+          break;
+        }
+    }
+    if (bad)
+      berr(at, "the fn's return pins an answer the value does not carry (05-traits.md)");
+  }
+  if (ex->t && !tysame(ex->t, ct))
+    berr(at, "the fn's returns are not one type: %s and %s (05-traits.md)", btys(ex->t), btys(ct));
+  ex->t = ct;
+}
+
 void
 rstmt(Ast *st, Fenv *fe)
 {
@@ -5247,10 +5362,22 @@ rstmt(Ast *st, Fenv *fe)
     if (!fe->fnret)
       berr(st, "return outside a fn");
     if (!dive && !tysame(t, fe->fnret)) {
-      Type *c = st->v.n1.e ? recoerce(st->v.n1.e, fe->fnret, fe) : 0;
+      if (fe->fnret && fe->fnret->k == Tyexist) { /* the existential's
+                                                   * own landing: the
+                                                   * value's type
+                                                   * written into the
+                                                   * signature's slot,
+                                                   * the promise
+                                                   * checked where it
+                                                   * stands
+                                                   * (05-traits.md) */
+        existland(fe->fnret, t, st);
+      } else {
+        Type *c = st->v.n1.e ? recoerce(st->v.n1.e, fe->fnret, fe) : 0;
 
-      if (!c || !tysame(c, fe->fnret))
-        berr(st, "the fn returns %s, this is %s", btys(fe->fnret), btys(t));
+        if (!c || !tysame(c, fe->fnret))
+          berr(st, "the fn returns %s, this is %s", btys(fe->fnret), btys(t));
+      }
     }
     st->v.n1.drops = scopedrops(fe, fe->fnbase, st); /* the early
                                                       * exit: every
@@ -5697,10 +5824,15 @@ runbody(Ast *it, Env env, Type **argtys, Type *ret, Val **cvals, Ast **gparams, 
     Ast  *tail = it->v.fn.body->v.blk.tail;
 
     if (!tysame(t, ret)) {
-      Type *c = tail ? recoerce(tail, ret, &fe) : 0;
+      if (ret && ret->k == Tyexist) { /* the existential's own
+                                       * landing (05-traits.md) */
+        existland(ret, t, tail ? tail : it->v.fn.body);
+      } else {
+        Type *c = tail ? recoerce(tail, ret, &fe) : 0;
 
-      if (!c || !tysame(c, ret))
-        berr(tail ? tail : it->v.fn.body, "the fn returns %s, this is %s", btys(ret), btys(t));
+        if (!c || !tysame(c, ret))
+          berr(tail ? tail : it->v.fn.body, "the fn returns %s, this is %s", btys(ret), btys(t));
+      }
     }
   }
   it->v.fn.drops = scopedrops(&fe, 0, it); /* the parameters' own

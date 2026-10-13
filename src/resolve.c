@@ -725,9 +725,17 @@ static void resolvetrait(Sym *s);
 static void filectx(Srcfile *sf); /* a file's whole context, entered --
                                    * bound whole on the first read (below) */
 
+static int inexret; /* a fn's return type resolving now: the one
+                     * place an impl Path spells (05-traits.md) */
+
 Type *
 rty(Ast *t, Env *env)
 {
+  int direct = inexret; /* consumed here: every rty below this one is
+                         * a child's, and a child's impl is not this
+                         * fn's return */
+
+  inexret = 0;
   switch (t->k) {
   case Nunit:
     return tyunit();
@@ -850,6 +858,109 @@ rty(Ast *t, Env *env)
       ts[i] = rty(t->v.fnty.args[i], env);
     /* a missing return is () -- the two spellings intern to one */
     return tyfn(ts, n, t->v.fnty.ret ? rty(t->v.fnty.ret, env) : tyunit());
+  }
+  case Ntimpl: { /* impl Path<...>: the fn's own return, an
+                  * existential. The path carries the application the
+                  * way a bound spells it -- positional words, then the
+                  * pins behind them (04-generics.md) -- and the
+                  * existential's own difference is the pins: left
+                  * open on purpose, the answer riding the concrete
+                  * type the body's own return writes back
+                  * (05-traits.md) */
+    Ast *path = t->v.tdyn.e;
+    Ast *seg;
+    Sym *s;
+
+    if (!direct)
+      cerrat(t, "impl names a fn's return, nowhere else (05-traits.md)");
+    if (path->k != Npath || vlen(path->v.path.segs) != 1)
+      cerrat(path, "expected a trait after impl");
+    seg = path->v.path.segs[0];
+    s = symfind(seg->v.seg.name);
+    if (!s)
+      cerrat(path, "unknown trait '%s'", seg->v.seg.name);
+    if (s->kind != Strait)
+      cerrat(path, "'%s' is not a trait", seg->v.seg.name);
+    if (!s->traitdone)
+      resolvetrait(s);
+    {
+      Ast **pas = seg->v.seg.args; /* the application's own words,
+                                    * the bound's spelling (04) */
+      usize  na = vlen(pas), i, j;
+      usize  ng = s->ngparams, nty = 0, mi;
+      Type **ga = 0;
+      Type **args;
+
+      if (!ng && na)
+        cerrat(t, "'%s' takes no arguments", s->name);
+      if (ng) {
+        int    pack = s->gparams[ng - 1]->v.gp.pack;
+        Type **pa = 0;
+        usize  nps = 0;
+
+        for (i = 0; i < na; i++)
+          if (pas[i]->k != Nassoc)
+            nps++;
+        if (nps) {
+          pa = tyargs(nps);
+          nps = 0;
+          for (i = 0; i < na; i++)
+            if (pas[i]->k != Nassoc)
+              pa[nps++] = rty(pas[i], env);
+        }
+        if (pack) {
+          if (nps + 1 < ng)
+            cerrat(t, "'%s' wants its %lu leading arguments, %lu spelled", s->name,
+                   (unsigned long) (ng - 1), (unsigned long) nps);
+          ga = packargs(s, pa, nps);
+        } else {
+          if (nps != ng)
+            cerrat(t, "'%s' takes %lu arguments, %lu spelled", s->name, (unsigned long) ng,
+                   (unsigned long) nps);
+          ga = pa;
+        }
+      }
+      for (i = 0; i < s->nmembers; i++)
+        if (s->members[i].kind == Mtype)
+          nty++;
+      for (i = 0; i < na; i++) { /* every pin names one of them */
+        Member *m = 0;
+
+        if (pas[i]->k != Nassoc)
+          continue;
+        for (j = 0; j < s->nmembers; j++)
+          if (s->members[j].kind == Mtype &&
+              strcmp(s->members[j].name, pas[i]->v.assoc.name) == 0) {
+            m = &s->members[j];
+            break;
+          }
+        if (!m)
+          cerrat(pas[i], "'%s' has no associated type '%s'", s->name, pas[i]->v.assoc.name);
+        if (!pas[i]->v.assoc.rt) /* the bound's own cache (04) */
+          pas[i]->v.assoc.rt = rty(pas[i]->v.assoc.t, env);
+      }
+      args = tyargs(ng + nty);
+      for (i = 0; i < ng; i++)
+        args[i] = ga[i];
+      mi = ng;
+      for (i = 0; i < s->nmembers; i++) { /* each slot what its
+                                           * spelling gave, 0 what it
+                                           * left open: the
+                                           * existential's own point */
+        Member *m = &s->members[i];
+
+        if (m->kind != Mtype)
+          continue;
+        args[mi] = 0;
+        for (j = 0; j < na; j++)
+          if (pas[j]->k == Nassoc && strcmp(pas[j]->v.assoc.name, m->name) == 0) {
+            args[mi] = pas[j]->v.assoc.rt;
+            break;
+          }
+        mi++;
+      }
+      return tyexist(s, args, ng + nty);
+    }
   }
   case Ntdyn: {
     Ast *path = t->v.tdyn.e;
@@ -991,7 +1102,16 @@ resolvefnsig(Ast *it, Env *env)
         cerrat(p, "duplicate parameter '%s'", p->v.param.name);
     ps[i] = rty(p->v.param.t, &e);
   }
-  return tyfn(ps, n, it->v.fn.ret ? rty(it->v.fn.ret, &e) : tyunit());
+  if (it->v.fn.ret) {
+    Type *r;
+
+    inexret = 1; /* the return's own direct words: an impl here and
+                  * only here (05-traits.md) */
+    r = rty(it->v.fn.ret, &e);
+    inexret = 0;
+    return tyfn(ps, n, r);
+  }
+  return tyfn(ps, n, tyunit());
 }
 
 static void

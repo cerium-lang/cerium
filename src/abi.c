@@ -64,6 +64,7 @@ qbety(Type *ret, Ast *at)
 int
 isagg(Type *t)
 {
+  t = tyopen(t); /* the existential answers its landing (05) */
   return t && (t->k == Tystruct || t->k == Tyunion || t->k == Tyenum || t->k == Tyarray ||
                t->k == Tytuple || t->k == Tyslice || t->k == Tydyn);
 }
@@ -94,6 +95,7 @@ char *typereg(Type *t);
 int
 isabb(Type *t)
 {
+  t = tyopen(t); /* the existential answers its landing (05) */
   return isagg(t) && !nicheness(t);
 }
 
@@ -101,6 +103,7 @@ isabb(Type *t)
 static char
 qbefty(Type *t)
 {
+  t = tyopen(t); /* the existential answers its landing (05) */
   if (t->k == Tyint) {
     switch (t->num) {
     case IN_I8:
@@ -132,6 +135,7 @@ fieldty(Type *ft)
   static char b[2][16];
   static int  r = 0;
 
+  ft = tyopen(ft); /* the existential answers its landing (05) */
   while (ft && ft->k == Tymut)
     ft = ft->t; /* a mut slot: the shape beneath takes no space from it */
   r = (r + 1) % 2;
@@ -412,6 +416,7 @@ sigty(Type *t, Ast *at)
 {
   static char b[2];
 
+  t = tyopen(t); /* the existential answers its landing (05) */
   while (t && t->k == Tymut)
     t = t->t;
   if (!isabb(t)) {

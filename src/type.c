@@ -71,10 +71,16 @@ thash(Type *t)
     h = mix(h, phash(t->gp));
   if (t->name)
     h = mix(h, shashstr(t->name));
-  if (t->t)
+  if (t->t && t->k != Tyexist) /* the existential's slot is not its
+                                * identity: written later, never
+                                * hashed, or the same signature would
+                                * intern twice -- once bare, once
+                                * landed */
     h = mix(h, thash(t->t));
-  for (i = 0; i < t->nargs; i++)
-    h = mix(h, thash(t->args[i]));
+  for (i = 0; i < t->nargs; i++) /* an existential's open pin is a
+                                  * NULL slot, and it hashes like
+                                  * any other word: a 0 (05) */
+    h = mix(h, t->args[i] ? thash(t->args[i]) : 0);
   return h;
 }
 
@@ -90,13 +96,24 @@ teq(Type *a, Type *b)
     return 0;
   if (!a->name != !b->name || (a->name && strcmp(a->name, b->name) != 0))
     return 0;
-  if (!a->t != !b->t) /* one has a child, the other does not */
-    return 0;
-  if (a->t && !teq(a->t, b->t))
-    return 0;
-  for (i = 0; i < a->nargs; i++)
+  if (a->k != Tyexist) { /* the existential's slot is not identity
+                          * (thash's own guard); its application is */
+    if (!a->t != !b->t)  /* one has a child, the other does not */
+      return 0;
+    if (a->t && !teq(a->t, b->t))
+      return 0;
+  }
+  for (i = 0; i < a->nargs; i++) { /* the open pin again: two
+                                    * NULLs are the same slot
+                                    * (05-traits.md) */
+    if (!a->args[i] || !b->args[i]) {
+      if (a->args[i] != b->args[i])
+        return 0;
+      continue;
+    }
     if (!teq(a->args[i], b->args[i]))
       return 0;
+  }
   return 1;
 }
 
@@ -327,6 +344,31 @@ tydyn(Sym *s, Type **args, usize n, int mut)
   x.args = n ? args : 0;
   x.nargs = n;
   return intern(&x);
+}
+
+/* the existential: the trait it promises, the application it spells,
+ * the concrete type a slot the fn's own return fills in later. The
+ * slot is not identity -- the same signature interns to the one
+ * node, and the writeback every caller then reads */
+Type *
+tyexist(Sym *s, Type **args, usize n)
+{
+  Type x;
+
+  memset(&x, 0, sizeof x);
+  x.k = Tyexist;
+  x.sym = s;
+  x.args = n ? args : 0;
+  x.nargs = n;
+  return intern(&x);
+}
+
+Type *
+tyopen(Type *t)
+{
+  while (t && t->k == Tyexist && t->t)
+    t = t->t;
+  return t;
 }
 
 /* a family's signature through the handle's own words: a parameter
@@ -641,17 +683,29 @@ gsubstv(Type *t, Ast **gps, Type **tys, Val **gcvals, usize n)
   case Tystruct:
   case Tyunion:
   case Tytrait:
-  case Tydyn: /* the composite shapes: the arguments in step, a
-               * pack's or a spread's rows among them (04-generics.md) */
+  case Tydyn:
+  case Tyexist: /* the composite shapes: the arguments in step, a
+                 * pack's or a spread's rows among them (04-generics.md) */
     as = substargs(t->args, t->nargs, gps, tys, gcvals, n, &m);
     switch (t->k) {
     case Tytuple:
+      if (!t->nargs)
+        return t;                           /* the zero-row tuple is the pack's own black box,
+                                             * not the unit a spent spread folds to
+                                             * (04-generics.md) -- and a fold here would intern
+                                             * it apart from itself, a new node a slot's landing
+                                             * never reaches */
       return m ? tytuple(as, m) : tyunit(); /* every row spent: the
                                              * empty tuple's own one
                                              * spelling, the literal's
                                              * (01-types.md) */
     case Tydyn:
       return tydyn(t->sym, as, m, t->mut);
+    case Tyexist:
+      return tyexist(t->sym, as, m); /* the slot stays: the instance
+                                      * re-checks the body under the
+                                      * binding and writes its own
+                                      * (04-generics.md) */
     default:
       return tysym(t->sym, as, m); /* an enum stays itself:
                                     * ?T is tysym(sym_option),
@@ -833,6 +887,10 @@ sbfmt(SBuf *b, Type *t)
     break;
   case Tydyn:
     sbputs(b, t->mut ? "dyn mut " : "dyn ");
+    sbname(b, t);
+    break;
+  case Tyexist:
+    sbputs(b, "impl ");
     sbname(b, t);
     break;
   case Tyfn:
