@@ -1,0 +1,49 @@
+/* the facts: what one instruction touches, spelled where a flow
+ * reads it (todos/todo-20261012-00.md, client D's ground). A value
+ * read rd or mv by its own shape, a borrow bor or borm, the store
+ * wr, the pattern's bindings wr -- the reads that feed a call ride
+ * the call's own insn, and the names a shadow takes again are
+ * slots of their own */
+
+struct D { mut n: i32 }
+struct E { d: D }
+
+fn chain(e: E) -> i32 { e.d.n } /* rd e.d.n: the root first */
+
+fn receiver(a: []i32) -> i32 { @cast<i32>(a.len()) } /* rd a: the
+                                                       * method's name
+                                                       * no field */
+
+fn through(p: *mut D) -> i32 { /* rd p: the pointer read, the store
+                                * across it no fact of this frame */
+  *p = D{n:1};
+  0
+}
+
+fn view(s: []i32) -> i32 { @cast<i32>(s[1..].len()) } /* bor s: the
+                                                        * view's own
+                                                        * bargain */
+
+fn shadow() -> i32 {
+  let a = 1;
+  let a = a + 1; /* the second a a slot of its own: rd the first,
+                  * wr the second */
+  a
+}
+
+fn caps() -> i32 {
+  let d = D { n: 5 };
+  let i = 40;
+  let f = fn[&d, i]() -> i32 { d.n + i }; /* bor d, rd i: the
+                                           * captures the outer
+                                           * frame's touches */
+  f() + 1
+}
+
+fn main() -> i32 {
+  let mut d = D { n: 1 };
+  let s = []i32{1, 2, 3};
+
+  d.n = chain(E{d: D{n:2}}) + receiver(s[0..2]) + @cast<i32>(s.len());
+  d.n + shadow() + caps()
+}

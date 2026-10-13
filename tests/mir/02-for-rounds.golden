@@ -1,27 +1,27 @@
 fn ceri3mir6rounds rounds: 10 blocks, 6 insns, 2 lets
   bb0:
-    expr let @5:3
-    expr let @6:3
+    expr let [wr i] @5:3
+    expr let [wr sum] @6:3
     goto bb1 @8:3
   bb1:
-    branch bb2 bb3 @8:3
+    branch bb2 bb3 [rd i, rd n] @8:3
   bb2:
-    expr assign @9:7
-    branch bb4 bb5 @10:5
+    expr assign [rd i, wr i] @9:7
+    branch bb4 bb5 [rd i] @10:5
   bb3:
-    return @18:3
+    return [rd sum] @18:3
   bb4:
     goto bb1 @11:7
   bb5:
     expr expr @12:6
-    branch bb7 bb8 @13:5
+    branch bb7 bb8 [rd i] @13:5
   bb6:
     goto bb5
   bb7:
     goto bb3 @14:7
   bb8:
     expr expr @15:6
-    expr assign @16:9
+    expr assign [rd sum, rd i, wr sum] @16:9
     goto bb1 @8:3
   bb9:
     goto bb8

@@ -32,6 +32,7 @@ typedef struct Mirfn    Mirfn;
 typedef struct Mirblock Mirblock;
 typedef struct Mirinsn  Mirinsn;
 typedef struct Mirlocal Mirlocal;
+typedef struct Mirfact  Mirfact;
 
 /* one slot the fn's frame owns: a parameter's, a let's binding, a
  * match arm's, a round's own. The escape check's ground -- a place
@@ -44,6 +45,29 @@ struct Mirlocal
               * a value that points, an array's is storage itself */
   int param; /* a parameter's slot: this frame's storage, the
               * caller's value in it */
+};
+
+/* what one instruction touches: a place -- the frame's slot a
+ * binding owns, a field chain under it -- and the way it touches.
+ * Client D's ground (todos/todo-20261012-00.md): the borrow and the
+ * move walk read these, the rvalue itself still the tree's -- what
+ * the walk needs is not the value's shape but what it reaches */
+typedef enum
+{
+  Mfrd,  /* read: a Copy place's value taken */
+  Mfwr,  /* written: a binding initialised, a slot assigned */
+  Mfmv,  /* moved from: the value leaves the slot */
+  Mfbor, /* borrowed shared: & , a slice's view, a shared receiver */
+  Mfborm /* borrowed mut: &mut , a mut receiver */
+} Mirfactk;
+
+struct Mirfact
+{
+  usize local; /* the frame's slot: f->locals' own index */
+  char *path;  /* the field chain ".a.b"; "" is the whole slot --
+                * an index, a row, a slice touches the whole root
+                * (the freeze's own rule, 01-types.md) */
+  Mirfactk k;
 };
 
 /* what one instruction is. Stage A: a call, or the tree node a value's
@@ -87,15 +111,19 @@ typedef enum
 struct Mirinsn
 {
   Mirinsnk k;
-  Ast     *e; /* the node it came from: the whole expression while the
-               * rvalue is the tree's (stage A) */
-  Sym *s;     /* Minsn_call: the overload the checker picked, so this
-               * walk need not guess by name. NULL for a vtable's
-               * row, and for a variant's construction -- Some(v)
-               * reads as a call and names no fn -- both of which the
-               * print spells from the tree instead */
-  int dyn;    /* Minsn_call: reached through a handle, the row a
-               * vtable picks at a run (06-dispatch.md) */
+  Ast     *e;     /* the node it came from: the whole expression while the
+                   * rvalue is the tree's (stage A) */
+  Sym *s;         /* Minsn_call: the overload the checker picked, so this
+                   * walk need not guess by name. NULL for a vtable's
+                   * row, and for a variant's construction -- Some(v)
+                   * reads as a call and names no fn -- both of which the
+                   * print spells from the tree instead */
+  int dyn;        /* Minsn_call: reached through a handle, the row a
+                   * vtable picks at a run (06-dispatch.md) */
+  Mirfact *facts; /* what it touches, in the order the tree spelled:
+                   * the reads that feed a call flush into the call's
+                   * own insn, the trailing writes into the statement
+                   * the walk stood over */
 };
 
 struct Mirblock
@@ -105,8 +133,10 @@ struct Mirblock
   int       termset; /* a terminator written: a return, a break, the
                       * end of a branch. 0: the walk fell through it,
                       * and the next block is its successor */
-  Ast   *te;         /* the node the terminator came from, or NULL */
-  usize *succ;       /* the blocks it hands to, in order */
+  Ast     *te;       /* the node the terminator came from, or NULL */
+  usize   *succ;     /* the blocks it hands to, in order */
+  Mirfact *facts;    /* the terminator's own: a branch's cond, a
+                      * switch's scrutinee, a return's value */
 };
 
 struct Mirfn
@@ -167,7 +197,7 @@ int mirreachable(Sym *s, char *name);
  * build asks it for each one rather than growing its own */
 Mirfn    *mirfnnew(char *name, Sym *s, Ast *decl);
 Mirblock *mirblocknew(Mirfn *f);
-void      mirinsnnew(Mirblock *b, Mirinsnk k, Ast *e, Sym *s, int dyn);
+Mirinsn  *mirinsnnew(Mirblock *b, Mirinsnk k, Ast *e, Sym *s, int dyn);
 void      mirtermset(Mirblock *b, Mirtermk k, Ast *te);
 Mirlocal *mirlocalnew(Mirfn *f, char *name, Type *ty, int param);
 
