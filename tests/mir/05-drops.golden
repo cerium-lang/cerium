@@ -1,0 +1,47 @@
+fn ceri3mirn111D10n133std3ops4Drop104drop drop: 1 blocks, 0 insns, 0 lets
+  bb0:
+    return
+fn ceri3mir5spend spend: 1 blocks, 1 insns, 0 lets
+  bb0:
+    drop drop @9:1
+    return @9:27
+fn ceri3mir5plain plain: 1 blocks, 2 insns, 1 lets
+  bb0:
+    expr let @12:3
+    drop drop @11:19
+    return @13:3
+fn ceri3mir7guarded guarded: 5 blocks, 6 insns, 1 lets
+  bb0:
+    expr let @17:3
+    branch bb1 bb2 @19:3
+  bb1:
+    call spend @20:10
+    expr expr @20:13
+    goto bb2
+  bb2:
+    expr expr @22:3
+    branch bb3 bb4 @16:28
+  bb3:
+    drop drop @16:28
+    expr expr @16:28
+    goto bb4
+  bb4:
+    return @22:3
+fn ceri3mir8enumdrop enumdrop: 4 blocks, 3 insns, 1 lets
+  bb0:
+    call A @26:15
+    expr let @26:3
+    switch bb1 bb2 @25:22
+  bb1:
+    drop drop @25:22
+    goto bb3
+  bb2:
+    goto bb3
+  bb3:
+    return @29:3
+fn ceri3mir4main main: 1 blocks, 3 insns, 0 lets
+  bb0:
+    call plain @32:25
+    call guarded @32:37
+    call enumdrop @32:54
+    return @32:44

@@ -3943,3 +3943,31 @@ slot -- and the heap road (closure to dyn) that needs an address
 outliving the frame, its own day.
 
 716 green (329, 330, 310 with them), the library's 54.
+
+Client D opens with its first cut: the drop an explicit instruction.
+The checker's pre-made rows (03-move.md) walked into the mid layer as
+calls like any other -- a destructor's edge the graph kept, but
+nothing in the shape said which calls were the program's own and
+which its scopes owed. Minsn_drop marks them apart: the walk under a
+row marks every call it meets, the reachability walk takes the edge
+the same, and -i spells it -- tests/mir/05-drops the golden, the
+guarded drop its own branch, the enum's a switch with the payload's
+call in its arm.
+
+The golden caught a hole on its way in: hasdrop read an enum's
+arguments and never its variants -- the Option's sugar always rode
+an argument (?T's T is one), so ?D destructed while a declared
+enum's payload never did, and an enum's own Drop impl went unseen
+the same way. Both walked now, the impl table asked the struct's
+way; 311 pins the two roads, a variant's payload and the enum's own
+row. No line of std moved: the library's enums are the argument
+kind.
+
+What this cut does not do, said plainly: the emitter still sends the
+rows from the tree. The checker spells them before the mid layer
+exists (it builds beside the emitter's own pass), so "emit reads its
+drops from the MIR" is a client-F word, not this one's -- the flip
+waits for the walk that decides the drops to stand on the MIR
+itself (client D's second half).
+
+718 green (311 and the golden with them), the library's 54.

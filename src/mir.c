@@ -194,8 +194,8 @@ printfn(FILE *o, Mirfn *f)
     for (j = 0; j < vlen(b->insns); j++) {
       Mirinsn *n = b->insns[j];
 
-      if (n->k == Minsn_call) {
-        fprintf(o, "    call %s", callname(n));
+      if (n->k == Minsn_call || n->k == Minsn_drop) {
+        fprintf(o, "    %s %s", n->k == Minsn_drop ? "drop" : "call", callname(n));
         pat(o, n->e);
         fputc('\n', o);
       } else {
@@ -379,7 +379,13 @@ mirreach(void)
             markbyname(&work, fname(n->e));
           continue;
         }
-        if (n->k != Minsn_call)
+        if (n->k != Minsn_call && n->k != Minsn_drop) /* a drop is an
+                                                       * edge the same:
+                                                       * the destructor
+                                                       * a scope owes is
+                                                       * a call the
+                                                       * program makes
+                                                       * (03-move.md) */
           continue;
         if (n->dyn) /* the row a vtable names: the roots carry it,
                      * for the handle that points at it was made

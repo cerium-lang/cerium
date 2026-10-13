@@ -54,6 +54,14 @@ typedef enum
 {
   Minsn_expr, /* the tree's own node, held whole */
   Minsn_call, /* a call: the one thing a graph's edges are made of */
+  Minsn_drop, /* a destructor's own call, from a row the checker
+               * pre-made (03-move.md): the same edge a call is --
+               * a fn no one but a destructor calls is a fn the
+               * program runs -- and marked apart, so a client can
+               * tell what the program wrote from what its scopes
+               * owe. The place it drops is the call's own argument,
+               * the row's spelling the checker's (client D's
+               * ground, todos/todo-20261012-00.md) */
   Minsn_ref   /* a fn named and not called: its address taken, a
                * handle made of it, a closure's literal standing as a
                * value. No call in the tree names it -- the fat the

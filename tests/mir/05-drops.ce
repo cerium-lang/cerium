@@ -1,0 +1,32 @@
+use std::ops::Drop;
+
+struct D { n: i32 }
+
+impl Drop for D { fn drop(mut self: D) { } }
+
+enum E { A(D), B }
+
+fn spend(d: D) -> i32 { d.n }
+
+fn plain() -> i32 {
+  let d = D { n: 1 }; /* the plain row: one call at the brace */
+  42
+}
+
+fn guarded(c: bool) -> i32 {
+  let d = D { n: 2 }; /* moved down one path only: the row under
+                       * the flag's branch */
+  if c {
+    spend(d);
+  }
+  43
+}
+
+fn enumdrop() -> i32 {
+  let e = E::A(D { n: 3 }); /* no row of its own: the match a
+                             * variant's destructor spells, the
+                             * payload's call in its arm */
+  44
+}
+
+fn main() -> i32 { plain() + guarded(true) + enumdrop() }
