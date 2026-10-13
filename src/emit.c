@@ -4671,4 +4671,8 @@ emitfile(FILE *out, Srcfile **files, usize nfiles, int release, const char *proj
                    * built -- so client C runs here: the summaries
                    * first, then the check, each report said in the
                    * file that wrote it (#185) */
+  mirfmoveall();  /* and D's shadow with it: the move walk over the
+                   * blocks, the tree's own answers -- a disagreement
+                   * between the two is a bug in one of them, and the
+                   * compile says so */
 }

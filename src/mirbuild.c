@@ -322,12 +322,54 @@ mex(Ast *e)
       dyn = 1; /* the handle's own: the row a vtable names, chosen
                 * where the handle was and not here
                 * (06-dispatch.md) */
-    if (f && f->k == Naccess)
+    if (f && f->k == Naccess) {
       /* method sugar: the receiver a whole place, the method's own
-       * name no field of it (06-dispatch.md) -- the value's shape
-       * says rd or mv, a checker-wrapped & says bor */
-      mftake(f->v.fld.e, Mfrd);
-    else
+       * name no field of it (06-dispatch.md) -- and what the method
+       * takes it by is the signature's first word: a pointer borrows,
+       * mut or shared; by value the receiver's own shape says */
+      Sym     *ms = e->v.call.sym;
+      Type    *st = ms && ms->fnty && ms->fnty->nargs ? ms->fnty->args[0] : 0;
+      Mirfactk rk = Mfrd;
+
+      if (st && st->k == Typtr)
+        rk = st->t && st->t->k == Tymut ? Mfborm : Mfbor;
+      mftake(f->v.fld.e, rk);
+    } else if (f && f->k == Npath && !f->v.path.sym && f->ty) {
+      /* the closure's own call: the family the literal spelled says
+       * what the callee gives -- FnOnce its whole value, FnMut a mut
+       * borrow, Fn a shared one (05-traits.md). A fn's impl return
+       * wraps the env an existential; the landing opens it */
+      Type    *ct = tyopen(f->ty);
+      Ast     *c = 0;
+      Mirfactk rk;
+      usize    ci;
+
+      if (ct && ct->k == Tystruct && ct->sym && ct->sym->decl && ct->sym->decl->k == Nclosure)
+        c = ct->sym->decl;
+      if (c) {
+        rk = c->v.clos.once ? Mfmv : Mfbor;
+        for (ci = 0; rk == Mfbor && ci < vlen(c->v.clos.caps); ci++) { /* a mut by-value
+                                                                        * capture: the
+                                                                        * FnMut row */
+          Ast *cp = c->v.clos.caps[ci];
+
+          if (!cp->v.cap.byref && cp->v.cap.mut)
+            rk = Mfborm;
+        }
+        mftake(f, rk);
+      } else if (ct && ct->k == Tyfn) { /* a fn pointer's own call:
+                                         * the callee read for its
+                                         * address, a shared read --
+                                         * the pointer copied, the
+                                         * binding keeps its value
+                                         * (01-types.md) */
+        int ix2 = mfshadow(f->v.path.segs[0]->v.seg.name);
+
+        if (ix2 >= 0 && !f->mvd)
+          mffact((usize) ix2, "", Mfrd);
+      } else
+        mex(f);
+    } else
       mex(f);
     for (i = 0; i < vlen(e->v.call.args); i++)
       mex(e->v.call.args[i]);

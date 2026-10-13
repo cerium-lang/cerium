@@ -4007,3 +4007,37 @@ rvalue is still the tree's -- what the borrow and the move walk
 need is not the value's shape but what it reaches.
 
 719 green (06-facts with them), the library's 54.
+
+The move walk's shadow, client D's next cut: the aliveness the
+tree's checker says, asked again over the blocks -- a forward flow,
+a slot one of alive, maybe, moved, the join the tree's own bargain
+(moved beside alive is maybe), a loop the header's fixpoint and
+nothing else, the loop machinery of the tree's world not asked at
+all. The facts b1 spelled feed it, and a hard disagreement between
+the two walks refuses the compile: a read or a move of a moved slot
+the tree let stand, a drop row spelled for a slot already gone.
+Every program the suite holds, both walks now agree.
+
+The compare's first rounds caught three spellings, all the facts'
+and none the tree's: a closure's call is the family the literal
+spelled -- FnOnce its whole value, FnMut a mut borrow, Fn a shared
+one, an impl return's existential opened to find the env -- and a
+method's receiver is what the signature's first word takes it by,
+a pointer borrowing mut or shared; and a fn pointer's own call
+reads the callee for its address, a shared read, the binding
+keeping its value. The fourth was a shape, not a spelling: the rows
+of one taking -- a spread handing its pack a row at a time, the
+fields of one destructor -- are one instruction's own spelling, and
+a move the same instruction already made is not a second taking.
+Under that the tree's own words showed: a spread's operand read is
+"a look, not a take" (movsnap's own comment), the rows read for
+real once where they stand.
+
+What this cut is not, said plainly: the decision maker. The drops
+the scopes owe are still the tree's to spell and the loop machinery
+still the tree's to walk -- the flip that moves the decision onto
+the MIR needs the MIR built before the checker, not beside the
+emitter, and that is its own cut. Until then the shadow runs on
+every compile, and a disagreement is a bug the moment it is born.
+
+719 green, both walks agreeing on every one, the library's 54.

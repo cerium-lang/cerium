@@ -3,7 +3,7 @@ fn ceri3mir5chain chain: 1 blocks, 0 insns, 0 lets
     return [rd e.d.n] @11:29
 fn ceri3mir8receiver receiver: 1 blocks, 1 insns, 0 lets
   bb0:
-    call len [rd a] @13:48
+    call len [bor a] @13:48
     return @13:32
 fn ceri3mir7through through: 1 blocks, 1 insns, 0 lets
   bb0:
@@ -24,7 +24,7 @@ fn ceri3mir4caps caps: 1 blocks, 5 insns, 3 lets
     expr let [wr i] @36:3
     expr closure [bor d, rd i] @37:11
     expr let [wr f] @37:3
-    call f [mv f] @40:4
+    call f [bor f] @40:4
     return @40:7
 fn ceri3mir4main main: 1 blocks, 8 insns, 2 lets
   bb0:
@@ -32,7 +32,7 @@ fn ceri3mir4main main: 1 blocks, 8 insns, 2 lets
     expr let [wr s] @45:3
     call chain @47:14
     call receiver [bor s] @47:39
-    call len [rd s] @47:67
+    call len [bor s] @47:67
     expr assign [wr d.n] @47:7
     call shadow [rd d.n] @48:15
     call caps @48:24
