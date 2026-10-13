@@ -5,7 +5,7 @@
  * (05-traits.md) */
 use std::ops::{Fn, FnMut, Copy};
 
-struct P { x: i32, y: i32 }
+struct P { mut x: i32, mut y: i32 }
 
 impl Copy for P { }   /* the file's own word: shaped's capture copies */
 
@@ -29,9 +29,10 @@ fn tupled(t: (P, i32)) -> impl Fn<Output = i32> { /* the tuple, the
   fn[t]() -> i32 { t.0.x * 10 + t.0.y + t.1 }
 }
 fn ticking(seed: i32) -> impl FnMut<i32, Output = i32> { /* a struct the
-                                                          * carried state */
+                                                          * carried state,
+                                                          * its rows written */
   let mut p = P { x: seed, y: 0 };
-  fn[mut p](k: i32) -> i32 { p = P { x: p.x + k, y: p.y + 1 }; p.x + p.y }
+  fn[mut p](k: i32) -> i32 { p.x = p.x + k; p.y = p.y + 1; p.x + p.y }
 }
 fn main() -> i32 {
   let a = adder(5);
