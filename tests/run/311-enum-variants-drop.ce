@@ -1,0 +1,41 @@
+/* a declared enum's rows live in its variants, not its arguments:
+ * the payload a variant owns destructs at the binding's brace, the
+ * tag the value's own shape (03-move.md) -- the walk the Option's
+ * sugar always took (?T's T rides an argument), now the declared
+ * enum's too. And the enum's own row, the struct's way: an impl the
+ * table holds answers for everything inside */
+use std::ops::Drop;
+
+#[extern(C)]
+fn write(fd: i32, buf: *u8, len: usize) -> usize;
+
+struct D { n: i32 }
+
+impl Drop for D {
+  fn drop(mut self: Self) {
+    let ds = "0123456789";
+
+    write(1, ds.ptr() + @cast<usize>(self.n), 1);
+  }
+}
+
+enum E(u8) { A(D), Bare }
+
+enum H(u8) { One, Two }
+
+impl Drop for H { /* the enum's own row: no variant's payload asked */
+  fn drop(mut self: Self) {
+    let ds = "0123456789";
+
+    write(1, ds.ptr() + @cast<usize>(5), 1);
+  }
+}
+
+fn main() -> i32 {
+  let a = E::A(D { n: 1 }); /* the payload's own destructor: 1 */
+  let bare = E::Bare;       /* nothing a variant owns: nothing runs */
+  let h = H::One;           /* the enum's own row: 5 */
+
+  a; bare; h;
+  0
+}

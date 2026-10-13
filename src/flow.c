@@ -1148,7 +1148,39 @@ hasdrop(Type *t)
     }
     return 0;
   }
-  case Tyenum:
+  case Tyenum: { /* the Option's payload rides an argument (?T's T is
+                  * one), a user enum's in its variants -- both
+                  * walked, and the impl table's own row asked the
+                  * struct's way: an enum may implement Drop itself */
+    Sym  *s = t->sym;
+    usize vi, pi, np;
+
+    for (j = 0; j < chk_nimpls; j++) {
+      Sym *im = chk_impls[j];
+
+      if (im->ifort && im->ipath && im->ipath->sym == sym_drop && tysame(im->ifort, t))
+        return 1;
+    }
+    for (i = 0; i < t->nargs; i++)
+      if (hasdrop(t->args[i]))
+        return 1;
+    for (vi = 0; vi < (usize) s->nvariants; vi++) {
+      Variant *v = &s->variants[vi];
+      Type    *pt;
+
+      np = v->payload ? v->npayload : v->nfields;
+      for (pi = 0; pi < np; pi++) {
+        pt = v->payload ? v->payload[pi] : v->fields[pi].ty;
+        if (t->nargs == (usize) s->ngparams) /* a variant's payload
+                                              * under the instance
+                                              * (04-generics.md) */
+          pt = gsubst(pt, s->gparams, t->args, t->nargs);
+        if (hasdrop(pt))
+          return 1;
+      }
+    }
+    return 0;
+  }
   case Tytuple:
     for (i = 0; i < t->nargs; i++)
       if (hasdrop(t->args[i]))
