@@ -25,48 +25,9 @@ st(Mirfn *f)
   return f->mv;
 }
 
-/* the row a tree entry is: the call a plain row is found direct; a
- * match an enum's row spells holds its calls in the arms, the first
- * of them the entry's own voice -- the state at its block is the
- * state at the match, the switch taking nothing from the slot */
-static Mvrow *rowfind(Mirfn *f, Ast *e);
-
-static Ast *
-firstcall(Ast *e)
-{
-  usize i;
-
-  if (!e)
-    return 0;
-  if (e->k == Ncall)
-    return e;
-  switch (e->k) {
-  case Nif:
-  case Ncif:
-    return firstcall(e->v.ifx.then) ? firstcall(e->v.ifx.then) : firstcall(e->v.ifx.els);
-  case Nmatch:
-    for (i = 0; i < vlen(e->v.call.args); i++) {
-      Ast *c = firstcall(e->v.call.args[i]->v.n2.b);
-
-      if (c)
-        return c;
-    }
-    return 0;
-  case Nblock:
-    for (i = 0; i < vlen(e->v.blk.stmts); i++) {
-      Ast *c = firstcall(e->v.blk.stmts[i]);
-
-      if (c)
-        return c;
-    }
-    return firstcall(e->v.blk.tail);
-  case Nexprstmt:
-    return firstcall(e->v.n1.e);
-  default:
-    return 0;
-  }
-}
-
+/* the row a tree entry is, by its own node: the call a plain row
+ * is, the match an enum's row spells -- the move walk recorded each
+ * where it stands */
 static Mvrow *
 rowfind(Mirfn *f, Ast *e)
 {
@@ -78,26 +39,17 @@ rowfind(Mirfn *f, Ast *e)
   for (i = 0; i < vlen(s->rows); i++)
     if (s->rows[i].e == e)
       return &s->rows[i];
-  if (e->k == Nmatch) { /* the enum's row: its first arm's call */
-    Ast *c = firstcall(e);
-
-    for (i = 0; i < vlen(s->rows); i++)
-      if (s->rows[i].e == c)
-        return &s->rows[i];
-  }
   return 0;
 }
 
-/* the state a row's slot is at its own block's entry: moved comes
- * out, maybe hides under the guard, alive stands */
+/* the state the row meets, snapshotted at its own point by the walk:
+ * moved comes out, maybe hides under the guard, alive stands */
 static u8
 rowstate(Mirfn *f, Mvrow *r)
 {
-  Mvst *s = st(f);
+  (void) f;
 
-  if (!s || !r || r->b >= vlen(f->blocks) || r->slot >= s->nl)
-    return 0; /* nowhere found: alive, the row stands */
-  return s->in[r->b][r->slot];
+  return r ? r->state : 0; /* nowhere found: alive, the row stands */
 }
 
 /* one vector of rows, decided in place. The rows a binding owes
@@ -204,14 +156,21 @@ rdstmt(Mirfn *f, Ast *st)
   case Nassign:
     rdexpr(f, st->v.bin.l);
     rdexpr(f, st->v.bin.r);
-    rdvec(f, &st->v.bin.drop);
+    /* the old value's row is the assignment's own contract -- drop
+     * what you overwrite, spelled whole, never gated (03-move.md,
+     * the checker's opunmove beside it): not a scope's row, not
+     * this pass's to decide */
     return;
-  case Nexprstmt:
+  case Nexprstmt: /* a discard's row is the statement's own --
+                   * the value no one owns dies here, spelled whole,
+                   * never gated (03-move.md) */
+    rdexpr(f, st->v.n1.e);
+    return;
   case Nreturn:
   case Nbreak:
   case Ncontinue:
     rdexpr(f, st->v.n1.e);
-    rdvec(f, &st->v.n1.drops);
+    rdvec(f, &st->v.n1.drops); /* the early exit's scope rows */
     return;
   case Nblock:
     rdstmts(f, st->v.blk.stmts);
@@ -328,7 +287,7 @@ rdexpr(Mirfn *f, Ast *e)
       rdexpr(f, e->v.slit.inits[i]);
     return;
   case Ninit:
-    rdexpr(f, e->v.n1.e);
+    rdexpr(f, e->v.init.e);
     return;
   default:
     return;

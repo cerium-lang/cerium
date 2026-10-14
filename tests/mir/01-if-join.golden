@@ -1,4 +1,4 @@
-fn ceri3mir4pick pick: 4 blocks, 4 insns, 1 lets
+fn ceri3mir4pick pick: 4 blocks, 5 insns, 1 lets
   bb0:
     expr let [wr r] @4:3
     branch bb1 bb3 [rd a] @6:3
@@ -7,7 +7,8 @@ fn ceri3mir4pick pick: 4 blocks, 4 insns, 1 lets
     goto bb2
   bb2:
     expr expr @11:3
-    return [rd r] @11:3
+    expr path [rd r] @11:3
+    return @11:3
   bb3:
     expr assign [wr r] @9:7
     goto bb2

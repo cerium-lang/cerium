@@ -54,11 +54,14 @@ struct Mirlocal
  * the walk needs is not the value's shape but what it reaches */
 typedef enum
 {
-  Mfrd,  /* read: a Copy place's value taken */
-  Mfwr,  /* written: a binding initialised, a slot assigned */
-  Mfmv,  /* moved from: the value leaves the slot */
-  Mfbor, /* borrowed shared: & , a slice's view, a shared receiver */
-  Mfborm /* borrowed mut: &mut , a mut receiver */
+  Mfrd,   /* read: a Copy place's value taken */
+  Mfwr,   /* written: a binding initialised, a slot assigned */
+  Mfmv,   /* moved from: the value leaves the slot */
+  Mfbor,  /* borrowed shared: & , a slice's view, a shared receiver */
+  Mfborm, /* borrowed mut: &mut , a mut receiver */
+  Mfmvrow /* the row's own taking: an enum's destructor match moves
+           * its scrutinee -- recorded as the row it is, asked by the
+           * re-decide, never applied as another move */
 } Mirfactk;
 
 struct Mirfact
@@ -98,10 +101,13 @@ typedef enum
 typedef struct Mvrow Mvrow;
 struct Mvrow
 {
-  Ast *e;  /* the drop row's own node: the call a plain row is, a
-            * call inside the match an enum's row spells */
+  Ast *e;  /* the drop row's own node: the call a plain row is, the
+            * match an enum's row spells */
   usize b; /* the block the row's instruction stands in */
   usize slot;
+  u8    state; /* the slot's state at the row's own point, snapshotted
+                * where the row stands -- not the block's entry, the
+                * moves inside the block ahead of it counted */
 };
 
 typedef struct Mvst Mvst;

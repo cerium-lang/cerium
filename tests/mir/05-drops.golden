@@ -1,16 +1,17 @@
 fn ceri3mirn111D10n133std3ops4Drop104drop drop: 1 blocks, 0 insns, 0 lets
   bb0:
     return
-fn ceri3mir5spend spend: 1 blocks, 1 insns, 0 lets
+fn ceri3mir5spend spend: 1 blocks, 2 insns, 0 lets
   bb0:
-    drop drop [rd d.n, mv d] @9:1
+    expr access [rd d.n] @9:27
+    drop drop [mv d] @9:1
     return @9:27
 fn ceri3mir5plain plain: 1 blocks, 2 insns, 1 lets
   bb0:
     expr let [wr d] @12:3
     drop drop [mv d] @11:19
     return @13:3
-fn ceri3mir7guarded guarded: 5 blocks, 6 insns, 1 lets
+fn ceri3mir7guarded guarded: 3 blocks, 5 insns, 1 lets
   bb0:
     expr let [wr d] @17:3
     branch bb1 bb2 [rd c] @19:3
@@ -20,20 +21,16 @@ fn ceri3mir7guarded guarded: 5 blocks, 6 insns, 1 lets
     goto bb2
   bb2:
     expr expr @22:3
-    branch bb3 bb4 @16:28
-  bb3:
     drop drop [mv d] @16:28
-    expr expr @16:28
-    goto bb4
-  bb4:
     return @22:3
-fn ceri3mir8enumdrop enumdrop: 4 blocks, 3 insns, 1 lets
+fn ceri3mir8enumdrop enumdrop: 4 blocks, 4 insns, 1 lets
   bb0:
     call A @26:15
     expr let [wr e] @26:3
-    switch bb1 bb2 [mv e] @25:22
+    switch bb1 bb2 [row e] @25:22
   bb1:
-    drop drop [wr .v0, mv .v0] @25:22
+    expr ? [wr .v0]
+    drop drop [mv .v0] @25:22
     goto bb3
   bb2:
     goto bb3

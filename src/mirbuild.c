@@ -14,6 +14,7 @@
  * build that ran ahead of it would meet a tree the bindings had not
  * yet reached. Nothing here writes to the tree. */
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -485,7 +486,8 @@ mex(Ast *e)
       mex(e->v.slit.inits[i]);
     return;
   case Ninit:
-    mex(e->v.n1.e);
+    mex(e->v.init.e); /* the field's own value: name and child must
+                       * coexist (ast.h) */
     return;
   case Nblock: /* a value's own block: the statements run where the
                 * enclosing block stands -- stage A does not cut one
@@ -493,6 +495,19 @@ mex(Ast *e)
     mfmark();
     mstmts(e->v.blk.stmts);
     mex(e->v.blk.tail);
+    if (vlen(mfbuf))
+      mfattach(mirinsnnew(curb(), Minsn_expr, e->v.blk.tail, 0, 0)); /* the
+                                                                      * tail's own
+                                                                      * touches,
+                                                                      * ahead of
+                                                                      * the block's
+                                                                      * rows: a
+                                                                      * value the
+                                                                      * tail
+                                                                      * carries
+                                                                      * out owes
+                                                                      * nothing
+                                                                      * here */
     mdrops(e->v.blk.drops);
     mfunmark();
     return;
@@ -548,16 +563,27 @@ mfwrite(Ast *l, Ast *r, Ast **olddrops)
   Ast *base;
   int  ix;
 
-  ix = mfroot(l, p, sizeof p, &base);
-  if (ix >= 0)
-    mfwalkchain(l); /* the subscripts under the rooted place */
-  else if (base)
-    mex(base); /* *p = v: the pointer's place read; the store itself
-                * crosses it */
-  mex(r);
-  mdrops(olddrops);
-  if (ix >= 0)
-    mffact((usize) ix, p, Mfwr);
+  {
+    Mirfact *fed; /* the addressing and the new value's own touches,
+                   * held: the old value's rows spell their own args,
+                   * and what fed them lands with the write, after
+                   * the rows -- the old value dies before the slot
+                   * re-arms (03-move.md) */
+
+    ix = mfroot(l, p, sizeof p, &base);
+    if (ix >= 0)
+      mfwalkchain(l); /* the subscripts under the rooted place */
+    else if (base)
+      mex(base); /* *p = v: the pointer's place read; the store itself
+                  * crosses it */
+    mex(r);
+    fed = mfbuf;
+    mfbuf = 0;
+    mdrops(olddrops);
+    mfbuf = fed;
+    if (ix >= 0)
+      mffact((usize) ix, p, Mfwr);
+  }
 }
 
 /* -- the statements: where the blocks come from --------------------- */
@@ -634,9 +660,20 @@ mmatch(Ast *st)
   usize  i, join;
   usize *armb;
 
-  if (!indrop)         /* a destructor's own match: the scrutinee is the
-                        * dying value itself, its read the spelling of the
-                        * row, not another taking of it (03-move.md) */
+  if (indrop) { /* a destructor's own match: the scrutinee is the
+                 * dying value itself, and the match IS its taking --
+                 * spelled as the row it is, riding the switch, asked
+                 * by the re-decide and never applied as another move
+                 * (03-move.md) */
+    Ast *sc = st->v.call.f;
+
+    if (sc && sc->k == Npath && !sc->v.path.sym && vlen(sc->v.path.segs) == 1) {
+      int ix = mfshadow(sc->v.path.segs[0]->v.seg.name);
+
+      if (ix >= 0)
+        mffact((usize) ix, "", Mfmvrow);
+    }
+  } else
     mex(st->v.call.f); /* the scrutinee's read: the switch's own */
   mfattachterm(curb());
   armb = vnew(usize, 4);
@@ -724,13 +761,30 @@ mstmt(Ast *st)
     mfwrite(st->v.bin.l, st->v.bin.r, st->v.bin.drop);
     mfattach(mirinsnnew(curb(), Minsn_expr, st, 0, 0));
     return;
-  case Nexprstmt:
+  case Nexprstmt: {
+    Mirfact *fed; /* the expression's own touches, held: a discard's
+                   * row takes the expression itself as its place
+                   * (03-move.md), so these feed the row -- applied
+                   * after it, the row asked what the statement began
+                   * with, and a later row asks what it left */
+
     mex(st->v.n1.e);
-    mdrops(st->v.n1.drops);
+    fed = mfbuf;
+    mfbuf = 0;
+    mdrops(st->v.n1.drops); /* the rows' own args, clean */
+    mfbuf = fed;
     mfattach(mirinsnnew(curb(), Minsn_expr, st, 0, 0));
     return;
+  }
   case Nreturn:
     mex(st->v.n1.e);
+    mfattach(mirinsnnew(curb(), Minsn_expr, st, 0, 0)); /* the value's own
+                                                         * moves, ahead of
+                                                         * the early rows:
+                                                         * a value the
+                                                         * return carries
+                                                         * out owes
+                                                         * nothing here */
     mdrops(st->v.n1.drops);
     mfattachterm(curb());
     mirtermset(curb(), Mterm_return, st);
@@ -755,6 +809,16 @@ mstmt(Ast *st)
     mfmark();
     mstmts(st->v.blk.stmts);
     mex(st->v.blk.tail);
+    if (vlen(mfbuf))
+      mfattach(mirinsnnew(curb(), Minsn_expr, st->v.blk.tail, 0, 0)); /* the tail's
+                                                                       * own touches,
+                                                                       * ahead of the
+                                                                       * block's rows:
+                                                                       * a value the
+                                                                       * tail carries
+                                                                       * out owes
+                                                                       * nothing
+                                                                       * here */
     mdrops(st->v.blk.drops);
     mfunmark();
     return;

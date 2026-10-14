@@ -104,7 +104,38 @@ mfacts(Mirfn *f, u8 *st, Mirfact *fs, Ast *at)
       st[t->local] = MALIVE; /* the re-arm: a value landed, the slot
                               * owes the world again (03) */
     /* bor / borm: the pointer's own read, the slot's value not
-     * taken -- the borrow walk's question, not this one's */
+     * taken -- the borrow walk's question, not this one's. A row's
+     * own taking (Mfmvrow) is the same: the re-decide's input, never
+     * a move this walk applies */
+  }
+}
+
+/* the row a drop insn is: the state at its own point -- the walk is
+ * at that instruction, the state it has carried this far IS the
+ * state the row meets -- snapshotted there and deduped by node: a
+ * loop revisits its blocks, and the last visit's is the final one */
+static void
+mfrow(Mvst *mv, Ast *e, usize b, usize slot, u8 state)
+{
+  usize i;
+
+  for (i = 0; i < vlen(mv->rows); i++)
+    if (mv->rows[i].e == e) {
+      mv->rows[i].b = b;
+      mv->rows[i].slot = slot;
+      mv->rows[i].state = state;
+      return;
+    }
+  {
+    Mvrow r;
+
+    r.e = e;
+    r.b = b;
+    r.slot = slot;
+    r.state = state;
+    if (!mv->rows)
+      mv->rows = vnew(Mvrow, 8);
+    vappend(&mv->rows, &r);
   }
 }
 
@@ -113,7 +144,7 @@ mfacts(Mirfn *f, u8 *st, Mirfact *fs, Ast *at)
  * loop joined until nothing moves. The states stay on the fn (mv)
  * for the re-decide pass, the row map with them -- a row's own
  * instruction names the block it stands in, the slot its first
- * move touches */
+ * move touches, the state it meets there */
 void
 mirfmoverun(Mirfn *f)
 {
@@ -175,27 +206,29 @@ mirfmoverun(Mirfn *f)
       if (n->k == Minsn_drop) { /* a row's own spelling: the
                                  * re-decide's input, not this
                                  * walk's question -- the row map
-                                 * takes it, below */
-        Mvrow r;
+                                 * takes it, the state it meets */
         usize q;
 
-        r.e = n->e;
-        r.b = head;
-        r.slot = (usize) -1;
         for (q = 0; q < vlen(n->facts); q++)
           if (n->facts[q].k == Mfmv) {
-            r.slot = n->facts[q].local;
+            mfrow(mv, n->e, head, n->facts[q].local, out[head][n->facts[q].local]);
             break;
           }
-        if (r.slot != (usize) -1) {
-          if (!mv->rows)
-            mv->rows = vnew(Mvrow, 8);
-          vappend(&mv->rows, &r);
-        }
         continue;
       }
       mfacts(f, out[head], n->facts, n->e);
     }
+    for (i = 0; i < vlen(bb->facts); i++) /* an enum's row rides the
+                                           * switch itself: the
+                                           * scrutinee's taking spelled
+                                           * as the row it is, asked
+                                           * where the match stands and
+                                           * never applied as another
+                                           * move */
+      if (bb->facts[i].k == Mfmvrow) {
+        mfrow(mv, bb->te, head, bb->facts[i].local, out[head][bb->facts[i].local]);
+        break;
+      }
     mfacts(f, out[head], bb->facts, bb->te); /* the terminator's own:
                                               * a cond's read, a
                                               * return's move */

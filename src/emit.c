@@ -3780,7 +3780,10 @@ emitfn(FILE *o, Sym *s, Ast *it, char *name, Type **ats, Type *ret)
    * an instance's own copy, the walk's own clone (emitinst). Pass
    * one, then: the graph is whole before pass two asks it which fns
    * the program reaches */
-  if (ipass == 1)
+  if (ipass == 1 || icur) /* an instance's clone is fresh at every
+                           * pass it is emitted (emitinst), and the
+                           * re-decide the build ends with must meet
+                           * the tree the text is about to read */
     mirfnbuild(name, s, it);
   if (ipass == 2 && !mirreachable(s, name))
     return; /* the graph's answer: no root reaches this fn, no reached

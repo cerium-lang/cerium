@@ -47,7 +47,24 @@ Mirfn *
 mirfnnew(char *name, Sym *s, Ast *decl)
 {
   Mirfn *f;
+  usize  i;
 
+  for (i = 0; i < vlen(fns); i++)
+    if (fns[i]->name && name && !strcmp(fns[i]->name, name)) {
+      /* a rebuild, the same fn again: an instance is cloned and
+       * re-checked per pass (04-generics.md), and the tree a later
+       * pass reads is a fresh one -- the build lands here, in the
+       * slot the name already owns, the reachability answer kept
+       * (the answer is the fn's, not the build's) */
+      f = fns[i];
+      f->s = s;
+      f->decl = decl;
+      f->blocks = vnew(Mirblock *, 8);
+      f->locals = vnew(Mirlocal *, 8);
+      f->nbind = 0;
+      f->mv = 0;
+      return f;
+    }
   f = (Mirfn *) calloc(1, sizeof *f);
   if (!f)
     die("mir: no memory for a fn");
@@ -189,8 +206,10 @@ factname(Mirfactk k)
     return "mv";
   case Mfbor:
     return "bor";
-  default:
+  case Mfborm:
     return "borm";
+  default:
+    return "row";
   }
 }
 
