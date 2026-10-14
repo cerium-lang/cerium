@@ -198,8 +198,10 @@ mfroot(Ast *e, char *path, usize psz, Ast **base)
     *base = e;
   if (e->k == Nun && e->v.un.op == Tstar)
     return -1; /* *p: across the pointer is a promise, not a proof */
-  if (e->k != Npath || vlen(e->v.path.segs) != 1 || e->mvd)
-    return -1; /* the move flag's own read: not the binding's */
+  if (e->k != Npath || vlen(e->v.path.segs) != 1 || e->mvd == 2)
+    return -1; /* the move flag's own read: not the binding's -- the
+                * checker's move mark (mvd 1) is the binding's own
+                * touch, the word this walk spells from */
   return mfshadow(e->v.path.segs[0]->v.seg.name);
 }
 
@@ -272,6 +274,8 @@ mftake(Ast *e, Mirfactk bor)
       mffact((usize) ix, p, Mfbor);
     else if (bor != Mfrd) /* the caller's own word: a borrow */
       mffact((usize) ix, p, bor);
+    else if (e->mvd == 1) /* the checker's mark on the read itself */
+      mffact((usize) ix, p, Mfmv);
     else /* a value's own shape: a Copy reads, anything else moves */
       mffact((usize) ix, p, e->ty && !iscopy(e->ty) ? Mfmv : Mfrd);
   } else
@@ -437,11 +441,17 @@ mex(Ast *e)
       mfattach(mirinsnnew(curb(), Minsn_ref, e, e->v.path.sym, 0));
       return;
     }
-    if (!e->mvd && !e->v.path.sym && vlen(e->v.path.segs) == 1) {
+    if (!e->v.path.sym && vlen(e->v.path.segs) == 1) {
       int ix = mfshadow(e->v.path.segs[0]->v.seg.name);
 
-      if (ix >= 0)
-        mffact((usize) ix, "", e->ty && !iscopy(e->ty) ? Mfmv : Mfrd);
+      if (ix >= 0) {
+        if (e->mvd == 1) /* the checker's own mark: this read moved its
+                          * root, the tree's word taken whole (03) */
+          mffact((usize) ix, "", Mfmv);
+        else if (!e->mvd) /* the move flag's own read (mvd 2)
+                           * touches nothing of the binding's */
+          mffact((usize) ix, "", e->ty && !iscopy(e->ty) ? Mfmv : Mfrd);
+      }
     }
     return;
   case Nclosure: { /* a literal: the fn it becomes is reached by being

@@ -4068,3 +4068,23 @@ the next cut is the pass.
 
 719 green, the mid layer's print not a byte moved, the suite's time
 its own, the library's 54.
+
+The drop row asked at its own line, client D's next cut: the shadow
+now reads every row the tree spelled and refuses the ones the flow
+says wrong -- a plain row demands the slot alive on every path that
+reaches, a guarded row rides the flag's own way in (the not-moved
+path a guard branch takes), and the guard's own branch asks the
+state it decides on to be maybe, the shape a guard is owed for. The
+first round caught what two rounds of the shadow could not: the
+checker marks a read that moves its root (mvd, its own word for the
+emitter's flag), and the facts were letting every marked read
+through unnamed -- the moves the checker itself had already
+answered, gone from the flow, the state left alive where the tree
+had moved. The shadow asks both ways now but catches only the wrong
+moved; the row's ask catches the missing one.
+
+The mark is the word taken whole now: a read the checker marked
+moves, no shape asked of it again -- the tree's own answer, spelled
+where the flow reads it.
+
+719 green, the guarded shapes among them, the library's 54.
