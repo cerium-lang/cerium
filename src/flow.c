@@ -128,10 +128,11 @@ locnarrow(Fenv *fe, char *name, Type *t)
  * forms' own, borrows unwind through the freezes' own pictures, and
  * a let is a statement, not an expression (07-operators.md).
  *
- * The picture now carries cmv beside dead, and one more word: the
- * length of the mvd log, the nodes a walk flagged as moves -- a
- * refused trial unwinds the flags with the bits (03-move.md,
- * Guarded drops). */
+ * The picture carries the dead bits and one more word: the length
+ * of the mvd log, the nodes a walk flagged as moves -- a refused
+ * trial unwinds the flags with the bits (03-move.md). The
+ * conditionally-moved bit the drop decision once asked is gone: the
+ * mid layer's flow decides the guarded rows now (#198). */
 int *
 movsnap(Fenv *fe)
 {
@@ -140,12 +141,10 @@ movsnap(Fenv *fe)
 
   if (!fe->n)
     return 0;
-  d = arenaalloc((2 * fe->n + 1) * sizeof *d);
-  for (i = 0; i < fe->n; i++) {
+  d = arenaalloc((fe->n + 1) * sizeof *d);
+  for (i = 0; i < fe->n; i++)
     d[i] = fe->ls[i].dead;
-    d[fe->n + i] = fe->ls[i].cmv;
-  }
-  d[2 * fe->n] = (int) vlen(fe->mvdlog);
+  d[fe->n] = (int) vlen(fe->mvdlog);
   return d;
 }
 
@@ -156,15 +155,13 @@ movrestore(Fenv *fe, int *snap)
 
   if (!snap)
     return;
-  for (i = 0; i < fe->n; i++) {
+  for (i = 0; i < fe->n; i++)
     fe->ls[i].dead = snap[i];
-    fe->ls[i].cmv = snap[fe->n + i];
-  }
-  while (vlen(fe->mvdlog) > (usize) snap[2 * fe->n]) { /* the move
-                                                        * flags a refused row's walk set on
-                                                        * the nodes it read: each was 0
-                                                        * before the walk, so 0 again is
-                                                        * exact */
+  while (vlen(fe->mvdlog) > (usize) snap[fe->n]) { /* the move
+                                                    * flags a refused row's walk set on
+                                                    * the nodes it read: each was 0
+                                                    * before the walk, so 0 again is
+                                                    * exact */
     vpop(fe->mvdlog)->mvd = 0;
   }
 }
@@ -588,13 +585,7 @@ narrowcond(Ast *cond, Fenv *fe, char **name, Type **child)
 /* join two branch states back into fe. Dead is the union -- the code
  * after the join runs on either path, so a move down one of them is
  * enough -- and frozen is the union too, a borrow the compiler cannot
- * disprove. A narrowing survives only when both branches agree.
- *
- * cmv (conditionally moved) rides beside: dead down one path only,
- * or a cmv already sitting under a dead bit -- either way the drop
- * set is not statically known and the scope's end must read the
- * move flag (03-move.md, Guarded drops). Two dead bits with no cmv
- * under either say both paths moved: statically dead, no flag. */
+ * disprove. A narrowing survives only when both branches agree. */
 void
 fejoin(Fenv *fe, Fenv *a, Fenv *b)
 {
@@ -606,7 +597,6 @@ fejoin(Fenv *fe, Fenv *a, Fenv *b)
     Local *db = &b->ls[i];
 
     d->dead = da->dead || db->dead;
-    d->cmv = da->cmv || db->cmv || (da->dead != db->dead);
     if (da->frz == FZ_MUT || db->frz == FZ_MUT) {
       d->frz = FZ_MUT;
       d->frzby = da->frz != FZ_NONE ? da->frzby : db->frzby;
@@ -630,7 +620,6 @@ unreach(Fenv *fe)
 
   for (i = 0; i < fe->n; i++) {
     fe->ls[i].dead = 0;
-    fe->ls[i].cmv = 0;
     fe->ls[i].frz = FZ_NONE;
     fe->ls[i].frzby = -1;
   }

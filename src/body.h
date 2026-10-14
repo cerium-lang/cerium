@@ -18,12 +18,7 @@ struct Local
   Type *ty;      /* its declared type, never narrowed away */
   int   mut;     /* let mut */
   int   dead;    /* moved from: unusable until its scope ends */
-  int   cmv;     /* conditionally moved (03-move.md, Guarded drops):
-                  * a join saw the binding dead down one path only,
-                  * so no drop insertion is statically known -- the
-                  * scope's end reads the move flag the emitter keeps
-                  * instead of trusting the dead bit */
-  int inpl;      /* bound by a match arm over a deref (09-match.md):
+  int   inpl;    /* bound by a match arm over a deref (09-match.md):
                   * the value sits in the borrow's own storage, not a
                   * slot the binding owns -- a read that moves it out
                   * is the deref's own refusal, @take the one way a
