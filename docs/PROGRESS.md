@@ -4150,3 +4150,23 @@ stays with it for the same reason: the round's error is the tree's
 word in -T, where no mid layer runs.
 
 289 .ssa still byte-identical, 719 green, the library's 54.
+
+The decision client F owed, made and recorded: the emitter stays on
+the tree. The todos' own criterion -- migrate only when client E
+truly needs it -- is not met: async is not on the roadmap, the specs
+say so, concurrency is v1+. And D's landing took the original motive
+with it: "emit reads its drops from the MIR" was the dream, and the
+flip answered it differently -- the decision lives in the flow, the
+spelling rides the tree's own vectors, and 289 byte-identical .ssa
+pin the two together.
+
+The full migration, said plainly for the day it is opened: the rvalue
+vocabulary must first cover every shape the emitter's 4700 lines walk
+-- aggregates, the builtins, closures and their envs, the vtables,
+the mode-gated culling, the const folding -- and only then does the
+text walk the blocks. No client asks for it today. The first payoff
+when one does: the per-pass instance re-clone, the wart the flip
+papered over with the reuse-by-name build, goes -- the MIR built
+once, the text asked twice.
+
+719 green, the library's 54.
