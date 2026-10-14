@@ -4151,22 +4151,23 @@ word in -T, where no mid layer runs.
 
 289 .ssa still byte-identical, 719 green, the library's 54.
 
-The decision client F owed, made and recorded: the emitter stays on
-the tree. The todos' own criterion -- migrate only when client E
-truly needs it -- is not met: async is not on the roadmap, the specs
-say so, concurrency is v1+. And D's landing took the original motive
-with it: "emit reads its drops from the MIR" was the dream, and the
-flip answered it differently -- the decision lives in the flow, the
-spelling rides the tree's own vectors, and 289 byte-identical .ssa
-pin the two together.
+The decision client F owed, made and reversed the same day: the
+emitter migrates, as the first leg of E. The todos' criterion was
+"migrate only when E truly needs it" -- and E is the next thing on
+the road, so the trigger fired on arrival. D's landing made the
+migration safe to take rather than urgent to take: the decision
+machinery already lives in the flow, the discipline of byte-pinned
+cuts is warm, and the mid layer's control-flow face is battle-tested
+by three clients -- what has never been exercised is the rvalue face,
+and the coroutine transform needs both.
 
-The full migration, said plainly for the day it is opened: the rvalue
-vocabulary must first cover every shape the emitter's 4700 lines walk
--- aggregates, the builtins, closures and their envs, the vtables,
-the mode-gated culling, the const folding -- and only then does the
-text walk the blocks. No client asks for it today. The first payoff
-when one does: the per-pass instance re-clone, the wart the flip
-papered over with the reuse-by-name build, goes -- the MIR built
-once, the text asked twice.
+The migration, said plainly: the rvalue vocabulary must first cover
+every shape the emitter's 4700 lines walk -- aggregates, the
+builtins, closures and their envs, the vtables, the mode-gated
+culling, the const folding -- and only then does the text walk the
+blocks. Cut by cut, 289 byte-identical at each step. The first
+payoff: the per-pass instance re-clone, the wart the flip papered
+over with the reuse-by-name build, goes -- the MIR built once, the
+text asked twice.
 
 719 green, the library's 54.
