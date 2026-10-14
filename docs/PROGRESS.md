@@ -4137,3 +4137,16 @@ not yet what is said. The deletion is the next cut, and it is small
 now: nothing reads those marks but the spellers this cut rewrote.
 
 719 green, the text not a byte moved, the library's 54.
+
+The deletion the flip promised: the conditionally-moved bit is gone.
+Nothing read it but the drop decision the flip moved -- the flow
+decides the guarded rows against the states it walks, and the bit
+that once answered "dead down one path only" answered to no one.
+The join no longer computes it, the trial snapshots no longer carry
+it, the Local no longer holds it. The dead bit stays: the tree's
+own move checking still asks it, the use the tree refuses -- that
+walk is the tree's until the borrow's flip, and the loop machine
+stays with it for the same reason: the round's error is the tree's
+word in -T, where no mid layer runs.
+
+289 .ssa still byte-identical, 719 green, the library's 54.
