@@ -4088,3 +4088,52 @@ moves, no shape asked of it again -- the tree's own answer, spelled
 where the flow reads it.
 
 719 green, the guarded shapes among them, the library's 54.
+
+The flip itself, client D's second half landed: the rows decided
+against the flow. scopedrops spells every binding that owns one,
+plain -- the dead and the guarded among them -- and mirredecide,
+asked at the build's own end per fn, decides each row against the
+state the walk snapshotted where the row stands: moved on every path
+comes out, maybe hides under the guard the flag reads, alive stands.
+The tree's loop machinery answered its last question -- a loop is the
+header's fixpoint and nothing else. Every program the suite holds,
+the text not a byte moved: 289 .ssa byte-identical against the tree's
+own decisions.
+
+Four findings the byte-equality demanded, in the order they showed:
+
+The row's state was read at its block's ENTRY -- a one-block fn
+answers alive for everything, the moves inside the block never
+counted. The state is snapshotted where the row stands now, the
+walk's own say at its own point, deduped by node across a loop's
+revisits.
+
+An enum's row is a match, and the match's arms bind the payload
+fresh -- the row asked the payload's slot, always alive. The match
+itself is the row's own taking now: spelled as a fact of its own
+kind (Mfmvrow), recorded as the row it is, never applied as another
+move.
+
+A fact spelled from the wrong union member since b1: Ninit's value
+lives in v.init.e, and the walk read v.n1.e -- every struct
+literal's field reads were gone from the facts, silently, the shadow
+unable to see a move it was never told of. The missing fact is the
+shadow's blind side; the byte-compare is what caught it.
+
+And the statement's own rows are not the flow's to decide: the
+assignment's old value ("drop what you overwrite", the checker's
+opunmove beside it) and a discard's row are contracts, spelled whole
+and never gated -- the re-decide asks scope rows only. What a
+statement's expression fed -- the reads that feed a call, a return's
+value -- lands beside its rows now, held apart: a discard's row asks
+what the statement began with, a return's rows ask what the value
+left behind. An instance is cloned and re-checked at every pass it is
+emitted; the build lands in the slot its name owns, and the re-decide
+meets the tree the text is about to read.
+
+The tree's decision machinery -- the dead and cmv marks, the guards
+the checker spelled -- still stands: the flip changes who says it,
+not yet what is said. The deletion is the next cut, and it is small
+now: nothing reads those marks but the spellers this cut rewrote.
+
+719 green, the text not a byte moved, the library's 54.

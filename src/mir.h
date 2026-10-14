@@ -54,11 +54,14 @@ struct Mirlocal
  * the walk needs is not the value's shape but what it reaches */
 typedef enum
 {
-  Mfrd,  /* read: a Copy place's value taken */
-  Mfwr,  /* written: a binding initialised, a slot assigned */
-  Mfmv,  /* moved from: the value leaves the slot */
-  Mfbor, /* borrowed shared: & , a slice's view, a shared receiver */
-  Mfborm /* borrowed mut: &mut , a mut receiver */
+  Mfrd,   /* read: a Copy place's value taken */
+  Mfwr,   /* written: a binding initialised, a slot assigned */
+  Mfmv,   /* moved from: the value leaves the slot */
+  Mfbor,  /* borrowed shared: & , a slice's view, a shared receiver */
+  Mfborm, /* borrowed mut: &mut , a mut receiver */
+  Mfmvrow /* the row's own taking: an enum's destructor match moves
+           * its scrutinee -- recorded as the row it is, asked by the
+           * re-decide, never applied as another move */
 } Mirfactk;
 
 struct Mirfact
@@ -92,6 +95,28 @@ typedef enum
                * handle carries does, at a run -- and the graph that
                * missed it would drop a fn a program is holding */
 } Mirinsnk;
+
+/* the move walk's own cache, one fn's: the block-entry states and
+ * the row map -- the re-decide pass's ground (client D) */
+typedef struct Mvrow Mvrow;
+struct Mvrow
+{
+  Ast *e;  /* the drop row's own node: the call a plain row is, the
+            * match an enum's row spells */
+  usize b; /* the block the row's instruction stands in */
+  usize slot;
+  u8    state; /* the slot's state at the row's own point, snapshotted
+                * where the row stands -- not the block's entry, the
+                * moves inside the block ahead of it counted */
+};
+
+typedef struct Mvst Mvst;
+struct Mvst
+{
+  u8   **in; /* the state a block starts with, a slot a byte */
+  usize  nl;
+  Mvrow *rows;
+};
 
 /* how a block hands to the next. Goto is also what a fallthrough
  * leaves behind, and a block no walk reaches keeps it */
@@ -156,6 +181,9 @@ struct Mirfn
   const char *path;  /* the file the fn was written in: the deferred
                       * checks report there, the walk that runs them
                       * past every file's own emit */
+  void *mv;          /* the move walk's own cache: the block states
+                      * and the row map, held for the re-decide pass
+                      * that follows the build (client D) */
   unsigned retbits;  /* the signature's promise, a bit a parameter:
                       * the ones that flow to the return */
   unsigned leakbits; /* ... and the ones that reach a store through a
@@ -210,11 +238,19 @@ Mirlocal *mirlocalnew(Mirfn *f, char *name, Type *ty, int param);
  * life is one fn's, so no regions yet */
 void mirescapeall(void);
 
-/* mirfmove.c -- client D, the move walk's shadow: the aliveness the
- * tree's checker says, asked again over the blocks (the facts b1
- * spelled), and a hard disagreement between the two refuses the
- * compile -- the shadow that proves them equal until the flip. Runs
- * beside the escape check, the MIR whole */
+/* mirfmove.c -- client D's move walk: the aliveness of every slot,
+ * forward over the blocks to a fixpoint. The states and the row map
+ * land on the fn (mv) for the re-decide pass; the whole-program ask
+ * below is the use-after-move check, run beside the escape check */
+void mirfmoverun(Mirfn *f); /* one fn's states: the re-decide's ground */
 void mirfmoveall(void);
+
+/* mirredecide.c -- client D's flip: the drop rows the checker spelled
+ * whole (every binding that owns one, plain), decided here against
+ * the flow -- a row for a slot moved on every path comes out, a row
+ * for a slot moved down one path hides under the guard the flag
+ * reads. The tree's own words, taken whole; the emitter's text not a
+ * byte moved */
+void mirredecide(Mirfn *f);
 
 #endif /* MIR_H */

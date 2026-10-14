@@ -255,10 +255,50 @@ dropcalls(Ast *place, Type *t, Ast ***out, Ast *at)
   }
 }
 
+/* the guard a maybe row hides under (03-move.md, Guarded drops): the
+ * negated flag read -- mvd 2 is its marker, the name the binding's
+ * own -- around the whole row, one ownership one flag. Spelled by
+ * the re-decide pass now, where the flow's own answer says a row
+ * owes one; the words are the checker's, taken whole */
+Ast *
+mkdropguard(char *name, Ast **sub, usize n, Ast *at)
+{
+  Ast  *g, *blk;
+  usize k;
+
+  g = opnode(Nif, at);
+  g->ty = tyunit();
+  g->v.ifx.cond = opnode(Npath, at);
+  g->v.ifx.cond->mvd = 2;
+  g->v.ifx.cond->v.path.segs = vnew(Ast *, 1);
+  opvpush(&g->v.ifx.cond->v.path.segs, opseg(name, at));
+  g->v.ifx.cond->ty = tybool();
+  blk = opnode(Nblock, at);
+  blk->ty = tyunit();
+  blk->v.blk.stmts = vnew(Ast *, n ? n : 1);
+  for (k = 0; k < n; k++) { /* a bare statement is an expression
+                             * statement: the drop calls ride one each */
+    Ast *s = opnode(Nexprstmt, at);
+
+    s->v.n1.e = sub[k];
+    s->v.n1.drops = 0;
+    opvpush(&blk->v.blk.stmts, s);
+  }
+  g->v.ifx.then = blk;
+  g->v.ifx.els = 0;
+  return g;
+}
+
 /* the destructors a scope's bindings owe, innermost first: a
  * binding the move killed owes nothing -- its destructor went with
  * the value (03-move.md) -- and a const parameter is a compile-time
- * thing, no slot to destruct. */
+ * thing, no slot to destruct.
+ *
+ * Every binding that owns a row is spelled here, plain: which rows
+ * the moves killed and which one path only -- the guard a maybe
+ * owes -- is the flow's own answer now, asked by the re-decide pass
+ * where the mid layer stands (todos/todo-20261012-00.md, client D),
+ * the row removed or guarded against what the blocks say */
 Ast **
 scopedrops(Fenv *fe, usize from, Ast *at)
 {
@@ -271,55 +311,11 @@ scopedrops(Fenv *fe, usize from, Ast *at)
 
     if (l->isconst || !hasdrop(l->ty))
       continue;
-    if (l->dead && !l->cmv) /* moved on every path that reaches here:
-                             * statically dead, nothing runs
-                             * (03-move.md) */
-      continue;
     p = opnode(Npath, at); /* the binding's own place: a plain name,
                             * its slot the emitter's own */
     p->v.path.segs = vnew(Ast *, 1);
     opvpush(&p->v.path.segs, opseg(l->name, at));
     p->ty = l->ty;
-    if (l->cmv) { /* conditionally moved: dead down one path only,
-                   * the join could not say -- the emitter keeps a
-                   * move flag the branch stores and the drop reads
-                   * (03-move.md, Guarded drops). The whole row hides
-                   * under one flag: the binding is one ownership */
-      Ast **sub = 0;
-      Ast  *g, *blk;
-      usize k;
-
-      dropcalls(p, l->ty, &sub, at);
-      if (!sub)
-        continue;
-      g = opnode(Nif, at);
-      g->ty = tyunit();
-      g->v.ifx.cond = opnode(Npath, at); /* the negated flag read:
-                                          * mvd 2 is its marker, the
-                                          * name the binding's own */
-      g->v.ifx.cond->mvd = 2;
-      g->v.ifx.cond->v.path.segs = vnew(Ast *, 1);
-      opvpush(&g->v.ifx.cond->v.path.segs, opseg(l->name, at));
-      g->v.ifx.cond->ty = tybool();
-      blk = opnode(Nblock, at);
-      blk->ty = tyunit();
-      blk->v.blk.stmts = vnew(Ast *, vlen(sub));
-      for (k = 0; k < vlen(sub); k++) { /* a bare statement is an
-                                         * expression statement: the
-                                         * drop calls ride one each */
-        Ast *s = opnode(Nexprstmt, at);
-
-        s->v.n1.e = sub[k];
-        s->v.n1.drops = 0;
-        opvpush(&blk->v.blk.stmts, s);
-      }
-      g->v.ifx.then = blk;
-      g->v.ifx.els = 0;
-      if (!out) /* opvpush begins no vector on its own */
-        out = vnew(Ast *, 4);
-      opvpush(&out, g);
-      continue;
-    }
     dropcalls(p, l->ty, &out, at);
   }
   return out;

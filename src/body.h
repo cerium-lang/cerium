@@ -194,6 +194,11 @@ extern Sym *bodyfn;
 Type *rblock(Ast *b, Fenv *fe, Type *want);
 void  dropcalls(Ast *place, Type *t, Ast ***out, Ast *at);
 Ast **scopedrops(Fenv *fe, usize from, Ast *at);
+Ast  *mkdropguard(char *name, Ast **sub, usize n, Ast *at); /* the guard a
+                                                             * maybe row hides
+                                                             * under: the
+                                                             * re-decide pass's
+                                                             * own ask */
 Type *rclosure(Ast *c, Fenv *fe);
 
 /* the mode words' own doors (01-types.md, Mode-gated functions): the

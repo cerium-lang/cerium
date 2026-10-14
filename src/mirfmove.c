@@ -1,32 +1,24 @@
-/* mirfmove.c -- client D, the move walk's shadow: what the tree's
- * checker says about a binding's aliveness, asked again over the
- * blocks, and any disagreement between the two is a bug in one of
- * them -- this cut refuses to compile on it, loudly, so the test
- * suite's every program is the compare (todos/todo-20261012-00.md).
+/* mirfmove.c -- client D's move walk: the aliveness of every slot,
+ * forward over the blocks to a fixpoint. A slot is alive, maybe
+ * (moved down one path, a join could not say which), or moved (on
+ * every path that reaches); the join is the tree's own bargain, and
+ * a loop needs no loop machinery of its own -- the header joins the
+ * round's way back, and the fixpoint is the answer.
  *
- * The state is a slot's, one of three: alive, maybe (moved down one
- * path, a join could not say which), moved (moved on every path that
- * reaches). The transfer reads the facts b1 spelled: a move kills
- * the slot, a write re-arms it, a read of a moved slot is a use
- * after move -- the same bargain the tree's Local.dead and
- * Local.cmv hold, asked where the flow can see it. Loops need no
- * loop machinery of their own: the header joins the round's way
- * back with everything the entry brought, and the fixpoint is the
- * answer -- a binding the round moves joins to maybe at its own
- * header, the shape the tree spells "would be moved every round".
+ * The states and the row map land on the fn for the re-decide pass
+ * (mirredecide.c): the rows the checker spelled whole, decided
+ * against what the blocks say. The use-after-move dies below stay
+ * for every compile -- a read or a move of a moved slot the tree
+ * let stand is a bug in one of the two walks, named where it
+ * stands.
  *
- * What this cut deliberately is not: the decision maker. The drops
- * the tree's scopes owe are still the tree's to spell (the mid
- * layer builds beside the emitter, after the checker walked); this
- * is the shadow that proves the two agree, round after round, until
- * the flip -- the cut that moves the decision itself -- has nothing
- * left to surprise it.
- *
- * A maybe is not argued with. A read or a move of a maybe the tree
+ * A maybe is not argued with: a read or a move of a maybe the tree
  * accepts (its own join could not say), so this one does not
- * either; what it refuses is the hard disagreement -- a read or a
- * move of a moved slot the tree let stand, a drop row spelled for a
- * slot this walk says already gone. */
+ * either. The rows of one taking are not two takings: a spread
+ * hands its rows one a one under the same slot, and the instruction
+ * that asked holds them all -- a move the same instruction already
+ * made is the spelling of that one taking, not a second one
+ * (03-move.md, 04-generics.md). */
 
 #include <stdlib.h>
 #include <string.h>
@@ -36,6 +28,7 @@
 #include "lex.h"
 #include "mir.h"
 #include "sym.h"
+#include "vec.h"
 
 /* a slot's state. TOP is the not-yet-reached: the join's own unit,
  * a block no path has come to yet -- its state is no state, not a
@@ -63,20 +56,12 @@ mfjoin(u8 a, u8 b)
 }
 
 /* one row of facts, in the order the tree spelled them, against the
- * state they meet. A disagreement is the shadow's own say: the tree
- * checked this program and let it stand, this walk says otherwise --
- * one of the two is wrong, and the message names the place.
- *
- * The rows of one taking are not two takings: a spread hands its
- * rows one a one under the same slot, and the instruction that asked
- * holds them all -- a move the same instruction already made is the
- * spelling of that one taking, not a second one (03-move.md,
- * 04-generics.md). A drop row's own moves ask the state the
- * instruction entered with: a row spelled for a slot already gone is
- * the disagreement, and nothing else about the row moves the state
- * -- the binding's end is not another taking of it. */
+ * state they meet. The hard disagreement refuses the compile: the
+ * tree checked this program and let it stand, this walk says
+ * otherwise -- one of the two is wrong, and the message names the
+ * place */
 static void
-mfacts(Mirfn *f, u8 *st, u8 *was, Mirfact *fs, Ast *at, int drops)
+mfacts(Mirfn *f, u8 *st, Mirfact *fs, Ast *at)
 {
   usize i;
 
@@ -85,28 +70,6 @@ mfacts(Mirfn *f, u8 *st, u8 *was, Mirfact *fs, Ast *at, int drops)
     char *nm = f->locals[t->local] && f->locals[t->local]->name ? f->locals[t->local]->name : "?";
 
     if (t->k == Mfmv) {
-      if (drops == 1) { /* a plain row: the slot alive on every path
-                         * that reaches -- a maybe says the tree missed
-                         * the guard the row owes, a moved slot owes no
-                         * row at all (03-move.md) */
-        if (was[t->local] != MALIVE)
-          die("mir: the move walk disagrees at @%u:%u -- a plain drop row spelled for '%s', "
-              "%s, the tree let it stand",
-              at ? at->line : 0, at ? at->col : 0, nm,
-              was[t->local] == MMAYBE ? "moved down one path and owed a guard"
-                                      : "already moved on every path");
-        continue;
-      }
-      if (drops == 2) { /* a guarded row: the flag's own way in, the
-                         * not-moved path the branch takes -- a maybe
-                         * is its shape, a moved slot still owes
-                         * nothing */
-        if (was[t->local] == MMOVED)
-          die("mir: the move walk disagrees at @%u:%u -- a drop row spelled for '%s', already "
-              "moved on every path, the tree let it stand",
-              at ? at->line : 0, at ? at->col : 0, nm);
-        continue;
-      }
       if (st[t->local] == MMOVED) {
         usize q;
         int   own = 0;
@@ -141,28 +104,80 @@ mfacts(Mirfn *f, u8 *st, u8 *was, Mirfact *fs, Ast *at, int drops)
       st[t->local] = MALIVE; /* the re-arm: a value landed, the slot
                               * owes the world again (03) */
     /* bor / borm: the pointer's own read, the slot's value not
-     * taken -- the borrow walk's question, not this one's */
+     * taken -- the borrow walk's question, not this one's. A row's
+     * own taking (Mfmvrow) is the same: the re-decide's input, never
+     * a move this walk applies */
+  }
+}
+
+/* the row a drop insn is: the state at its own point -- the walk is
+ * at that instruction, the state it has carried this far IS the
+ * state the row meets -- snapshotted there and deduped by node: a
+ * loop revisits its blocks, and the last visit's is the final one */
+static void
+mfrow(Mvst *mv, Ast *e, usize b, usize slot, u8 state)
+{
+  usize i;
+
+  for (i = 0; i < vlen(mv->rows); i++)
+    if (mv->rows[i].e == e) {
+      mv->rows[i].b = b;
+      mv->rows[i].slot = slot;
+      mv->rows[i].state = state;
+      return;
+    }
+  {
+    Mvrow r;
+
+    r.e = e;
+    r.b = b;
+    r.slot = slot;
+    r.state = state;
+    if (!mv->rows)
+      mv->rows = vnew(Mvrow, 8);
+    vappend(&mv->rows, &r);
   }
 }
 
 /* one fn, to the fixpoint: the entry's slots alive, every block's
  * facts applied to what its predecessors left, the ways around a
- * loop joined until nothing moves */
-static void
-mfrun(Mirfn *f)
+ * loop joined until nothing moves. The states stay on the fn (mv)
+ * for the re-decide pass, the row map with them -- a row's own
+ * instruction names the block it stands in, the slot its first
+ * move touches, the state it meets there */
+void
+mirfmoverun(Mirfn *f)
 {
+  Mvst  *mv;
   u8   **in, **out;
-  int   *inq, *guarded;
+  int   *inq;
   usize  nl = vlen(f->locals), nb = vlen(f->blocks);
   usize *work;
   usize  b, i, j, k, head;
 
-  if (!nb || !nl)
+  if (!nb || !nl) {
+    if (!f->mv) { /* still a cache, an empty one: the re-decide asks
+                   * rows by node and finds none either way */
+      mv = calloc(1, sizeof *mv);
+      if (!mv)
+        die("mir: no memory for the move walk");
+      f->mv = mv;
+    }
     return; /* no blocks or no slots: nothing to ask */
+  }
+  if (f->mv) { /* the walk again: the old states freed whole */
+    mv = f->mv;
+    if (mv->in)
+      for (b = 0; b < nb; b++)
+        free(mv->in[b]);
+    free(mv->in);
+    free(mv);
+  }
   in = calloc(nb, sizeof *in);
   out = calloc(nb, sizeof *out);
   inq = calloc(nb, sizeof *inq);
-  if (!in || !out || !inq)
+  mv = calloc(1, sizeof *mv);
+  if (!in || !out || !inq || !mv)
     die("mir: no memory for the move walk");
   for (b = 0; b < nb; b++) {
     in[b] = calloc(nl, sizeof **in);
@@ -171,20 +186,8 @@ mfrun(Mirfn *f)
       die("mir: no memory for the move walk");
     memset(in[b], MTOP, nl); /* no path yet: the join's own unit */
   }
-  memset(in[0], MALIVE, nl);             /* the entry: the caller's values in
-                                          * the parameters, nothing bound yet */
-  guarded = calloc(nb, sizeof *guarded); /* a block a drop's guard hands
-                                          * to: the flag's own way in,
-                                          * the not-moved path */
-  if (!guarded)
-    die("mir: no memory for the move walk");
-  for (b = 0; b < nb; b++) {
-    Mirblock *bb = f->blocks[b];
-
-    if (bb->term == Mterm_branch && bb->termset && bb->te && bb->te->k == Nif &&
-        bb->te->v.ifx.cond && bb->te->v.ifx.cond->mvd == 2 && vlen(bb->succ))
-      guarded[bb->succ[0]] = 1;
-  }
+  memset(in[0], MALIVE, nl); /* the entry: the caller's values in
+                              * the parameters, nothing bound yet */
   work = vnew(usize, 16);
   head = 0;
   vappend(&work, &head);
@@ -197,12 +200,38 @@ mfrun(Mirfn *f)
     inq[head] = 0;
     bb = f->blocks[head];
     memcpy(out[head], in[head], nl);
-    for (i = 0; i < vlen(bb->insns); i++)
-      mfacts(f, out[head], in[head], bb->insns[i]->facts, bb->insns[i]->e,
-             bb->insns[i]->k == Minsn_drop ? (guarded[head] ? 2 : 1) : 0);
-    mfacts(f, out[head], in[head], bb->facts, bb->te, 0); /* the terminator's own:
-                                                           * a cond's read, a
-                                                           * return's move */
+    for (i = 0; i < vlen(bb->insns); i++) {
+      Mirinsn *n = bb->insns[i];
+
+      if (n->k == Minsn_drop) { /* a row's own spelling: the
+                                 * re-decide's input, not this
+                                 * walk's question -- the row map
+                                 * takes it, the state it meets */
+        usize q;
+
+        for (q = 0; q < vlen(n->facts); q++)
+          if (n->facts[q].k == Mfmv) {
+            mfrow(mv, n->e, head, n->facts[q].local, out[head][n->facts[q].local]);
+            break;
+          }
+        continue;
+      }
+      mfacts(f, out[head], n->facts, n->e);
+    }
+    for (i = 0; i < vlen(bb->facts); i++) /* an enum's row rides the
+                                           * switch itself: the
+                                           * scrutinee's taking spelled
+                                           * as the row it is, asked
+                                           * where the match stands and
+                                           * never applied as another
+                                           * move */
+      if (bb->facts[i].k == Mfmvrow) {
+        mfrow(mv, bb->te, head, bb->facts[i].local, out[head][bb->facts[i].local]);
+        break;
+      }
+    mfacts(f, out[head], bb->facts, bb->te); /* the terminator's own:
+                                              * a cond's read, a
+                                              * return's move */
     for (j = 0; j < vlen(bb->succ); j++) {
       usize s = bb->succ[j];
 
@@ -217,50 +246,23 @@ mfrun(Mirfn *f)
       }
     }
   }
-  for (b = 0; b < nb; b++) { /* the guard a drop row owes, asked at its
-                              * own branch: the flag's read the tree
-                              * spells (mvd) names the slot, and the
-                              * state the branch decides on is maybe --
-                              * a plain alive or a moved would say the
-                              * guard spelled for a row that owed it
-                              * not (03-move.md, Guarded drops) */
-    Mirblock *bb = f->blocks[b];
-    Ast      *cond;
-
-    if (!bb->termset || bb->term != Mterm_branch || !bb->te || bb->te->k != Nif)
-      continue;
-    cond = bb->te->v.ifx.cond;
-    if (!cond || cond->mvd != 2 || cond->k != Npath || vlen(cond->v.path.segs) != 1)
-      continue; /* a program's own branch, no drop's guard */
-    for (k = 0; k < nl; k++)
-      if (f->locals[k] && f->locals[k]->name &&
-          strcmp(f->locals[k]->name, cond->v.path.segs[0]->v.seg.name) == 0) {
-        if (in[b][k] != MMAYBE)
-          die("mir: the move walk disagrees at @%u:%u -- a drop's guard spelled for '%s', "
-              "%s on every path that reaches, a guard owed where the join could not say",
-              bb->te->line, bb->te->col, f->locals[k]->name,
-              in[b][k] == MALIVE ? "alive" : "moved");
-        break;
-      }
-  }
-  for (b = 0; b < nb; b++) {
-    free(in[b]);
+  for (b = 0; b < nb; b++)
     free(out[b]);
-  }
-  free(in);
   free(out);
   free(inq);
-  free(guarded);
+  mv->in = in;
+  mv->nl = nl;
+  f->mv = mv;
 }
 
-/* the whole program's, once the mid layer is built: every fn, every
- * instance, every closure -- reached or not, for the shadow asks
- * the ones the emitter drops too */
+/* the whole program's, once the text is out: every fn, every
+ * instance, every closure -- the use-after-move ask, the states
+ * cached for whoever asks next */
 void
 mirfmoveall(void)
 {
   usize i;
 
   for (i = 0; i < mirnfns(); i++)
-    mfrun(mirfnat(i));
+    mirfmoverun(mirfnat(i));
 }
