@@ -634,7 +634,10 @@ mmatch(Ast *st)
   usize  i, join;
   usize *armb;
 
-  mex(st->v.call.f); /* the scrutinee's read: the switch's own */
+  if (!indrop)         /* a destructor's own match: the scrutinee is the
+                        * dying value itself, its read the spelling of the
+                        * row, not another taking of it (03-move.md) */
+    mex(st->v.call.f); /* the scrutinee's read: the switch's own */
   mfattachterm(curb());
   armb = vnew(usize, 4);
   for (i = 0; i < vlen(st->v.call.args); i++) {
@@ -919,6 +922,9 @@ mirfnbuild(char *name, Sym *s, Ast *decl)
                                                     * tree spelled a return there --
                                                     * the tail named so the check
                                                     * below reads the value */
+  mirfmoverun(mb.f);                               /* the walk's states, the row map with them */
+  mirredecide(mb.f);                               /* the flip: the rows decided against the flow,
+                                                    * the moved out, the maybe guarded */
   mb.f->path = lexpath();                          /* the file the fn was written in: the
                                                     * escape check runs once the MIR is whole,
                                                     * and its reports are this file's own
