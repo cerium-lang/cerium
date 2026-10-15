@@ -4150,3 +4150,24 @@ stays with it for the same reason: the round's error is the tree's
 word in -T, where no mid layer runs.
 
 289 .ssa still byte-identical, 719 green, the library's 54.
+
+The decision client F owed, made and reversed the same day: the
+emitter migrates, as the first leg of E. The todos' criterion was
+"migrate only when E truly needs it" -- and E is the next thing on
+the road, so the trigger fired on arrival. D's landing made the
+migration safe to take rather than urgent to take: the decision
+machinery already lives in the flow, the discipline of byte-pinned
+cuts is warm, and the mid layer's control-flow face is battle-tested
+by three clients -- what has never been exercised is the rvalue face,
+and the coroutine transform needs both.
+
+The migration, said plainly: the rvalue vocabulary must first cover
+every shape the emitter's 4700 lines walk -- aggregates, the
+builtins, closures and their envs, the vtables, the mode-gated
+culling, the const folding -- and only then does the text walk the
+blocks. Cut by cut, 289 byte-identical at each step. The first
+payoff: the per-pass instance re-clone, the wart the flip papered
+over with the reuse-by-name build, goes -- the MIR built once, the
+text asked twice.
+
+719 green, the library's 54.
